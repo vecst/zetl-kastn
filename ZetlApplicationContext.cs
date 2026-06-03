@@ -280,7 +280,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 await HandleCutHoldAsync(context.ShiftLane, targetWindow, pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber, pending?.ObservedClipboardText);
                 break;
             case VK_V:
-                await HandlePasteHoldAsync(context.ShiftLane, targetWindow);
+                HandlePasteHold(context.ShiftLane, targetWindow);
                 break;
             case VK_Z:
                 HandleUndoHold(context.ShiftLane);
@@ -332,7 +332,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             scratchOnlyUntilProjectStarted: !hadActiveProject);
     }
 
-    private async Task HandlePasteHoldAsync(bool shifted, IntPtr targetWindow)
+    private void HandlePasteHold(bool shifted, IntPtr targetWindow)
     {
         var project = store.GetActiveProject(shifted);
         IReadOnlyList<ZetlBucket>? bucketScope = null;
@@ -354,52 +354,58 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             return;
         }
 
-        using var form = new CompileForm(store, project, bucketScope);
-        var result = ZetlDialogPlacement.ShowForegroundDialog(
+        ZetlProject compileProject = project;
+        var form = new CompileForm(store, compileProject, bucketScope);
+        ZetlDialogPlacement.ShowForegroundPopup(
             form,
-            ZetlDialogPlacement.OwnerFromHandle(targetWindow),
-            closeOnDeactivate: true,
+            onClosed: () =>
+            {
+                if (form.DialogResult != DialogResult.OK || string.IsNullOrWhiteSpace(form.CompiledText))
+                {
+                    if (!ZetlDialogPlacement.WasClosedByDeactivate(form))
+                    {
+                        RestoreForegroundWindow(targetWindow);
+                    }
+
+                    return;
+                }
+
+                if (form.SaveToBucket)
+                {
+                    var destination = store.GetOrCreateBucket(compileProject, form.DestinationBucketName);
+                    var note = store.AddNote(destination, form.CompiledText, "compile");
+                    PushUndo(
+                        shifted,
+                        $"Undid compile to {destination.Name}.",
+                        () => store.DeleteNote(destination, note.Id));
+                    ShowInfo($"Compiled to {destination.Name}.");
+                    RestoreForegroundWindow(targetWindow);
+                    return;
+                }
+
+                ClipboardText.Set(form.CompiledText);
+                if (form.PasteNow)
+                {
+                    if (targetWindow != IntPtr.Zero)
+                    {
+                        SetForegroundWindow(targetWindow);
+                    }
+
+                    BeginInvoke(async () =>
+                    {
+                        await Task.Delay(75);
+                        ChordlInput.SendPaste(Log);
+                        ShowInfo("Pasted compiled text.");
+                    });
+                }
+                else
+                {
+                    ShowInfo("Copied compiled text to clipboard.");
+                    RestoreForegroundWindow(targetWindow);
+                }
+            },
+            owner: ZetlDialogPlacement.OwnerFromHandle(targetWindow),
             activationWindow: targetWindow);
-        if (result != DialogResult.OK || string.IsNullOrWhiteSpace(form.CompiledText))
-        {
-            if (!ZetlDialogPlacement.WasClosedByDeactivate(form))
-            {
-                RestoreForegroundWindow(targetWindow);
-            }
-
-            return;
-        }
-
-        if (form.SaveToBucket)
-        {
-            var destination = store.GetOrCreateBucket(project, form.DestinationBucketName);
-            var note = store.AddNote(destination, form.CompiledText, "compile");
-            PushUndo(
-                shifted,
-                $"Undid compile to {destination.Name}.",
-                () => store.DeleteNote(destination, note.Id));
-            ShowInfo($"Compiled to {destination.Name}.");
-            RestoreForegroundWindow(targetWindow);
-            return;
-        }
-
-        ClipboardText.Set(form.CompiledText);
-        if (form.PasteNow)
-        {
-            if (targetWindow != IntPtr.Zero)
-            {
-                SetForegroundWindow(targetWindow);
-            }
-
-            await Task.Delay(75);
-            ChordlInput.SendPaste(Log);
-            ShowInfo("Pasted compiled text.");
-        }
-        else
-        {
-            ShowInfo("Copied compiled text to clipboard.");
-            RestoreForegroundWindow(targetWindow);
-        }
     }
 
     private void ShowProjectSetupDialog()
@@ -430,67 +436,70 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             return;
         }
 
-        using var form = new NoteCaptureForm(
+        ZetlProject noteProject = project;
+        var form = new NoteCaptureForm(
             store,
-            project,
+            noteProject,
             preferredBucket,
             text,
             showStartProjectToggle,
             startProjectDefault,
             scratchOnlyUntilProjectStarted);
-        var result = ZetlDialogPlacement.ShowForegroundDialog(
+        ZetlDialogPlacement.ShowForegroundPopup(
             form,
-            ZetlDialogPlacement.OwnerFromHandle(restoreWindow),
-            closeOnDeactivate: true,
-            activationWindow: restoreWindow);
-        try
-        {
-            if (result != DialogResult.OK || string.IsNullOrWhiteSpace(form.NoteText))
+            onClosed: () =>
             {
-                if (showStartProjectToggle)
+                try
                 {
-                    store.ClearActiveProject(shifted);
+                    if (form.DialogResult != DialogResult.OK || string.IsNullOrWhiteSpace(form.NoteText))
+                    {
+                        if (showStartProjectToggle)
+                        {
+                            store.ClearActiveProject(shifted);
+                        }
+
+                        return;
+                    }
+
+                    if (form.StartProject)
+                    {
+                        store.UpdateProjectName(noteProject, form.ProjectName, shifted);
+                    }
+
+                    var bucket = form.SelectedBucket;
+                    if (form.StartProject && string.Equals(source, "copy", StringComparison.OrdinalIgnoreCase))
+                    {
+                        store.SetActiveBucket(noteProject, bucket.Id);
+                    }
+
+                    if (string.Equals(source, "cut", StringComparison.OrdinalIgnoreCase))
+                    {
+                        store.SetQuickNoteBucket(noteProject, bucket.Id);
+                    }
+
+                    var note = store.AddNote(bucket, form.NoteText, source);
+                    PushUndo(
+                        shifted,
+                        $"Undid save to {bucket.Name}.",
+                        () => store.DeleteNote(bucket, note.Id));
+                    ClipboardText.Set(form.NoteText);
+                    if (showStartProjectToggle && !form.StartProject)
+                    {
+                        store.ClearActiveProject(shifted);
+                    }
+
+                    ShowInfo($"Saved to {bucket.Name}.");
                 }
-
-                return;
-            }
-
-            if (form.StartProject)
-            {
-                store.UpdateProjectName(project, form.ProjectName, shifted);
-            }
-
-            var bucket = form.SelectedBucket;
-            if (form.StartProject && string.Equals(source, "copy", StringComparison.OrdinalIgnoreCase))
-            {
-                store.SetActiveBucket(project, bucket.Id);
-            }
-
-            if (string.Equals(source, "cut", StringComparison.OrdinalIgnoreCase))
-            {
-                store.SetQuickNoteBucket(project, bucket.Id);
-            }
-
-            var note = store.AddNote(bucket, form.NoteText, source);
-            PushUndo(
-                shifted,
-                $"Undid save to {bucket.Name}.",
-                () => store.DeleteNote(bucket, note.Id));
-            ClipboardText.Set(form.NoteText);
-            if (showStartProjectToggle && !form.StartProject)
-            {
-                store.ClearActiveProject(shifted);
-            }
-
-            ShowInfo($"Saved to {bucket.Name}.");
-        }
-        finally
-        {
-            if (!ZetlDialogPlacement.WasClosedByDeactivate(form))
-            {
-                RestoreForegroundWindow(restoreWindow);
-            }
-        }
+                finally
+                {
+                    if (!ZetlDialogPlacement.WasClosedByDeactivate(form))
+                    {
+                        RestoreForegroundWindow(restoreWindow);
+                    }
+                }
+            },
+            owner: ZetlDialogPlacement.OwnerFromHandle(restoreWindow),
+            activationWindow: restoreWindow);
     }
 
     private void ShowBoard(bool shifted = false, IntPtr restoreWindow = default)

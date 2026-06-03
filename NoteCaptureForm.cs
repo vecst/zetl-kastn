@@ -29,6 +29,11 @@ internal sealed partial class NoteCaptureForm : ZetlPopupForm
         startProjectBox.Checked = !showStartProjectToggle || startProjectDefault;
         noteBox.Text = BuildInitialNoteText(text);
 
+        // Non-modal forms do not auto-close when a button sets DialogResult, so
+        // close explicitly. The DialogResult is already set by the time Click
+        // fires.
+        saveButton.Click += (_, _) => Close();
+        cancelButton.Click += (_, _) => Close();
         bucketBox.SelectedIndexChanged += (_, _) => UpdateInlineBucketLabel();
         startProjectBox.CheckedChanged += (_, _) =>
         {

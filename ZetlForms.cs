@@ -9,24 +9,54 @@ internal static class ZetlDialogPlacement
         return handle == IntPtr.Zero ? null : new WindowHandleOwner(handle);
     }
 
-    public static DialogResult ShowForegroundDialog(
+    public static DialogResult ShowForegroundDialog(Form form, IWin32Window? owner = null)
+    {
+        var preferredForegroundWindow = owner?.Handle ?? IntPtr.Zero;
+        form.ShowInTaskbar = false;
+        PlaceNearTopSixth(form);
+        form.Shown += (_, _) => BringToForeground(form, preferredForegroundWindow);
+        return owner is null ? form.ShowDialog() : form.ShowDialog(owner);
+    }
+
+    /// <summary>
+    /// Shows a transient popup non-modally so the user can click straight into
+    /// another app to dismiss it (a modal dialog would flash and block
+    /// instead). The popup closes on deactivation and <paramref name="onClosed"/>
+    /// runs once it is closed, after which the form is disposed.
+    /// </summary>
+    public static void ShowForegroundPopup(
         Form form,
+        Action onClosed,
         IWin32Window? owner = null,
-        bool closeOnDeactivate = false,
         IntPtr activationWindow = default)
     {
         var preferredForegroundWindow = activationWindow != IntPtr.Zero
             ? activationWindow
             : owner?.Handle ?? IntPtr.Zero;
         form.ShowInTaskbar = false;
-        if (closeOnDeactivate)
-        {
-            EnableCloseOnDeactivate(form);
-        }
-
+        EnableCloseOnDeactivate(form);
         PlaceNearTopSixth(form);
         form.Shown += (_, _) => BringToForeground(form, preferredForegroundWindow);
-        return owner is null ? form.ShowDialog() : form.ShowDialog(owner);
+        form.FormClosed += (_, _) =>
+        {
+            try
+            {
+                onClosed();
+            }
+            finally
+            {
+                form.Dispose();
+            }
+        };
+
+        if (owner is not null)
+        {
+            form.Show(owner);
+        }
+        else
+        {
+            form.Show();
+        }
     }
 
     public static bool WasClosedByDeactivate(Form form)
@@ -56,31 +86,31 @@ internal static class ZetlDialogPlacement
                 return;
             }
 
-            // Decide here, while we know which window is taking over. If focus
-            // moved to another window of our own process (a child dialog or
-            // message box this popup opened), keep the popup open. Otherwise
-            // the user clicked into another app, so commit to closing now via
-            // the marker; checking focus later is unreliable because the popup
-            // can reclaim the foreground before a posted callback runs.
-            var foreground = Program.GetForegroundWindow();
-            Program.GetWindowThreadProcessId(foreground, out var foregroundProcessId);
-            if (foregroundProcessId == (uint)Environment.ProcessId)
-            {
-                return;
-            }
-
-            if (canClose is not null && !canClose())
-            {
-                return;
-            }
-
-            form.Tag = DeactivatedCloseMarker;
             form.BeginInvoke(new Action(() =>
             {
-                if (!form.IsDisposed && form.Visible)
+                if (form.IsDisposed || !form.Visible)
                 {
-                    form.Close();
+                    return;
                 }
+
+                // Once focus has settled, if it landed on another window of our
+                // own process (a child dialog or message box this popup opened),
+                // keep the popup open. Otherwise the user moved to another app,
+                // so close.
+                var foreground = Program.GetForegroundWindow();
+                Program.GetWindowThreadProcessId(foreground, out var foregroundProcessId);
+                if (foregroundProcessId == (uint)Environment.ProcessId)
+                {
+                    return;
+                }
+
+                if (canClose is not null && !canClose())
+                {
+                    return;
+                }
+
+                form.Tag = DeactivatedCloseMarker;
+                form.Close();
             }));
         };
     }

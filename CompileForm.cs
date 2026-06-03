@@ -34,7 +34,11 @@ internal sealed partial class CompileForm : ZetlPopupForm
         pastePlainButton.Click += (_, _) => Complete(pasteNow: true, saveToBucket: false, unformatted: true);
         pasteLastButton.Click += (_, _) => CompleteLastItem();
         saveBucketButton.Click += (_, _) => Complete(pasteNow: false, saveToBucket: true);
-        cancelButton.Click += (_, _) => DialogResult = DialogResult.Cancel;
+        cancelButton.Click += (_, _) =>
+        {
+            DialogResult = DialogResult.Cancel;
+            Close();
+        };
         UpdateCompileModeControls();
         RefreshPreview();
     }
@@ -138,6 +142,7 @@ internal sealed partial class CompileForm : ZetlPopupForm
             ? store.CompileUnformattedFromNotes(SelectedNotes)
             : previewBox.Text;
         DialogResult = DialogResult.OK;
+        Close();
     }
 
     private void CompleteLastItem()
@@ -152,5 +157,6 @@ internal sealed partial class CompileForm : ZetlPopupForm
         SaveToBucket = false;
         CompiledText = note.Note.Text.Trim();
         DialogResult = DialogResult.OK;
+        Close();
     }
 }
