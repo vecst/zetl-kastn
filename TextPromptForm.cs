@@ -1,11 +1,10 @@
 namespace ZETL;
 
-internal sealed partial class TextPromptForm : Form
+internal sealed partial class TextPromptForm : ZetlPopupForm
 {
     public TextPromptForm(string title, string label)
     {
         InitializeComponent();
-        ZetlFormShortcuts.EnableCtrlEnterClose(this);
         Text = title;
         promptLabel.Text = label;
 

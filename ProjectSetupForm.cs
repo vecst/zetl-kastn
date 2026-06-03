@@ -1,11 +1,10 @@
 namespace ZETL;
 
-internal sealed partial class ProjectSetupForm : Form
+internal sealed partial class ProjectSetupForm : ZetlPopupForm
 {
     public ProjectSetupForm()
     {
         InitializeComponent();
-        ZetlFormShortcuts.EnableCtrlEnterClose(this);
         projectNameBox.Text = DateTime.Now.ToString("yyyy-MM-dd");
 
         bucketNamesBox.TextChanged += (_, _) => RefreshActiveBuckets();

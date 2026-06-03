@@ -1,6 +1,6 @@
 namespace ZETL;
 
-internal sealed partial class BoardForm : Form
+internal sealed partial class BoardForm : ZetlPopupForm
 {
     private readonly ZetlStateStore store;
     private readonly bool shiftedLane;
@@ -15,7 +15,6 @@ internal sealed partial class BoardForm : Form
         this.store = store;
         this.shiftedLane = shiftedLane;
         InitializeComponent();
-        ZetlFormShortcuts.EnableCtrlEnterClose(this);
         Text = shiftedLane ? "Zetl Board - Shift" : "Zetl Board";
         noteList.DisplayMember = nameof(ZetlNote.Text);
 

@@ -64,11 +64,7 @@ partial class NoteCaptureForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(544, 331);
-        ControlBox = false;
         FormBorderStyle = FormBorderStyle.Sizable;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowIcon = false;
         Text = "Save Zetl Note";
 
         layout.ColumnCount = 1;

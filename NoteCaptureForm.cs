@@ -1,6 +1,6 @@
 namespace ZETL;
 
-internal sealed partial class NoteCaptureForm : Form
+internal sealed partial class NoteCaptureForm : ZetlPopupForm
 {
     private readonly ZetlStateStore store;
     private readonly ZetlProject project;
@@ -24,7 +24,6 @@ internal sealed partial class NoteCaptureForm : Form
         lastFullProjectBucket = preferredBucket;
 
         InitializeComponent();
-        ZetlFormShortcuts.EnableCtrlEnterClose(this);
         projectModePanel.Visible = showStartProjectToggle;
         projectNameBox.Text = project.Name;
         startProjectBox.Checked = !showStartProjectToggle || startProjectDefault;

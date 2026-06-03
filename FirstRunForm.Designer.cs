@@ -50,11 +50,7 @@ partial class FirstRunForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(560, 440);
-        ControlBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowIcon = false;
         Text = "How Zetl Works";
 
         layout.ColumnCount = 1;

@@ -1,11 +1,10 @@
 namespace ZETL;
 
-internal sealed partial class FirstRunForm : Form
+internal sealed partial class FirstRunForm : ZetlPopupForm
 {
     public FirstRunForm()
     {
         InitializeComponent();
-        ZetlFormShortcuts.EnableCtrlEnterClose(this);
         openBoardButton.Click += (_, _) => OpenBoard();
         Shown += (_, _) => gotItButton.Focus();
     }

@@ -165,7 +165,7 @@ internal sealed class ZetlToastForm : Form
     }
 }
 
-internal sealed class ZetlToastHistoryForm : Form
+internal sealed class ZetlToastHistoryForm : ZetlPopupForm
 {
     private readonly TableLayoutPanel layout = new();
     private readonly TextBox historyBox = new();
@@ -174,14 +174,9 @@ internal sealed class ZetlToastHistoryForm : Form
 
     public ZetlToastHistoryForm()
     {
-        ZetlFormShortcuts.EnableCtrlEnterClose(this);
         Text = "Zetl Notifications";
         Width = 520;
         Height = 420;
-        ControlBox = false;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowIcon = false;
 
         layout.ColumnCount = 1;
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));

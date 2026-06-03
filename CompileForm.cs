@@ -1,6 +1,6 @@
 namespace ZETL;
 
-internal sealed partial class CompileForm : Form
+internal sealed partial class CompileForm : ZetlPopupForm
 {
     private readonly ZetlStateStore store;
     private readonly ZetlProject project;
@@ -13,7 +13,6 @@ internal sealed partial class CompileForm : Form
         this.bucketScope = bucketScope;
 
         InitializeComponent();
-        ZetlFormShortcuts.EnableCtrlEnterClose(this);
 
         var scopedBucketIds = bucketScope?.Select(bucket => bucket.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var item in store.GetNoteDisplayItems(project, bucketScope))

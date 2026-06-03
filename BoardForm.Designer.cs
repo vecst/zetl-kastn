@@ -101,11 +101,7 @@ partial class BoardForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(940, 620);
-        ControlBox = false;
-        MaximizeBox = false;
         MinimumSize = new Size(760, 460);
-        MinimizeBox = false;
-        ShowIcon = false;
 
         rootLayout.ColumnCount = 1;
         rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));

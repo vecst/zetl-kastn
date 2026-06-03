@@ -59,11 +59,7 @@ partial class BucketSettingsForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(520, 430);
-        ControlBox = false;
         FormBorderStyle = FormBorderStyle.Sizable;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowIcon = false;
         Text = "Bucket Settings";
 
         layout.ColumnCount = 1;

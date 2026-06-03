@@ -42,11 +42,7 @@ partial class TextPromptForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(344, 111);
-        ControlBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowIcon = false;
 
         layout.ColumnCount = 1;
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));

@@ -72,10 +72,6 @@ partial class CompileForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(884, 481);
-        ControlBox = false;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowIcon = false;
         Text = "Compile Zetl Buckets";
 
         split.Dock = DockStyle.Fill;

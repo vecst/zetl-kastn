@@ -50,11 +50,7 @@ partial class ProjectSetupForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(444, 371);
-        ControlBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ShowIcon = false;
         Text = "New Zetl Project";
 
         layout.ColumnCount = 1;

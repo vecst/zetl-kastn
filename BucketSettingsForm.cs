@@ -1,11 +1,10 @@
 namespace ZETL;
 
-internal sealed partial class BucketSettingsForm : Form
+internal sealed partial class BucketSettingsForm : ZetlPopupForm
 {
     public BucketSettingsForm(ZetlBucket bucket, ZetlStateStore store)
     {
         InitializeComponent();
-        ZetlFormShortcuts.EnableCtrlEnterClose(this);
 
         bucketNameBox.Text = bucket.Name;
         defaultKindBox.SelectedItem = bucket.DefaultKind is "Fifo" ? "Fifo" : "Standard";
