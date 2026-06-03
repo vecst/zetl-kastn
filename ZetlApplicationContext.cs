@@ -384,7 +384,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             return;
         }
 
-        Clipboard.SetText(form.CompiledText);
+        SetClipboardText(form.CompiledText);
         if (form.PasteNow)
         {
             if (targetWindow != IntPtr.Zero)
