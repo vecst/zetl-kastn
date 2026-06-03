@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace ZETL;
 
 internal sealed class ZetlAppSettings
@@ -9,12 +7,6 @@ internal sealed class ZetlAppSettings
 
 internal sealed class ZetlAppSettingsStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     private readonly string settingsPath;
 
     public ZetlAppSettingsStore(string? settingsPath = null)
@@ -38,27 +30,11 @@ internal sealed class ZetlAppSettingsStore
 
     public void Save()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-        var tempPath = settingsPath + ".tmp";
-        File.WriteAllText(tempPath, JsonSerializer.Serialize(Settings, JsonOptions));
-        if (File.Exists(settingsPath))
-        {
-            File.Replace(tempPath, settingsPath, null);
-        }
-        else
-        {
-            File.Move(tempPath, settingsPath);
-        }
+        JsonFile.WriteAtomic(settingsPath, Settings);
     }
 
     private ZetlAppSettings Load()
     {
-        if (!File.Exists(settingsPath))
-        {
-            return new ZetlAppSettings();
-        }
-
-        var json = File.ReadAllText(settingsPath);
-        return JsonSerializer.Deserialize<ZetlAppSettings>(json, JsonOptions) ?? new ZetlAppSettings();
+        return JsonFile.Read<ZetlAppSettings>(settingsPath) ?? new ZetlAppSettings();
     }
 }

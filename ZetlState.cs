@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace ZETL;
 
 internal sealed class ZetlState
@@ -61,12 +59,6 @@ internal sealed class ZetlNote
 
 internal sealed class ZetlStateStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     private readonly string statePath;
     private readonly string sessionId;
 
@@ -722,30 +714,18 @@ internal sealed class ZetlStateStore
     public void Save()
     {
         NormalizeState();
-        Directory.CreateDirectory(Path.GetDirectoryName(statePath)!);
-        var tempPath = statePath + ".tmp";
-        File.WriteAllText(tempPath, JsonSerializer.Serialize(State, JsonOptions));
-        if (File.Exists(statePath))
-        {
-            File.Replace(tempPath, statePath, null);
-        }
-        else
-        {
-            File.Move(tempPath, statePath);
-        }
-
+        JsonFile.WriteAtomic(statePath, State);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private ZetlState Load()
     {
-        if (!File.Exists(statePath))
+        var state = JsonFile.Read<ZetlState>(statePath);
+        if (state is null)
         {
             return new ZetlState();
         }
 
-        var json = File.ReadAllText(statePath);
-        var state = JsonSerializer.Deserialize<ZetlState>(json, JsonOptions) ?? new ZetlState();
         State = state;
         NormalizeState();
         return state;
