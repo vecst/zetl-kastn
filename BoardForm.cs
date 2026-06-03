@@ -134,17 +134,29 @@ internal sealed partial class BoardForm : ZetlPopupForm
 
     private ZetlNote? ActiveNote => noteList.SelectedItem as ZetlNote;
 
-    private void RefreshFromStore()
+    // Re-select the active project. Called when the board is (re)opened so a
+    // reused board jumps to the lane's active project instead of keeping the
+    // project that happened to be selected last time.
+    public void ShowActiveProject()
+    {
+        RefreshFromStore(preferActiveProject: true);
+    }
+
+    private void RefreshFromStore(bool preferActiveProject = false)
     {
         refreshing = true;
         try
         {
             var selectedProjectId = (projectBox.SelectedItem as ZetlProject)?.Id;
             var activeProjectId = store.GetActiveProject(shiftedLane)?.Id;
+            // While the board is open, preserve the user's current selection
+            // across store updates; on open, prefer the active project.
+            var firstChoiceId = preferActiveProject ? activeProjectId : selectedProjectId;
+            var secondChoiceId = preferActiveProject ? selectedProjectId : activeProjectId;
             projectBox.Items.Clear();
             projectBox.Items.AddRange(store.State.Projects.Cast<object>().ToArray());
-            projectBox.SelectedItem = store.State.Projects.FirstOrDefault(project => project.Id == selectedProjectId)
-                ?? store.State.Projects.FirstOrDefault(project => project.Id == activeProjectId)
+            projectBox.SelectedItem = store.State.Projects.FirstOrDefault(project => project.Id == firstChoiceId)
+                ?? store.State.Projects.FirstOrDefault(project => project.Id == secondChoiceId)
                 ?? store.State.Projects.FirstOrDefault();
             RefreshSelectedProject();
         }
