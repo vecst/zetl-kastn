@@ -8,7 +8,6 @@ internal sealed partial class BoardForm : ZetlPopupForm
     private bool autoHideOnDeactivate;
     private bool refreshing;
     private bool suppressRestoreOnClose;
-    private int ownedDialogDepth;
 
     public BoardForm(ZetlStateStore store, bool shiftedLane = false)
     {
@@ -393,38 +392,27 @@ internal sealed partial class BoardForm : ZetlPopupForm
 
     private DialogResult ShowOwnedDialog(Form form)
     {
-        ownedDialogDepth++;
-        try
-        {
-            return ZetlDialogPlacement.ShowForegroundDialog(form, this);
-        }
-        finally
-        {
-            ownedDialogDepth--;
-        }
+        return ZetlDialogPlacement.ShowForegroundDialog(form, this);
     }
 
     private DialogResult ShowOwnedMessageBox(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
     {
-        ownedDialogDepth++;
-        try
-        {
-            return MessageBox.Show(this, text, caption, buttons, icon);
-        }
-        finally
-        {
-            ownedDialogDepth--;
-        }
+        return MessageBox.Show(this, text, caption, buttons, icon);
     }
 
     private void HideTransientBoardIfInactive()
     {
-        if (!AutoHideOnDeactivate || !autoHideArmed || IsDisposed || !Visible || ContainsFocus || ownedDialogDepth > 0)
+        if (!AutoHideOnDeactivate || !autoHideArmed || IsDisposed || !Visible)
         {
             return;
         }
 
-        if (OwnedForms.Cast<Form>().Any(form => form.Visible))
+        // If focus settled on another window of our own process (a child dialog
+        // or message box opened from the board), keep the board open. Only hide
+        // when the user moved to another app.
+        var foreground = Program.GetForegroundWindow();
+        Program.GetWindowThreadProcessId(foreground, out var foregroundProcessId);
+        if (foregroundProcessId == (uint)Environment.ProcessId)
         {
             return;
         }
