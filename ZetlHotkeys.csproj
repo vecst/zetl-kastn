@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Zetl</AssemblyName>
+    <RootNamespace>ZETL</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Chordl\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="hotkeys.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="Chordl\Chordl.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Update="BoardForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="BoardForm.Designer.cs">
+      <DependentUpon>BoardForm.cs</DependentUpon>
+    </Compile>
+    <Compile Update="ProjectSetupForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="ProjectSetupForm.Designer.cs">
+      <DependentUpon>ProjectSetupForm.cs</DependentUpon>
+    </Compile>
+    <Compile Update="NoteCaptureForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="NoteCaptureForm.Designer.cs">
+      <DependentUpon>NoteCaptureForm.cs</DependentUpon>
+    </Compile>
+    <Compile Update="CompileForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="CompileForm.Designer.cs">
+      <DependentUpon>CompileForm.cs</DependentUpon>
+    </Compile>
+    <Compile Update="TextPromptForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="TextPromptForm.Designer.cs">
+      <DependentUpon>TextPromptForm.cs</DependentUpon>
+    </Compile>
+    <Compile Update="BucketSettingsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="BucketSettingsForm.Designer.cs">
+      <DependentUpon>BucketSettingsForm.cs</DependentUpon>
+    </Compile>
+    <Compile Update="FirstRunForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="FirstRunForm.Designer.cs">
+      <DependentUpon>FirstRunForm.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,416 @@
+# Zetl
+
+Zetl is a native Windows tray app built on Chordl.
+
+Chordl is the keyboard interaction layer: tap a familiar shortcut and the foreground app behaves normally; hold that same chord for a second action. Zetl is the workflow app on top of Chordl. It interprets held copy, cut, paste, board, and undo chords as project, bucket, note, FIFO, compile, and clipboard actions.
+
+The core idea is simple:
+
+- Tap `Ctrl+C`, `Ctrl+X`, or `Ctrl+V` and the foreground app behaves normally.
+- Hold the same chord for a moment; Chordl detects the hold and Zetl opens the matching capture, note, board, or compile flow.
+- Use the `Ctrl+Shift` variants for a separate project lane, so one lane can be FIFO/data-entry focused while the other stays normal.
+
+Zetl is local-only. Text notes are stored in JSON at:
+
+```text
+%AppData%\Zetl\state.json
+```
+
+Tiny app-wide settings are stored at:
+
+```text
+%AppData%\Zetl\settings.json
+```
+
+## Running
+
+Build or run with the .NET SDK:
+
+```powershell
+dotnet run
+```
+
+For a self-contained build, publish from Visual Studio or with `dotnet publish`.
+
+The output now contains two main assemblies:
+
+- `Zetl.exe` / `Zetl.dll`: the tray app and workflow layer.
+- `Chordl.dll`: the reusable tap/hold keyboard interaction library that Zetl is built on.
+
+The app runs in the Windows tray. Use the tray menu for:
+
+- `Open Board`
+- `New Project`
+- `How Zetl Works`
+- `Notification History`
+- `Clear Notification History`
+- `Toggle Active Bucket Pop Mode`
+- `Quit`
+
+If hotkeys do not work in an elevated app, run Zetl elevated too. Windows low-level keyboard hooks cannot intercept secure desktop input.
+
+## First Run
+
+On first launch, Zetl shows a compact `How Zetl Works` guide. It introduces the distinction between Chordl, the hold-keyboard interaction, and Zetl, the note/bucket workflow built on top of it. It also explains that `Ctrl+C` and `Ctrl+V` behave normally when no project is active, while held `Ctrl+X` can still create a quick note in `Scratch`.
+
+It also introduces the main Coldkeys:
+
+- `Ctrl+C`
+- `Ctrl+X`
+- `Ctrl+V`
+- `Ctrl+B`
+- `Ctrl+Z`
+- the `Ctrl+Shift` project lane
+
+The guide is shown once, controlled by `hasSeenFirstRun` in `%AppData%\Zetl\settings.json`.
+
+You can reopen it any time from the tray menu with `How Zetl Works`.
+
+## Zetl Toasts
+
+Zetl uses its own toast overlay instead of Windows balloon notifications.
+
+Toasts appear near the bottom-right notification area, do not steal focus, and dismiss quickly so fast copy/paste workflows are not blocked by Windows' longer notification timing.
+
+Examples:
+
+- `Captured to Inbox.`
+- `Saved to Scratch.`
+- `Pasted next item from Vehicles.`
+- `Vehicles FIFO complete.`
+- `Compiled to Review.`
+
+Use the tray menu's `Notification History` item to review recent Zetl messages. Use `Clear Notification History` to empty that history.
+
+## Chordl Timing
+
+Chordl timing lives in `hotkeys.json`.
+
+```json
+{
+  "repeatSuppressionDelayMs": 33,
+  "holdDelayMs": 353
+}
+```
+
+The default hold threshold is `353 ms`.
+
+Tap-only coldkeys also tolerate a quick key-up gallop. If the target key was pressed while `Ctrl` was down, Zetl still treats it as a tap when `Ctrl` comes up before the target key, as long as the target key is released before the hold threshold.
+
+After a chord is held, Zetl suppresses target-key repeats for about `400 ms` after `Ctrl` is released. This prevents a still-held `V`, `C`, `X`, or `B` key from leaking repeated letters into the foreground app after the coldkey action has already happened.
+
+## Coldkeys At A Glance
+
+Coldkeys are Chordl shortcuts: hotkeys you hold. Tapping the chord keeps the normal app behavior; holding it opens the Zetl layer.
+
+| Coldkey | Tap | Hold |
+| --- | --- | --- |
+| `Ctrl+B` | Normal `Ctrl+B`, replayed on key-up. | Opens the Board without depending on selected text or clipboard contents. |
+| `Ctrl+C` | Normal copy. If a project is active, changed non-empty clipboard text is captured into the active bucket. | Capture/manage. With copied text, opens the note dialog. With no copied text, opens the Board/project management flow. |
+| `Ctrl+X` | Normal cut. Does not auto-capture. | Quick note. Prefills with cut text if available, otherwise starts empty. Defaults to the project's remembered quick-note bucket, starting with `Scratch`. |
+| `Ctrl+V` | Normal paste. If the active bucket is FIFO, pastes the next FIFO item instead. | Compile. Opens the compile dialog when there are current-session notes. |
+| `Ctrl+Z` | Normal undo. | Zetl undo for the normal project lane. |
+| `Ctrl+Shift+B` | Normal `Ctrl+Shift+B`, replayed on key-up. | Opens the Shift Board without depending on selected text or clipboard contents. |
+| `Ctrl+Shift+C` | Normal copy through Zetl's replay path. | Same as held `Ctrl+C`, but using the Shift project lane. |
+| `Ctrl+Shift+X` | Normal cut through Zetl's replay path. | Same as held `Ctrl+X`, but using the Shift project lane. |
+| `Ctrl+Shift+V` | Normal paste through Zetl's replay path. If the Shift active bucket is FIFO, pastes the next Shift-lane FIFO item. | Same as held `Ctrl+V`, but using the Shift project lane. |
+| `Ctrl+Shift+Z` | Normal redo, replayed as `Ctrl+Shift+Z`. | Zetl undo for the Shift project lane. |
+
+The normal lane and Shift lane have separate active projects. This lets you keep, for example, a FIFO inventory-entry project on `Ctrl+Shift` while normal `Ctrl` copy/paste remains attached to a different project or no project.
+
+## Startup And Active Projects
+
+Zetl starts with no active project.
+
+That matters because plain `Ctrl+C` should not silently start collecting notes just because the app is running. A project becomes active only when you explicitly start one through a held gesture or the Board.
+
+Default project names use the current date, for example:
+
+```text
+2026-06-01
+2026-06-01 Shift
+```
+
+Zetl reuses the same dated default project instead of creating duplicates each time it opens. If you rename the project, future compile output uses the updated name.
+
+## Projects, Buckets, And Notes
+
+A project contains buckets. A bucket contains notes.
+
+Each note stores:
+
+- text
+- source, such as `copy`, `cut`, `compile`, or `fifo`
+- creation timestamp
+- current session id
+
+The Board window lets you:
+
+- add and delete projects
+- rename projects
+- mark a project active or inactive
+- add and delete buckets
+- rename buckets
+- double-click a bucket to edit bucket settings
+- switch the active bucket
+- switch bucket kind between `Standard` and `Fifo`
+- toggle Pop Mode for Standard buckets
+- edit and delete notes
+- autosave note edits when the note editor loses focus
+
+Keyboard shortcuts in the Board:
+
+- `Alt+A` toggles whether the selected project is active.
+- `Enter` in the bucket name box saves the bucket name.
+- `Ctrl+Enter` saves the selected note if it changed, then closes the Board.
+
+Zetl windows also use `Ctrl+Enter` as a close/complete shortcut. If a dialog has a default action such as `Save`, `Create`, `OK`, or compile `Copy to Clipboard`, `Ctrl+Enter` performs that action. Otherwise, it closes the window.
+
+Zetl popup windows use explicit in-app `Cancel` or `Close` buttons instead of OS minimize, maximize, or close buttons. They open centered horizontally, with the top of the window placed about one-sixth of the way down the working screen.
+
+## Zetl Undo
+
+Tap `Ctrl+Z` and `Ctrl+Shift+Z` still go to the foreground app as normal undo/redo.
+
+Holding those chords runs Zetl undo instead:
+
+- held `Ctrl+Z` undoes the latest normal-lane Zetl action
+- held `Ctrl+Shift+Z` undoes the latest Shift-lane Zetl action
+
+Undo is session-only and keeps the most recent 100 Zetl actions. Restarting Zetl clears the undo stack.
+
+Current undo coverage:
+
+- removes the last auto-captured copy note
+- removes a note saved through held `Ctrl+C` or held `Ctrl+X`
+- removes a compile saved to a bucket
+- restores a note removed by Pop Mode
+- restores a FIFO-consumed note to the front of its FIFO bucket
+- removes the FIFO review copy when restoring a FIFO-consumed note
+
+Project and bucket management changes are not part of undo yet.
+
+## Bucket Settings
+
+Bucket settings are stored inline with each bucket, so moving or exporting a project carries the bucket rules with it.
+
+Double-click a bucket in the Board to edit:
+
+- bucket name
+- default kind: `Standard` or `Fifo`
+- default compile mode: `Formatted`, `Plain`, or `TSV`
+- TSV row length
+- default starting text / TSV headers
+
+Default kind is bucket metadata. A FIFO bucket may temporarily switch its current kind back to `Standard` after FIFO completes, but the saved default kind remains part of the bucket settings.
+
+For TSV buckets, default starting text can act as headers. Put one header per line:
+
+```text
+VIN
+Make
+Model
+Year
+Mileage
+```
+
+Zetl uses those non-empty lines to infer TSV row length. In this example, row length becomes `5`.
+
+Compiling to another bucket creates a note in the destination bucket. Future compiles of that saved note use the destination bucket's rules, not the source bucket's rules.
+
+## Quick Notes
+
+Held `Ctrl+X` is the quick-note path.
+
+With no active project:
+
+- Zetl creates or reuses today's default project.
+- The note defaults to `Scratch`.
+- The project is not considered started unless you enable `Start project`.
+- Bucket creation is hidden until the project is started.
+
+With an active project:
+
+- You can choose any bucket.
+- Zetl remembers the last bucket you saved a quick note to for that project.
+- You can create a new bucket directly in the note dialog.
+- `Alt+B` focuses the inline new-bucket field.
+- `Ctrl+Enter` saves the note.
+
+When a copied or cut text value is prefilled, Zetl adds a trailing space so you can immediately keep typing. If you edit the note before saving, the system clipboard is updated to the edited text.
+
+## Copy Capture
+
+Plain `Ctrl+C` still copies normally.
+
+If an active project and active bucket exist, Zetl waits briefly for the clipboard to change. Changed, non-empty text is captured into the active bucket.
+
+Plain `Ctrl+C` does nothing Zetl-specific when no project is active.
+
+Held `Ctrl+C` is the project/capture path:
+
+- with copied text: opens the note dialog
+- without copied text: opens project management/Board
+- when no project exists yet: starts from a dated project name and default buckets
+
+## Compile
+
+Held `Ctrl+V` opens the compile dialog when there are current-session notes to compile.
+
+The compile dialog lets you:
+
+- select individual notes
+- choose a compile format: `Formatted`, `Plain`, or `TSV`
+- set the TSV row length when TSV is selected
+- preview the selected output format
+- copy the compiled text to the clipboard
+- paste the compiled text immediately
+- paste only the last copied item
+- paste selected notes unformatted
+- save the compiled text into an existing or new bucket
+
+When the dialog opens, its default compile format and TSV row length come from the active bucket or single scoped bucket.
+
+Formatted compile output looks like:
+
+```text
+Project Name
+
+Bucket Name
+First note
+Second note
+
+Another Bucket
+Another note
+```
+
+`Paste Selected Plain` outputs only the selected note text, one note per line, without project or bucket headings.
+
+`TSV` outputs the project name, then each bucket name, then optional bucket headers, then selected notes split into tab-separated rows. If the TSV row length is `5`, every 5 notes becomes one row.
+
+Example TSV output with row length `3`:
+
+```text
+Project Name
+Bucket Name
+one	two	three
+four	five	six
+```
+
+Line breaks and tabs inside note text are normalized to spaces for TSV output.
+
+Compile only shows current-session notes. Older notes remain in the Board/history, but they are not part of the active compile set after restarting the app.
+
+If no project is active, held `Ctrl+V` can still compile current-session notes from an inactive `Scratch` bucket. This does not activate the project.
+
+## Standard Buckets
+
+`Standard` is the normal bucket kind.
+
+Standard buckets can use Pop Mode.
+
+### Pop Mode
+
+Pop Mode is for "paste once, then remove it from the active bucket."
+
+When Pop Mode is on:
+
+1. Tap `Ctrl+V`.
+2. The foreground app pastes normally.
+3. Zetl checks the clipboard shortly after paste.
+4. If the clipboard text matches the last current-session note in the active bucket, that note is removed.
+
+Only the last matching note can pop. Pop Mode cannot be enabled on FIFO buckets.
+
+## FIFO Buckets
+
+`Fifo` buckets are for ordered data entry.
+
+Example workflow:
+
+1. Set a bucket to `Fifo`.
+2. Copy values in the order you want to paste them: item name, description, cost, color, etc.
+3. Move to the target app.
+4. Tap `Ctrl+V` repeatedly while tabbing between fields.
+
+When the active bucket is FIFO, tap `Ctrl+V` does not paste the current clipboard directly. Instead, Zetl:
+
+1. takes the oldest current-session note from the FIFO bucket
+2. places it on the clipboard
+3. sends paste to the foreground app
+4. removes that note from the FIFO bucket only if Windows accepts the synthetic paste input
+5. archives the consumed note into a review bucket
+
+If your FIFO bucket is named `Queue`, the review bucket is named:
+
+```text
+Queue Review
+```
+
+The review bucket lets you inspect what was pasted after the queue has been consumed. Review notes use source `fifo`.
+
+If Windows rejects the synthetic paste input, Zetl keeps the FIFO item in place and shows `Paste failed; [bucket] item kept.` This verifies that the paste command was queued successfully, though individual apps still may not report whether they inserted the text.
+
+When a FIFO bucket becomes empty, Zetl switches it back to `Standard`. The last pasted value stays on the clipboard, so repeated paste behaves normally again. This makes a one-item FIFO feel like normal copy/paste after the item is consumed.
+
+FIFO and Pop Mode cannot coexist. Switching a bucket to FIFO turns Pop Mode off.
+
+## Bucket Creation In Capture Dialogs
+
+Held `Ctrl+C` and held `Ctrl+X` note dialogs include inline bucket creation when a project is active.
+
+The inline bucket area lets you:
+
+- type a new bucket name
+- choose whether the new bucket is a child of the current bucket
+- create it without leaving the note dialog
+
+`Alt+B` jumps directly to the new bucket field.
+
+With held `Ctrl+X` and no active project, only `Scratch` is available until `Start project` is enabled.
+
+## Configuration
+
+`hotkeys.json` defines the low-level Chordl handling.
+
+Dispatch modes:
+
+- `None`: first physical shortcut passes through, then repeats are suppressed during the hold window.
+- `Immediate`: physical shortcut is suppressed and the original action is replayed immediately.
+- `TapOnly`: physical shortcut is suppressed; the original action is replayed only if released before the hold threshold.
+
+Replay modifiers:
+
+- default replay is `Ctrl`
+- `replayModifiers: ["Ctrl", "Shift"]` replays a shifted action, used by `Ctrl+Shift+Z`
+
+Zetl ignores injected `SendInput` events, so its own replayed copy/cut/paste actions do not recursively trigger the hook.
+
+## Development
+
+Build:
+
+```powershell
+dotnet build
+```
+
+Run self-tests:
+
+```powershell
+dotnet run -- --self-test
+```
+
+The code is split around the product distinction:
+
+- `Chordl/` is a standalone class library that builds to `Chordl.dll`. It contains the tap/hold keyboard grammar: config loading, chord definitions, dispatch modes, hold timing, replay input, and the low-level event processor.
+- Zetl app files interpret Chordl events as notes, buckets, projects, FIFO, compile, undo, toasts, and WinForms UI.
+
+The WinForms UI is split into designer-friendly partial forms:
+
+- `BoardForm.cs` / `BoardForm.Designer.cs`
+- `CompileForm.cs` / `CompileForm.Designer.cs`
+- `NoteCaptureForm.cs` / `NoteCaptureForm.Designer.cs`
+- `ProjectSetupForm.cs` / `ProjectSetupForm.Designer.cs`
+- `TextPromptForm.cs` / `TextPromptForm.Designer.cs`
+
+Edit layout in the `.Designer.cs` files through Visual Studio Designer when possible. Keep behavior code in the main `.cs` files.

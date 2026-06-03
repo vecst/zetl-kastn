@@ -1,0 +1,68 @@
+{
+  "repeatSuppressionDelayMs": 33,
+  "holdDelayMs": 353,
+  "hotkeys": [
+    {
+      "name": "Ctrl+B",
+      "key": "B",
+      "modifiers": ["Ctrl"],
+      "dispatch": "TapOnly"
+    },
+    {
+      "name": "Ctrl+C",
+      "key": "C",
+      "modifiers": ["Ctrl"],
+      "dispatch": "None"
+    },
+    {
+      "name": "Ctrl+V",
+      "key": "V",
+      "modifiers": ["Ctrl"],
+      "dispatch": "TapOnly"
+    },
+    {
+      "name": "Ctrl+X",
+      "key": "X",
+      "modifiers": ["Ctrl"],
+      "dispatch": "None"
+    },
+    {
+      "name": "Ctrl+Z",
+      "key": "Z",
+      "modifiers": ["Ctrl"],
+      "dispatch": "TapOnly"
+    },
+    {
+      "name": "Ctrl+Shift+B",
+      "key": "B",
+      "modifiers": ["Ctrl", "Shift"],
+      "dispatch": "TapOnly",
+      "replayModifiers": ["Ctrl", "Shift"]
+    },
+    {
+      "name": "Ctrl+Shift+C",
+      "key": "C",
+      "modifiers": ["Ctrl", "Shift"],
+      "dispatch": "Immediate"
+    },
+    {
+      "name": "Ctrl+Shift+V",
+      "key": "V",
+      "modifiers": ["Ctrl", "Shift"],
+      "dispatch": "TapOnly"
+    },
+    {
+      "name": "Ctrl+Shift+X",
+      "key": "X",
+      "modifiers": ["Ctrl", "Shift"],
+      "dispatch": "Immediate"
+    },
+    {
+      "name": "Ctrl+Shift+Z",
+      "key": "Z",
+      "modifiers": ["Ctrl", "Shift"],
+      "dispatch": "TapOnly",
+      "replayModifiers": ["Ctrl", "Shift"]
+    }
+  ]
+}
