@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Chordl;
 using static Chordl.ChordlKeys;
 using static ZETL.Program;
@@ -88,7 +87,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 var bucketName = activeBucket.Name;
                 BeginInvoke(() =>
                 {
-                    SetClipboardText(noteText);
+                    ClipboardText.Set(noteText);
                     if (!ChordlInput.SendPaste(Log))
                     {
                         ShowInfo($"Paste failed; {bucketName} item kept.");
@@ -140,7 +139,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         BeginInvoke(async () =>
         {
             await Task.Delay(75);
-            var text = TryGetClipboardText();
+            var text = ClipboardText.TryGet();
             if (text is not null
                 && store.TryPopLastMatchingActiveNote(text, context.ShiftLane, out var bucket, out var note)
                 && bucket is not null
@@ -384,7 +383,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             return;
         }
 
-        SetClipboardText(form.CompiledText);
+        ClipboardText.Set(form.CompiledText);
         if (form.PasteNow)
         {
             if (targetWindow != IntPtr.Zero)
@@ -477,7 +476,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 shifted,
                 $"Undid save to {bucket.Name}.",
                 () => store.DeleteNote(bucket, note.Id));
-            SetClipboardText(form.NoteText);
+            ClipboardText.Set(form.NoteText);
             if (showStartProjectToggle && !form.StartProject)
             {
                 store.ClearActiveProject(shifted);
@@ -580,7 +579,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         {
             if (GetClipboardSequenceNumber() != beforeSequence)
             {
-                var text = TryGetClipboardText();
+                var text = ClipboardText.TryGet();
                 if (!string.IsNullOrWhiteSpace(text))
                 {
                     return text.Trim();
@@ -592,36 +591,6 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         while (Environment.TickCount64 - started < timeoutMs);
 
         return null;
-    }
-
-    private static string? TryGetClipboardText()
-    {
-        try
-        {
-            return Clipboard.ContainsText() ? Clipboard.GetText(TextDataFormat.UnicodeText) : null;
-        }
-        catch (ExternalException)
-        {
-            return null;
-        }
-        catch (ThreadStateException)
-        {
-            return null;
-        }
-    }
-
-    private static void SetClipboardText(string text)
-    {
-        try
-        {
-            Clipboard.SetText(text);
-        }
-        catch (ExternalException)
-        {
-        }
-        catch (ThreadStateException)
-        {
-        }
     }
 
     private void ShowInfo(string message)
