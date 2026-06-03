@@ -92,13 +92,11 @@ internal static class ZetlDialogPlacement
         var foregroundWindow = preferredForegroundWindow == IntPtr.Zero
             ? Program.GetForegroundWindow()
             : preferredForegroundWindow;
-        var codexHostWindow = Program.IsCodexHostWindow(foregroundWindow);
         var foregroundThreadId = foregroundWindow == IntPtr.Zero
             ? 0
             : Program.GetWindowThreadProcessId(foregroundWindow, out _);
         var currentThreadId = Program.GetCurrentThreadId();
-        var attached = !codexHostWindow
-            && foregroundThreadId != 0
+        var attached = foregroundThreadId != 0
             && foregroundThreadId != currentThreadId
             && Program.AttachThreadInput(currentThreadId, foregroundThreadId, attach: true);
 
@@ -111,12 +109,14 @@ internal static class ZetlDialogPlacement
         form.WindowState = FormWindowState.Normal;
         try
         {
+            // Attaching to the foreground thread's input queue is what lets
+            // SetForegroundWindow succeed on the first try; without it the
+            // initial call loses the Windows foreground-lock race and focus
+            // stays on the previous app. Take the foreground synchronously here
+            // so the form is the genuine foreground window before topmost is
+            // released below.
             form.BringToFront();
-            if (!codexHostWindow)
-            {
-                Program.SetForegroundWindow(form.Handle);
-            }
-
+            Program.SetForegroundWindow(form.Handle);
             Program.SetActiveWindow(form.Handle);
             form.Activate();
         }
@@ -138,12 +138,10 @@ internal static class ZetlDialogPlacement
             releaseTopMostTimer.Dispose();
             if (!form.IsDisposed)
             {
+                // The form already holds the foreground, so dropping topmost
+                // keeps it on top instead of letting the previous window flash
+                // through.
                 form.TopMost = false;
-                if (codexHostWindow)
-                {
-                    Program.SetForegroundWindow(form.Handle);
-                }
-
                 FocusFormAndActiveControl(form);
             }
         };
