@@ -59,6 +59,7 @@ It also introduces the main Coldkeys:
 - `Ctrl+X`
 - `Ctrl+V`
 - `Ctrl+B`
+- `Ctrl+F`
 - `Ctrl+Z`
 - the `Ctrl+Shift` project lane
 
@@ -97,7 +98,7 @@ The default hold threshold is `353 ms`.
 
 Tap-only coldkeys also tolerate a quick key-up gallop. If the target key was pressed while `Ctrl` was down, Zetl still treats it as a tap when `Ctrl` comes up before the target key, as long as the target key is released before the hold threshold.
 
-After a chord is held, Zetl suppresses target-key repeats for about `400 ms` after `Ctrl` is released. This prevents a still-held `V`, `C`, `X`, or `B` key from leaking repeated letters into the foreground app after the coldkey action has already happened.
+After a chord is held, Zetl suppresses target-key repeats for about `400 ms` after `Ctrl` is released. This prevents a still-held `V`, `C`, `X`, `B`, or `F` key from leaking repeated letters into the foreground app after the coldkey action has already happened.
 
 ## Coldkeys At A Glance
 
@@ -107,11 +108,13 @@ Coldkeys are Chordl shortcuts: hotkeys you hold. Tapping the chord keeps the nor
 | --- | --- | --- |
 | `Ctrl+B` | Normal `Ctrl+B`, replayed on key-up. | Opens the Board without depending on selected text or clipboard contents. |
 | `Ctrl+C` | Normal copy. If a project is active, changed non-empty clipboard text is captured into the active bucket. | Capture/manage. With copied text, opens the note dialog. With no copied text, opens the Board/project management flow. |
+| `Ctrl+F` | Normal find, replayed on key-up. | Toggles FIFO mode for the active bucket and primes the next FIFO item onto the clipboard when available. |
 | `Ctrl+X` | Normal cut. Does not auto-capture. | Quick note. Prefills with cut text if available, otherwise starts empty. Defaults to the project's remembered quick-note bucket, starting with `Scratch`. |
 | `Ctrl+V` | Normal paste. If the active bucket is FIFO, pastes the next FIFO item instead. | Compile. Opens the compile dialog when there are current-session notes. |
 | `Ctrl+Z` | Normal undo. | Zetl undo for the normal project lane. |
 | `Ctrl+Shift+B` | Normal `Ctrl+Shift+B`, replayed on key-up. | Opens the Shift Board without depending on selected text or clipboard contents. |
 | `Ctrl+Shift+C` | Normal copy through Zetl's replay path. | Same as held `Ctrl+C`, but using the Shift project lane. |
+| `Ctrl+Shift+F` | Normal `Ctrl+Shift+F`, replayed on key-up. | Toggles FIFO mode for the Shift lane's active bucket. |
 | `Ctrl+Shift+X` | Normal cut through Zetl's replay path. | Same as held `Ctrl+X`, but using the Shift project lane. |
 | `Ctrl+Shift+V` | Normal paste through Zetl's replay path. If the Shift active bucket is FIFO, pastes the next Shift-lane FIFO item. | Same as held `Ctrl+V`, but using the Shift project lane. |
 | `Ctrl+Shift+Z` | Normal redo, replayed as `Ctrl+Shift+Z`. | Zetl undo for the Shift project lane. |

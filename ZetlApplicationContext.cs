@@ -85,15 +85,15 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 var noteId = fifoNote.Id;
                 var noteText = fifoNote.Text;
                 var bucketName = activeBucket.Name;
+                SetClipboardTextIfDifferent(noteText);
+                if (!ChordlInput.SendPaste(Log))
+                {
+                    BeginInvoke(() => ShowInfo($"Paste failed; {bucketName} item kept."));
+                    return true;
+                }
+
                 BeginInvoke(() =>
                 {
-                    ClipboardText.Set(noteText);
-                    if (!ChordlInput.SendPaste(Log))
-                    {
-                        ShowInfo($"Paste failed; {bucketName} item kept.");
-                        return;
-                    }
-
                     ZetlBucket? reviewBucket = null;
                     ZetlNote? consumedNote = null;
                     ZetlNote? reviewNote = null;
@@ -122,6 +122,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                         return;
                     }
 
+                    PrimeNextFifoClipboard(context.ShiftLane, activeBucket);
                     ShowInfo($"Pasted next item from {bucketName}.");
                 });
                 return true;
@@ -153,6 +154,31 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             }
         });
         return false;
+    }
+
+    private void PrimeNextFifoClipboard(bool shifted, ZetlBucket bucket)
+    {
+        BeginInvoke(async () =>
+        {
+            await Task.Delay(125);
+            if (!ZetlStateStore.IsFifoBucket(bucket)
+                || store.GetActiveBucket(shifted)?.Id != bucket.Id
+                || !store.TryPeekNextFifoNote(bucket, out var nextNote)
+                || nextNote is null)
+            {
+                return;
+            }
+
+            SetClipboardTextIfDifferent(nextNote.Text);
+        });
+    }
+
+    private static void SetClipboardTextIfDifferent(string text)
+    {
+        if (!string.Equals(ClipboardText.TryGet()?.Trim(), text.Trim(), StringComparison.Ordinal))
+        {
+            ClipboardText.Set(text);
+        }
     }
 
     public void OnHoldDetected(ChordlEventContext context)
@@ -276,6 +302,9 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             case VK_C:
                 await HandleCopyHoldAsync(context.ShiftLane, targetWindow, pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber, pending?.ObservedClipboardText);
                 break;
+            case VK_F:
+                HandleFifoToggleHold(context.ShiftLane);
+                break;
             case VK_X:
                 await HandleCutHoldAsync(context.ShiftLane, targetWindow, pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber, pending?.ObservedClipboardText);
                 break;
@@ -286,6 +315,31 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 HandleUndoHold(context.ShiftLane);
                 break;
         }
+    }
+
+    private void HandleFifoToggleHold(bool shifted)
+    {
+        var bucket = store.GetActiveBucket(shifted);
+        if (bucket is null)
+        {
+            ShowInfo("No active bucket yet.");
+            return;
+        }
+
+        if (ZetlStateStore.IsFifoBucket(bucket))
+        {
+            store.SetBucketKind(bucket, "Standard");
+            ShowInfo($"{bucket.Name} FIFO is off.");
+            return;
+        }
+
+        store.SetBucketKind(bucket, "Fifo");
+        if (store.TryPeekNextFifoNote(bucket, out var nextNote) && nextNote is not null)
+        {
+            SetClipboardTextIfDifferent(nextNote.Text);
+        }
+
+        ShowInfo($"{bucket.Name} FIFO is on.");
     }
 
     private async Task HandleCopyHoldAsync(bool shifted, IntPtr targetWindow, uint beforeSequence, string? observedText)

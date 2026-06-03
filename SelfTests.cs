@@ -20,6 +20,8 @@ internal static partial class Program
                 ("Ctrl+V hold suppresses repeats after Ctrl key-up", PasteHoldSuppressesRepeatsAfterCtrlKeyUp),
                 ("Ctrl+B tap dispatches board shortcut on key-up", BoardTapDispatchesOnKeyUp),
                 ("Ctrl+B hold opens board without dispatch", BoardHoldDoesNotDispatch),
+                ("Ctrl+F tap dispatches find on key-up", FifoToggleTapDispatchesOnKeyUp),
+                ("Ctrl+F hold raises FIFO toggle", FifoToggleHoldDoesNotDispatch),
                 ("Ctrl+Z hold raises Zetl undo", UndoHoldDoesNotDispatch),
                 ("Shift changes restart hold detection", ShiftChangeRestartsHold),
                 ("Zetl state creates projects and scratch buckets", StateCreatesProjectAndScratch),
@@ -179,6 +181,31 @@ internal static partial class Program
             AssertEqual("Ctrl+B", holds[0].Name, "Hold should use board chord.");
             AssertTrue(processor.HandleKeyEvent(VK_B, isKeyDown: false, isKeyUp: true), "Held board key up should suppress.");
             AssertEqual(0, dispatched.Count, "Held board chord should not dispatch Ctrl+B.");
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
+        }
+
+        private static void FifoToggleTapDispatchesOnKeyUp()
+        {
+            using var processor = CreateProcessor(out var dispatched, out _, out var taps, out _);
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
+            AssertTrue(processor.HandleKeyEvent(VK_F, isKeyDown: true, isKeyUp: false), "FIFO toggle key down should suppress.");
+            AssertTrue(processor.HandleKeyEvent(VK_F, isKeyDown: false, isKeyUp: true), "FIFO toggle key up should suppress physical event.");
+            AssertEqual(1, dispatched.Count, "Tap should dispatch one synthetic find shortcut.");
+            AssertEqual(VK_F, dispatched[0], "Dispatched key should be F.");
+            AssertEqual(1, taps.Count, "Tap callback should fire once.");
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
+        }
+
+        private static void FifoToggleHoldDoesNotDispatch()
+        {
+            using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
+            AssertTrue(processor.HandleKeyEvent(VK_F, isKeyDown: true, isKeyUp: false), "FIFO toggle key down should suppress.");
+            Thread.Sleep(80);
+            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            AssertEqual("Ctrl+F", holds[0].Name, "Hold should use FIFO toggle chord.");
+            AssertTrue(processor.HandleKeyEvent(VK_F, isKeyDown: false, isKeyUp: true), "Held FIFO toggle key up should suppress.");
+            AssertEqual(0, dispatched.Count, "Held FIFO toggle should not dispatch find.");
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
@@ -816,6 +843,7 @@ internal static partial class Program
                 [new ChordlChord(VK_B, Ctrl: true, Shift: false)] = new("Ctrl+B", ChordlDispatchMode.TapOnly, ReplayShift: false),
                 [new ChordlChord(VK_C, Ctrl: true, Shift: false)] = new("Ctrl+C", ChordlDispatchMode.None, ReplayShift: false),
                 [new ChordlChord(VK_C, Ctrl: true, Shift: true)] = new("Ctrl+Shift+C", ChordlDispatchMode.None, ReplayShift: false),
+                [new ChordlChord(VK_F, Ctrl: true, Shift: false)] = new("Ctrl+F", ChordlDispatchMode.TapOnly, ReplayShift: false),
                 [new ChordlChord(VK_V, Ctrl: true, Shift: false)] = new("Ctrl+V", ChordlDispatchMode.TapOnly, ReplayShift: false),
                 [new ChordlChord(VK_Z, Ctrl: true, Shift: false)] = new("Ctrl+Z", ChordlDispatchMode.TapOnly, ReplayShift: false)
             };

@@ -10,6 +10,7 @@ public static class ChordlKeys
     public const int VK_RSHIFT = 0xA1;
     public const int VK_B = 0x42;
     public const int VK_C = 0x43;
+    public const int VK_F = 0x46;
     public const int VK_V = 0x56;
     public const int VK_X = 0x58;
     public const int VK_Z = 0x5A;
@@ -30,6 +31,7 @@ public static class ChordlKeys
         {
             VK_B => "B",
             VK_C => "C",
+            VK_F => "F",
             VK_V => "V",
             VK_X => "X",
             VK_Z => "Z",
@@ -61,4 +63,3 @@ public static class ChordlKeys
         return false;
     }
 }
-
