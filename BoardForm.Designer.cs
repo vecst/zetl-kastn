@@ -197,7 +197,7 @@ partial class BoardForm
         bucketKindLabel.Text = "Kind";
 
         bucketKindBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        bucketKindBox.Items.AddRange(new object[] { "Standard", "Fifo" });
+        bucketKindBox.Items.AddRange(new object[] { "Standard", "Replay" });
         bucketKindBox.Width = 100;
 
         popModeBox.AutoSize = true;

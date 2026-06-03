@@ -82,10 +82,9 @@ partial class FirstRunForm
         bodyLabel.MaximumSize = new Size(610, 0);
         bodyLabel.Padding = new Padding(0, 8, 0, 10);
         bodyLabel.Text =
-            "Chordl adds hold-chord keyboard interactions. Some Coldkeys need instant interaction: " +
-            "copy and cut tap through first, then a hold timer starts so Zetl can modify what that command did. " +
-            "Other interactions output data and wait for key-up or the held duration. Paste, for example, " +
-            "happens when you release V, while holding Ctrl+V opens tools for changing how your paste works.";
+            "Chordl gives a shortcut you already know a second job. Tap a chord like Ctrl+C and it behaves " +
+            "normally. Hold it for a moment and Zetl steps in with a related action. Copy and cut run their " +
+            "normal action first and then watch for a hold, so nothing is lost. Paste runs when you release V.";
 
         startupLabel.AutoSize = true;
         startupLabel.MaximumSize = new Size(610, 0);
@@ -97,7 +96,7 @@ partial class FirstRunForm
         coldkeysHeaderLabel.AutoSize = true;
         coldkeysHeaderLabel.Font = new Font(FontFamily.GenericSansSerif, 10F, FontStyle.Bold);
         coldkeysHeaderLabel.MaximumSize = new Size(610, 0);
-        coldkeysHeaderLabel.Text = "Use any of these Coldkeys for Zetl actions:";
+        coldkeysHeaderLabel.Text = "Coldkeys are the chords Zetl listens for. Tap for the normal shortcut, hold for the Zetl action:";
 
         coldkeysLabel.AutoSize = true;
         coldkeysLabel.Dock = DockStyle.Fill;
@@ -106,29 +105,28 @@ partial class FirstRunForm
         coldkeysLabel.Text =
             "While a project is active:\r\n\r\n" +
             "Tap:\r\n" +
-            "  Ctrl+C  - add highlighted text to the active bucket and clipboard\r\n" +
-            "  Ctrl+V  - pop the last added item in Pop Mode, or consume the first FIFO item\r\n\r\n" +
+            "  Ctrl+C  - add the highlighted text to the active bucket and clipboard\r\n" +
+            "  Ctrl+V  - in Pop Mode, remove the item you just pasted; in Replay Mode, paste the next item\r\n\r\n" +
             "Hold:\r\n" +
-            "  Ctrl+C  - edit highlighted text before adding it to the bucket and clipboard\r\n" +
-            "  Ctrl+X  - quick note, defaulting to Scratch\r\n" +
-            "  Ctrl+V  - compile selected notes\r\n" +
-            "  Ctrl+F  - toggle FIFO for the active bucket\r\n\r\n" +
+            "  Ctrl+C  - edit the highlighted text before adding it\r\n" +
+            "  Ctrl+X  - quick note, defaults to Scratch\r\n" +
+            "  Ctrl+V  - compile this session's notes\r\n" +
+            "  Ctrl+F  - turn Replay Mode on or off for the active bucket\r\n\r\n" +
             "Anytime, hold:\r\n" +
             "  Ctrl+B  - open the Board\r\n" +
             "  Ctrl+Z  - undo the last Zetl action\r\n\r\n" +
-            "FIFO Mode:\r\n" +
-            "  FIFO stands for First In, First Out. It is a structured pasting system. " +
-            "If you know the order of the items you need to paste, copy them into the bucket in that order, " +
-            "then switch to the target program and paste away. Zetl pastes items in the order they were copied. " +
-            "When the last FIFO item is consumed, the bucket switches FIFO off and leaves that last item on the clipboard for repeated normal paste.";
+            "Replay Mode:\r\n" +
+            "  Replay Mode pastes a list back in the order you built it. Copy items into a bucket one by one, " +
+            "switch to where they belong, and each tap of Ctrl+V drops in the next one. When the last item is " +
+            "used, the bucket leaves it on the clipboard and turns Replay off, so normal paste works again.";
 
         laneLabel.AutoSize = true;
         laneLabel.MaximumSize = new Size(610, 0);
         laneLabel.Padding = new Padding(0, 0, 0, 4);
         laneLabel.Text =
-            "Ctrl+Shift uses a separate Shift project lane. The one exception is paste: " +
-            "Ctrl+Shift+V cannot have a separate system clipboard, so outside FIFO mode it pastes the clipboard instead of a separate lane item. " +
-            "Ctrl+Enter saves or closes Zetl dialogs. The tray icon also has Board, notifications, and this guide.";
+            "Ctrl+Shift uses a separate Shift project lane. Paste is the exception: there is only one system " +
+            "clipboard, so outside Replay Mode Ctrl+Shift+V just pastes normally. Ctrl+Enter saves or closes " +
+            "any Zetl dialog, and the tray icon has the Board, notifications, and this guide.";
 
         buttonsPanel.AutoSize = true;
         buttonsPanel.Controls.Add(gotItButton);

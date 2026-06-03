@@ -228,7 +228,7 @@ internal sealed partial class BoardForm : ZetlPopupForm
             bucketNameBox.Enabled = true;
             saveBucketButton.Enabled = true;
             bucketKindBox.Enabled = true;
-            bucketKindBox.SelectedItem = ZetlStateStore.IsFifoBucket(bucket) ? "Fifo" : "Standard";
+            bucketKindBox.SelectedItem = ZetlStateStore.IsFifoBucket(bucket) ? "Replay" : "Standard";
             popModeBox.Checked = bucket.PopMode;
             popModeBox.Enabled = !ZetlStateStore.IsFifoBucket(bucket);
             noteList.Items.AddRange(bucket.Notes.Cast<object>().ToArray());

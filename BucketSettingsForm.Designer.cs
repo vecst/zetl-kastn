@@ -100,7 +100,7 @@ partial class BucketSettingsForm
         defaultKindLabel.Text = "Default kind";
 
         defaultKindBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        defaultKindBox.Items.AddRange(new object[] { "Standard", "Fifo" });
+        defaultKindBox.Items.AddRange(new object[] { "Standard", "Replay" });
         defaultKindBox.Width = 160;
 
         compileModeLabel.AutoSize = true;

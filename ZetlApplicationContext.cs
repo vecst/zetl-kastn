@@ -102,7 +102,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                         : store.TryConsumeFifoNote(activeBucket, noteId, out consumedNote);
                     if (consumed && reviewBucket is not null)
                     {
-                        Log($"Archived FIFO paste from {bucketName} to {reviewBucket.Name}.");
+                        Log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
                     }
 
                     if (consumed && consumedNote is not null)
@@ -111,14 +111,14 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                         var undoReviewNoteId = reviewNote?.Id;
                         PushUndo(
                             context.ShiftLane,
-                            $"Restored FIFO item to {bucketName}.",
+                            $"Restored replay item to {bucketName}.",
                             () => store.RestoreFifoConsumedNote(activeBucket, consumedNote, undoReviewBucket, undoReviewNoteId));
                     }
 
                     if (!store.TryPeekNextFifoNote(activeBucket, out _))
                     {
                         store.SetBucketKind(activeBucket, "Standard");
-                        ShowInfo($"{bucketName} FIFO complete.");
+                        ShowInfo($"{bucketName} replay complete.");
                         return;
                     }
 
@@ -132,7 +132,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             {
                 store.SetBucketKind(activeBucket, "Standard");
                 ChordlInput.SendPaste(Log);
-                ShowInfo($"{activeBucket.Name} FIFO complete.");
+                ShowInfo($"{activeBucket.Name} replay complete.");
             });
             return true;
         }
@@ -212,7 +212,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         {
             if (store.ActiveBucket is { } activeBucket && ZetlStateStore.IsFifoBucket(activeBucket))
             {
-                ShowInfo("FIFO buckets cannot use pop mode.");
+                ShowInfo("Replay buckets cannot use pop mode.");
                 return;
             }
 
@@ -329,17 +329,17 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         if (ZetlStateStore.IsFifoBucket(bucket))
         {
             store.SetBucketKind(bucket, "Standard");
-            ShowInfo($"{bucket.Name} FIFO is off.");
+            ShowInfo($"{bucket.Name} replay is off.");
             return;
         }
 
-        store.SetBucketKind(bucket, "Fifo");
+        store.SetBucketKind(bucket, "Replay");
         if (store.TryPeekNextFifoNote(bucket, out var nextNote) && nextNote is not null)
         {
             SetClipboardTextIfDifferent(nextNote.Text);
         }
 
-        ShowInfo($"{bucket.Name} FIFO is on.");
+        ShowInfo($"{bucket.Name} replay is on.");
     }
 
     private async Task HandleCopyHoldAsync(bool shifted, IntPtr targetWindow, uint beforeSequence, string? observedText)

@@ -2,13 +2,13 @@
 
 Zetl is a native Windows tray app built on Chordl.
 
-Chordl is the keyboard interaction layer: tap a familiar shortcut and the foreground app behaves normally; hold that same chord for a second action. Zetl is the workflow app on top of Chordl. It interprets held copy, cut, paste, board, and undo chords as project, bucket, note, FIFO, compile, and clipboard actions.
+Chordl is the keyboard interaction layer: tap a familiar shortcut and the foreground app behaves normally; hold that same chord for a second action. Zetl is the workflow app on top of Chordl. It interprets held copy, cut, paste, board, and undo chords as project, bucket, note, Replay, compile, and clipboard actions.
 
 The core idea is simple:
 
 - Tap `Ctrl+C`, `Ctrl+X`, or `Ctrl+V` and the foreground app behaves normally.
 - Hold the same chord for a moment; Chordl detects the hold and Zetl opens the matching capture, note, board, or compile flow.
-- Use the `Ctrl+Shift` variants for a separate project lane, so one lane can be FIFO/data-entry focused while the other stays normal.
+- Use the `Ctrl+Shift` variants for a separate project lane, so one lane can be Replay/data-entry focused while the other stays normal.
 
 Zetl is local-only. Text notes are stored in JSON at:
 
@@ -78,7 +78,7 @@ Examples:
 - `Captured to Inbox.`
 - `Saved to Scratch.`
 - `Pasted next item from Vehicles.`
-- `Vehicles FIFO complete.`
+- `Vehicles replay complete.`
 - `Compiled to Review.`
 
 Use the tray menu's `Notification History` item to review recent Zetl messages. Use `Clear Notification History` to empty that history.
@@ -108,18 +108,18 @@ Coldkeys are Chordl shortcuts: hotkeys you hold. Tapping the chord keeps the nor
 | --- | --- | --- |
 | `Ctrl+B` | Normal `Ctrl+B`, replayed on key-up. | Opens the Board without depending on selected text or clipboard contents. |
 | `Ctrl+C` | Normal copy. If a project is active, changed non-empty clipboard text is captured into the active bucket. | Capture/manage. With copied text, opens the note dialog. With no copied text, opens the Board/project management flow. |
-| `Ctrl+F` | Normal find, replayed on key-up. | Toggles FIFO mode for the active bucket and primes the next FIFO item onto the clipboard when available. |
+| `Ctrl+F` | Normal find, replayed on key-up. | Toggles Replay Mode for the active bucket and primes the next replay item onto the clipboard when available. |
 | `Ctrl+X` | Normal cut. Does not auto-capture. | Quick note. Prefills with cut text if available, otherwise starts empty. Defaults to the project's remembered quick-note bucket, starting with `Scratch`. |
-| `Ctrl+V` | Normal paste. If the active bucket is FIFO, pastes the next FIFO item instead. | Compile. Opens the compile dialog when there are current-session notes. |
+| `Ctrl+V` | Normal paste. If the active bucket is in Replay Mode, pastes the next replay item instead. | Compile. Opens the compile dialog when there are current-session notes. |
 | `Ctrl+Z` | Normal undo. | Zetl undo for the normal project lane. |
 | `Ctrl+Shift+B` | Normal `Ctrl+Shift+B`, replayed on key-up. | Opens the Shift Board without depending on selected text or clipboard contents. |
 | `Ctrl+Shift+C` | Normal copy through Zetl's replay path. | Same as held `Ctrl+C`, but using the Shift project lane. |
-| `Ctrl+Shift+F` | Normal `Ctrl+Shift+F`, replayed on key-up. | Toggles FIFO mode for the Shift lane's active bucket. |
+| `Ctrl+Shift+F` | Normal `Ctrl+Shift+F`, replayed on key-up. | Toggles Replay Mode for the Shift lane's active bucket. |
 | `Ctrl+Shift+X` | Normal cut through Zetl's replay path. | Same as held `Ctrl+X`, but using the Shift project lane. |
-| `Ctrl+Shift+V` | Normal paste through Zetl's replay path. If the Shift active bucket is FIFO, pastes the next Shift-lane FIFO item. | Same as held `Ctrl+V`, but using the Shift project lane. |
+| `Ctrl+Shift+V` | Normal paste through Zetl's replay path. If the Shift active bucket is in Replay Mode, pastes the next Shift-lane replay item. | Same as held `Ctrl+V`, but using the Shift project lane. |
 | `Ctrl+Shift+Z` | Normal redo, replayed as `Ctrl+Shift+Z`. | Zetl undo for the Shift project lane. |
 
-The normal lane and Shift lane have separate active projects. This lets you keep, for example, a FIFO inventory-entry project on `Ctrl+Shift` while normal `Ctrl` copy/paste remains attached to a different project or no project.
+The normal lane and Shift lane have separate active projects. This lets you keep, for example, a Replay inventory-entry project on `Ctrl+Shift` while normal `Ctrl` copy/paste remains attached to a different project or no project.
 
 ## Startup And Active Projects
 
@@ -143,7 +143,7 @@ A project contains buckets. A bucket contains notes.
 Each note stores:
 
 - text
-- source, such as `copy`, `cut`, `compile`, or `fifo`
+- source, such as `copy`, `cut`, `compile`, or `replay`
 - creation timestamp
 - current session id
 
@@ -156,7 +156,7 @@ The Board window lets you:
 - rename buckets
 - double-click a bucket to edit bucket settings
 - switch the active bucket
-- switch bucket kind between `Standard` and `Fifo`
+- switch bucket kind between `Standard` and `Replay`
 - toggle Pop Mode for Standard buckets
 - edit and delete notes
 - autosave note edits when the note editor loses focus
@@ -188,8 +188,8 @@ Current undo coverage:
 - removes a note saved through held `Ctrl+C` or held `Ctrl+X`
 - removes a compile saved to a bucket
 - restores a note removed by Pop Mode
-- restores a FIFO-consumed note to the front of its FIFO bucket
-- removes the FIFO review copy when restoring a FIFO-consumed note
+- restores a replay-consumed note to the front of its Replay bucket
+- removes the replay review copy when restoring a replay-consumed note
 
 Project and bucket management changes are not part of undo yet.
 
@@ -200,12 +200,12 @@ Bucket settings are stored inline with each bucket, so moving or exporting a pro
 Double-click a bucket in the Board to edit:
 
 - bucket name
-- default kind: `Standard` or `Fifo`
+- default kind: `Standard` or `Replay`
 - default compile mode: `Formatted`, `Plain`, or `TSV`
 - TSV row length
 - default starting text / TSV headers
 
-Default kind is bucket metadata. A FIFO bucket may temporarily switch its current kind back to `Standard` after FIFO completes, but the saved default kind remains part of the bucket settings.
+Default kind is bucket metadata. A Replay bucket may temporarily switch its current kind back to `Standard` after the replay completes, but the saved default kind remains part of the bucket settings.
 
 For TSV buckets, default starting text can act as headers. Put one header per line:
 
@@ -323,40 +323,40 @@ When Pop Mode is on:
 3. Zetl checks the clipboard shortly after paste.
 4. If the clipboard text matches the last current-session note in the active bucket, that note is removed.
 
-Only the last matching note can pop. Pop Mode cannot be enabled on FIFO buckets.
+Only the last matching note can pop. Pop Mode cannot be enabled on Replay buckets.
 
-## FIFO Buckets
+## Replay Mode
 
-`Fifo` buckets are for ordered data entry.
+`Replay` buckets paste a list back in the order you built it. Copy items into the bucket one at a time, then paste them out in sequence — the paste replays your copy order. It is ideal for ordered data entry.
 
 Example workflow:
 
-1. Set a bucket to `Fifo`.
+1. Set a bucket to `Replay` (or hold `Ctrl+F` on the active bucket).
 2. Copy values in the order you want to paste them: item name, description, cost, color, etc.
 3. Move to the target app.
 4. Tap `Ctrl+V` repeatedly while tabbing between fields.
 
-When the active bucket is FIFO, tap `Ctrl+V` does not paste the current clipboard directly. Instead, Zetl:
+When the active bucket is in Replay Mode, tap `Ctrl+V` does not paste the current clipboard directly. Instead, Zetl:
 
-1. takes the oldest current-session note from the FIFO bucket
+1. takes the oldest current-session note from the bucket
 2. places it on the clipboard
 3. sends paste to the foreground app
-4. removes that note from the FIFO bucket only if Windows accepts the synthetic paste input
+4. removes that note from the bucket only if Windows accepts the synthetic paste input
 5. archives the consumed note into a review bucket
 
-If your FIFO bucket is named `Queue`, the review bucket is named:
+If your Replay bucket is named `Queue`, the review bucket is named:
 
 ```text
 Queue Review
 ```
 
-The review bucket lets you inspect what was pasted after the queue has been consumed. Review notes use source `fifo`.
+The review bucket lets you inspect what was pasted after the list has been consumed. Review notes use source `replay`.
 
-If Windows rejects the synthetic paste input, Zetl keeps the FIFO item in place and shows `Paste failed; [bucket] item kept.` This verifies that the paste command was queued successfully, though individual apps still may not report whether they inserted the text.
+If Windows rejects the synthetic paste input, Zetl keeps the item in place and shows `Paste failed; [bucket] item kept.` This verifies that the paste command was queued successfully, though individual apps still may not report whether they inserted the text.
 
-When a FIFO bucket becomes empty, Zetl switches it back to `Standard`. The last pasted value stays on the clipboard, so repeated paste behaves normally again. This makes a one-item FIFO feel like normal copy/paste after the item is consumed.
+When a Replay bucket becomes empty, Zetl turns Replay off and switches it back to `Standard`. The last pasted value stays on the clipboard, so repeated paste behaves normally again. This makes a one-item list feel like normal copy/paste after the item is consumed.
 
-FIFO and Pop Mode cannot coexist. Switching a bucket to FIFO turns Pop Mode off.
+Replay Mode and Pop Mode cannot coexist. Turning on Replay turns Pop Mode off.
 
 ## Bucket Creation In Capture Dialogs
 
@@ -406,7 +406,7 @@ dotnet run -- --self-test
 The code is split around the product distinction:
 
 - `Chordl/` is a standalone class library that builds to `Chordl.dll`. It contains the tap/hold keyboard grammar: config loading, chord definitions, dispatch modes, hold timing, replay input, and the low-level event processor.
-- Zetl app files interpret Chordl events as notes, buckets, projects, FIFO, compile, undo, toasts, and WinForms UI.
+- Zetl app files interpret Chordl events as notes, buckets, projects, Replay, compile, undo, toasts, and WinForms UI.
 
 The WinForms UI is split into designer-friendly partial forms:
 

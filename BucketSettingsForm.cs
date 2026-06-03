@@ -7,7 +7,7 @@ internal sealed partial class BucketSettingsForm : ZetlPopupForm
         InitializeComponent();
 
         bucketNameBox.Text = bucket.Name;
-        defaultKindBox.SelectedItem = bucket.DefaultKind is "Fifo" ? "Fifo" : "Standard";
+        defaultKindBox.SelectedItem = ZetlStateStore.IsReplayKind(bucket.DefaultKind) ? "Replay" : "Standard";
         compileModeBox.SelectedItem = string.IsNullOrWhiteSpace(bucket.DefaultCompileMode)
             ? "Formatted"
             : bucket.DefaultCompileMode;

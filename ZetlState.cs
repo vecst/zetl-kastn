@@ -514,7 +514,7 @@ internal sealed class ZetlStateStore
             {
                 Id = NewId(),
                 Text = note.Text.Trim(),
-                Source = "fifo",
+                Source = "replay",
                 SessionId = sessionId,
                 CreatedAtUtc = DateTime.UtcNow
             };
@@ -546,7 +546,7 @@ internal sealed class ZetlStateStore
 
     public void RestoreFifoConsumedNote(ZetlBucket bucket, ZetlNote note, ZetlBucket? reviewBucket, string? reviewNoteId)
     {
-        bucket.Kind = "Fifo";
+        bucket.Kind = "Replay";
         bucket.PopMode = false;
         if (reviewBucket is not null && reviewNoteId is not null)
         {
@@ -1042,14 +1042,24 @@ internal sealed class ZetlStateStore
         return IsFifoKind(bucket.Kind);
     }
 
+    // Whether a raw kind string represents Replay Mode (accepts the legacy
+    // "Fifo" value as well).
+    public static bool IsReplayKind(string? kind)
+    {
+        return IsFifoKind(kind);
+    }
+
     private static bool IsFifoKind(string? kind)
     {
-        return string.Equals(kind, "Fifo", StringComparison.OrdinalIgnoreCase);
+        // "Replay" is the stored value; "Fifo" is the legacy value from older
+        // state files, mapped forward to "Replay" by NormalizeBucketKind.
+        return string.Equals(kind, "Replay", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(kind, "Fifo", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeBucketKind(string? kind)
     {
-        return IsFifoKind(kind) ? "Fifo" : "Standard";
+        return IsFifoKind(kind) ? "Replay" : "Standard";
     }
 
     private static string NormalizeCompileMode(string? mode)
@@ -1079,7 +1089,7 @@ internal sealed class ZetlStateStore
             }
         }
 
-        var reviewBucketName = NormalizeName($"{fifoBucket.Name} Review", "FIFO Review");
+        var reviewBucketName = NormalizeName($"{fifoBucket.Name} Review", "Replay Review");
         var reviewBucket = project.Buckets.FirstOrDefault(bucket =>
             bucket.Id != fifoBucket.Id
             && string.Equals(bucket.Name, reviewBucketName, StringComparison.OrdinalIgnoreCase));

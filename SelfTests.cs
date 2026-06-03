@@ -47,6 +47,7 @@ internal static partial class Program
                 ("Zetl state FIFO archives consumed notes for review", StateFifoArchivesConsumedNotesForReview),
                 ("Zetl state FIFO restores consumed notes from review", StateFifoRestoresConsumedNotesFromReview),
                 ("Zetl state FIFO disables pop mode", StateFifoDisablesPopMode),
+                ("Zetl state maps legacy Fifo kind to Replay", StateMapsLegacyFifoKindToReplay),
                 ("Zetl state detects compilable notes", StateDetectsCompilableNotes),
                 ("Zetl state finds inactive scratch notes for compile", StateFindsInactiveScratchCompileTarget),
                 ("Zetl state pop mode removes matching last note", StatePopModeRemovesLastMatchingNote),
@@ -566,25 +567,25 @@ internal static partial class Program
             store.UpdateBucketSettings(
                 bucket,
                 "Vehicle Entry",
-                "Fifo",
+                "Replay",
                 "TSV",
                 $"VIN{Environment.NewLine}Make{Environment.NewLine}Model",
                 3);
 
             AssertEqual("Vehicle Entry", bucket.Name, "Bucket settings should rename the bucket.");
             AssertTrue(ZetlStateStore.IsFifoBucket(bucket), "Bucket settings should set the current kind.");
-            AssertFalse(bucket.PopMode, "FIFO bucket settings should disable pop mode.");
-            AssertEqual("Fifo", bucket.DefaultKind, "Default kind should persist in memory.");
+            AssertFalse(bucket.PopMode, "Replay bucket settings should disable pop mode.");
+            AssertEqual("Replay", bucket.DefaultKind, "Default kind should persist in memory.");
             AssertEqual("TSV", bucket.DefaultCompileMode, "Compile mode should persist in memory.");
             AssertEqual(3, store.GetBucketTsvRowLength(bucket), "Header count should infer TSV row length.");
 
             store.SetBucketKind(bucket, "Standard");
-            AssertEqual("Fifo", bucket.DefaultKind, "Changing current kind should not erase default kind.");
+            AssertEqual("Replay", bucket.DefaultKind, "Changing current kind should not erase default kind.");
 
             var loaded = new ZetlStateStore(temp.Path);
             var loadedBucket = loaded.ActiveBucket!;
             AssertEqual("Vehicle Entry", loadedBucket.Name, "Bucket settings name should round-trip.");
-            AssertEqual("Fifo", loadedBucket.DefaultKind, "Default kind should round-trip.");
+            AssertEqual("Replay", loadedBucket.DefaultKind, "Default kind should round-trip.");
             AssertEqual("TSV", loadedBucket.DefaultCompileMode, "Compile mode should round-trip.");
             AssertEqual("VIN\nMake\nModel", loadedBucket.DefaultStartingText.ReplaceLineEndings("\n"), "Starting text should round-trip.");
             AssertEqual(3, loaded.GetBucketTsvRowLength(loadedBucket), "Inferred TSV length should round-trip.");
@@ -712,7 +713,7 @@ internal static partial class Program
             var store = new ZetlStateStore(temp.Path, "fifo-session");
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
-            store.SetBucketKind(queue, "Fifo");
+            store.SetBucketKind(queue, "Replay");
             store.AddNote(queue, "one", "copy");
             store.AddNote(queue, "two", "copy");
 
@@ -736,7 +737,7 @@ internal static partial class Program
             var store = new ZetlStateStore(temp.Path, "fifo-session");
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
-            store.SetBucketKind(queue, "Fifo");
+            store.SetBucketKind(queue, "Replay");
             store.AddNote(queue, "posted", "copy");
 
             AssertTrue(store.TryPeekNextFifoNote(queue, out var note), "FIFO bucket should expose a note.");
@@ -747,7 +748,7 @@ internal static partial class Program
             AssertEqual("Queue Review", reviewBucket!.Name, "Review bucket should be named from the FIFO bucket.");
             AssertEqual("Standard", reviewBucket.Kind, "Review bucket should stay standard.");
             AssertEqual("posted", reviewBucket.Notes.Single().Text, "Review bucket should keep consumed text.");
-            AssertEqual("fifo", reviewBucket.Notes.Single().Source, "Review note should be tagged as FIFO.");
+            AssertEqual("replay", reviewBucket.Notes.Single().Source, "Review note should be tagged as replay.");
             AssertFalse(store.TryPeekNextFifoNote(queue, out _), "Consumed FIFO note should leave the queue.");
 
             store.AddNote(queue, "posted again", "copy");
@@ -764,7 +765,7 @@ internal static partial class Program
             var store = new ZetlStateStore(temp.Path, "fifo-session");
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
-            store.SetBucketKind(queue, "Fifo");
+            store.SetBucketKind(queue, "Replay");
             store.AddNote(queue, "posted", "copy");
 
             AssertTrue(store.TryPeekNextFifoNote(queue, out var note), "FIFO bucket should expose a note.");
@@ -792,10 +793,28 @@ internal static partial class Program
 
             store.SetBucketPopMode(queue, true);
             AssertTrue(queue.PopMode, "Standard bucket should accept pop mode.");
-            store.SetBucketKind(queue, "Fifo");
+            store.SetBucketKind(queue, "Replay");
             AssertFalse(queue.PopMode, "Switching to FIFO should turn pop mode off.");
             store.SetBucketPopMode(queue, true);
             AssertFalse(queue.PopMode, "FIFO bucket should reject pop mode.");
+        }
+
+        private static void StateMapsLegacyFifoKindToReplay()
+        {
+            using var temp = new TempStateFile();
+            // A state file written by an older build that used the "Fifo" kind.
+            var legacyJson =
+                """
+                { "version": 1, "activeProjectId": "p1", "projects": [ { "id": "p1", "name": "Demo", "activeBucketId": "b1", "buckets": [ { "id": "b1", "name": "Queue", "kind": "Fifo", "defaultKind": "Fifo", "notes": [] } ] } ] }
+                """;
+            System.IO.File.WriteAllText(temp.Path, legacyJson);
+
+            var store = new ZetlStateStore(temp.Path);
+            var queue = store.ActiveBucket!;
+            AssertEqual("Queue", queue.Name, "Legacy bucket should load.");
+            AssertEqual("Replay", queue.Kind, "Legacy Fifo kind should load as Replay.");
+            AssertEqual("Replay", queue.DefaultKind, "Legacy Fifo default kind should load as Replay.");
+            AssertTrue(ZetlStateStore.IsFifoBucket(queue), "Legacy Fifo bucket should still be a replay bucket.");
         }
 
         private static void StateRoundTripsJson()
