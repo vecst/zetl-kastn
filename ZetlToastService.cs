@@ -73,11 +73,14 @@ internal sealed record ZetlToastEntry(DateTime CreatedAt, string Message);
 internal sealed class ZetlToastForm : Form
 {
     private const int DisplayMs = 950;
+    private const int SW_HIDE = 0;
+    private const int WM_MOUSEACTIVATE = 0x0021;
+    private const int MA_NOACTIVATE = 3;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_SHOWWINDOW = 0x0040;
     private static readonly IntPtr HwndTopMost = new IntPtr(-1);
-    private readonly Label messageLabel = new();
     private readonly System.Windows.Forms.Timer dismissTimer = new();
+    private string messageText = "";
 
     public ZetlToastForm()
     {
@@ -90,21 +93,12 @@ internal sealed class ZetlToastForm : Form
         Opacity = 0.96;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
-        TopMost = true;
-
-        messageLabel.Dock = DockStyle.Fill;
-        messageLabel.Font = new Font(FontFamily.GenericSansSerif, 10F, FontStyle.Regular);
-        messageLabel.ForeColor = Color.White;
-        messageLabel.Padding = new Padding(14, 10, 14, 10);
-        messageLabel.TextAlign = ContentAlignment.MiddleLeft;
-
-        Controls.Add(messageLabel);
 
         dismissTimer.Interval = DisplayMs;
         dismissTimer.Tick += (_, _) =>
         {
             dismissTimer.Stop();
-            Hide();
+            HideToast();
         };
     }
 
@@ -124,23 +118,39 @@ internal sealed class ZetlToastForm : Form
 
     public void ShowMessage(string message)
     {
-        messageLabel.Text = message;
-        PlaceNearNotificationArea();
-        if (!Visible)
-        {
-            Show();
-        }
-
-        TopMost = true;
-        Program.SetWindowPos(Handle, HwndTopMost, Left, Top, Width, Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        messageText = message;
+        var location = GetNotificationAreaLocation();
+        _ = Handle;
+        Program.SetWindowPos(Handle, HwndTopMost, location.X, location.Y, Width, Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         dismissTimer.Stop();
         dismissTimer.Start();
         Invalidate();
+        Update();
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_MOUSEACTIVATE)
+        {
+            m.Result = MA_NOACTIVATE;
+            return;
+        }
+
+        base.WndProc(ref m);
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
+        var textBounds = new Rectangle(14, 10, Width - 28, Height - 20);
+        TextRenderer.DrawText(
+            e.Graphics,
+            messageText,
+            Font,
+            textBounds,
+            Color.White,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis);
+
         using var borderPen = new Pen(Color.FromArgb(78, 84, 96));
         e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
     }
@@ -150,18 +160,25 @@ internal sealed class ZetlToastForm : Form
         if (disposing)
         {
             dismissTimer.Dispose();
-            messageLabel.Dispose();
         }
 
         base.Dispose(disposing);
     }
 
-    private void PlaceNearNotificationArea()
+    private Point GetNotificationAreaLocation()
     {
         var working = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1200, 800);
-        Location = new Point(
+        return new Point(
             working.Right - Width - 16,
             working.Bottom - Height - 16);
+    }
+
+    private void HideToast()
+    {
+        if (IsHandleCreated)
+        {
+            Program.ShowWindow(Handle, SW_HIDE);
+        }
     }
 }
 
