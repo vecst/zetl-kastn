@@ -27,6 +27,7 @@ internal static partial class Program
                 ("Zetl state reuses dated default projects", StateReusesDatedDefaultProject),
                 ("Zetl state consolidates dated default projects", StateConsolidatesDatedDefaultProjects),
                 ("Zetl state consolidates dated default without activation", StateConsolidatesDatedDefaultWithoutActivation),
+                ("Zetl state consolidates child buckets regardless of order", StateConsolidatesChildBucketsRegardlessOfOrder),
                 ("Zetl state can start without an active project", StateCanStartWithoutActiveProject),
                 ("Zetl state keeps normal and Shift active projects separate", StateKeepsNormalAndShiftProjectsSeparate),
                 ("Zetl state supports child buckets", StateSupportsChildBuckets),
@@ -414,6 +415,35 @@ internal static partial class Program
                 .Buckets.Single(bucket => bucket.Name == "Scratch");
             AssertTrue(scratch.Notes.Any(note => note.Text == "first"), "First scratch note should survive consolidation.");
             AssertTrue(scratch.Notes.Any(note => note.Text == "second"), "Duplicate scratch note should merge into primary scratch.");
+        }
+
+        private static void StateConsolidatesChildBucketsRegardlessOfOrder()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.GetOrCreateDefaultProject();
+
+            var parentId = Guid.NewGuid().ToString("N");
+            var childId = Guid.NewGuid().ToString("N");
+            store.State.Projects.Add(new ZetlProject
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Name = DateTime.Now.ToString("yyyy-MM-dd"),
+                Buckets =
+                [
+                    // Child deliberately listed before its parent.
+                    new ZetlBucket { Id = childId, Name = "Sub", ParentBucketId = parentId, Kind = "Standard" },
+                    new ZetlBucket { Id = parentId, Name = "Group", Kind = "Standard" }
+                ]
+            });
+            store.ClearActiveProject();
+
+            store.ConsolidateDefaultProject();
+
+            var project = store.State.Projects.Single(item => item.Name == DateTime.Now.ToString("yyyy-MM-dd"));
+            var group = project.Buckets.Single(bucket => bucket.Name == "Group");
+            var sub = project.Buckets.Single(bucket => bucket.Name == "Sub");
+            AssertEqual(group.Id, sub.ParentBucketId, "Child bucket should keep its parent after consolidation regardless of list order.");
         }
 
         private static void StateDetectsCompilableNotes()

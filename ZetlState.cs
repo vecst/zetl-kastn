@@ -860,7 +860,10 @@ internal sealed class ZetlStateStore
     private static void MergeProjectInto(ZetlProject targetProject, ZetlProject sourceProject)
     {
         var bucketMap = new Dictionary<string, ZetlBucket>(StringComparer.Ordinal);
-        foreach (var sourceBucket in sourceProject.Buckets)
+        // Merge parents before their children so a child's parent is already
+        // mapped when we resolve its ParentBucketId; otherwise a child listed
+        // ahead of its parent would lose its parent link and become top-level.
+        foreach (var sourceBucket in OrderParentsFirst(sourceProject))
         {
             var parentBucket = sourceBucket.ParentBucketId is not null && bucketMap.TryGetValue(sourceBucket.ParentBucketId, out var mappedParent)
                 ? mappedParent
@@ -957,6 +960,39 @@ internal sealed class ZetlStateStore
         {
             project.QuickNoteBucketId = null;
         }
+    }
+
+    private static List<ZetlBucket> OrderParentsFirst(ZetlProject project)
+    {
+        var ordered = new List<ZetlBucket>(project.Buckets.Count);
+        var emitted = new HashSet<string>(StringComparer.Ordinal);
+        var remaining = project.Buckets.ToList();
+        var progressed = true;
+        while (remaining.Count > 0 && progressed)
+        {
+            progressed = false;
+            for (var i = remaining.Count - 1; i >= 0; i--)
+            {
+                var bucket = remaining[i];
+                var parentReady = bucket.ParentBucketId is null
+                    || emitted.Contains(bucket.ParentBucketId)
+                    || remaining.All(candidate => candidate.Id != bucket.ParentBucketId);
+                if (!parentReady)
+                {
+                    continue;
+                }
+
+                ordered.Add(bucket);
+                emitted.Add(bucket.Id);
+                remaining.RemoveAt(i);
+                progressed = true;
+            }
+        }
+
+        // Any buckets left reference each other in a parent cycle; append them
+        // so consolidation never silently drops a bucket.
+        ordered.AddRange(remaining);
+        return ordered;
     }
 
     private static HashSet<string> GetBucketAndDescendantIds(ZetlProject project, string bucketId)
