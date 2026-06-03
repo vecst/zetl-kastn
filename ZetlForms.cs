@@ -56,20 +56,31 @@ internal static class ZetlDialogPlacement
                 return;
             }
 
+            // Decide here, while we know which window is taking over. If focus
+            // moved to another window of our own process (a child dialog or
+            // message box this popup opened), keep the popup open. Otherwise
+            // the user clicked into another app, so commit to closing now via
+            // the marker; checking focus later is unreliable because the popup
+            // can reclaim the foreground before a posted callback runs.
+            var foreground = Program.GetForegroundWindow();
+            Program.GetWindowThreadProcessId(foreground, out var foregroundProcessId);
+            if (foregroundProcessId == (uint)Environment.ProcessId)
+            {
+                return;
+            }
+
+            if (canClose is not null && !canClose())
+            {
+                return;
+            }
+
+            form.Tag = DeactivatedCloseMarker;
             form.BeginInvoke(new Action(() =>
             {
-                if (form.IsDisposed || !form.Visible || form.ContainsFocus)
+                if (!form.IsDisposed && form.Visible)
                 {
-                    return;
+                    form.Close();
                 }
-
-                if (canClose is not null && !canClose())
-                {
-                    return;
-                }
-
-                form.Tag = DeactivatedCloseMarker;
-                form.Close();
             }));
         };
     }
