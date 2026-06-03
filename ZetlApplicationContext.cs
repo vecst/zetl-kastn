@@ -506,9 +506,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         boardForm.AutoHideOnDeactivate = restoreWindow != IntPtr.Zero;
         boardForm.ShowInTaskbar = false;
         ZetlDialogPlacement.PlaceNearTopSixth(boardForm);
-        var owner = Program.IsCodexHostWindow(restoreWindow)
-            ? null
-            : ZetlDialogPlacement.OwnerFromHandle(restoreWindow);
+        var owner = ZetlDialogPlacement.OwnerFromHandle(restoreWindow);
         if (!boardForm.Visible && owner is not null)
         {
             boardForm.Show(owner);

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 using Chordl;
 
 namespace ZETL;
@@ -115,59 +114,5 @@ internal static partial class Program
         LogEvent(sent
             ? $"Sent synthetic {ChordlKeys.FormatComboName(vkCode, includeShift)}."
             : $"Failed to send synthetic {ChordlKeys.FormatComboName(vkCode, includeShift)}.");
-    }
-
-    internal static bool IsCodexHostWindow(IntPtr window)
-    {
-        if (window == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        return ContainsCodex(GetWindowProcessName(window)) || ContainsCodex(GetWindowTitle(window));
-    }
-
-    private static bool ContainsCodex(string value)
-    {
-        return value.Contains("codex", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string GetWindowProcessName(IntPtr window)
-    {
-        try
-        {
-            GetWindowThreadProcessId(window, out var processId);
-            if (processId == 0)
-            {
-                return "";
-            }
-
-            using var process = Process.GetProcessById((int)processId);
-            return process.ProcessName;
-        }
-        catch
-        {
-            return "";
-        }
-    }
-
-    private static string GetWindowTitle(IntPtr window)
-    {
-        try
-        {
-            var length = GetWindowTextLength(window);
-            if (length <= 0)
-            {
-                return "";
-            }
-
-            var builder = new StringBuilder(length + 1);
-            GetWindowText(window, builder, builder.Capacity);
-            return builder.ToString();
-        }
-        catch
-        {
-            return "";
-        }
     }
 }

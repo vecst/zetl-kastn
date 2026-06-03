@@ -18,7 +18,6 @@ internal static class ZetlDialogPlacement
         var preferredForegroundWindow = activationWindow != IntPtr.Zero
             ? activationWindow
             : owner?.Handle ?? IntPtr.Zero;
-        var modalOwner = Program.IsCodexHostWindow(preferredForegroundWindow) ? null : owner;
         form.ShowInTaskbar = false;
         if (closeOnDeactivate)
         {
@@ -27,7 +26,7 @@ internal static class ZetlDialogPlacement
 
         PlaceNearTopSixth(form);
         form.Shown += (_, _) => BringToForeground(form, preferredForegroundWindow);
-        return modalOwner is null ? form.ShowDialog() : form.ShowDialog(modalOwner);
+        return owner is null ? form.ShowDialog() : form.ShowDialog(owner);
     }
 
     public static bool WasClosedByDeactivate(Form form)
