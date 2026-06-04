@@ -328,7 +328,7 @@ When Pop Mode is on:
 3. Zetl checks the clipboard shortly after paste.
 4. If the clipboard text matches the last current-session note in the active bucket, that note is removed.
 
-Only the last matching note can pop. Pop Mode cannot be enabled on Replay buckets.
+Only the last matching note can pop. Pop Mode and Replay Mode are exclusive: holding `Ctrl+P` on a Replay bucket switches it straight to Pop, just as `Ctrl+R` switches a Pop bucket to Replay.
 
 ## Replay Mode
 

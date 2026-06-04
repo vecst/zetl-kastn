@@ -356,7 +356,11 @@ internal sealed class ZetlApplicationContext : ApplicationContext
 
         if (ZetlStateStore.IsFifoBucket(bucket))
         {
-            ShowInfo("Replay buckets cannot use pop mode.");
+            // Replay and Pop are exclusive; switch a Replay bucket straight to
+            // Pop, mirroring how Ctrl+R switches a Pop bucket to Replay.
+            store.SetBucketKind(bucket, "Standard");
+            store.SetBucketPopMode(bucket, true);
+            ShowInfo($"{bucket.Name} pop is on.");
             return;
         }
 
