@@ -11,6 +11,7 @@ partial class FirstRunForm
     private Label coldkeysHeaderLabel;
     private TableLayoutPanel keysTable;
     private Label compileLabel;
+    private Label popLabel;
     private Label replayLabel;
     private Label laneLabel;
     private FlowLayoutPanel buttonsPanel;
@@ -39,6 +40,7 @@ partial class FirstRunForm
         coldkeysHeaderLabel = new Label();
         keysTable = new TableLayoutPanel();
         compileLabel = new Label();
+        popLabel = new Label();
         replayLabel = new Label();
         laneLabel = new Label();
         buttonsPanel = new FlowLayoutPanel();
@@ -62,13 +64,14 @@ partial class FirstRunForm
         layout.Controls.Add(coldkeysHeaderLabel, 0, 2);
         layout.Controls.Add(keysTable, 0, 3);
         layout.Controls.Add(compileLabel, 0, 4);
-        layout.Controls.Add(replayLabel, 0, 5);
-        layout.Controls.Add(laneLabel, 0, 6);
-        layout.Controls.Add(buttonsPanel, 0, 7);
+        layout.Controls.Add(popLabel, 0, 5);
+        layout.Controls.Add(replayLabel, 0, 6);
+        layout.Controls.Add(laneLabel, 0, 7);
+        layout.Controls.Add(buttonsPanel, 0, 8);
         layout.Dock = DockStyle.Fill;
         layout.Padding = new Padding(16);
-        layout.RowCount = 8;
-        for (var i = 0; i < 8; i++)
+        layout.RowCount = 9;
+        for (var i = 0; i < 9; i++)
         {
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
@@ -112,6 +115,16 @@ partial class FirstRunForm
             "    Plain - just the note text, one per line, with no headings (the unformatted option).\r\n" +
             "    TSV - tab-separated rows for spreadsheets. Set the row length to say how many notes make one " +
             "row (for example 5 fields per record), and a bucket's starting-text lines can act as column headers.";
+
+        popLabel.AutoSize = true;
+        popLabel.MaximumSize = new Size(1140, 0);
+        popLabel.Padding = new Padding(0, 0, 0, 10);
+        popLabel.Text =
+            "Pop Mode (pop on paste) is for interrupted work. With it on, a tap of Ctrl+V pastes normally and " +
+            "then drops that item from the active bucket — Zetl assumes a plain paste was a quick one-off you " +
+            "do not need to keep. Say you are collecting research and an email comes in: you copy something, " +
+            "paste it into the reply, and it pops back out of the bucket, leaving your collection clean so you " +
+            "can pick up where you left off.";
 
         replayLabel.AutoSize = true;
         replayLabel.MaximumSize = new Size(1140, 0);
