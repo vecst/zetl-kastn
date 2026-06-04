@@ -5,6 +5,7 @@ internal sealed partial class CompileForm : ZetlPopupForm
     private readonly ZetlStateStore store;
     private readonly ZetlProject project;
     private readonly IReadOnlyList<ZetlBucket>? bucketScope;
+    private bool suppressTreeEvents;
 
     public CompileForm(ZetlStateStore store, ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope = null)
     {
@@ -14,15 +15,14 @@ internal sealed partial class CompileForm : ZetlPopupForm
 
         InitializeComponent();
 
-        var scopedBucketIds = bucketScope?.Select(bucket => bucket.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (var item in store.GetNoteDisplayItems(project, bucketScope))
-        {
-            noteList.Items.Add(item, scopedBucketIds is not null || item.Bucket.Id == project.ActiveBucketId);
-        }
+        RebuildNoteTree();
 
         RefreshDestinationBuckets();
         ApplyBucketCompileDefaults();
-        noteList.ItemCheck += (_, _) => BeginInvoke(RefreshPreview);
+        noteTree.AfterCheck += OnNoteTreeAfterCheck;
+        selectAllButton.Click += (_, _) => SetAllChecked(true);
+        selectNoneButton.Click += (_, _) => SetAllChecked(false);
+        sessionOnlyCheck.CheckedChanged += (_, _) => RebuildNoteTree();
         compileModeBox.SelectedIndexChanged += (_, _) =>
         {
             UpdateCompileModeControls();
@@ -51,7 +51,11 @@ internal sealed partial class CompileForm : ZetlPopupForm
 
     public string DestinationBucketName => destinationBucketBox.Text.Trim();
 
-    private IReadOnlyList<NoteDisplayItem> SelectedNotes => noteList.CheckedItems.Cast<NoteDisplayItem>().ToList();
+    private IReadOnlyList<NoteDisplayItem> SelectedNotes => noteTree.Nodes.Cast<TreeNode>()
+        .SelectMany(bucketNode => bucketNode.Nodes.Cast<TreeNode>())
+        .Where(noteNode => noteNode.Checked && noteNode.Tag is NoteDisplayItem)
+        .Select(noteNode => (NoteDisplayItem)noteNode.Tag!)
+        .ToList();
 
     private bool HasSelectedNotes => SelectedNotes.Count > 0;
 
@@ -63,6 +67,82 @@ internal sealed partial class CompileForm : ZetlPopupForm
         ? bucketScope[0]
         : project.Buckets.FirstOrDefault(bucket => bucket.Id == project.ActiveBucketId)
             ?? project.Buckets.FirstOrDefault();
+
+    // Rebuilds the bucket-grouped checklist tree for the current session-scope
+    // toggle. Notes in the active bucket (or the whole scope when compiling a
+    // scratch fallback) start checked, mirroring the old default selection.
+    private void RebuildNoteTree()
+    {
+        suppressTreeEvents = true;
+        noteTree.BeginUpdate();
+        noteTree.Nodes.Clear();
+
+        var scoped = bucketScope is not null;
+        foreach (var group in store.GetNoteDisplayItems(project, bucketScope, sessionOnlyCheck.Checked)
+            .GroupBy(item => item.Bucket))
+        {
+            var bucketNode = new TreeNode(group.Key.Name.Trim()) { Tag = group.Key };
+            var defaultChecked = scoped || group.Key.Id == project.ActiveBucketId;
+            foreach (var item in group)
+            {
+                bucketNode.Nodes.Add(new TreeNode(NotePreview(item.Note.Text)) { Tag = item, Checked = defaultChecked });
+            }
+
+            bucketNode.Checked = bucketNode.Nodes.Cast<TreeNode>().All(node => node.Checked);
+            noteTree.Nodes.Add(bucketNode);
+        }
+
+        noteTree.ExpandAll();
+        noteTree.EndUpdate();
+        suppressTreeEvents = false;
+        RefreshPreview();
+    }
+
+    private void OnNoteTreeAfterCheck(object? sender, TreeViewEventArgs e)
+    {
+        if (suppressTreeEvents || e.Node is null)
+        {
+            return;
+        }
+
+        suppressTreeEvents = true;
+        if (e.Node.Tag is ZetlBucket)
+        {
+            foreach (TreeNode child in e.Node.Nodes)
+            {
+                child.Checked = e.Node.Checked;
+            }
+        }
+        else if (e.Node.Parent is { } parent)
+        {
+            parent.Checked = parent.Nodes.Cast<TreeNode>().All(node => node.Checked);
+        }
+
+        suppressTreeEvents = false;
+        RefreshPreview();
+    }
+
+    private void SetAllChecked(bool value)
+    {
+        suppressTreeEvents = true;
+        foreach (TreeNode bucketNode in noteTree.Nodes)
+        {
+            bucketNode.Checked = value;
+            foreach (TreeNode noteNode in bucketNode.Nodes)
+            {
+                noteNode.Checked = value;
+            }
+        }
+
+        suppressTreeEvents = false;
+        RefreshPreview();
+    }
+
+    private static string NotePreview(string text)
+    {
+        var preview = text.ReplaceLineEndings(" ").Trim();
+        return preview.Length <= 80 ? preview : $"{preview[..77]}...";
+    }
 
     private void RefreshPreview()
     {
@@ -147,7 +227,7 @@ internal sealed partial class CompileForm : ZetlPopupForm
 
     private void CompleteLastItem()
     {
-        if (!store.TryGetLastNoteDisplayItem(project, bucketScope, out var note) || note is null)
+        if (!store.TryGetLastNoteDisplayItem(project, bucketScope, out var note, sessionOnlyCheck.Checked) || note is null)
         {
             MessageBox.Show(this, "No current-session note to paste.", "Zetl", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;

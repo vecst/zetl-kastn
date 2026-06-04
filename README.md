@@ -262,11 +262,13 @@ Held `Ctrl+C` is the project/capture path:
 
 ## Compile
 
-Held `Ctrl+V` opens the compile dialog when there are current-session notes to compile.
+Held `Ctrl+V` opens the compile dialog when the active project has any notes to compile.
+
+The notes are grouped by bucket in a checklist tree. Check a bucket to select or clear all of its notes, or check individual notes. `Select All` and `Select None` toggle the whole tree at once.
 
 The compile dialog lets you:
 
-- select individual notes
+- select individual notes, or whole buckets, or everything
 - choose a compile format: `Formatted`, `Plain`, or `TSV`
 - set the TSV row length when TSV is selected
 - preview the selected output format
@@ -276,7 +278,7 @@ The compile dialog lets you:
 - paste selected notes unformatted
 - save the compiled text into an existing or new bucket
 
-When the dialog opens, its default compile format and TSV row length come from the active bucket or single scoped bucket.
+When the dialog opens, its default compile format and TSV row length come from the active bucket or single scoped bucket. Notes from the active bucket start checked.
 
 Formatted compile output looks like:
 
@@ -306,9 +308,9 @@ four	five	six
 
 Line breaks and tabs inside note text are normalized to spaces for TSV output.
 
-Compile only shows current-session notes. Older notes remain in the Board/history, but they are not part of the active compile set after restarting the app.
+Compile spans the whole active project, including notes from earlier sessions. Reactivate an old project from the Board and held `Ctrl+V` can recompile everything in it. Check `This session only` in the dialog to narrow the list back to notes captured this session.
 
-If no project is active, held `Ctrl+V` can still compile current-session notes from an inactive `Scratch` bucket. This does not activate the project.
+If no project is active, held `Ctrl+V` can still compile current-session notes from an inactive `Scratch` bucket. This fallback stays session-scoped and does not activate the project.
 
 ## Standard Buckets
 
@@ -381,6 +383,8 @@ With held `Ctrl+X` and no active project, only `Scratch` is available until `Sta
 ## Configuration
 
 `hotkeys.json` defines the low-level Chordl handling.
+
+Zetl loads an external `hotkeys.json` from beside the executable (or the source tree when run with `dotnet run`). The canonical config is also embedded in the app, so if no external file is found Zetl falls back to that embedded default and still launches. This matters for a single-file publish (`-p:PublishSingleFile=true`): the loose `hotkeys.json` next to the exe is an optional, editable override, not a launch requirement. Drop one in to customize timing or chords.
 
 Dispatch modes:
 

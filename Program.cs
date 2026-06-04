@@ -23,8 +23,9 @@ internal static partial class Program
 
         try
         {
-            var chordlConfig = ChordlConfigLoader.LoadFromDefaultLocation();
+            var chordlConfig = LoadChordlConfig(out var configSource);
             appContext = new ZetlApplicationContext(chordlConfig.HoldDelay);
+            LogEvent(configSource);
             chordlProcessor = new ChordlProcessor(
                 chordlConfig.Actions,
                 chordlConfig.ConfiguredKeyCodes,
@@ -68,6 +69,31 @@ internal static partial class Program
 
             appContext?.Dispose();
         }
+    }
+
+    // Prefer an external hotkeys.json (editable, beside the exe or in the source
+    // tree). When none exists — most commonly a single-file publish run without
+    // the loose config next to it — fall back to the embedded default so the
+    // app always launches.
+    private static ChordlConfiguration LoadChordlConfig(out string configSource)
+    {
+        if (ChordlConfigLoader.TryFindConfigFile(out var configPath))
+        {
+            configSource = $"Loaded Chordl config from {configPath}.";
+            return ChordlConfigLoader.LoadFromFile(configPath);
+        }
+
+        configSource = "hotkeys.json not found; using embedded default Chordl config.";
+        return ChordlConfigLoader.LoadFromJson(ReadEmbeddedDefaultConfig());
+    }
+
+    private static string ReadEmbeddedDefaultConfig()
+    {
+        var assembly = typeof(Program).Assembly;
+        using var stream = assembly.GetManifestResourceStream("hotkeys.json")
+            ?? throw new InvalidOperationException("Embedded default hotkeys.json is missing from the assembly.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 
     private static IntPtr SetHook(LowLevelKeyboardProc proc)

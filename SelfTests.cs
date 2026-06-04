@@ -45,7 +45,7 @@ internal static partial class Program
                 ("Zetl state compiles selected notes as TSV rows", StateCompilesSelectedNotesAsTsvRows),
                 ("Zetl state compiles TSV with bucket headers", StateCompilesTsvWithBucketHeaders),
                 ("Zetl state finds last active note", StateFindsLastActiveNote),
-                ("Zetl state active notes are current session only", StateActiveNotesAreCurrentSessionOnly),
+                ("Zetl compile scope respects the session-only toggle", StateCompileScopeRespectsSessionToggle),
                 ("Zetl state FIFO dequeues current-session notes in order", StateFifoDequeuesCurrentSessionNotesInOrder),
                 ("Zetl state FIFO archives consumed notes for review", StateFifoArchivesConsumedNotesForReview),
                 ("Zetl state FIFO restores consumed notes from review", StateFifoRestoresConsumedNotesFromReview),
@@ -57,7 +57,8 @@ internal static partial class Program
                 ("Zetl state round-trips JSON", StateRoundTripsJson),
                 ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
-                ("Zetl state applies bucket defaults", StateAppliesBucketDefaults)
+                ("Zetl state applies bucket defaults", StateAppliesBucketDefaults),
+                ("Zetl embeds a parseable default hotkeys config", EmbeddedDefaultConfigParses)
             };
 
             var failures = new List<string>();
@@ -504,6 +505,21 @@ internal static partial class Program
             AssertEqual(group.Id, sub.ParentBucketId, "Child bucket should keep its parent after consolidation regardless of list order.");
         }
 
+        private static void EmbeddedDefaultConfigParses()
+        {
+            // Guards the single-file publish fallback: the canonical hotkeys.json
+            // must be embedded under this exact name and parse through the same
+            // loader path Program uses when no external file is found.
+            var assembly = typeof(Program).Assembly;
+            using var stream = assembly.GetManifestResourceStream("hotkeys.json");
+            AssertTrue(stream is not null, "Embedded default hotkeys.json should be present in the assembly.");
+
+            using var reader = new StreamReader(stream!);
+            var config = ChordlConfigLoader.LoadFromJson(reader.ReadToEnd());
+            AssertTrue(config.Actions.Count > 0, "Embedded default config should define at least one hotkey.");
+            AssertTrue(config.HoldDelay > TimeSpan.Zero, "Embedded default config should define a positive hold delay.");
+        }
+
         private static void StateDetectsCompilableNotes()
         {
             using var temp = new TempStateFile();
@@ -730,7 +746,7 @@ internal static partial class Program
             AssertEqual("first", scopedNote?.Note.Text, "Scoped last note should respect bucket scope.");
         }
 
-        private static void StateActiveNotesAreCurrentSessionOnly()
+        private static void StateCompileScopeRespectsSessionToggle()
         {
             using var temp = new TempStateFile();
             var oldStore = new ZetlStateStore(temp.Path, "old-session");
@@ -740,17 +756,30 @@ internal static partial class Program
             var newStore = new ZetlStateStore(temp.Path, "new-session");
             var loadedProject = newStore.State.Projects.Single(project => project.Name == "Demo");
             newStore.SetActiveProject(loadedProject.Id);
-            AssertFalse(newStore.HasCompilableNotes(loadedProject), "Old-session notes should not be active after restart.");
-            AssertEqual(0, newStore.GetNoteDisplayItems(loadedProject).Count, "Old-session notes should not be listed for compile.");
+
+            // Whole-project compile (the default) now reaches across sessions, so
+            // a reactivated project still has its old notes available to compile.
+            AssertTrue(newStore.HasCompilableNotes(loadedProject), "Whole-project compile should include old-session notes.");
+            AssertEqual(1, newStore.GetNoteDisplayItems(loadedProject).Count, "Whole-project compile should list old-session notes.");
+
+            // The "This session only" toggle narrows compile back to the session.
+            AssertFalse(newStore.HasCompilableNotes(loadedProject, currentSessionOnly: true), "Session-only compile should exclude old-session notes.");
+            AssertEqual(0, newStore.GetNoteDisplayItems(loadedProject, null, currentSessionOnly: true).Count, "Session-only compile should not list old-session notes.");
 
             var inbox = newStore.ActiveBucket!;
             newStore.AddNote(inbox, "new note", "copy");
-            var notes = newStore.GetNoteDisplayItems(loadedProject);
-            var compiled = newStore.CompilePlainTextFromNotes(loadedProject, notes);
 
-            AssertEqual(1, notes.Count, "Only current-session notes should be active.");
-            AssertFalse(compiled.Contains("old note"), "Compile should omit old-session notes.");
-            AssertTrue(compiled.Contains("new note"), "Compile should include current-session notes.");
+            var sessionNotes = newStore.GetNoteDisplayItems(loadedProject, null, currentSessionOnly: true);
+            AssertEqual(1, sessionNotes.Count, "Session-only compile should list just the current-session note.");
+            var sessionCompiled = newStore.CompilePlainTextFromNotes(loadedProject, sessionNotes);
+            AssertFalse(sessionCompiled.Contains("old note"), "Session-only compile should omit old-session notes.");
+            AssertTrue(sessionCompiled.Contains("new note"), "Session-only compile should include current-session notes.");
+
+            var allNotes = newStore.GetNoteDisplayItems(loadedProject);
+            var allCompiled = newStore.CompilePlainTextFromNotes(loadedProject, allNotes);
+            AssertEqual(2, allNotes.Count, "Whole-project compile should list both notes.");
+            AssertTrue(allCompiled.Contains("old note"), "Whole-project compile should include old-session notes.");
+            AssertTrue(allCompiled.Contains("new note"), "Whole-project compile should include current-session notes.");
             AssertEqual(2, inbox.Notes.Count, "Old notes should remain stored for board/history.");
         }
 

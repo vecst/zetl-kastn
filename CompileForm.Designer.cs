@@ -6,7 +6,11 @@ partial class CompileForm
 {
     private System.ComponentModel.IContainer components;
     private SplitContainer split;
-    private CheckedListBox noteList;
+    private FlowLayoutPanel selectionPanel;
+    private Button selectAllButton;
+    private Button selectNoneButton;
+    private CheckBox sessionOnlyCheck;
+    private TreeView noteTree;
     private TextBox previewBox;
     private FlowLayoutPanel compileOptionsPanel;
     private Label compileModeLabel;
@@ -41,7 +45,11 @@ partial class CompileForm
     {
         components = new System.ComponentModel.Container();
         split = new SplitContainer();
-        noteList = new CheckedListBox();
+        selectionPanel = new FlowLayoutPanel();
+        selectAllButton = new Button();
+        selectNoneButton = new Button();
+        sessionOnlyCheck = new CheckBox();
+        noteTree = new TreeView();
         previewBox = new TextBox();
         compileOptionsPanel = new FlowLayoutPanel();
         compileModeLabel = new Label();
@@ -63,6 +71,7 @@ partial class CompileForm
         split.Panel1.SuspendLayout();
         split.Panel2.SuspendLayout();
         split.SuspendLayout();
+        selectionPanel.SuspendLayout();
         compileOptionsPanel.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)tsvRowLengthBox).BeginInit();
         destinationPanel.SuspendLayout();
@@ -76,12 +85,34 @@ partial class CompileForm
 
         split.Dock = DockStyle.Fill;
         split.FixedPanel = FixedPanel.Panel1;
-        split.SplitterDistance = 210;
-        split.Panel1.Controls.Add(noteList);
+        split.SplitterDistance = 260;
+        // Fill control added first so the docked toolbar claims the top edge.
+        split.Panel1.Controls.Add(noteTree);
+        split.Panel1.Controls.Add(selectionPanel);
         split.Panel2.Controls.Add(previewBox);
 
-        noteList.CheckOnClick = true;
-        noteList.Dock = DockStyle.Fill;
+        selectionPanel.Controls.Add(selectAllButton);
+        selectionPanel.Controls.Add(selectNoneButton);
+        selectionPanel.Controls.Add(sessionOnlyCheck);
+        selectionPanel.Dock = DockStyle.Top;
+        selectionPanel.Height = 36;
+        selectionPanel.Padding = new Padding(4, 5, 4, 4);
+
+        selectAllButton.Text = "Select All";
+        selectAllButton.Width = 86;
+
+        selectNoneButton.Text = "Select None";
+        selectNoneButton.Width = 90;
+
+        sessionOnlyCheck.AutoSize = true;
+        sessionOnlyCheck.Margin = new Padding(12, 6, 0, 0);
+        sessionOnlyCheck.Text = "This session only";
+
+        noteTree.CheckBoxes = true;
+        noteTree.Dock = DockStyle.Fill;
+        noteTree.HideSelection = false;
+        noteTree.ShowLines = true;
+        noteTree.ShowRootLines = true;
 
         previewBox.Dock = DockStyle.Fill;
         previewBox.Multiline = true;
@@ -169,6 +200,8 @@ partial class CompileForm
         split.Panel2.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)split).EndInit();
         split.ResumeLayout(false);
+        selectionPanel.ResumeLayout(false);
+        selectionPanel.PerformLayout();
         compileOptionsPanel.ResumeLayout(false);
         compileOptionsPanel.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)tsvRowLengthBox).EndInit();

@@ -682,14 +682,17 @@ internal sealed class ZetlStateStore
         }
     }
 
-    public IReadOnlyList<NoteDisplayItem> GetNoteDisplayItems(ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope = null)
+    // Compile operates on the whole project by default. Passing
+    // currentSessionOnly narrows it to notes captured this session, which the
+    // compile dialog exposes as a "This session only" toggle.
+    public IReadOnlyList<NoteDisplayItem> GetNoteDisplayItems(ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope = null, bool currentSessionOnly = false)
     {
         var scopedBucketIds = bucketScope?.Select(bucket => bucket.Id).ToHashSet(StringComparer.Ordinal);
         var result = new List<NoteDisplayItem>();
         foreach (var bucketItem in GetBucketDisplayItems(project)
             .Where(item => scopedBucketIds is null || scopedBucketIds.Contains(item.Bucket.Id)))
         {
-            foreach (var note in bucketItem.Bucket.Notes.Where(note => IsCurrentSessionNote(note) && !string.IsNullOrWhiteSpace(note.Text)))
+            foreach (var note in bucketItem.Bucket.Notes.Where(note => IsCompilableNote(note, currentSessionOnly)))
             {
                 result.Add(new NoteDisplayItem(bucketItem.Bucket, note, $"{bucketItem.Label.Trim()}: {PreviewText(note.Text)}"));
             }
@@ -698,17 +701,22 @@ internal sealed class ZetlStateStore
         return result;
     }
 
-    public bool TryGetLastNoteDisplayItem(ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope, out NoteDisplayItem? note)
+    public bool TryGetLastNoteDisplayItem(ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope, out NoteDisplayItem? note, bool currentSessionOnly = false)
     {
-        note = GetNoteDisplayItems(project, bucketScope)
+        note = GetNoteDisplayItems(project, bucketScope, currentSessionOnly)
             .OrderByDescending(item => item.Note.CreatedAtUtc)
             .FirstOrDefault();
         return note is not null;
     }
 
-    public bool HasCompilableNotes(ZetlProject project)
+    public bool HasCompilableNotes(ZetlProject project, bool currentSessionOnly = false)
     {
-        return project.Buckets.Any(bucket => bucket.Notes.Any(note => IsCurrentSessionNote(note) && !string.IsNullOrWhiteSpace(note.Text)));
+        return project.Buckets.Any(bucket => bucket.Notes.Any(note => IsCompilableNote(note, currentSessionOnly)));
+    }
+
+    private bool IsCompilableNote(ZetlNote note, bool currentSessionOnly)
+    {
+        return (!currentSessionOnly || IsCurrentSessionNote(note)) && !string.IsNullOrWhiteSpace(note.Text);
     }
 
     public bool TryGetScratchCompileTarget(out ZetlProject? project, out ZetlBucket? scratchBucket, bool shifted = false)

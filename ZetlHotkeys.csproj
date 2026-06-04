@@ -12,7 +12,14 @@
     <Compile Remove="Chordl\**\*.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="hotkeys.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Embed the canonical hotkeys.json so a single-file publish always has a
+         default config to fall back on, while still copying it next to the
+         build/publish output as an editable external override. -->
+    <None Remove="hotkeys.json" />
+    <EmbeddedResource Include="hotkeys.json">
+      <LogicalName>hotkeys.json</LogicalName>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="Chordl\Chordl.csproj" />

@@ -15,18 +15,45 @@ public static class ChordlConfigLoader
 
     public static ChordlConfiguration LoadFromDefaultLocation()
     {
-        var configPath = Path.Combine(AppContext.BaseDirectory, "hotkeys.json");
-        if (!File.Exists(configPath))
-        {
-            configPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "hotkeys.json");
-        }
-
-        if (!File.Exists(configPath))
+        if (!TryFindConfigFile(out var configPath))
         {
             throw new FileNotFoundException("hotkeys.json not found.", configPath);
         }
 
-        var json = File.ReadAllText(configPath);
+        return LoadFromFile(configPath);
+    }
+
+    /// <summary>
+    /// Looks for an external hotkeys.json next to the executable, then in the
+    /// source tree (so <c>dotnet run</c> works). Returns false when neither
+    /// exists; <paramref name="configPath"/> is then the preferred location for
+    /// error reporting.
+    /// </summary>
+    public static bool TryFindConfigFile(out string configPath)
+    {
+        configPath = Path.Combine(AppContext.BaseDirectory, "hotkeys.json");
+        if (File.Exists(configPath))
+        {
+            return true;
+        }
+
+        var sourcePath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "hotkeys.json");
+        if (File.Exists(sourcePath))
+        {
+            configPath = sourcePath;
+            return true;
+        }
+
+        return false;
+    }
+
+    public static ChordlConfiguration LoadFromFile(string configPath)
+    {
+        return LoadFromJson(File.ReadAllText(configPath));
+    }
+
+    public static ChordlConfiguration LoadFromJson(string json)
+    {
         var config = JsonSerializer.Deserialize<ChordlConfigDto>(json, JsonOpts)
             ?? throw new InvalidOperationException("Failed to parse hotkeys.json.");
 
