@@ -44,6 +44,7 @@ internal sealed class ZetlSettingsForm : ZetlPopupForm
         autoCaptureBox.Checked = settings.AutoCaptureOnCopy;
 
         defaultBucketsBox.Multiline = true;
+        defaultBucketsBox.AcceptsReturn = true;
         defaultBucketsBox.ScrollBars = ScrollBars.Vertical;
         defaultBucketsBox.Width = 230;
         defaultBucketsBox.Height = 92;
