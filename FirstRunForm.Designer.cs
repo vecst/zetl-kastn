@@ -8,9 +8,11 @@ partial class FirstRunForm
     private TableLayoutPanel layout;
     private Label titleLabel;
     private Label bodyLabel;
-    private Label coldkeysHeaderLabel;
-    private Label coldkeysLabel;
     private Label startupLabel;
+    private Label coldkeysHeaderLabel;
+    private TableLayoutPanel keysTable;
+    private Label compileLabel;
+    private Label replayLabel;
     private Label laneLabel;
     private FlowLayoutPanel buttonsPanel;
     private Button gotItButton;
@@ -35,9 +37,11 @@ partial class FirstRunForm
         layout = new TableLayoutPanel();
         titleLabel = new Label();
         bodyLabel = new Label();
-        coldkeysHeaderLabel = new Label();
-        coldkeysLabel = new Label();
         startupLabel = new Label();
+        coldkeysHeaderLabel = new Label();
+        keysTable = new TableLayoutPanel();
+        compileLabel = new Label();
+        replayLabel = new Label();
         laneLabel = new Label();
         buttonsPanel = new FlowLayoutPanel();
         gotItButton = new Button();
@@ -49,7 +53,7 @@ partial class FirstRunForm
 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(1280, 720);
+        ClientSize = new Size(1180, 720);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         Text = "How Zetl Works";
 
@@ -59,27 +63,26 @@ partial class FirstRunForm
         layout.Controls.Add(bodyLabel, 0, 1);
         layout.Controls.Add(startupLabel, 0, 2);
         layout.Controls.Add(coldkeysHeaderLabel, 0, 3);
-        layout.Controls.Add(coldkeysLabel, 0, 4);
-        layout.Controls.Add(laneLabel, 0, 5);
-        layout.Controls.Add(buttonsPanel, 0, 6);
+        layout.Controls.Add(keysTable, 0, 4);
+        layout.Controls.Add(compileLabel, 0, 5);
+        layout.Controls.Add(replayLabel, 0, 6);
+        layout.Controls.Add(laneLabel, 0, 7);
+        layout.Controls.Add(buttonsPanel, 0, 8);
         layout.Dock = DockStyle.Fill;
         layout.Padding = new Padding(16);
-        layout.RowCount = 7;
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowCount = 9;
+        for (var i = 0; i < 9; i++)
+        {
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        }
 
         titleLabel.AutoSize = true;
         titleLabel.Font = new Font(FontFamily.GenericSansSerif, 13F, FontStyle.Bold);
-        titleLabel.MaximumSize = new Size(1220, 0);
+        titleLabel.MaximumSize = new Size(1140, 0);
         titleLabel.Text = "Zetl is built on Chordl.";
 
         bodyLabel.AutoSize = true;
-        bodyLabel.MaximumSize = new Size(1220, 0);
+        bodyLabel.MaximumSize = new Size(1140, 0);
         bodyLabel.Padding = new Padding(0, 8, 0, 10);
         bodyLabel.Text =
             "Chordl gives a shortcut you already know a second job. Tap a chord like Ctrl+C and it behaves " +
@@ -87,7 +90,7 @@ partial class FirstRunForm
             "normal action first and then watch for a hold, so nothing is lost. Paste runs when you release V.";
 
         startupLabel.AutoSize = true;
-        startupLabel.MaximumSize = new Size(1220, 0);
+        startupLabel.MaximumSize = new Size(1140, 0);
         startupLabel.Padding = new Padding(0, 0, 0, 12);
         startupLabel.Text =
             "On launch, Ctrl+C and Ctrl+V behave normally when no project is active. " +
@@ -95,36 +98,36 @@ partial class FirstRunForm
 
         coldkeysHeaderLabel.AutoSize = true;
         coldkeysHeaderLabel.Font = new Font(FontFamily.GenericSansSerif, 10F, FontStyle.Bold);
-        coldkeysHeaderLabel.MaximumSize = new Size(1220, 0);
-        coldkeysHeaderLabel.Text = "Coldkeys are the chords Zetl listens for. Tap for the normal shortcut, hold for the Zetl action:";
+        coldkeysHeaderLabel.MaximumSize = new Size(1140, 0);
+        coldkeysHeaderLabel.Text = "Coldkeys are the chords Zetl listens for. Tap for the normal shortcut, hold for the Zetl action. Anytime means the hold works even with no active project.";
 
-        coldkeysLabel.AutoSize = true;
-        coldkeysLabel.Dock = DockStyle.Fill;
-        coldkeysLabel.MaximumSize = new Size(1220, 0);
-        coldkeysLabel.Padding = new Padding(0, 8, 0, 8);
-        coldkeysLabel.Text =
-            "While a project is active:\r\n\r\n" +
-            "Tap:\r\n" +
-            "  Ctrl+C  - add the highlighted text to the active bucket and clipboard\r\n" +
-            "  Ctrl+V  - in Pop Mode, remove the item you just pasted; in Replay Mode, paste the next item\r\n\r\n" +
-            "Hold:\r\n" +
-            "  Ctrl+C  - edit the highlighted text before adding it\r\n" +
-            "  Ctrl+X  - quick note, defaults to Scratch\r\n" +
-            "  Ctrl+V  - compile this session's notes\r\n" +
-            "  Ctrl+R  - turn Replay Mode on or off for the active bucket\r\n\r\n" +
-            "Anytime, hold:\r\n" +
-            "  Ctrl+B  - open the Board\r\n" +
-            "  Ctrl+Z  - undo the last Zetl action\r\n\r\n" +
-            "Compile:\r\n" +
-            "  Hold Ctrl+V to gather this session's notes into one block. Pick the notes and a format " +
-            "(formatted, plain, or TSV), then copy, paste, or save the result into a bucket.\r\n\r\n" +
-            "Replay Mode:\r\n" +
-            "  Replay Mode pastes a list back in the order you built it. Copy items into a bucket one by one, " +
+        // Cells are built in code (BuildKeysTable).
+        keysTable.AutoSize = true;
+        keysTable.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        keysTable.CellBorderStyle = TableLayoutPanelCellBorderStyle.Single;
+        keysTable.Margin = new Padding(0, 4, 0, 12);
+
+        compileLabel.AutoSize = true;
+        compileLabel.MaximumSize = new Size(1140, 0);
+        compileLabel.Padding = new Padding(0, 0, 0, 10);
+        compileLabel.Text =
+            "Compile (hold Ctrl+V): gather this session's notes into one block, then copy it, paste it, or " +
+            "save it into a bucket. Pick a format:\r\n" +
+            "    Formatted - notes grouped under their project and bucket headings.\r\n" +
+            "    Plain - just the note text, one per line, with no headings (the unformatted option).\r\n" +
+            "    TSV - tab-separated rows for spreadsheets. Set the row length to say how many notes make one " +
+            "row (for example 5 fields per record), and a bucket's starting-text lines can act as column headers.";
+
+        replayLabel.AutoSize = true;
+        replayLabel.MaximumSize = new Size(1140, 0);
+        replayLabel.Padding = new Padding(0, 0, 0, 10);
+        replayLabel.Text =
+            "Replay Mode pastes a list back in the order you built it. Copy items into a bucket one by one, " +
             "switch to where they belong, and each tap of Ctrl+V drops in the next one. When the last item is " +
             "used, the bucket leaves it on the clipboard and turns Replay off, so normal paste works again.";
 
         laneLabel.AutoSize = true;
-        laneLabel.MaximumSize = new Size(1220, 0);
+        laneLabel.MaximumSize = new Size(1140, 0);
         laneLabel.Padding = new Padding(0, 0, 0, 4);
         laneLabel.Text =
             "Ctrl+Shift is a second, independent lane with its own active project, so two projects can be " +
