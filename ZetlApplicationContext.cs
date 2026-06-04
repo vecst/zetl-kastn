@@ -302,7 +302,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             case VK_C:
                 await HandleCopyHoldAsync(context.ShiftLane, targetWindow, pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber, pending?.ObservedClipboardText);
                 break;
-            case VK_F:
+            case VK_R:
                 HandleFifoToggleHold(context.ShiftLane);
                 break;
             case VK_X:

@@ -15,8 +15,8 @@
       "dispatch": "None"
     },
     {
-      "name": "Ctrl+F",
-      "key": "F",
+      "name": "Ctrl+R",
+      "key": "R",
       "modifiers": ["Ctrl"],
       "dispatch": "TapOnly"
     },
@@ -52,8 +52,8 @@
       "dispatch": "Immediate"
     },
     {
-      "name": "Ctrl+Shift+F",
-      "key": "F",
+      "name": "Ctrl+Shift+R",
+      "key": "R",
       "modifiers": ["Ctrl", "Shift"],
       "dispatch": "TapOnly",
       "replayModifiers": ["Ctrl", "Shift"]

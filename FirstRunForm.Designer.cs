@@ -49,7 +49,7 @@ partial class FirstRunForm
 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(660, 700);
+        ClientSize = new Size(660, 800);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         Text = "How Zetl Works";
 
@@ -111,7 +111,7 @@ partial class FirstRunForm
             "  Ctrl+C  - edit the highlighted text before adding it\r\n" +
             "  Ctrl+X  - quick note, defaults to Scratch\r\n" +
             "  Ctrl+V  - compile this session's notes\r\n" +
-            "  Ctrl+F  - turn Replay Mode on or off for the active bucket\r\n\r\n" +
+            "  Ctrl+R  - turn Replay Mode on or off for the active bucket\r\n\r\n" +
             "Anytime, hold:\r\n" +
             "  Ctrl+B  - open the Board\r\n" +
             "  Ctrl+Z  - undo the last Zetl action\r\n\r\n" +
@@ -124,9 +124,15 @@ partial class FirstRunForm
         laneLabel.MaximumSize = new Size(610, 0);
         laneLabel.Padding = new Padding(0, 0, 0, 4);
         laneLabel.Text =
-            "Ctrl+Shift uses a separate Shift project lane. Paste is the exception: there is only one system " +
-            "clipboard, so outside Replay Mode Ctrl+Shift+V just pastes normally. Ctrl+Enter saves or closes " +
-            "any Zetl dialog, and the tray icon has the Board, notifications, and this guide.";
+            "Ctrl+Shift is a second, independent lane with its own active project, so two projects can be " +
+            "active at the same time. Hold Ctrl+Shift+B to open the Shift Board and mark a second project " +
+            "active there. Now the two lanes work side by side: for example, keep your main project on the " +
+            "normal lane so Ctrl+X saves quick notes to one specific bucket, and use Ctrl+Shift+X to drop " +
+            "unrelated notes into the Shift project's Scratch — no switching the active project back and " +
+            "forth. Each lane remembers its own active project, bucket, and Replay state.\r\n\r\n" +
+            "Paste is the one shared piece, because there is only one system clipboard: outside Replay Mode, " +
+            "Ctrl+Shift+V just pastes normally. Ctrl+Enter saves or closes any Zetl dialog, and the tray icon " +
+            "has the Board, notifications, and this guide.";
 
         buttonsPanel.AutoSize = true;
         buttonsPanel.Controls.Add(gotItButton);
