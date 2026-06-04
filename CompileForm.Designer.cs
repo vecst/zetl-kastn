@@ -24,6 +24,7 @@ partial class CompileForm
     private Label destinationLabel;
     private ComboBox destinationProjectBox;
     private ComboBox destinationBucketBox;
+    private CheckBox flattenCheck;
     private FlowLayoutPanel buttonsPanel;
     private Button pasteButton;
     private Button pastePlainButton;
@@ -67,6 +68,7 @@ partial class CompileForm
         destinationLabel = new Label();
         destinationProjectBox = new ComboBox();
         destinationBucketBox = new ComboBox();
+        flattenCheck = new CheckBox();
         buttonsPanel = new FlowLayoutPanel();
         pasteButton = new Button();
         pastePlainButton = new Button();
@@ -171,6 +173,7 @@ partial class CompileForm
         destinationPanel.Controls.Add(destinationLabel);
         destinationPanel.Controls.Add(destinationProjectBox);
         destinationPanel.Controls.Add(destinationBucketBox);
+        destinationPanel.Controls.Add(flattenCheck);
         destinationPanel.Dock = DockStyle.Bottom;
         destinationPanel.Height = 42;
         destinationPanel.Padding = new Padding(8, 7, 8, 4);
@@ -186,6 +189,10 @@ partial class CompileForm
 
         destinationBucketBox.DropDownStyle = ComboBoxStyle.DropDown;
         destinationBucketBox.Width = 220;
+
+        flattenCheck.AutoSize = true;
+        flattenCheck.Margin = new Padding(16, 6, 0, 0);
+        flattenCheck.Text = "Flatten into one note";
 
         buttonsPanel.Controls.Add(pasteButton);
         buttonsPanel.Controls.Add(pastePlainButton);

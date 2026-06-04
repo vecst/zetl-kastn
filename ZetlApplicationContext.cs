@@ -490,14 +490,35 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 {
                     var destinationProject = form.DestinationProject;
                     var destination = store.GetOrCreateBucket(destinationProject, form.DestinationBucketName, setActive: false);
-                    var note = store.AddNote(destination, form.CompiledText, "compile");
-                    PushUndo(
-                        shifted,
-                        $"Undid compile to {destination.Name}.",
-                        () => store.DeleteNote(destination, note.Id));
+                    string savedSummary;
+                    if (form.Flatten)
+                    {
+                        var note = store.AddNote(destination, form.CompiledText, "compile");
+                        PushUndo(
+                            shifted,
+                            $"Undid compile to {destination.Name}.",
+                            () => store.DeleteNote(destination, note.Id));
+                        savedSummary = $"to {destination.Name}";
+                    }
+                    else
+                    {
+                        var notes = store.AddNotes(destination, form.SelectedNoteTexts, "compile");
+                        PushUndo(
+                            shifted,
+                            $"Undid compile to {destination.Name}.",
+                            () =>
+                            {
+                                foreach (var note in notes)
+                                {
+                                    store.DeleteNote(destination, note.Id);
+                                }
+                            });
+                        savedSummary = $"{notes.Count} notes to {destination.Name}";
+                    }
+
                     ShowInfo(destinationProject.Id == form.SourceProject.Id
-                        ? $"Compiled to {destination.Name}."
-                        : $"Compiled to {destinationProject.Name} / {destination.Name}.");
+                        ? $"Compiled {savedSummary}."
+                        : $"Compiled {savedSummary} ({destinationProject.Name}).");
                     RestoreForegroundWindow(targetWindow);
                     return;
                 }

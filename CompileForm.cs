@@ -63,6 +63,16 @@ internal sealed partial class CompileForm : ZetlPopupForm
 
     public string DestinationBucketName => destinationBucketBox.Text.Trim();
 
+    // When saving to a bucket: flatten merges the selection into one combined
+    // note; otherwise each selected note is copied across as its own note.
+    public bool Flatten => flattenCheck.Checked;
+
+    // The text of each selected note, in tree order, for a structured save.
+    public IReadOnlyList<string> SelectedNoteTexts => SelectedNotes
+        .Select(item => item.Note.Text.Trim())
+        .Where(text => text.Length > 0)
+        .ToList();
+
     private IReadOnlyList<NoteDisplayItem> SelectedNotes => noteTree.Nodes.Cast<TreeNode>()
         .SelectMany(bucketNode => bucketNode.Nodes.Cast<TreeNode>())
         .Where(noteNode => noteNode.Checked && noteNode.Tag is NoteDisplayItem)

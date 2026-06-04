@@ -279,9 +279,11 @@ The compile dialog lets you:
 - paste the compiled text immediately
 - paste only the last copied item
 - paste selected notes unformatted
-- save the compiled text into a bucket in any project, existing or new
+- save the selected notes into a bucket in any project, existing or new
 
-The `Compile to` row has its own project and bucket selectors, so you can save the compiled note into a different project than the one you compiled from. Type a new name in the bucket box to create it. Saving there does not change the destination project's active bucket, nor the app's active project.
+The `Compile to` row has its own project and bucket selectors, so you can save into a different project than the one you compiled from. Type a new name in the bucket box to create it. Saving there does not change the destination project's active bucket, nor the app's active project.
+
+By default, saving to a bucket keeps the note structure: each selected note is copied across as its own note. Check `Flatten into one note` to instead save the compiled output (in the chosen format) as a single combined note. Flattening only affects `Save to Bucket`; the clipboard and paste actions always use the compiled output shown in the preview.
 
 When the dialog opens, its default compile format and TSV row length come from the active bucket or single scoped bucket. Notes from the active bucket start checked.
 

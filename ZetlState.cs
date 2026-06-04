@@ -320,6 +320,40 @@ internal sealed class ZetlStateStore
         return note;
     }
 
+    // Adds one note per non-blank text, preserving order, with a single save.
+    // Used by a structured compile-to-bucket that keeps notes separate instead
+    // of flattening them into one combined note.
+    public IReadOnlyList<ZetlNote> AddNotes(ZetlBucket bucket, IEnumerable<string> texts, string source)
+    {
+        var added = new List<ZetlNote>();
+        foreach (var text in texts)
+        {
+            var trimmed = (text ?? "").Trim();
+            if (trimmed.Length == 0)
+            {
+                continue;
+            }
+
+            var note = new ZetlNote
+            {
+                Id = NewId(),
+                Text = trimmed,
+                Source = source,
+                SessionId = sessionId,
+                CreatedAtUtc = DateTime.UtcNow
+            };
+            bucket.Notes.Add(note);
+            added.Add(note);
+        }
+
+        if (added.Count > 0)
+        {
+            Save();
+        }
+
+        return added;
+    }
+
     public void DeleteNote(ZetlBucket bucket, string noteId)
     {
         var note = bucket.Notes.FirstOrDefault(item => item.Id == noteId);

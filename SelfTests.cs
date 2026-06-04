@@ -39,6 +39,7 @@ internal static partial class Program
                 ("Zetl state remembers quick note bucket", StateRemembersQuickNoteBucket),
                 ("Zetl state gets or creates compile buckets", StateGetsOrCreatesCompileBuckets),
                 ("Zetl compiles across projects without changing the active project", StateCompilesToOtherProjectWithoutChangingActive),
+                ("Zetl adds notes preserving structure", StateAddsNotesPreservingStructure),
                 ("Zetl state preserves bucket settings", StatePreservesBucketSettings),
                 ("Zetl state protects the Scratch bucket", StateProtectsScratchBucket),
                 ("Zetl state compiles selected notes", StateCompilesSelectedNotes),
@@ -576,6 +577,22 @@ internal static partial class Program
             store.AddNote(created, store.CompilePlainText(project, [existing]), "compile");
             AssertEqual("Compiled", created.Name, "Missing bucket should be created.");
             AssertEqual("compile", created.Notes.Single().Source, "Compiled note should store its source.");
+        }
+
+        private static void StateAddsNotesPreservingStructure()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var bucket = store.ActiveBucket!;
+
+            var added = store.AddNotes(bucket, ["one", "   ", "two", "three"], "compile");
+
+            AssertEqual(3, added.Count, "AddNotes should skip blank entries.");
+            AssertEqual(3, bucket.Notes.Count, "Each non-blank text should become its own note.");
+            AssertEqual("one", bucket.Notes[0].Text, "Notes should keep insertion order.");
+            AssertEqual("three", bucket.Notes[2].Text, "Notes should keep insertion order.");
+            AssertEqual("compile", bucket.Notes[0].Source, "AddNotes should set the note source.");
         }
 
         private static void StateCompilesToOtherProjectWithoutChangingActive()
