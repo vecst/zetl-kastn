@@ -268,9 +268,12 @@ internal sealed partial class CompileForm : ZetlPopupForm
 
         PasteNow = pasteNow;
         SaveToBucket = saveToBucket;
+        // Compile straight from the selection so the result honors the chosen
+        // format (Formatted/Plain/TSV) without depending on the preview box,
+        // which truncates very long output.
         CompiledText = unformatted
             ? store.CompileUnformattedFromNotes(SelectedNotes)
-            : previewBox.Text;
+            : BuildCompiledText(SelectedNotes);
         DialogResult = DialogResult.OK;
         Close();
     }
