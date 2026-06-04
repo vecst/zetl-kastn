@@ -39,6 +39,7 @@ internal static partial class Program
                 ("Zetl state remembers quick note bucket", StateRemembersQuickNoteBucket),
                 ("Zetl state gets or creates compile buckets", StateGetsOrCreatesCompileBuckets),
                 ("Zetl state preserves bucket settings", StatePreservesBucketSettings),
+                ("Zetl state protects the Scratch bucket", StateProtectsScratchBucket),
                 ("Zetl state compiles selected notes", StateCompilesSelectedNotes),
                 ("Zetl state compiles selected notes unformatted", StateCompilesSelectedNotesUnformatted),
                 ("Zetl state compiles selected notes as TSV rows", StateCompilesSelectedNotesAsTsvRows),
@@ -583,6 +584,23 @@ internal static partial class Program
             AssertFalse(compiled.Contains("second"), "Unselected note should not compile.");
             AssertTrue(compiled.Contains("Ideas"), "Selected ideas note should include its bucket heading.");
             AssertTrue(compiled.Contains("third"), "Second selected note should compile.");
+        }
+
+        private static void StateProtectsScratchBucket()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var scratch = store.GetScratchBucket(project);
+
+            store.UpdateBucketName(scratch, "Renamed");
+            AssertEqual("Scratch", scratch.Name, "Scratch should not be renamable.");
+
+            store.UpdateBucketSettings(scratch, "Renamed", "Standard", "Formatted", "", 5);
+            AssertEqual("Scratch", scratch.Name, "Bucket settings should not rename Scratch.");
+
+            store.DeleteBucket(project, scratch.Id);
+            AssertTrue(project.Buckets.Any(bucket => bucket.Id == scratch.Id), "Scratch should not be deletable.");
         }
 
         private static void StatePreservesBucketSettings()

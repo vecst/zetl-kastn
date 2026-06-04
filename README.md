@@ -156,7 +156,7 @@ The Board window lets you:
 - add and delete projects
 - rename projects
 - mark a project active or inactive
-- add and delete buckets
+- add and delete buckets (the `Scratch` bucket cannot be renamed or deleted)
 - rename buckets
 - double-click a bucket to edit bucket settings
 - switch the active bucket

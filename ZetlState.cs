@@ -256,6 +256,11 @@ internal sealed class ZetlStateStore
 
     public void UpdateBucketName(ZetlBucket bucket, string name)
     {
+        if (IsScratchBucket(bucket))
+        {
+            return;
+        }
+
         bucket.Name = NormalizeName(name, "Bucket");
         Save();
     }
@@ -263,7 +268,7 @@ internal sealed class ZetlStateStore
     public void DeleteBucket(ZetlProject project, string bucketId)
     {
         var bucket = project.Buckets.FirstOrDefault(item => item.Id == bucketId);
-        if (bucket is null)
+        if (bucket is null || IsScratchBucket(bucket))
         {
             return;
         }
@@ -386,7 +391,12 @@ internal sealed class ZetlStateStore
         string defaultStartingText,
         int defaultTsvRowLength)
     {
-        bucket.Name = NormalizeName(name, "Bucket");
+        // Scratch keeps its name; everything else about it stays editable.
+        if (!IsScratchBucket(bucket))
+        {
+            bucket.Name = NormalizeName(name, "Bucket");
+        }
+
         bucket.DefaultKind = NormalizeBucketKind(defaultKind);
         bucket.Kind = bucket.DefaultKind;
         bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
@@ -1063,6 +1073,13 @@ internal sealed class ZetlStateStore
     public static bool IsFifoBucket(ZetlBucket bucket)
     {
         return IsFifoKind(bucket.Kind);
+    }
+
+    // The Scratch bucket is special (always present, the quick-note default)
+    // and currently cannot be renamed or deleted.
+    public static bool IsScratchBucket(ZetlBucket bucket)
+    {
+        return string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase);
     }
 
     // Whether a raw kind string represents Replay Mode (accepts the legacy

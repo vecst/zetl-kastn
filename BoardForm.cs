@@ -217,6 +217,7 @@ internal sealed partial class BoardForm : ZetlPopupForm
                 bucketNameBox.Text = "";
                 bucketNameBox.Enabled = false;
                 saveBucketButton.Enabled = false;
+                deleteBucketButton.Enabled = false;
                 bucketKindBox.SelectedItem = "Standard";
                 bucketKindBox.Enabled = false;
                 popModeBox.Checked = false;
@@ -224,9 +225,13 @@ internal sealed partial class BoardForm : ZetlPopupForm
                 return;
             }
 
+            // Scratch is always present and is the quick-note default, so it
+            // cannot be renamed or deleted (its other settings stay editable).
+            var isScratch = ZetlStateStore.IsScratchBucket(bucket);
             bucketNameBox.Text = bucket.Name;
-            bucketNameBox.Enabled = true;
-            saveBucketButton.Enabled = true;
+            bucketNameBox.Enabled = !isScratch;
+            saveBucketButton.Enabled = !isScratch;
+            deleteBucketButton.Enabled = !isScratch;
             bucketKindBox.Enabled = true;
             bucketKindBox.SelectedItem = ZetlStateStore.IsFifoBucket(bucket) ? "Replay" : "Standard";
             popModeBox.Checked = bucket.PopMode;
