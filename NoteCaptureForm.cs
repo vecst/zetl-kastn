@@ -6,6 +6,7 @@ internal sealed partial class NoteCaptureForm : ZetlPopupForm
     private readonly ZetlProject project;
     private readonly bool showStartProjectToggle;
     private readonly bool scratchOnlyUntilProjectStarted;
+    private readonly bool createNewProjectMode;
     private ZetlBucket? lastFullProjectBucket;
 
     public NoteCaptureForm(
@@ -15,17 +16,22 @@ internal sealed partial class NoteCaptureForm : ZetlPopupForm
         string text,
         bool showStartProjectToggle = false,
         bool startProjectDefault = true,
-        bool scratchOnlyUntilProjectStarted = false)
+        bool scratchOnlyUntilProjectStarted = false,
+        bool createNewProjectMode = false,
+        string? projectToggleText = null,
+        string? projectNameDefault = null)
     {
         this.store = store;
         this.project = project;
         this.showStartProjectToggle = showStartProjectToggle;
         this.scratchOnlyUntilProjectStarted = scratchOnlyUntilProjectStarted;
+        this.createNewProjectMode = createNewProjectMode;
         lastFullProjectBucket = preferredBucket;
 
         InitializeComponent();
         projectModePanel.Visible = showStartProjectToggle;
-        projectNameBox.Text = project.Name;
+        startProjectBox.Text = projectToggleText ?? "Start project";
+        projectNameBox.Text = projectNameDefault ?? project.Name;
         startProjectBox.Checked = !showStartProjectToggle || startProjectDefault;
         noteBox.Text = BuildInitialNoteText(text);
 
@@ -37,7 +43,10 @@ internal sealed partial class NoteCaptureForm : ZetlPopupForm
         bucketBox.SelectedIndexChanged += (_, _) => UpdateInlineBucketLabel();
         startProjectBox.CheckedChanged += (_, _) =>
         {
-            RefreshBuckets(startProjectBox.Checked ? lastFullProjectBucket : store.GetScratchBucket(project));
+            var selectedBucket = createNewProjectMode
+                ? startProjectBox.Checked ? null : lastFullProjectBucket
+                : startProjectBox.Checked ? lastFullProjectBucket : store.GetScratchBucket(project);
+            RefreshBuckets(selectedBucket);
             UpdateProjectModeControls();
         };
         inlineCreateButton.Click += (_, _) => CreateInlineBucket();
@@ -62,9 +71,13 @@ internal sealed partial class NoteCaptureForm : ZetlPopupForm
 
     public ZetlBucket SelectedBucket => ((BucketDisplayItem)bucketBox.SelectedItem!).Bucket;
 
+    public string SelectedBucketName => SelectedBucket.Name;
+
     public string NoteText => noteBox.Text.Trim();
 
     public bool StartProject => !showStartProjectToggle || startProjectBox.Checked;
+
+    public bool CreateNewProject => showStartProjectToggle && createNewProjectMode && startProjectBox.Checked;
 
     public string ProjectName => projectNameBox.Text.Trim();
 
@@ -107,7 +120,7 @@ internal sealed partial class NoteCaptureForm : ZetlPopupForm
 
     private void CreateInlineBucket()
     {
-        if (!StartProject)
+        if (!StartProject || CreateNewProject)
         {
             return;
         }
@@ -140,9 +153,11 @@ internal sealed partial class NoteCaptureForm : ZetlPopupForm
     private void RefreshBuckets(ZetlBucket? selectedBucket)
     {
         bucketBox.Items.Clear();
-        var items = StartProject || !scratchOnlyUntilProjectStarted
-            ? store.GetBucketDisplayItems(project)
-            : store.GetBucketDisplayItems(project)
+        var items = CreateNewProject
+            ? GetNewProjectBucketItems()
+            : StartProject || !scratchOnlyUntilProjectStarted
+                ? store.GetBucketDisplayItems(project)
+                : store.GetBucketDisplayItems(project)
                 .Where(item => string.Equals(item.Bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase))
                 .ToList();
         bucketBox.Items.AddRange(items.Cast<object>().ToArray());
@@ -153,10 +168,33 @@ internal sealed partial class NoteCaptureForm : ZetlPopupForm
     private void UpdateProjectModeControls()
     {
         projectNameBox.Enabled = StartProject;
-        inlineBucketPanel.Visible = StartProject;
-        if (StartProject && bucketBox.SelectedItem is BucketDisplayItem item)
+        inlineBucketPanel.Visible = StartProject && !CreateNewProject;
+        if (StartProject && !CreateNewProject && bucketBox.SelectedItem is BucketDisplayItem item)
         {
             lastFullProjectBucket = item.Bucket;
         }
+    }
+
+    private IReadOnlyList<BucketDisplayItem> GetNewProjectBucketItems()
+    {
+        var bucketNames = store.Defaults.ProjectBuckets
+            .Append("Scratch")
+            .Select(name => name.Trim())
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (bucketNames.Count == 0)
+        {
+            bucketNames.Add("Inbox");
+            bucketNames.Add("Scratch");
+        }
+
+        return bucketNames
+            .Select(name =>
+            {
+                var bucket = new ZetlBucket { Id = name, Name = name };
+                return new BucketDisplayItem(bucket, name);
+            })
+            .ToList();
     }
 }

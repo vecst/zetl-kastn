@@ -420,9 +420,12 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             "copy",
             shifted,
             targetWindow,
-            showStartProjectToggle: !hadActiveProject,
-            startProjectDefault: true,
-            scratchOnlyUntilProjectStarted: !hadActiveProject);
+            showStartProjectToggle: true,
+            startProjectDefault: !hadActiveProject,
+            scratchOnlyUntilProjectStarted: !hadActiveProject,
+            createNewProjectToggle: hadActiveProject,
+            projectToggleText: hadActiveProject ? "New project" : "Start project",
+            projectNameDefault: hadActiveProject ? DefaultProjectName(shifted) : null);
     }
 
     private async Task HandleCutHoldAsync(bool shifted, IntPtr targetWindow, uint beforeSequence, string? observedText)
@@ -544,7 +547,10 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         IntPtr restoreWindow,
         bool showStartProjectToggle = false,
         bool startProjectDefault = true,
-        bool scratchOnlyUntilProjectStarted = false)
+        bool scratchOnlyUntilProjectStarted = false,
+        bool createNewProjectToggle = false,
+        string? projectToggleText = null,
+        string? projectNameDefault = null)
     {
         var project = store.GetActiveProject(shifted);
         if (project is null)
@@ -560,7 +566,10 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             text,
             showStartProjectToggle,
             startProjectDefault,
-            scratchOnlyUntilProjectStarted);
+            scratchOnlyUntilProjectStarted,
+            createNewProjectToggle,
+            projectToggleText,
+            projectNameDefault);
         ZetlDialogPlacement.ShowForegroundPopup(
             form,
             onClosed: () =>
@@ -569,7 +578,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 {
                     if (form.DialogResult != DialogResult.OK || string.IsNullOrWhiteSpace(form.NoteText))
                     {
-                        if (showStartProjectToggle)
+                        if (showStartProjectToggle && !createNewProjectToggle)
                         {
                             store.ClearActiveProject(shifted);
                         }
@@ -577,13 +586,26 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                         return;
                     }
 
-                    if (form.StartProject)
+                    if (form.CreateNewProject)
+                    {
+                        var bucketNames = store.Defaults.ProjectBuckets.Count > 0
+                            ? store.Defaults.ProjectBuckets
+                            : new List<string> { "Inbox", "Scratch" };
+                        noteProject = store.CreateProject(form.ProjectName, bucketNames, form.SelectedBucketName, shifted);
+                    }
+                    else if (form.StartProject)
                     {
                         store.UpdateProjectName(noteProject, form.ProjectName, shifted);
                     }
 
-                    var bucket = form.SelectedBucket;
-                    if (form.StartProject && string.Equals(source, "copy", StringComparison.OrdinalIgnoreCase))
+                    var bucket = form.CreateNewProject
+                        ? noteProject.Buckets.FirstOrDefault(bucket =>
+                            string.Equals(bucket.Name, form.SelectedBucketName, StringComparison.OrdinalIgnoreCase))
+                            ?? noteProject.Buckets.First()
+                        : form.SelectedBucket;
+                    if (!form.CreateNewProject
+                        && form.StartProject
+                        && string.Equals(source, "copy", StringComparison.OrdinalIgnoreCase))
                     {
                         store.SetActiveBucket(noteProject, bucket.Id);
                     }
@@ -599,7 +621,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                         $"Undid save to {bucket.Name}.",
                         () => store.DeleteNote(bucket, note.Id));
                     ClipboardText.Set(form.NoteText);
-                    if (showStartProjectToggle && !form.StartProject)
+                    if (showStartProjectToggle && !createNewProjectToggle && !form.StartProject)
                     {
                         store.ClearActiveProject(shifted);
                     }
@@ -735,6 +757,12 @@ internal sealed class ZetlApplicationContext : ApplicationContext
     private static (int KeyCode, bool Shifted) PendingKey(int keyCode, bool shifted)
     {
         return (keyCode, shifted);
+    }
+
+    private static string DefaultProjectName(bool shifted = false)
+    {
+        var name = DateTime.Now.ToString("yyyy-MM-dd");
+        return shifted ? $"{name} Shift" : name;
     }
 
     private sealed class PendingShortcut(int keyCode, bool shiftLane, uint clipboardSequenceNumber)

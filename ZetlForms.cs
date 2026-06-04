@@ -86,31 +86,28 @@ internal static class ZetlDialogPlacement
                 return;
             }
 
+            // Decide while the Deactivate event still reflects the handoff.
+            // Keep the popup open for child dialogs/message boxes in our
+            // process, but do not let the popup's own handle mask a click-off.
+            var foreground = Program.GetForegroundWindow();
+            Program.GetWindowThreadProcessId(foreground, out var foregroundProcessId);
+            if (foregroundProcessId == (uint)Environment.ProcessId && foreground != form.Handle)
+            {
+                return;
+            }
+
+            if (canClose is not null && !canClose())
+            {
+                return;
+            }
+
+            form.Tag = DeactivatedCloseMarker;
             form.BeginInvoke(new Action(() =>
             {
-                if (form.IsDisposed || !form.Visible)
+                if (!form.IsDisposed && form.Visible)
                 {
-                    return;
+                    form.Close();
                 }
-
-                // Once focus has settled, if it landed on another window of our
-                // own process (a child dialog or message box this popup opened),
-                // keep the popup open. Otherwise the user moved to another app,
-                // so close.
-                var foreground = Program.GetForegroundWindow();
-                Program.GetWindowThreadProcessId(foreground, out var foregroundProcessId);
-                if (foregroundProcessId == (uint)Environment.ProcessId)
-                {
-                    return;
-                }
-
-                if (canClose is not null && !canClose())
-                {
-                    return;
-                }
-
-                form.Tag = DeactivatedCloseMarker;
-                form.Close();
             }));
         };
     }

@@ -165,6 +165,13 @@ internal sealed partial class BoardForm : ZetlPopupForm
         }
     }
 
+    private void SelectProject(string projectId)
+    {
+        projectBox.SelectedItem = store.State.Projects.FirstOrDefault(project => project.Id == projectId)
+            ?? projectBox.SelectedItem;
+        RefreshSelectedProject();
+    }
+
     private void RefreshSelectedProject()
     {
         var wasRefreshing = refreshing;
@@ -251,12 +258,25 @@ internal sealed partial class BoardForm : ZetlPopupForm
         noteEditor.Text = ActiveNote?.Text ?? "";
     }
 
+    private void FocusNoteEditor()
+    {
+        if (IsDisposed || !Visible || noteEditor.IsDisposed || !noteEditor.CanFocus)
+        {
+            return;
+        }
+
+        ActiveControl = noteEditor;
+        noteEditor.Focus();
+        Program.SetFocus(noteEditor.Handle);
+    }
+
     private void AddProject()
     {
         using var form = new ProjectSetupForm(store.Defaults.ProjectBuckets);
         if (ShowOwnedDialog(form) == DialogResult.OK)
         {
-            store.CreateProject(form.ProjectName, form.BucketNames, form.ActiveBucketName, shiftedLane);
+            var project = store.CreateProject(form.ProjectName, form.BucketNames, form.ActiveBucketName, shiftedLane);
+            SelectProject(project.Id);
         }
     }
 
@@ -315,18 +335,25 @@ internal sealed partial class BoardForm : ZetlPopupForm
         }
 
         using var form = new BucketSettingsForm(bucket, store);
-        if (ShowOwnedDialog(form) != DialogResult.OK)
+        try
         {
-            return;
-        }
+            if (ShowOwnedDialog(form) != DialogResult.OK)
+            {
+                return;
+            }
 
-        store.UpdateBucketSettings(
-            bucket,
-            form.BucketName,
-            form.DefaultKind,
-            form.DefaultCompileMode,
-            form.DefaultStartingText,
-            form.DefaultTsvRowLength);
+            store.UpdateBucketSettings(
+                bucket,
+                form.BucketName,
+                form.DefaultKind,
+                form.DefaultCompileMode,
+                form.DefaultStartingText,
+                form.DefaultTsvRowLength);
+        }
+        finally
+        {
+            BeginInvoke(new Action(FocusNoteEditor));
+        }
     }
 
     private void DeleteBucket()
