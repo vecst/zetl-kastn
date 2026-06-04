@@ -82,10 +82,14 @@ partial class FirstRunForm
         bodyLabel.MaximumSize = new Size(1140, 0);
         bodyLabel.Padding = new Padding(0, 8, 0, 10);
         bodyLabel.Text =
-            "Chordl is the keyboard layer. It gives a shortcut you already know a second job: tap the chord " +
-            "and it behaves exactly as normal; hold it for a moment and a second action fires too. Your usual " +
-            "shortcut still happens, so nothing is lost. Zetl is the workflow built on top, filling those " +
-            "holds (and a few taps) with notes, buckets, and paste tools.";
+            "Chordl adds a hold-chord (hotkey) interaction. There are a few types of these hold keys (Coldkeys).\r\n\r\n" +
+            "Some need instant interaction, like copy or cut: the tap is sent first, then a hold timer starts " +
+            "to see if you want to modify what that command just did.\r\n\r\n" +
+            "Others output data, so they happen on key-up or after a held duration. Paste (Ctrl+V), for " +
+            "example, happens when you let go of V — or if you keep holding, it opens tools for changing how " +
+            "your paste works.\r\n\r\n" +
+            "On launch, Ctrl+C and Ctrl+V behave normally when no project is active. Held Ctrl+X can still " +
+            "create a quick note in Scratch without starting a full project.";
 
         coldkeysHeaderLabel.AutoSize = true;
         coldkeysHeaderLabel.Font = new Font(FontFamily.GenericSansSerif, 10F, FontStyle.Bold);
