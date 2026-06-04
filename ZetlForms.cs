@@ -79,6 +79,10 @@ internal static class ZetlDialogPlacement
         var hasHeldForeground = false;
         System.Windows.Forms.Timer? watch = null;
 
+        // Arm the gate the instant the popup is activated (e.g. the user clicks
+        // into a text box), so even a click in-and-straight-back-out closes it.
+        form.Activated += (_, _) => hasHeldForeground = true;
+
         form.Shown += (_, _) =>
         {
             watch = new System.Windows.Forms.Timer { Interval = 120 };

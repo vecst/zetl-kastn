@@ -4,7 +4,8 @@ internal sealed partial class BoardForm : ZetlPopupForm
 {
     private readonly ZetlStateStore store;
     private readonly bool shiftedLane;
-    private bool autoHideArmed;
+    private bool autoHideHasHeldForeground;
+    private System.Windows.Forms.Timer? autoHideWatch;
     private bool autoHideOnDeactivate;
     private bool refreshing;
     private bool suppressRestoreOnClose;
@@ -85,15 +86,19 @@ internal sealed partial class BoardForm : ZetlPopupForm
         noteEditor.Leave += (_, _) => SaveNote();
         deleteNoteButton.Click += (_, _) => DeleteNote();
         store.Changed += (_, _) => RefreshFromStore();
-        Deactivate += (_, _) =>
+        Activated += (_, _) =>
         {
-            BeginInvoke(new Action(HideTransientBoardIfInactive));
+            if (autoHideOnDeactivate)
+            {
+                autoHideHasHeldForeground = true;
+            }
         };
         FormClosing += (_, args) =>
         {
             if (args.CloseReason == CloseReason.UserClosing)
             {
                 args.Cancel = true;
+                StopAutoHideWatch();
                 Hide();
                 if (!suppressRestoreOnClose && RestoreWindowOnClose != IntPtr.Zero)
                 {
@@ -101,6 +106,7 @@ internal sealed partial class BoardForm : ZetlPopupForm
                 }
             }
         };
+        Disposed += (_, _) => StopAutoHideWatch();
 
         RefreshFromStore();
     }
@@ -119,10 +125,14 @@ internal sealed partial class BoardForm : ZetlPopupForm
         set
         {
             autoHideOnDeactivate = value;
-            autoHideArmed = false;
+            autoHideHasHeldForeground = false;
             if (value)
             {
-                ArmAutoHide();
+                StartAutoHideWatch();
+            }
+            else
+            {
+                StopAutoHideWatch();
             }
         }
     }
@@ -432,23 +442,49 @@ internal sealed partial class BoardForm : ZetlPopupForm
         return MessageBox.Show(this, text, caption, buttons, icon);
     }
 
-    private void HideTransientBoardIfInactive()
+    private void StartAutoHideWatch()
     {
-        if (!AutoHideOnDeactivate || !autoHideArmed || IsDisposed || !Visible)
+        StopAutoHideWatch();
+        autoHideWatch = new System.Windows.Forms.Timer { Interval = 120 };
+        autoHideWatch.Tick += (_, _) => AutoHideTick();
+        autoHideWatch.Start();
+    }
+
+    private void StopAutoHideWatch()
+    {
+        autoHideWatch?.Stop();
+        autoHideWatch?.Dispose();
+        autoHideWatch = null;
+    }
+
+    // Mirror the popup auto-close logic (see ZetlDialogPlacement): poll the
+    // foreground window instead of relying on the Deactivate event, which the
+    // board can miss when it loses the show-time foreground race. Hide only once
+    // another process owns the foreground, and only after the board has held the
+    // foreground at least once so it is never hidden out from under the user. A
+    // child dialog/menu of ours keeps the board open.
+    private void AutoHideTick()
+    {
+        if (!autoHideOnDeactivate || IsDisposed || !Visible)
         {
+            StopAutoHideWatch();
             return;
         }
 
-        // If focus settled on another window of our own process (a child dialog
-        // or message box opened from the board), keep the board open. Only hide
-        // when the user moved to another app.
         var foreground = Program.GetForegroundWindow();
         Program.GetWindowThreadProcessId(foreground, out var foregroundProcessId);
         if (foregroundProcessId == (uint)Environment.ProcessId)
         {
+            autoHideHasHeldForeground = true;
             return;
         }
 
+        if (!autoHideHasHeldForeground)
+        {
+            return;
+        }
+
+        StopAutoHideWatch();
         suppressRestoreOnClose = true;
         try
         {
@@ -458,20 +494,5 @@ internal sealed partial class BoardForm : ZetlPopupForm
         {
             suppressRestoreOnClose = false;
         }
-    }
-
-    private void ArmAutoHide()
-    {
-        var armTimer = new System.Windows.Forms.Timer { Interval = 150 };
-        armTimer.Tick += (_, _) =>
-        {
-            armTimer.Stop();
-            armTimer.Dispose();
-            if (!IsDisposed && Visible && autoHideOnDeactivate)
-            {
-                autoHideArmed = true;
-            }
-        };
-        armTimer.Start();
     }
 }
