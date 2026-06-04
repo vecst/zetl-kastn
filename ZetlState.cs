@@ -226,7 +226,11 @@ internal sealed class ZetlStateStore
         Save();
     }
 
-    public ZetlBucket AddBucket(ZetlProject project, string name, string? parentBucketId = null)
+    // setActive controls whether the new/found bucket becomes the project's
+    // active bucket. Compiling into a bucket passes false so it never reshuffles
+    // the destination project's active bucket (which may not even be the project
+    // you are working in).
+    public ZetlBucket AddBucket(ZetlProject project, string name, string? parentBucketId = null, bool setActive = true)
     {
         var bucket = CreateBucket(NormalizeName(name, "New Bucket"));
         ApplyBucketDefaults(bucket);
@@ -234,24 +238,32 @@ internal sealed class ZetlStateStore
             ? parentBucketId
             : null;
         project.Buckets.Add(bucket);
-        project.ActiveBucketId = bucket.Id;
+        if (setActive)
+        {
+            project.ActiveBucketId = bucket.Id;
+        }
+
         Save();
         return bucket;
     }
 
-    public ZetlBucket GetOrCreateBucket(ZetlProject project, string name)
+    public ZetlBucket GetOrCreateBucket(ZetlProject project, string name, bool setActive = true)
     {
         var normalizedName = NormalizeName(name, "New Bucket");
         var bucket = project.Buckets.FirstOrDefault(item =>
             string.Equals(item.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
         if (bucket is not null)
         {
-            project.ActiveBucketId = bucket.Id;
+            if (setActive)
+            {
+                project.ActiveBucketId = bucket.Id;
+            }
+
             Save();
             return bucket;
         }
 
-        return AddBucket(project, normalizedName);
+        return AddBucket(project, normalizedName, setActive: setActive);
     }
 
     public void UpdateBucketName(ZetlBucket bucket, string name)

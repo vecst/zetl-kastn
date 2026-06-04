@@ -6,6 +6,9 @@ partial class CompileForm
 {
     private System.ComponentModel.IContainer components;
     private SplitContainer split;
+    private FlowLayoutPanel sourcePanel;
+    private Label sourceProjectLabel;
+    private ComboBox sourceProjectBox;
     private FlowLayoutPanel selectionPanel;
     private Button selectAllButton;
     private Button selectNoneButton;
@@ -19,6 +22,7 @@ partial class CompileForm
     private NumericUpDown tsvRowLengthBox;
     private FlowLayoutPanel destinationPanel;
     private Label destinationLabel;
+    private ComboBox destinationProjectBox;
     private ComboBox destinationBucketBox;
     private FlowLayoutPanel buttonsPanel;
     private Button pasteButton;
@@ -45,6 +49,9 @@ partial class CompileForm
     {
         components = new System.ComponentModel.Container();
         split = new SplitContainer();
+        sourcePanel = new FlowLayoutPanel();
+        sourceProjectLabel = new Label();
+        sourceProjectBox = new ComboBox();
         selectionPanel = new FlowLayoutPanel();
         selectAllButton = new Button();
         selectNoneButton = new Button();
@@ -58,6 +65,7 @@ partial class CompileForm
         tsvRowLengthBox = new NumericUpDown();
         destinationPanel = new FlowLayoutPanel();
         destinationLabel = new Label();
+        destinationProjectBox = new ComboBox();
         destinationBucketBox = new ComboBox();
         buttonsPanel = new FlowLayoutPanel();
         pasteButton = new Button();
@@ -71,6 +79,7 @@ partial class CompileForm
         split.Panel1.SuspendLayout();
         split.Panel2.SuspendLayout();
         split.SuspendLayout();
+        sourcePanel.SuspendLayout();
         selectionPanel.SuspendLayout();
         compileOptionsPanel.SuspendLayout();
         ((System.ComponentModel.ISupportInitialize)tsvRowLengthBox).BeginInit();
@@ -91,9 +100,23 @@ partial class CompileForm
         split.Panel1.Controls.Add(selectionPanel);
         split.Panel2.Controls.Add(previewBox);
 
+        sourcePanel.Controls.Add(sourceProjectLabel);
+        sourcePanel.Controls.Add(sourceProjectBox);
+        sourcePanel.Controls.Add(sessionOnlyCheck);
+        sourcePanel.Dock = DockStyle.Top;
+        sourcePanel.Height = 38;
+        sourcePanel.Padding = new Padding(8, 7, 8, 4);
+
+        sourceProjectLabel.AutoSize = true;
+        sourceProjectLabel.Padding = new Padding(0, 4, 4, 0);
+        sourceProjectLabel.Text = "Compile from";
+
+        sourceProjectBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        sourceProjectBox.DisplayMember = "Name";
+        sourceProjectBox.Width = 240;
+
         selectionPanel.Controls.Add(selectAllButton);
         selectionPanel.Controls.Add(selectNoneButton);
-        selectionPanel.Controls.Add(sessionOnlyCheck);
         selectionPanel.Dock = DockStyle.Top;
         selectionPanel.Height = 36;
         selectionPanel.Padding = new Padding(4, 5, 4, 4);
@@ -105,7 +128,7 @@ partial class CompileForm
         selectNoneButton.Width = 90;
 
         sessionOnlyCheck.AutoSize = true;
-        sessionOnlyCheck.Margin = new Padding(12, 6, 0, 0);
+        sessionOnlyCheck.Margin = new Padding(16, 6, 0, 0);
         sessionOnlyCheck.Text = "This session only";
 
         noteTree.CheckBoxes = true;
@@ -146,6 +169,7 @@ partial class CompileForm
         tsvRowLengthBox.Width = 70;
 
         destinationPanel.Controls.Add(destinationLabel);
+        destinationPanel.Controls.Add(destinationProjectBox);
         destinationPanel.Controls.Add(destinationBucketBox);
         destinationPanel.Dock = DockStyle.Bottom;
         destinationPanel.Height = 42;
@@ -154,6 +178,11 @@ partial class CompileForm
         destinationLabel.AutoSize = true;
         destinationLabel.Padding = new Padding(0, 4, 4, 0);
         destinationLabel.Text = "Compile to";
+
+        destinationProjectBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        destinationProjectBox.DisplayMember = "Name";
+        destinationProjectBox.Width = 200;
+        destinationProjectBox.Margin = new Padding(0, 0, 8, 0);
 
         destinationBucketBox.DropDownStyle = ComboBoxStyle.DropDown;
         destinationBucketBox.Width = 220;
@@ -194,12 +223,16 @@ partial class CompileForm
         Controls.Add(compileOptionsPanel);
         Controls.Add(destinationPanel);
         Controls.Add(buttonsPanel);
+        // Added last so the Top-docked source bar claims the top edge above split.
+        Controls.Add(sourcePanel);
 
         split.Panel1.ResumeLayout(false);
         split.Panel2.ResumeLayout(false);
         split.Panel2.PerformLayout();
         ((System.ComponentModel.ISupportInitialize)split).EndInit();
         split.ResumeLayout(false);
+        sourcePanel.ResumeLayout(false);
+        sourcePanel.PerformLayout();
         selectionPanel.ResumeLayout(false);
         selectionPanel.PerformLayout();
         compileOptionsPanel.ResumeLayout(false);

@@ -264,10 +264,13 @@ Held `Ctrl+C` is the project/capture path:
 
 Held `Ctrl+V` opens the compile dialog when the active project has any notes to compile.
 
+A `Compile from` selector at the top picks which project to compile. It defaults to the active project, but you can switch to any other project and compile it without changing which project is active in the app. Switching the source project compiles that whole project.
+
 The notes are grouped by bucket in a checklist tree. Check a bucket to select or clear all of its notes, or check individual notes. `Select All` and `Select None` toggle the whole tree at once.
 
 The compile dialog lets you:
 
+- choose which project to compile from, without making it the active project
 - select individual notes, or whole buckets, or everything
 - choose a compile format: `Formatted`, `Plain`, or `TSV`
 - set the TSV row length when TSV is selected
@@ -276,7 +279,9 @@ The compile dialog lets you:
 - paste the compiled text immediately
 - paste only the last copied item
 - paste selected notes unformatted
-- save the compiled text into an existing or new bucket
+- save the compiled text into a bucket in any project, existing or new
+
+The `Compile to` row has its own project and bucket selectors, so you can save the compiled note into a different project than the one you compiled from. Type a new name in the bucket box to create it. Saving there does not change the destination project's active bucket, nor the app's active project.
 
 When the dialog opens, its default compile format and TSV row length come from the active bucket or single scoped bucket. Notes from the active bucket start checked.
 

@@ -485,13 +485,16 @@ internal sealed class ZetlApplicationContext : ApplicationContext
 
                 if (form.SaveToBucket)
                 {
-                    var destination = store.GetOrCreateBucket(compileProject, form.DestinationBucketName);
+                    var destinationProject = form.DestinationProject;
+                    var destination = store.GetOrCreateBucket(destinationProject, form.DestinationBucketName, setActive: false);
                     var note = store.AddNote(destination, form.CompiledText, "compile");
                     PushUndo(
                         shifted,
                         $"Undid compile to {destination.Name}.",
                         () => store.DeleteNote(destination, note.Id));
-                    ShowInfo($"Compiled to {destination.Name}.");
+                    ShowInfo(destinationProject.Id == form.SourceProject.Id
+                        ? $"Compiled to {destination.Name}."
+                        : $"Compiled to {destinationProject.Name} / {destination.Name}.");
                     RestoreForegroundWindow(targetWindow);
                     return;
                 }

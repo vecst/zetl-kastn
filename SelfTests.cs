@@ -38,6 +38,7 @@ internal static partial class Program
                 ("Zetl state switches active bucket", StateSwitchesActiveBucket),
                 ("Zetl state remembers quick note bucket", StateRemembersQuickNoteBucket),
                 ("Zetl state gets or creates compile buckets", StateGetsOrCreatesCompileBuckets),
+                ("Zetl compiles across projects without changing the active project", StateCompilesToOtherProjectWithoutChangingActive),
                 ("Zetl state preserves bucket settings", StatePreservesBucketSettings),
                 ("Zetl state protects the Scratch bucket", StateProtectsScratchBucket),
                 ("Zetl state compiles selected notes", StateCompilesSelectedNotes),
@@ -575,6 +576,27 @@ internal static partial class Program
             store.AddNote(created, store.CompilePlainText(project, [existing]), "compile");
             AssertEqual("Compiled", created.Name, "Missing bucket should be created.");
             AssertEqual("compile", created.Notes.Single().Source, "Compiled note should store its source.");
+        }
+
+        private static void StateCompilesToOtherProjectWithoutChangingActive()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var source = store.CreateProject("Source", ["Inbox"], "Inbox");
+            var dest = store.CreateProject("Dest", ["Notes"], "Notes");
+            // CreateProject activates Dest; activate Source to mirror the app state
+            // when you open compile against Source but pick Dest as the target.
+            store.SetActiveProject(source.Id);
+            var destActiveBucketBefore = dest.ActiveBucketId;
+
+            // Compile-to path: create/find a bucket in another project, add the note.
+            var destination = store.GetOrCreateBucket(dest, "Compiled", setActive: false);
+            store.AddNote(destination, "compiled text", "compile");
+
+            AssertEqual(source.Id, store.State.ActiveProjectId, "Compiling should not change which project is active.");
+            AssertEqual(destActiveBucketBefore, dest.ActiveBucketId, "Compiling into another project should not change its active bucket.");
+            AssertTrue(dest.Buckets.Any(bucket => bucket.Name == "Compiled"), "Compile destination bucket should be created in the destination project.");
+            AssertEqual("compiled text", destination.Notes.Single().Text, "Compiled note should land in the destination bucket.");
         }
 
         private static void StateCompilesSelectedNotes()

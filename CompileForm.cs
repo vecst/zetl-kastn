@@ -3,22 +3,27 @@ namespace ZETL;
 internal sealed partial class CompileForm : ZetlPopupForm
 {
     private readonly ZetlStateStore store;
-    private readonly ZetlProject project;
-    private readonly IReadOnlyList<ZetlBucket>? bucketScope;
+    private ZetlProject sourceProject;
+    private IReadOnlyList<ZetlBucket>? sourceScope;
     private bool suppressTreeEvents;
 
     public CompileForm(ZetlStateStore store, ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope = null)
     {
         this.store = store;
-        this.project = project;
-        this.bucketScope = bucketScope;
+        sourceProject = project;
+        sourceScope = bucketScope;
 
         InitializeComponent();
 
+        PopulateProjectSelectors();
         RebuildNoteTree();
-
         RefreshDestinationBuckets();
         ApplyBucketCompileDefaults();
+
+        // Wire selectors after populating so setting the initial selection does
+        // not fire the change handlers.
+        sourceProjectBox.SelectedIndexChanged += (_, _) => OnSourceProjectChanged();
+        destinationProjectBox.SelectedIndexChanged += (_, _) => RefreshDestinationBuckets(resetSelection: true);
         noteTree.AfterCheck += OnNoteTreeAfterCheck;
         selectAllButton.Click += (_, _) => SetAllChecked(true);
         selectNoneButton.Click += (_, _) => SetAllChecked(false);
@@ -49,6 +54,13 @@ internal sealed partial class CompileForm : ZetlPopupForm
 
     public bool SaveToBucket { get; private set; }
 
+    // The project whose notes are being compiled. The dialog never changes which
+    // project is active in the app; it only reads from the one you select here.
+    public ZetlProject SourceProject => sourceProject;
+
+    // Where a "Save to Bucket" compile should land. May differ from the source.
+    public ZetlProject DestinationProject => destinationProjectBox.SelectedItem as ZetlProject ?? sourceProject;
+
     public string DestinationBucketName => destinationBucketBox.Text.Trim();
 
     private IReadOnlyList<NoteDisplayItem> SelectedNotes => noteTree.Nodes.Cast<TreeNode>()
@@ -63,10 +75,37 @@ internal sealed partial class CompileForm : ZetlPopupForm
 
     private int TsvRowLength => Math.Max(1, (int)tsvRowLengthBox.Value);
 
-    private ZetlBucket? DefaultCompileBucket => bucketScope is { Count: 1 }
-        ? bucketScope[0]
-        : project.Buckets.FirstOrDefault(bucket => bucket.Id == project.ActiveBucketId)
-            ?? project.Buckets.FirstOrDefault();
+    private ZetlBucket? DefaultCompileBucket => sourceScope is { Count: 1 }
+        ? sourceScope[0]
+        : sourceProject.Buckets.FirstOrDefault(bucket => bucket.Id == sourceProject.ActiveBucketId)
+            ?? sourceProject.Buckets.FirstOrDefault();
+
+    private void PopulateProjectSelectors()
+    {
+        var projects = store.State.Projects
+            .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .Cast<object>()
+            .ToArray();
+        sourceProjectBox.Items.AddRange(projects);
+        destinationProjectBox.Items.AddRange(projects);
+        sourceProjectBox.SelectedItem = sourceProject;
+        destinationProjectBox.SelectedItem = sourceProject;
+    }
+
+    private void OnSourceProjectChanged()
+    {
+        if (sourceProjectBox.SelectedItem is not ZetlProject selected || selected.Id == sourceProject.Id)
+        {
+            return;
+        }
+
+        sourceProject = selected;
+        // Choosing a project explicitly compiles the whole project, dropping any
+        // scratch-fallback scope the dialog opened with.
+        sourceScope = null;
+        RebuildNoteTree();
+        ApplyBucketCompileDefaults();
+    }
 
     // Rebuilds the bucket-grouped checklist tree for the current session-scope
     // toggle. Notes in the active bucket (or the whole scope when compiling a
@@ -77,12 +116,12 @@ internal sealed partial class CompileForm : ZetlPopupForm
         noteTree.BeginUpdate();
         noteTree.Nodes.Clear();
 
-        var scoped = bucketScope is not null;
-        foreach (var group in store.GetNoteDisplayItems(project, bucketScope, sessionOnlyCheck.Checked)
+        var scoped = sourceScope is not null;
+        foreach (var group in store.GetNoteDisplayItems(sourceProject, sourceScope, sessionOnlyCheck.Checked)
             .GroupBy(item => item.Bucket))
         {
             var bucketNode = new TreeNode(group.Key.Name.Trim()) { Tag = group.Key };
-            var defaultChecked = scoped || group.Key.Id == project.ActiveBucketId;
+            var defaultChecked = scoped || group.Key.Id == sourceProject.ActiveBucketId;
             foreach (var item in group)
             {
                 bucketNode.Nodes.Add(new TreeNode(NotePreview(item.Note.Text)) { Tag = item, Checked = defaultChecked });
@@ -161,8 +200,8 @@ internal sealed partial class CompileForm : ZetlPopupForm
         return SelectedCompileMode switch
         {
             "Plain" => store.CompileUnformattedFromNotes(selected),
-            "TSV" => store.CompileTsvFromNotes(project, selected, TsvRowLength),
-            _ => store.CompilePlainTextFromNotes(project, selected)
+            "TSV" => store.CompileTsvFromNotes(sourceProject, selected, TsvRowLength),
+            _ => store.CompilePlainTextFromNotes(sourceProject, selected)
         };
     }
 
@@ -185,19 +224,20 @@ internal sealed partial class CompileForm : ZetlPopupForm
         }
     }
 
-    private void RefreshDestinationBuckets()
+    private void RefreshDestinationBuckets(bool resetSelection = false)
     {
+        var destProject = DestinationProject;
         var previous = DestinationBucketName;
         destinationBucketBox.Items.Clear();
-        destinationBucketBox.Items.AddRange(store.GetBucketDisplayItems(project)
+        destinationBucketBox.Items.AddRange(store.GetBucketDisplayItems(destProject)
             .Select(item => item.Label.Trim())
             .Cast<object>()
             .ToArray());
-        destinationBucketBox.Text = string.IsNullOrWhiteSpace(previous)
-            ? project.Buckets.FirstOrDefault(bucket => bucket.Id == project.ActiveBucketId)?.Name
-                ?? project.Buckets.FirstOrDefault()?.Name
-                ?? "Inbox"
-            : previous;
+        destinationBucketBox.Text = !resetSelection && !string.IsNullOrWhiteSpace(previous)
+            ? previous
+            : destProject.Buckets.FirstOrDefault(bucket => bucket.Id == destProject.ActiveBucketId)?.Name
+                ?? destProject.Buckets.FirstOrDefault()?.Name
+                ?? "Inbox";
     }
 
     private void Complete(bool pasteNow, bool saveToBucket, bool unformatted = false)
@@ -227,7 +267,7 @@ internal sealed partial class CompileForm : ZetlPopupForm
 
     private void CompleteLastItem()
     {
-        if (!store.TryGetLastNoteDisplayItem(project, bucketScope, out var note, sessionOnlyCheck.Checked) || note is null)
+        if (!store.TryGetLastNoteDisplayItem(sourceProject, sourceScope, out var note, sessionOnlyCheck.Checked) || note is null)
         {
             MessageBox.Show(this, "No current-session note to paste.", "Zetl", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
