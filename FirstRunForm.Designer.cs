@@ -8,7 +8,6 @@ partial class FirstRunForm
     private TableLayoutPanel layout;
     private Label titleLabel;
     private Label bodyLabel;
-    private Label startupLabel;
     private Label coldkeysHeaderLabel;
     private TableLayoutPanel keysTable;
     private Label compileLabel;
@@ -37,7 +36,6 @@ partial class FirstRunForm
         layout = new TableLayoutPanel();
         titleLabel = new Label();
         bodyLabel = new Label();
-        startupLabel = new Label();
         coldkeysHeaderLabel = new Label();
         keysTable = new TableLayoutPanel();
         compileLabel = new Label();
@@ -61,17 +59,16 @@ partial class FirstRunForm
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         layout.Controls.Add(titleLabel, 0, 0);
         layout.Controls.Add(bodyLabel, 0, 1);
-        layout.Controls.Add(startupLabel, 0, 2);
-        layout.Controls.Add(coldkeysHeaderLabel, 0, 3);
-        layout.Controls.Add(keysTable, 0, 4);
-        layout.Controls.Add(compileLabel, 0, 5);
-        layout.Controls.Add(replayLabel, 0, 6);
-        layout.Controls.Add(laneLabel, 0, 7);
-        layout.Controls.Add(buttonsPanel, 0, 8);
+        layout.Controls.Add(coldkeysHeaderLabel, 0, 2);
+        layout.Controls.Add(keysTable, 0, 3);
+        layout.Controls.Add(compileLabel, 0, 4);
+        layout.Controls.Add(replayLabel, 0, 5);
+        layout.Controls.Add(laneLabel, 0, 6);
+        layout.Controls.Add(buttonsPanel, 0, 7);
         layout.Dock = DockStyle.Fill;
         layout.Padding = new Padding(16);
-        layout.RowCount = 9;
-        for (var i = 0; i < 9; i++)
+        layout.RowCount = 8;
+        for (var i = 0; i < 8; i++)
         {
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
@@ -85,21 +82,15 @@ partial class FirstRunForm
         bodyLabel.MaximumSize = new Size(1140, 0);
         bodyLabel.Padding = new Padding(0, 8, 0, 10);
         bodyLabel.Text =
-            "Chordl gives a shortcut you already know a second job. Tap a chord like Ctrl+C and it behaves " +
-            "normally. Hold it for a moment and Zetl steps in with a related action. Copy and cut run their " +
-            "normal action first and then watch for a hold, so nothing is lost. Paste runs when you release V.";
-
-        startupLabel.AutoSize = true;
-        startupLabel.MaximumSize = new Size(1140, 0);
-        startupLabel.Padding = new Padding(0, 0, 0, 12);
-        startupLabel.Text =
-            "On launch, Ctrl+C and Ctrl+V behave normally when no project is active. " +
-            "Held Ctrl+X can still create a quick note in Scratch without starting a full project.";
+            "Chordl is the keyboard layer. It gives a shortcut you already know a second job: tap the chord " +
+            "and it behaves exactly as normal; hold it for a moment and a second action fires too. Your usual " +
+            "shortcut still happens, so nothing is lost. Zetl is the workflow built on top, filling those " +
+            "holds (and a few taps) with notes, buckets, and paste tools.";
 
         coldkeysHeaderLabel.AutoSize = true;
         coldkeysHeaderLabel.Font = new Font(FontFamily.GenericSansSerif, 10F, FontStyle.Bold);
         coldkeysHeaderLabel.MaximumSize = new Size(1140, 0);
-        coldkeysHeaderLabel.Text = "Coldkeys are the chords Zetl listens for. Tap for the normal shortcut, hold for the Zetl action. Anytime means the hold works even with no active project.";
+        coldkeysHeaderLabel.Text = "What each coldkey does. Anytime means the hold works even with no active project:";
 
         // Cells are built in code (BuildKeysTable).
         keysTable.AutoSize = true;
