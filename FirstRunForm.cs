@@ -37,6 +37,7 @@ internal sealed partial class FirstRunForm : ZetlPopupForm
             ("Ctrl+C", "Add the highlighted text to the active bucket and clipboard.", "Edit the text before adding it, or open the Board when nothing is copied.", ""),
             ("Ctrl+X", "Normal cut.", "Quick note, defaults to Scratch.", "Yes"),
             ("Ctrl+V", "Pop the last item (Pop Mode), or paste the next item (Replay Mode).", "Compile this session's notes.", ""),
+            ("Ctrl+P", "Normal Ctrl+P.", "Turn Pop Mode on or off for the active bucket.", ""),
             ("Ctrl+R", "Normal Ctrl+R.", "Turn Replay Mode on or off for the active bucket.", ""),
             ("Ctrl+B", "Normal Ctrl+B.", "Open the Board.", "Yes"),
             ("Ctrl+Z", "Normal undo.", "Zetl undo for this lane.", "Yes"),

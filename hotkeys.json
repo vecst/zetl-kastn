@@ -15,6 +15,12 @@
       "dispatch": "None"
     },
     {
+      "name": "Ctrl+P",
+      "key": "P",
+      "modifiers": ["Ctrl"],
+      "dispatch": "TapOnly"
+    },
+    {
       "name": "Ctrl+R",
       "key": "R",
       "modifiers": ["Ctrl"],
@@ -50,6 +56,13 @@
       "key": "C",
       "modifiers": ["Ctrl", "Shift"],
       "dispatch": "Immediate"
+    },
+    {
+      "name": "Ctrl+Shift+P",
+      "key": "P",
+      "modifiers": ["Ctrl", "Shift"],
+      "dispatch": "TapOnly",
+      "replayModifiers": ["Ctrl", "Shift"]
     },
     {
       "name": "Ctrl+Shift+R",

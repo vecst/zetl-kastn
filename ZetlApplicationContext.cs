@@ -302,6 +302,9 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             case VK_C:
                 await HandleCopyHoldAsync(context.ShiftLane, targetWindow, pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber, pending?.ObservedClipboardText);
                 break;
+            case VK_P:
+                HandlePopToggleHold(context.ShiftLane);
+                break;
             case VK_R:
                 HandleFifoToggleHold(context.ShiftLane);
                 break;
@@ -340,6 +343,25 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         }
 
         ShowInfo($"{bucket.Name} replay is on.");
+    }
+
+    private void HandlePopToggleHold(bool shifted)
+    {
+        var bucket = store.GetActiveBucket(shifted);
+        if (bucket is null)
+        {
+            ShowInfo("No active bucket yet.");
+            return;
+        }
+
+        if (ZetlStateStore.IsFifoBucket(bucket))
+        {
+            ShowInfo("Replay buckets cannot use pop mode.");
+            return;
+        }
+
+        store.ToggleActiveBucketPopMode(shifted);
+        ShowInfo($"{bucket.Name} pop is {(bucket.PopMode ? "on" : "off")}.");
     }
 
     private async Task HandleCopyHoldAsync(bool shifted, IntPtr targetWindow, uint beforeSequence, string? observedText)

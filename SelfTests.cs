@@ -20,6 +20,8 @@ internal static partial class Program
                 ("Ctrl+V hold suppresses repeats after Ctrl key-up", PasteHoldSuppressesRepeatsAfterCtrlKeyUp),
                 ("Ctrl+B tap dispatches board shortcut on key-up", BoardTapDispatchesOnKeyUp),
                 ("Ctrl+B hold opens board without dispatch", BoardHoldDoesNotDispatch),
+                ("Ctrl+P tap dispatches pop key on key-up", PopToggleTapDispatchesOnKeyUp),
+                ("Ctrl+P hold raises Pop toggle", PopToggleHoldDoesNotDispatch),
                 ("Ctrl+R tap dispatches replay key on key-up", FifoToggleTapDispatchesOnKeyUp),
                 ("Ctrl+R hold raises Replay toggle", FifoToggleHoldDoesNotDispatch),
                 ("Ctrl+Z hold raises Zetl undo", UndoHoldDoesNotDispatch),
@@ -182,6 +184,31 @@ internal static partial class Program
             AssertEqual("Ctrl+B", holds[0].Name, "Hold should use board chord.");
             AssertTrue(processor.HandleKeyEvent(VK_B, isKeyDown: false, isKeyUp: true), "Held board key up should suppress.");
             AssertEqual(0, dispatched.Count, "Held board chord should not dispatch Ctrl+B.");
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
+        }
+
+        private static void PopToggleTapDispatchesOnKeyUp()
+        {
+            using var processor = CreateProcessor(out var dispatched, out _, out var taps, out _);
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
+            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: true, isKeyUp: false), "Pop toggle key down should suppress.");
+            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: false, isKeyUp: true), "Pop toggle key up should suppress physical event.");
+            AssertEqual(1, dispatched.Count, "Tap should dispatch one synthetic shortcut.");
+            AssertEqual(VK_P, dispatched[0], "Dispatched key should be P.");
+            AssertEqual(1, taps.Count, "Tap callback should fire once.");
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
+        }
+
+        private static void PopToggleHoldDoesNotDispatch()
+        {
+            using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
+            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: true, isKeyUp: false), "Pop toggle key down should suppress.");
+            Thread.Sleep(80);
+            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            AssertEqual("Ctrl+P", holds[0].Name, "Hold should use Pop toggle chord.");
+            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: false, isKeyUp: true), "Held Pop toggle key up should suppress.");
+            AssertEqual(0, dispatched.Count, "Held Pop toggle should not dispatch the pop key.");
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
@@ -862,6 +889,7 @@ internal static partial class Program
                 [new ChordlChord(VK_B, Ctrl: true, Shift: false)] = new("Ctrl+B", ChordlDispatchMode.TapOnly, ReplayShift: false),
                 [new ChordlChord(VK_C, Ctrl: true, Shift: false)] = new("Ctrl+C", ChordlDispatchMode.None, ReplayShift: false),
                 [new ChordlChord(VK_C, Ctrl: true, Shift: true)] = new("Ctrl+Shift+C", ChordlDispatchMode.None, ReplayShift: false),
+                [new ChordlChord(VK_P, Ctrl: true, Shift: false)] = new("Ctrl+P", ChordlDispatchMode.TapOnly, ReplayShift: false),
                 [new ChordlChord(VK_R, Ctrl: true, Shift: false)] = new("Ctrl+R", ChordlDispatchMode.TapOnly, ReplayShift: false),
                 [new ChordlChord(VK_V, Ctrl: true, Shift: false)] = new("Ctrl+V", ChordlDispatchMode.TapOnly, ReplayShift: false),
                 [new ChordlChord(VK_Z, Ctrl: true, Shift: false)] = new("Ctrl+Z", ChordlDispatchMode.TapOnly, ReplayShift: false)

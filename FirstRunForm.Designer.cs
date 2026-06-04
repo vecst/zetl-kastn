@@ -124,7 +124,8 @@ partial class FirstRunForm
             "then drops that item from the active bucket — Zetl assumes a plain paste was a quick one-off you " +
             "do not need to keep. Say you are collecting research and an email comes in: you copy something, " +
             "paste it into the reply, and it pops back out of the bucket, leaving your collection clean so you " +
-            "can pick up where you left off.";
+            "can pick up where you left off. Hold Ctrl+P to toggle it for the active bucket (think \"print\": " +
+            "the matching item prints right back out).";
 
         replayLabel.AutoSize = true;
         replayLabel.MaximumSize = new Size(1140, 0);
