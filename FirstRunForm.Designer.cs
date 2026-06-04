@@ -49,7 +49,7 @@ partial class FirstRunForm
 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(660, 800);
+        ClientSize = new Size(660, 900);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         Text = "How Zetl Works";
 
@@ -115,6 +115,9 @@ partial class FirstRunForm
             "Anytime, hold:\r\n" +
             "  Ctrl+B  - open the Board\r\n" +
             "  Ctrl+Z  - undo the last Zetl action\r\n\r\n" +
+            "Compile:\r\n" +
+            "  Hold Ctrl+V to gather this session's notes into one block. Pick the notes and a format " +
+            "(formatted, plain, or TSV), then copy, paste, or save the result into a bucket.\r\n\r\n" +
             "Replay Mode:\r\n" +
             "  Replay Mode pastes a list back in the order you built it. Copy items into a bucket one by one, " +
             "switch to where they belong, and each tap of Ctrl+V drops in the next one. When the last item is " +
@@ -132,7 +135,8 @@ partial class FirstRunForm
             "forth. Each lane remembers its own active project, bucket, and Replay state.\r\n\r\n" +
             "Paste is the one shared piece, because there is only one system clipboard: outside Replay Mode, " +
             "Ctrl+Shift+V just pastes normally. Ctrl+Enter saves or closes any Zetl dialog, and the tray icon " +
-            "has the Board, notifications, and this guide.";
+            "has the Board, notifications, and this guide. On the Board, double-click any bucket to open its " +
+            "settings: its kind, compile format, TSV headers, and starting text.";
 
         buttonsPanel.AutoSize = true;
         buttonsPanel.Controls.Add(gotItButton);
