@@ -597,7 +597,11 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             {
                 try
                 {
-                    if (form.DialogResult != DialogResult.OK || string.IsNullOrWhiteSpace(form.NoteText))
+                    // Clicking off the popup commits the note just like the Save
+                    // button does, using whatever toggle state the dialog is in.
+                    var committed = form.DialogResult == DialogResult.OK
+                        || ZetlDialogPlacement.WasClosedByDeactivate(form);
+                    if (!committed || string.IsNullOrWhiteSpace(form.NoteText))
                     {
                         if (showStartProjectToggle && !createNewProjectToggle)
                         {

@@ -175,6 +175,8 @@ Zetl windows also use `Ctrl+Enter` as a close/complete shortcut. If a dialog has
 
 Zetl popup windows use explicit in-app `Cancel` or `Close` buttons instead of OS minimize, maximize, or close buttons. They open centered horizontally, with the top of the window placed about one-sixth of the way down the working screen.
 
+Clicking off a popup into another app commits and closes it: the note capture dialog saves the note with whatever toggle state it is in, just like pressing its default button. Use the `Cancel` button to dismiss without saving. The compile dialog has no default action, so clicking off simply closes it. Popups detect the click-off by watching the foreground window, so this works even when the popup did not win the foreground when it first opened.
+
 ## Zetl Undo
 
 Tap `Ctrl+Z` and `Ctrl+Shift+Z` still go to the foreground app as normal undo/redo.

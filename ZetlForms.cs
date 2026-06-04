@@ -66,50 +66,55 @@ internal static class ZetlDialogPlacement
 
     public static void EnableCloseOnDeactivate(Form form, Func<bool>? canClose = null)
     {
-        var armed = false;
+        // Watch the foreground window rather than relying on the Deactivate
+        // event. Bringing a popup to the foreground over another app is racy on
+        // Windows; when the popup loses that race it never activates, so
+        // Deactivate never fires and a click-off goes undetected. Polling closes
+        // the popup as soon as another process owns the foreground -- but only
+        // once the popup has actually held the foreground at least once, so a
+        // popup that lost the show-time race is never closed out from under the
+        // user (and the guard arms the moment they click into it). Our own
+        // message pump keeps ticking while another app is foreground, so the
+        // click-off is still detected.
+        var hasHeldForeground = false;
+        System.Windows.Forms.Timer? watch = null;
+
         form.Shown += (_, _) =>
         {
-            var armTimer = new System.Windows.Forms.Timer { Interval = 150 };
-            armTimer.Tick += (_, _) =>
+            watch = new System.Windows.Forms.Timer { Interval = 120 };
+            watch.Tick += (_, _) =>
             {
-                armTimer.Stop();
-                armTimer.Dispose();
-                armed = true;
-            };
-            armTimer.Start();
-        };
-
-        form.Deactivate += (_, _) =>
-        {
-            if (!armed || form.IsDisposed || !form.Visible)
-            {
-                return;
-            }
-
-            // Decide while the Deactivate event still reflects the handoff.
-            // Keep the popup open for child dialogs/message boxes in our
-            // process, but do not let the popup's own handle mask a click-off.
-            var foreground = Program.GetForegroundWindow();
-            Program.GetWindowThreadProcessId(foreground, out var foregroundProcessId);
-            if (foregroundProcessId == (uint)Environment.ProcessId && foreground != form.Handle)
-            {
-                return;
-            }
-
-            if (canClose is not null && !canClose())
-            {
-                return;
-            }
-
-            form.Tag = DeactivatedCloseMarker;
-            form.BeginInvoke(new Action(() =>
-            {
-                if (!form.IsDisposed && form.Visible)
+                if (form.IsDisposed || !form.Visible)
                 {
-                    form.Close();
+                    watch.Stop();
+                    watch.Dispose();
+                    return;
                 }
-            }));
+
+                var foreground = Program.GetForegroundWindow();
+                Program.GetWindowThreadProcessId(foreground, out var foregroundProcessId);
+                if (foregroundProcessId == (uint)Environment.ProcessId)
+                {
+                    // The popup itself, a child dialog, or our tray menu owns the
+                    // foreground; keep it open.
+                    hasHeldForeground = true;
+                    return;
+                }
+
+                if (!hasHeldForeground || (canClose is not null && !canClose()))
+                {
+                    return;
+                }
+
+                watch.Stop();
+                watch.Dispose();
+                form.Tag = DeactivatedCloseMarker;
+                form.Close();
+            };
+            watch.Start();
         };
+
+        form.FormClosed += (_, _) => watch?.Dispose();
     }
 
     public static void PlaceNearTopSixth(Form form)
