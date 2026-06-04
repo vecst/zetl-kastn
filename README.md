@@ -45,6 +45,7 @@ The app runs in the Windows tray. Use the tray menu for:
 - `Notification History`
 - `Clear Notification History`
 - `Toggle Active Bucket Pop Mode`
+- `Settings`
 - `Quit`
 
 If hotkeys do not work in an elevated app, run Zetl elevated too. Windows low-level keyboard hooks cannot intercept secure desktop input.
@@ -393,6 +394,17 @@ Replay modifiers:
 - `replayModifiers: ["Ctrl", "Shift"]` replays a shifted action, used by `Ctrl+Shift+Z`
 
 Zetl ignores injected `SendInput` events, so its own replayed copy/cut/paste actions do not recursively trigger the hook.
+
+## Settings
+
+The tray menu's `Settings` item edits app-wide preferences, stored in `%AppData%\Zetl\settings.json`:
+
+- **Toast display time** — how long each toast stays on screen, in milliseconds.
+- **Auto-capture on copy** — whether a plain `Ctrl+C` captures changed clipboard text into the active bucket. Turn it off to keep normal copy fully passive; held `Ctrl+C` still captures.
+- **Default project buckets** — the buckets a new project starts with (one per line), used for the dated default project and prefilled in `New Project`.
+- **Default compile mode** and **default TSV row length** — applied to newly created buckets. Each bucket can still override these in its own settings.
+
+Older `settings.json` files without these fields load with the built-in defaults. Chordl timing (`holdDelayMs`, `repeatSuppressionDelayMs`) stays in `hotkeys.json`.
 
 ## Development
 

@@ -54,7 +54,9 @@ internal static partial class Program
                 ("Zetl state finds inactive scratch notes for compile", StateFindsInactiveScratchCompileTarget),
                 ("Zetl state pop mode removes matching last note", StatePopModeRemovesLastMatchingNote),
                 ("Zetl state round-trips JSON", StateRoundTripsJson),
-                ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag)
+                ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
+                ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
+                ("Zetl state applies bucket defaults", StateAppliesBucketDefaults)
             };
 
             var failures = new List<string>();
@@ -870,6 +872,49 @@ internal static partial class Program
 
             var loaded = new ZetlAppSettingsStore(settingsPath);
             AssertTrue(loaded.Settings.HasSeenFirstRun, "First-run flag should round-trip.");
+        }
+
+        private static void AppSettingsRoundTripFields()
+        {
+            using var temp = new TempStateFile();
+            var settingsPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "settings.json");
+            var store = new ZetlAppSettingsStore(settingsPath);
+
+            AssertEqual(950, store.Settings.ToastDisplayMs, "Toast display should default to 950.");
+            AssertTrue(store.Settings.AutoCaptureOnCopy, "Auto-capture should default to on.");
+
+            store.Settings.ToastDisplayMs = 1500;
+            store.Settings.AutoCaptureOnCopy = false;
+            store.Settings.DefaultProjectBuckets = new List<string> { "Notes", "Scratch" };
+            store.Settings.DefaultCompileMode = "TSV";
+            store.Settings.DefaultTsvRowLength = 4;
+            store.Save();
+
+            var loaded = new ZetlAppSettingsStore(settingsPath);
+            AssertEqual(1500, loaded.Settings.ToastDisplayMs, "Toast display should round-trip.");
+            AssertFalse(loaded.Settings.AutoCaptureOnCopy, "Auto-capture flag should round-trip.");
+            AssertEqual("Notes", loaded.Settings.DefaultProjectBuckets[0], "Default buckets should round-trip.");
+            AssertEqual("TSV", loaded.Settings.DefaultCompileMode, "Default compile mode should round-trip.");
+            AssertEqual(4, loaded.Settings.DefaultTsvRowLength, "Default TSV row length should round-trip.");
+        }
+
+        private static void StateAppliesBucketDefaults()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path)
+            {
+                Defaults = new ZetlBucketDefaults(new[] { "Notes", "Scratch" }, "TSV", 4)
+            };
+
+            var project = store.GetOrCreateDefaultProject();
+            var notes = project.Buckets.FirstOrDefault(bucket => bucket.Name == "Notes");
+            AssertTrue(notes is not null, "Default project should use the configured buckets.");
+            AssertEqual("TSV", notes!.DefaultCompileMode, "New bucket should take the default compile mode.");
+            AssertEqual(4, notes.DefaultTsvRowLength, "New bucket should take the default TSV row length.");
+
+            var added = store.AddBucket(project, "Extra");
+            AssertEqual("TSV", added.DefaultCompileMode, "Added bucket should take the default compile mode.");
+            AssertEqual(4, added.DefaultTsvRowLength, "Added bucket should take the default TSV row length.");
         }
 
         private static ChordlProcessor CreateProcessor(

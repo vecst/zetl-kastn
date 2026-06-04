@@ -248,7 +248,7 @@ internal sealed partial class BoardForm : ZetlPopupForm
 
     private void AddProject()
     {
-        using var form = new ProjectSetupForm();
+        using var form = new ProjectSetupForm(store.Defaults.ProjectBuckets);
         if (ShowOwnedDialog(form) == DialogResult.OK)
         {
             store.CreateProject(form.ProjectName, form.BucketNames, form.ActiveBucketName, shiftedLane);

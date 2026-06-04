@@ -2,10 +2,14 @@ namespace ZETL;
 
 internal sealed partial class ProjectSetupForm : ZetlPopupForm
 {
-    public ProjectSetupForm()
+    public ProjectSetupForm(IReadOnlyList<string>? defaultBuckets = null)
     {
         InitializeComponent();
         projectNameBox.Text = DateTime.Now.ToString("yyyy-MM-dd");
+        if (defaultBuckets is { Count: > 0 })
+        {
+            bucketNamesBox.Text = string.Join(Environment.NewLine, defaultBuckets);
+        }
 
         bucketNamesBox.TextChanged += (_, _) => RefreshActiveBuckets();
         saveButton.Click += (_, _) =>

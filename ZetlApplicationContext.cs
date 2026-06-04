@@ -22,6 +22,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
     public ZetlApplicationContext(TimeSpan holdDelay)
     {
         this.holdDelay = holdDelay;
+        ApplyAppSettings();
         store.ConsolidateDefaultProject();
         store.ConsolidateDefaultProject(shifted: true);
         store.ClearActiveProject();
@@ -63,10 +64,20 @@ internal sealed class ZetlApplicationContext : ApplicationContext
 
         BeginInvoke(async () => await ObserveClipboardChangeAsync(pending));
 
-        if (context.KeyCode == VK_C)
+        if (context.KeyCode == VK_C && appSettings.Settings.AutoCaptureOnCopy)
         {
             BeginInvoke(async () => await AutoCaptureCopyAsync(pending));
         }
+    }
+
+    private void ApplyAppSettings()
+    {
+        var settings = appSettings.Settings;
+        toastService.DisplayMilliseconds = settings.ToastDisplayMs;
+        var projectBuckets = settings.DefaultProjectBuckets.Count > 0
+            ? settings.DefaultProjectBuckets.ToList()
+            : new List<string> { "Inbox", "Scratch" };
+        store.Defaults = new ZetlBucketDefaults(projectBuckets, settings.DefaultCompileMode, settings.DefaultTsvRowLength);
     }
 
     public bool OnTapDispatched(ChordlEventContext context)
@@ -222,9 +233,31 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 ? "No active bucket yet."
                 : $"{bucket.Name} pop mode is {(bucket.PopMode ? "on" : "off")}.");
         });
+        menu.Items.Add("Settings", null, (_, _) => ShowSettingsDialog());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => ExitThread());
         return menu;
+    }
+
+    private void ShowSettingsDialog()
+    {
+        using var form = new ZetlSettingsForm(appSettings.Settings);
+        if (ZetlDialogPlacement.ShowForegroundDialog(form) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var settings = appSettings.Settings;
+        settings.ToastDisplayMs = form.ToastDisplayMs;
+        settings.AutoCaptureOnCopy = form.AutoCaptureOnCopy;
+        settings.DefaultProjectBuckets = form.DefaultProjectBuckets.Count > 0
+            ? form.DefaultProjectBuckets
+            : new List<string> { "Inbox", "Scratch" };
+        settings.DefaultCompileMode = form.DefaultCompileMode;
+        settings.DefaultTsvRowLength = form.DefaultTsvRowLength;
+        appSettings.Save();
+        ApplyAppSettings();
+        ShowInfo("Settings saved.");
     }
 
     private void ShowFirstRunIfNeeded()
@@ -490,7 +523,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
 
     private void ShowProjectSetupDialog()
     {
-        using var form = new ProjectSetupForm();
+        using var form = new ProjectSetupForm(store.Defaults.ProjectBuckets);
         if (ZetlDialogPlacement.ShowForegroundDialog(form) != DialogResult.OK)
         {
             return;

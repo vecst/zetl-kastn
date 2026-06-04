@@ -57,6 +57,11 @@ internal sealed class ZetlNote
     public DateTime CreatedAtUtc { get; set; }
 }
 
+internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, string CompileMode, int TsvRowLength)
+{
+    public static ZetlBucketDefaults Standard { get; } = new(new[] { "Inbox", "Scratch" }, "Formatted", 5);
+}
+
 internal sealed class ZetlStateStore
 {
     private readonly string statePath;
@@ -73,6 +78,10 @@ internal sealed class ZetlStateStore
     }
 
     public ZetlState State { get; private set; }
+
+    // Defaults applied to newly created projects and buckets. Set from app
+    // settings; falls back to the built-in Standard defaults.
+    public ZetlBucketDefaults Defaults { get; set; } = ZetlBucketDefaults.Standard;
 
     public string StatePath => statePath;
 
@@ -132,6 +141,10 @@ internal sealed class ZetlStateStore
             .Select(CreateBucket)
             .ToList();
         EnsureScratchBucket(buckets);
+        foreach (var bucket in buckets)
+        {
+            ApplyBucketDefaults(bucket);
+        }
 
         var activeBucket = buckets.FirstOrDefault(bucket =>
             string.Equals(bucket.Name, activeBucketName, StringComparison.OrdinalIgnoreCase))
@@ -167,7 +180,8 @@ internal sealed class ZetlStateStore
             return existingProject;
         }
 
-        return CreateProject(defaultName, ["Inbox", "Scratch"], "Inbox", shifted);
+        var defaultBuckets = Defaults.ProjectBuckets.Count > 0 ? Defaults.ProjectBuckets : ["Inbox", "Scratch"];
+        return CreateProject(defaultName, defaultBuckets, defaultBuckets[0], shifted);
     }
 
     public void ConsolidateDefaultProject(bool shifted = false)
@@ -215,6 +229,7 @@ internal sealed class ZetlStateStore
     public ZetlBucket AddBucket(ZetlProject project, string name, string? parentBucketId = null)
     {
         var bucket = CreateBucket(NormalizeName(name, "New Bucket"));
+        ApplyBucketDefaults(bucket);
         bucket.ParentBucketId = project.Buckets.Any(item => item.Id == parentBucketId)
             ? parentBucketId
             : null;
@@ -815,6 +830,14 @@ internal sealed class ZetlStateStore
             DefaultCompileMode = "Formatted",
             DefaultTsvRowLength = 5
         };
+    }
+
+    // Stamp a freshly created bucket with the user's default compile mode and
+    // TSV row length.
+    private void ApplyBucketDefaults(ZetlBucket bucket)
+    {
+        bucket.DefaultCompileMode = NormalizeCompileMode(Defaults.CompileMode);
+        bucket.DefaultTsvRowLength = Math.Max(1, Defaults.TsvRowLength);
     }
 
     private ZetlProject? ConsolidateProjectsNamed(string projectName)

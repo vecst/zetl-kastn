@@ -7,6 +7,9 @@ internal sealed class ZetlToastService : IDisposable
     private ZetlToastForm? toastForm;
     private ZetlToastHistoryForm? historyForm;
 
+    // How long each toast stays on screen, in milliseconds.
+    public int DisplayMilliseconds { get; set; } = 950;
+
     public void Show(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -26,6 +29,7 @@ internal sealed class ZetlToastService : IDisposable
             toastForm = new ZetlToastForm();
         }
 
+        toastForm.DisplayMilliseconds = DisplayMilliseconds;
         toastForm.ShowMessage(entry.Message);
         historyForm?.RefreshEntries(history);
     }
@@ -64,6 +68,7 @@ internal sealed class ZetlToastService : IDisposable
             toastForm = new ZetlToastForm();
         }
 
+        toastForm.DisplayMilliseconds = DisplayMilliseconds;
         toastForm.ShowMessage(message);
     }
 }
@@ -72,7 +77,6 @@ internal sealed record ZetlToastEntry(DateTime CreatedAt, string Message);
 
 internal sealed class ZetlToastForm : Form
 {
-    private const int DisplayMs = 950;
     private const int SW_HIDE = 0;
     private const int WM_MOUSEACTIVATE = 0x0021;
     private const int MA_NOACTIVATE = 3;
@@ -81,6 +85,19 @@ internal sealed class ZetlToastForm : Form
     private static readonly IntPtr HwndTopMost = new IntPtr(-1);
     private readonly System.Windows.Forms.Timer dismissTimer = new();
     private string messageText = "";
+    private int displayMs = 950;
+
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    [System.ComponentModel.Browsable(false)]
+    internal int DisplayMilliseconds
+    {
+        get => displayMs;
+        set
+        {
+            displayMs = Math.Max(200, value);
+            dismissTimer.Interval = displayMs;
+        }
+    }
 
     public ZetlToastForm()
     {
@@ -94,7 +111,7 @@ internal sealed class ZetlToastForm : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
 
-        dismissTimer.Interval = DisplayMs;
+        dismissTimer.Interval = displayMs;
         dismissTimer.Tick += (_, _) =>
         {
             dismissTimer.Stop();
