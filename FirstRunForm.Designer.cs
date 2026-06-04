@@ -49,7 +49,7 @@ partial class FirstRunForm
 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(660, 900);
+        ClientSize = new Size(1280, 720);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         Text = "How Zetl Works";
 
@@ -75,11 +75,11 @@ partial class FirstRunForm
 
         titleLabel.AutoSize = true;
         titleLabel.Font = new Font(FontFamily.GenericSansSerif, 13F, FontStyle.Bold);
-        titleLabel.MaximumSize = new Size(610, 0);
+        titleLabel.MaximumSize = new Size(1220, 0);
         titleLabel.Text = "Zetl is built on Chordl.";
 
         bodyLabel.AutoSize = true;
-        bodyLabel.MaximumSize = new Size(610, 0);
+        bodyLabel.MaximumSize = new Size(1220, 0);
         bodyLabel.Padding = new Padding(0, 8, 0, 10);
         bodyLabel.Text =
             "Chordl gives a shortcut you already know a second job. Tap a chord like Ctrl+C and it behaves " +
@@ -87,7 +87,7 @@ partial class FirstRunForm
             "normal action first and then watch for a hold, so nothing is lost. Paste runs when you release V.";
 
         startupLabel.AutoSize = true;
-        startupLabel.MaximumSize = new Size(610, 0);
+        startupLabel.MaximumSize = new Size(1220, 0);
         startupLabel.Padding = new Padding(0, 0, 0, 12);
         startupLabel.Text =
             "On launch, Ctrl+C and Ctrl+V behave normally when no project is active. " +
@@ -95,12 +95,12 @@ partial class FirstRunForm
 
         coldkeysHeaderLabel.AutoSize = true;
         coldkeysHeaderLabel.Font = new Font(FontFamily.GenericSansSerif, 10F, FontStyle.Bold);
-        coldkeysHeaderLabel.MaximumSize = new Size(610, 0);
+        coldkeysHeaderLabel.MaximumSize = new Size(1220, 0);
         coldkeysHeaderLabel.Text = "Coldkeys are the chords Zetl listens for. Tap for the normal shortcut, hold for the Zetl action:";
 
         coldkeysLabel.AutoSize = true;
         coldkeysLabel.Dock = DockStyle.Fill;
-        coldkeysLabel.MaximumSize = new Size(610, 0);
+        coldkeysLabel.MaximumSize = new Size(1220, 0);
         coldkeysLabel.Padding = new Padding(0, 8, 0, 8);
         coldkeysLabel.Text =
             "While a project is active:\r\n\r\n" +
@@ -124,7 +124,7 @@ partial class FirstRunForm
             "used, the bucket leaves it on the clipboard and turns Replay off, so normal paste works again.";
 
         laneLabel.AutoSize = true;
-        laneLabel.MaximumSize = new Size(610, 0);
+        laneLabel.MaximumSize = new Size(1220, 0);
         laneLabel.Padding = new Padding(0, 0, 0, 4);
         laneLabel.Text =
             "Ctrl+Shift is a second, independent lane with its own active project, so two projects can be " +
