@@ -84,6 +84,7 @@ internal sealed partial class BoardForm : ZetlPopupForm
             }
         };
         noteEditor.Leave += (_, _) => SaveNote();
+        createNoteButton.Click += (_, _) => CreateNote();
         deleteNoteButton.Click += (_, _) => DeleteNote();
         store.Changed += (_, _) => RefreshFromStore();
         Activated += (_, _) =>
@@ -392,6 +393,20 @@ internal sealed partial class BoardForm : ZetlPopupForm
         }
 
         store.UpdateNote(ActiveNote, noteEditor.Text);
+    }
+
+    private void CreateNote()
+    {
+        if (ActiveProject is null || ActiveBucket is not { } bucket)
+        {
+            return;
+        }
+
+        // Add an empty note to the selected bucket and drop straight into the
+        // editor so it can be typed in place. store.Changed refreshes the list
+        // and selects the new (last) note before we focus the editor.
+        store.AddNote(bucket, "", "manual");
+        BeginInvoke(new Action(FocusNoteEditor));
     }
 
     private void DeleteNote()

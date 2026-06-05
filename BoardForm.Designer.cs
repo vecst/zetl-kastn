@@ -34,7 +34,8 @@ partial class BoardForm
     private ListBox noteList;
     private Label selectedNoteLabel;
     private TextBox noteEditor;
-    private FlowLayoutPanel noteButtonsPanel;
+    private TableLayoutPanel noteButtonsPanel;
+    private Button createNoteButton;
     private Button deleteNoteButton;
 
     protected override void Dispose(bool disposing)
@@ -82,7 +83,8 @@ partial class BoardForm
         noteList = new ListBox();
         selectedNoteLabel = new Label();
         noteEditor = new TextBox();
-        noteButtonsPanel = new FlowLayoutPanel();
+        noteButtonsPanel = new TableLayoutPanel();
+        createNoteButton = new Button();
         deleteNoteButton = new Button();
 
         rootLayout.SuspendLayout();
@@ -121,7 +123,6 @@ partial class BoardForm
         topPanel.Controls.Add(activeProjectBox);
         topPanel.Controls.Add(newProjectButton);
         topPanel.Controls.Add(deleteProjectButton);
-        topPanel.Controls.Add(closeBoardButton);
         topPanel.Dock = DockStyle.Fill;
 
         projectLabel.AutoSize = true;
@@ -244,12 +245,26 @@ partial class BoardForm
         noteEditor.ScrollBars = ScrollBars.Vertical;
 
         noteButtonsPanel.AutoSize = true;
-        noteButtonsPanel.Controls.Add(deleteNoteButton);
+        noteButtonsPanel.ColumnCount = 3;
+        noteButtonsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        noteButtonsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        noteButtonsPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        noteButtonsPanel.RowCount = 1;
+        noteButtonsPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        noteButtonsPanel.Controls.Add(createNoteButton, 0, 0);
+        noteButtonsPanel.Controls.Add(deleteNoteButton, 1, 0);
+        noteButtonsPanel.Controls.Add(closeBoardButton, 2, 0);
         noteButtonsPanel.Dock = DockStyle.Fill;
-        noteButtonsPanel.FlowDirection = FlowDirection.RightToLeft;
+
+        createNoteButton.Text = "Create Note";
+        createNoteButton.Width = 100;
 
         deleteNoteButton.Text = "Delete Note";
         deleteNoteButton.Width = 100;
+
+        // Close lives at the bottom-right of the board; the note actions sit on
+        // the left of the same row.
+        closeBoardButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
         Controls.Add(rootLayout);
 
@@ -269,6 +284,7 @@ partial class BoardForm
         noteLayout.ResumeLayout(false);
         noteLayout.PerformLayout();
         noteButtonsPanel.ResumeLayout(false);
+        noteButtonsPanel.PerformLayout();
         ResumeLayout(false);
     }
 }
