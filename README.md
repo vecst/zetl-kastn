@@ -10,11 +10,26 @@ The core idea is simple:
 - Hold the same chord for a moment; Chordl detects the hold and Zetl opens the matching capture, note, board, or compile flow.
 - Use the `Ctrl+Shift` variants for a separate project lane, so one lane can be Replay/data-entry focused while the other stays normal.
 
-Zetl is local-only. Text notes are stored in JSON at:
+Zetl is local-only. Each project is stored in its own folder under:
 
 ```text
-%AppData%\Zetl\state.json
+%AppData%\Zetl\
+  workspace.json                     active-project pointers (both lanes) + version
+  projects\
+    2026-06-05-3f2a91\project.json   one folder + json per project
+    Vehicles-9c4e02\project.json
 ```
+
+`workspace.json` holds only the small store-wide state: the version and which
+project is active in each of the two lanes. Every project — its buckets and
+notes — lives in its own `projects\<name>-<id>\project.json`. Saving a note
+rewrites just that one project file, never the whole store. The folder is named
+from the project name plus a short slice of its id, so renaming a project only
+rewrites a field inside the json; the folder never has to move.
+
+Older installs that still have a single `%AppData%\Zetl\state.json` are migrated
+automatically on first launch: each project is split into its own folder and the
+original file is renamed to `state.json.bak`.
 
 Tiny app-wide settings are stored at:
 

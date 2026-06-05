@@ -57,6 +57,8 @@ internal static partial class Program
                 ("Zetl state finds inactive scratch notes for compile", StateFindsInactiveScratchCompileTarget),
                 ("Zetl state pop mode removes matching last note", StatePopModeRemovesLastMatchingNote),
                 ("Zetl state round-trips JSON", StateRoundTripsJson),
+                ("Zetl state stores each project in its own folder", StateStoresEachProjectInItsOwnFolder),
+                ("Zetl state migrates a legacy single state file", StateMigratesLegacySingleFile),
                 ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
                 ("Zetl state applies bucket defaults", StateAppliesBucketDefaults),
@@ -945,6 +947,55 @@ internal static partial class Program
             AssertEqual(bucket.Id, loaded.ActiveBucket?.Id, "Active bucket id should round-trip.");
             AssertEqual(note.Id, loaded.ActiveBucket?.Notes.Single().Id, "Note id should round-trip.");
             AssertEqual("round trip", loaded.ActiveBucket?.Notes.Single().Text, "Note text should round-trip.");
+        }
+
+        private static void StateStoresEachProjectInItsOwnFolder()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Alpha", ["Inbox"], "Inbox");
+            store.CreateProject("Beta", ["Inbox"], "Inbox");
+
+            var root = System.IO.Path.GetDirectoryName(temp.Path)!;
+            var projectsDirectory = System.IO.Path.Combine(root, "projects");
+            AssertTrue(File.Exists(System.IO.Path.Combine(root, "workspace.json")), "Workspace pointer file should be written.");
+            AssertFalse(File.Exists(temp.Path), "No monolithic state.json should be written under the new layout.");
+
+            var projectFiles = Directory.GetFiles(projectsDirectory, "project.json", SearchOption.AllDirectories);
+            AssertEqual(2, projectFiles.Length, "Each project should get its own project.json.");
+            AssertTrue(
+                Directory.GetDirectories(projectsDirectory).Any(dir => System.IO.Path.GetFileName(dir).StartsWith("Alpha-", StringComparison.Ordinal)),
+                "Project folder should be named from the project name plus a short id.");
+
+            var loaded = new ZetlStateStore(temp.Path);
+            AssertEqual(2, loaded.State.Projects.Count, "Projects should reload from their per-project folders.");
+            AssertTrue(loaded.State.Projects.Any(project => project.Name == "Beta"), "Reloaded projects should keep their names.");
+        }
+
+        private static void StateMigratesLegacySingleFile()
+        {
+            using var temp = new TempStateFile();
+            var legacyJson =
+                """
+                { "version": 1, "activeProjectId": "p1", "projects": [ { "id": "p1", "name": "Legacy", "activeBucketId": "b1", "buckets": [ { "id": "b1", "name": "Inbox", "kind": "Standard", "notes": [ { "id": "n1", "text": "carried over", "source": "copy" } ] } ] } ] }
+                """;
+            File.WriteAllText(temp.Path, legacyJson);
+
+            var store = new ZetlStateStore(temp.Path);
+            var root = System.IO.Path.GetDirectoryName(temp.Path)!;
+
+            AssertFalse(File.Exists(temp.Path), "Legacy state.json should be moved aside after migration.");
+            AssertTrue(File.Exists(temp.Path + ".bak"), "Legacy state.json should be archived as a .bak backup.");
+            AssertTrue(File.Exists(System.IO.Path.Combine(root, "workspace.json")), "Migration should write the workspace pointer file.");
+            AssertEqual(
+                1,
+                Directory.GetFiles(System.IO.Path.Combine(root, "projects"), "project.json", SearchOption.AllDirectories).Length,
+                "Migration should split the legacy project into its own file.");
+            AssertEqual("Legacy", store.ActiveProject?.Name, "Migrated active project should load.");
+            AssertEqual("carried over", store.ActiveBucket?.Notes.Single().Text, "Migrated note should survive the split.");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            AssertEqual("Legacy", reloaded.State.Projects.Single().Name, "Migrated project should reload from the new layout.");
         }
 
         private static void AppSettingsRoundTripFirstRunFlag()

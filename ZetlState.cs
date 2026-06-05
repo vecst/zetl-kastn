@@ -64,17 +64,28 @@ internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, 
 
 internal sealed class ZetlStateStore
 {
-    private readonly string statePath;
+    private readonly ZetlStateStorage storage;
     private readonly string sessionId;
 
     public ZetlStateStore(string? statePath = null, string? sessionId = null)
     {
-        this.statePath = statePath ?? Path.Combine(
+        // Historically callers passed a single state.json path. Storage is now a
+        // directory layout, so treat that path's directory as the workspace root
+        // and offer the file itself up for one-time migration.
+        var legacyStatePath = statePath ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Zetl",
             "state.json");
+        var rootDirectory = Path.GetDirectoryName(legacyStatePath);
+        if (string.IsNullOrEmpty(rootDirectory))
+        {
+            rootDirectory = Directory.GetCurrentDirectory();
+        }
+
+        storage = new ZetlStateStorage(rootDirectory, legacyStatePath);
         this.sessionId = string.IsNullOrWhiteSpace(sessionId) ? NewId() : sessionId;
-        State = Load();
+        State = storage.Load();
+        NormalizeLoadedState();
     }
 
     public ZetlState State { get; private set; }
@@ -82,8 +93,6 @@ internal sealed class ZetlStateStore
     // Defaults applied to newly created projects and buckets. Set from app
     // settings; falls back to the built-in Standard defaults.
     public ZetlBucketDefaults Defaults { get; set; } = ZetlBucketDefaults.Standard;
-
-    public string StatePath => statePath;
 
     public string SessionId => sessionId;
 
@@ -132,7 +141,7 @@ internal sealed class ZetlStateStore
                 }
 
                 SetActiveProjectId(existingDefaultProject.Id, shifted);
-                Save();
+                PersistProject(existingDefaultProject, workspace: true);
                 return existingDefaultProject;
             }
         }
@@ -160,7 +169,7 @@ internal sealed class ZetlStateStore
 
         State.Projects.Add(project);
         SetActiveProjectId(project.Id, shifted);
-        Save();
+        PersistProject(project, workspace: true);
         return project;
     }
 
@@ -176,7 +185,7 @@ internal sealed class ZetlStateStore
         if (existingProject is not null)
         {
             SetActiveProjectId(existingProject.Id, shifted);
-            Save();
+            PersistWorkspace();
             return existingProject;
         }
 
@@ -186,22 +195,21 @@ internal sealed class ZetlStateStore
 
     public void ConsolidateDefaultProject(bool shifted = false)
     {
-        if (ConsolidateProjectsNamed(DefaultProjectName(shifted)) is not null)
-        {
-            Save();
-        }
+        // ConsolidateProjectsNamed persists the merged project and removes the
+        // duplicates' files itself, so there is nothing extra to save here.
+        ConsolidateProjectsNamed(DefaultProjectName(shifted));
     }
 
     public void UpdateProjectName(ZetlProject project, string name, bool shifted = false)
     {
         project.Name = NormalizeName(name, DefaultProjectName(shifted));
-        Save();
+        PersistProject(project);
     }
 
     public void ClearActiveProject(bool shifted = false)
     {
         SetActiveProjectId(null, shifted);
-        Save();
+        PersistWorkspace();
     }
 
     public void DeleteProject(string projectId)
@@ -213,6 +221,7 @@ internal sealed class ZetlStateStore
         }
 
         State.Projects.Remove(project);
+        storage.RemoveProject(projectId);
         if (State.ActiveProjectId == projectId)
         {
             State.ActiveProjectId = State.Projects.FirstOrDefault()?.Id;
@@ -223,7 +232,7 @@ internal sealed class ZetlStateStore
             State.ShiftActiveProjectId = State.Projects.FirstOrDefault()?.Id;
         }
 
-        Save();
+        PersistWorkspace();
     }
 
     // setActive controls whether the new/found bucket becomes the project's
@@ -243,7 +252,7 @@ internal sealed class ZetlStateStore
             project.ActiveBucketId = bucket.Id;
         }
 
-        Save();
+        PersistProject(project);
         return bucket;
     }
 
@@ -259,7 +268,7 @@ internal sealed class ZetlStateStore
                 project.ActiveBucketId = bucket.Id;
             }
 
-            Save();
+            PersistProject(project);
             return bucket;
         }
 
@@ -274,7 +283,7 @@ internal sealed class ZetlStateStore
         }
 
         bucket.Name = NormalizeName(name, "Bucket");
-        Save();
+        PersistBucket(bucket);
     }
 
     public void DeleteBucket(ZetlProject project, string bucketId)
@@ -302,7 +311,7 @@ internal sealed class ZetlStateStore
             project.QuickNoteBucketId = null;
         }
 
-        Save();
+        PersistProject(project);
     }
 
     public ZetlNote AddNote(ZetlBucket bucket, string text, string source)
@@ -316,7 +325,7 @@ internal sealed class ZetlStateStore
             CreatedAtUtc = DateTime.UtcNow
         };
         bucket.Notes.Add(note);
-        Save();
+        PersistBucket(bucket);
         return note;
     }
 
@@ -348,7 +357,7 @@ internal sealed class ZetlStateStore
 
         if (added.Count > 0)
         {
-            Save();
+            PersistBucket(bucket);
         }
 
         return added;
@@ -363,13 +372,13 @@ internal sealed class ZetlStateStore
         }
 
         bucket.Notes.Remove(note);
-        Save();
+        PersistBucket(bucket);
     }
 
     public void UpdateNote(ZetlNote note, string text)
     {
         note.Text = text.Trim();
-        Save();
+        PersistNote(note);
     }
 
     public void SetActiveProject(string projectId, bool shifted = false)
@@ -377,7 +386,7 @@ internal sealed class ZetlStateStore
         if (State.Projects.Any(project => project.Id == projectId))
         {
             SetActiveProjectId(projectId, shifted);
-            Save();
+            PersistWorkspace();
         }
     }
 
@@ -386,7 +395,7 @@ internal sealed class ZetlStateStore
         if (project.Buckets.Any(bucket => bucket.Id == bucketId))
         {
             project.ActiveBucketId = bucketId;
-            Save();
+            PersistProject(project);
         }
     }
 
@@ -401,7 +410,7 @@ internal sealed class ZetlStateStore
         if (project.Buckets.Any(bucket => bucket.Id == bucketId))
         {
             project.QuickNoteBucketId = bucketId;
-            Save();
+            PersistProject(project);
         }
     }
 
@@ -410,12 +419,12 @@ internal sealed class ZetlStateStore
         if (IsFifoBucket(bucket))
         {
             bucket.PopMode = false;
-            Save();
+            PersistBucket(bucket);
             return;
         }
 
         bucket.PopMode = popMode;
-        Save();
+        PersistBucket(bucket);
     }
 
     public void SetBucketKind(ZetlBucket bucket, string kind)
@@ -426,7 +435,7 @@ internal sealed class ZetlStateStore
             bucket.PopMode = false;
         }
 
-        Save();
+        PersistBucket(bucket);
     }
 
     public void UpdateBucketSettings(
@@ -453,7 +462,7 @@ internal sealed class ZetlStateStore
             bucket.PopMode = false;
         }
 
-        Save();
+        PersistBucket(bucket);
     }
 
     public void ToggleActiveBucketPopMode(bool shifted = false)
@@ -465,7 +474,7 @@ internal sealed class ZetlStateStore
         }
 
         bucket.PopMode = !bucket.PopMode;
-        Save();
+        PersistBucket(bucket);
     }
 
     public ZetlBucket GetScratchBucket(ZetlProject project)
@@ -507,7 +516,7 @@ internal sealed class ZetlStateStore
 
         bucket.Notes.Remove(last);
         note = last;
-        Save();
+        PersistBucket(bucket);
         return true;
     }
 
@@ -545,7 +554,7 @@ internal sealed class ZetlStateStore
 
         bucket.Notes.Remove(note);
         consumedNote = note;
-        Save();
+        PersistBucket(bucket);
         return true;
     }
 
@@ -592,7 +601,7 @@ internal sealed class ZetlStateStore
             reviewBucket.Notes.Add(reviewNote);
         }
 
-        Save();
+        PersistProject(project);
         return true;
     }
 
@@ -612,7 +621,7 @@ internal sealed class ZetlStateStore
             bucket.Notes.Add(note);
         }
 
-        Save();
+        PersistBucket(bucket);
     }
 
     public void RestoreFifoConsumedNote(ZetlBucket bucket, ZetlNote note, ZetlBucket? reviewBucket, string? reviewNoteId)
@@ -629,7 +638,7 @@ internal sealed class ZetlStateStore
             bucket.Notes.Insert(0, note);
         }
 
-        Save();
+        PersistBucket(bucket);
     }
 
     public string CompilePlainText(ZetlProject project, IEnumerable<ZetlBucket> selectedBuckets)
@@ -790,86 +799,163 @@ internal sealed class ZetlStateStore
         return false;
     }
 
-    public void Save()
+    // Persist a single project's file, optionally rewriting the workspace
+    // pointers alongside it. Note capture, edits, and toggles all touch exactly
+    // one project, so scoping the save here keeps each write to the one file
+    // that changed instead of rewriting every project on disk.
+    private void PersistProject(ZetlProject project, bool workspace = false)
     {
-        NormalizeState();
-        JsonFile.WriteAtomic(statePath, State);
+        NormalizeProject(project);
+        storage.WriteProject(project);
+        if (workspace)
+        {
+            NormalizeWorkspacePointers();
+            storage.WriteWorkspace(BuildWorkspaceFile());
+        }
+
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private ZetlState Load()
+    // Persist the project that owns the given bucket. Bucket- and note-level
+    // mutations don't carry their project, so we resolve the owner here.
+    private void PersistBucket(ZetlBucket bucket)
     {
-        var state = JsonFile.Read<ZetlState>(statePath);
-        if (state is null)
+        var owner = OwnerProject(bucket);
+        if (owner is null)
         {
-            return new ZetlState();
+            SaveAll();
+            return;
         }
 
-        State = state;
-        NormalizeState();
-        return state;
+        PersistProject(owner);
     }
 
-    private void NormalizeState()
+    private void PersistNote(ZetlNote note)
+    {
+        var owner = OwnerProjectOfNote(note);
+        if (owner is null)
+        {
+            SaveAll();
+            return;
+        }
+
+        PersistProject(owner);
+    }
+
+    private void PersistWorkspace()
+    {
+        NormalizeWorkspacePointers();
+        storage.WriteWorkspace(BuildWorkspaceFile());
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Full flush: every project plus the workspace pointers. Used as a safety
+    // net when a mutation can't resolve which project it touched.
+    private void SaveAll()
+    {
+        foreach (var project in State.Projects)
+        {
+            NormalizeProject(project);
+            storage.WriteProject(project);
+        }
+
+        NormalizeWorkspacePointers();
+        storage.WriteWorkspace(BuildWorkspaceFile());
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private ZetlProject? OwnerProject(ZetlBucket bucket)
+    {
+        return State.Projects.FirstOrDefault(project => project.Buckets.Any(item => item.Id == bucket.Id));
+    }
+
+    private ZetlProject? OwnerProjectOfNote(ZetlNote note)
+    {
+        return State.Projects.FirstOrDefault(project =>
+            project.Buckets.Any(bucket => bucket.Notes.Any(item => item.Id == note.Id)));
+    }
+
+    private ZetlWorkspaceFile BuildWorkspaceFile()
+    {
+        return new ZetlWorkspaceFile
+        {
+            Version = Math.Max(State.Version, 1),
+            ActiveProjectId = State.ActiveProjectId,
+            ShiftActiveProjectId = State.ShiftActiveProjectId
+        };
+    }
+
+    private void NormalizeLoadedState()
     {
         State.Version = Math.Max(State.Version, 1);
         State.Projects ??= new List<ZetlProject>();
         foreach (var project in State.Projects)
         {
-            project.Id = string.IsNullOrWhiteSpace(project.Id) ? NewId() : project.Id;
-            project.Name = NormalizeName(project.Name, DefaultProjectName());
-            project.Buckets ??= new List<ZetlBucket>();
-            EnsureScratchBucket(project.Buckets);
-            foreach (var bucket in project.Buckets)
+            NormalizeProject(project);
+        }
+
+        NormalizeWorkspacePointers();
+    }
+
+    private void NormalizeProject(ZetlProject project)
+    {
+        project.Id = string.IsNullOrWhiteSpace(project.Id) ? NewId() : project.Id;
+        project.Name = NormalizeName(project.Name, DefaultProjectName());
+        project.Buckets ??= new List<ZetlBucket>();
+        EnsureScratchBucket(project.Buckets);
+        foreach (var bucket in project.Buckets)
+        {
+            bucket.Id = string.IsNullOrWhiteSpace(bucket.Id) ? NewId() : bucket.Id;
+            bucket.Name = NormalizeName(bucket.Name, "Bucket");
+            if (bucket.ParentBucketId == bucket.Id
+                || project.Buckets.All(candidate => candidate.Id != bucket.ParentBucketId))
             {
-                bucket.Id = string.IsNullOrWhiteSpace(bucket.Id) ? NewId() : bucket.Id;
-                bucket.Name = NormalizeName(bucket.Name, "Bucket");
-                if (bucket.ParentBucketId == bucket.Id
-                    || project.Buckets.All(candidate => candidate.Id != bucket.ParentBucketId))
-                {
-                    bucket.ParentBucketId = null;
-                }
-
-                if (bucket.FifoReviewBucketId == bucket.Id
-                    || project.Buckets.All(candidate => candidate.Id != bucket.FifoReviewBucketId))
-                {
-                    bucket.FifoReviewBucketId = null;
-                }
-
-                bucket.Kind = NormalizeBucketKind(bucket.Kind);
-                bucket.DefaultKind = NormalizeBucketKind(string.IsNullOrWhiteSpace(bucket.DefaultKind) ? bucket.Kind : bucket.DefaultKind);
-                bucket.DefaultCompileMode = NormalizeCompileMode(bucket.DefaultCompileMode);
-                bucket.DefaultStartingText ??= "";
-                bucket.DefaultTsvRowLength = bucket.DefaultTsvRowLength <= 0 ? 5 : bucket.DefaultTsvRowLength;
-                if (IsFifoBucket(bucket))
-                {
-                    bucket.PopMode = false;
-                }
-                bucket.Notes ??= new List<ZetlNote>();
-                foreach (var note in bucket.Notes)
-                {
-                    note.Id = string.IsNullOrWhiteSpace(note.Id) ? NewId() : note.Id;
-                    note.Text ??= "";
-                    note.Source ??= "";
-                    if (note.CreatedAtUtc == default)
-                    {
-                        note.CreatedAtUtc = DateTime.UtcNow;
-                    }
-                }
+                bucket.ParentBucketId = null;
             }
 
-            if (project.Buckets.All(bucket => bucket.Id != project.ActiveBucketId))
+            if (bucket.FifoReviewBucketId == bucket.Id
+                || project.Buckets.All(candidate => candidate.Id != bucket.FifoReviewBucketId))
             {
-                project.ActiveBucketId = project.Buckets.First().Id;
+                bucket.FifoReviewBucketId = null;
             }
 
-            if (project.QuickNoteBucketId is not null
-                && project.Buckets.All(bucket => bucket.Id != project.QuickNoteBucketId))
+            bucket.Kind = NormalizeBucketKind(bucket.Kind);
+            bucket.DefaultKind = NormalizeBucketKind(string.IsNullOrWhiteSpace(bucket.DefaultKind) ? bucket.Kind : bucket.DefaultKind);
+            bucket.DefaultCompileMode = NormalizeCompileMode(bucket.DefaultCompileMode);
+            bucket.DefaultStartingText ??= "";
+            bucket.DefaultTsvRowLength = bucket.DefaultTsvRowLength <= 0 ? 5 : bucket.DefaultTsvRowLength;
+            if (IsFifoBucket(bucket))
             {
-                project.QuickNoteBucketId = null;
+                bucket.PopMode = false;
+            }
+            bucket.Notes ??= new List<ZetlNote>();
+            foreach (var note in bucket.Notes)
+            {
+                note.Id = string.IsNullOrWhiteSpace(note.Id) ? NewId() : note.Id;
+                note.Text ??= "";
+                note.Source ??= "";
+                if (note.CreatedAtUtc == default)
+                {
+                    note.CreatedAtUtc = DateTime.UtcNow;
+                }
             }
         }
 
+        if (project.Buckets.All(bucket => bucket.Id != project.ActiveBucketId))
+        {
+            project.ActiveBucketId = project.Buckets.First().Id;
+        }
+
+        if (project.QuickNoteBucketId is not null
+            && project.Buckets.All(bucket => bucket.Id != project.QuickNoteBucketId))
+        {
+            project.QuickNoteBucketId = null;
+        }
+    }
+
+    private void NormalizeWorkspacePointers()
+    {
+        State.Version = Math.Max(State.Version, 1);
         if (State.ActiveProjectId is not null
             && State.Projects.All(project => project.Id != State.ActiveProjectId))
         {
@@ -915,10 +1001,21 @@ internal sealed class ZetlStateStore
         }
 
         var primary = matchingProjects[0];
+        var merged = false;
         foreach (var duplicate in matchingProjects.Skip(1))
         {
             MergeProjectInto(primary, duplicate);
             State.Projects.Remove(duplicate);
+            storage.RemoveProject(duplicate.Id);
+            merged = true;
+        }
+
+        // Persist the merged result (and the duplicates' removals) here so every
+        // caller of consolidation lands the same on-disk state, even those that
+        // don't otherwise save.
+        if (merged)
+        {
+            PersistProject(primary);
         }
 
         return primary;
