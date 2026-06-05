@@ -10,6 +10,7 @@ internal static partial class Program
     private static IntPtr hookId = IntPtr.Zero;
     private static ChordlProcessor? chordlProcessor;
     private static ZetlApplicationContext? appContext;
+    private static Mutex? singleInstanceMutex;
 
     [STAThread]
     public static int Main(string[] args)
@@ -17,6 +18,21 @@ internal static partial class Program
         if (args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
         {
             return SelfTests.Run();
+        }
+
+        // Only one Zetl may own the global keyboard hook per session: a second
+        // instance would install a competing hook and both would race on every
+        // chord and write the same state files. Local\ scopes the guard to this
+        // login session, so separate RDP sessions can each run their own.
+        singleInstanceMutex = new Mutex(initiallyOwned: false, @"Local\ZetlSingleInstance", out var createdNew);
+        if (!createdNew)
+        {
+            MessageBox.Show(
+                "Zetl is already running in this session.",
+                "Zetl",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return 0;
         }
 
         ApplicationConfiguration.Initialize();
@@ -68,6 +84,7 @@ internal static partial class Program
             }
 
             appContext?.Dispose();
+            singleInstanceMutex?.Dispose();
         }
     }
 
