@@ -63,7 +63,7 @@ partial class NoteCaptureForm
 
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(544, 331);
+        ClientSize = new Size(619, 281);
         FormBorderStyle = FormBorderStyle.Sizable;
         Text = "Save Zetl Note";
 
@@ -128,6 +128,9 @@ partial class NoteCaptureForm
 
         noteBox.AcceptsReturn = true;
         noteBox.Dock = DockStyle.Fill;
+        // The note box is the thing you actually type into, so give it a larger
+        // font than the dialog's compact controls.
+        noteBox.Font = new Font(noteBox.Font.FontFamily, 12F);
         noteBox.Multiline = true;
         noteBox.ScrollBars = ScrollBars.Vertical;
 
