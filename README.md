@@ -92,11 +92,13 @@ Toasts appear near the bottom-right notification area, do not steal focus, and d
 
 Examples:
 
-- `Captured to Inbox.`
-- `Saved to Scratch.`
+- `Captured to Inbox in 2026-06-05.`
+- `Saved to Scratch in 2026-06-05.`
 - `Pasted next item from Vehicles.`
 - `Vehicles replay complete.`
-- `Compiled to Review.`
+- `Compiled to Review in 2026-06-01.`
+
+Save toasts name the destination project (and therefore the lane) as well as the bucket, so it is clear where a note landed when the normal and Shift lanes have different active projects.
 
 Use the tray menu's `Notification History` item to review recent Zetl messages. Use `Clear Notification History` to empty that history.
 
@@ -107,7 +109,7 @@ Every toast is also persisted as a note in a dedicated `Zetl Logs` project, so t
 ```text
 Zetl Logs
   2026-06-05
-    [09:14:02] Captured to Inbox.
+    [09:14:02] Captured to Inbox in 2026-06-05.
     [09:14:20] Pasted next item from Vehicles.
     [09:14:21] Paste failed; Vehicles item kept.
     [09:15:03] Vehicles replay complete.

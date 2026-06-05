@@ -244,6 +244,13 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         replayInjectedClipboard[index] = null;
     }
 
+    // "<bucket> in <project>" for save toasts, so it's clear which project (and
+    // therefore which lane) a note landed in.
+    private static string DestinationLabel(ZetlProject? project, ZetlBucket bucket)
+    {
+        return project is null ? bucket.Name : $"{bucket.Name} in {project.Name}";
+    }
+
     private static void SetClipboardTextIfDifferent(string text)
     {
         if (!string.Equals(ClipboardText.TryGet()?.Trim(), text.Trim(), StringComparison.Ordinal))
@@ -372,6 +379,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             return;
         }
 
+        var project = store.GetActiveProject(pending.ShiftLane);
         var text = pending.ObservedClipboardText
             ?? await WaitForClipboardTextAsync(pending.ClipboardSequenceNumber, 75);
         if (text is null || pending.Cancelled)
@@ -384,7 +392,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             pending.ShiftLane,
             $"Undid capture to {bucket.Name}.",
             () => store.DeleteNote(bucket, note.Id));
-        ShowInfo($"Captured to {bucket.Name}.");
+        ShowInfo($"Captured to {DestinationLabel(project, bucket)}.");
     }
 
     private async Task HandleHoldAsync(ChordlEventContext context, IntPtr targetWindow)
@@ -554,6 +562,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 {
                     var destinationProject = form.DestinationProject;
                     var destination = store.GetOrCreateBucket(destinationProject, form.DestinationBucketName, setActive: false);
+                    var destinationLabel = DestinationLabel(destinationProject, destination);
                     string savedSummary;
                     if (form.Flatten)
                     {
@@ -562,7 +571,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                             shifted,
                             $"Undid compile to {destination.Name}.",
                             () => store.DeleteNote(destination, note.Id));
-                        savedSummary = $"to {destination.Name}";
+                        savedSummary = $"to {destinationLabel}";
                     }
                     else
                     {
@@ -577,12 +586,10 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                                     store.DeleteNote(destination, note.Id);
                                 }
                             });
-                        savedSummary = $"{notes.Count} notes to {destination.Name}";
+                        savedSummary = $"{notes.Count} notes to {destinationLabel}";
                     }
 
-                    ShowInfo(destinationProject.Id == form.SourceProject.Id
-                        ? $"Compiled {savedSummary}."
-                        : $"Compiled {savedSummary} ({destinationProject.Name}).");
+                    ShowInfo($"Compiled {savedSummary}.");
                     RestoreForegroundWindow(targetWindow);
                     return;
                 }
@@ -715,7 +722,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                         store.ClearActiveProject(shifted);
                     }
 
-                    ShowInfo($"Saved to {bucket.Name}.");
+                    ShowInfo($"Saved to {DestinationLabel(noteProject, bucket)}.");
                 }
                 finally
                 {
