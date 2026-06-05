@@ -126,7 +126,7 @@ Coldkeys are Chordl shortcuts: hotkeys you hold. Tapping the chord keeps the nor
 | `Ctrl+B` | Normal `Ctrl+B`, replayed on key-up. | Opens the Board without depending on selected text or clipboard contents. |
 | `Ctrl+C` | Normal copy. If a project is active, changed non-empty clipboard text is captured into the active bucket. | Capture/manage. With copied text, opens the note dialog. With no copied text, opens the Board/project management flow. |
 | `Ctrl+P` | Normal `Ctrl+P`, replayed on key-up. | Toggles Pop Mode for the active bucket. |
-| `Ctrl+R` | Normal `Ctrl+R`, replayed on key-up. | Toggles Replay Mode for the active bucket and primes the next replay item onto the clipboard when available. |
+| `Ctrl+R` | Normal `Ctrl+R`, replayed on key-up. | Toggles Replay Mode for the active bucket. |
 | `Ctrl+X` | Normal cut. Does not auto-capture. | Quick note. Prefills with cut text if available, otherwise starts empty. Defaults to the project's remembered quick-note bucket, starting with `Scratch`. |
 | `Ctrl+V` | Normal paste. If the active bucket is in Replay Mode, pastes the next replay item instead. | Compile. Opens the compile dialog when there are current-session notes. |
 | `Ctrl+Z` | Normal undo. | Zetl undo for the normal project lane. |
@@ -370,11 +370,14 @@ Example workflow:
 
 When the active bucket is in Replay Mode, tap `Ctrl+V` does not paste the current clipboard directly. Instead, Zetl:
 
-1. takes the oldest current-session note from the bucket
-2. places it on the clipboard
-3. sends paste to the foreground app
+1. remembers whatever you currently have on the clipboard
+2. takes the oldest current-session note from the bucket
+3. places it on the clipboard and sends paste to the foreground app
 4. removes that note from the bucket only if Windows accepts the synthetic paste input
 5. archives the consumed note into a review bucket
+6. restores your remembered clipboard once the paste lands
+
+Replay only borrows the clipboard for each paste. It does not pre-load the next item, and it puts your own clipboard back afterwards, so a plain `Ctrl+V` (or a paste in any other app) still pastes whatever you last copied — not a leftover replay item. If you copy something new mid-replay, Zetl notices and keeps your new copy instead of overwriting it.
 
 If your Replay bucket is named `Queue`, the review bucket is named:
 
@@ -386,7 +389,7 @@ The review bucket lets you inspect what was pasted after the list has been consu
 
 If Windows rejects the synthetic paste input, Zetl keeps the item in place and shows `Paste failed; [bucket] item kept.` This verifies that the paste command was queued successfully, though individual apps still may not report whether they inserted the text.
 
-When a Replay bucket becomes empty, Zetl turns Replay off and switches it back to `Standard`. The last pasted value stays on the clipboard, so repeated paste behaves normally again. This makes a one-item list feel like normal copy/paste after the item is consumed.
+When a Replay bucket becomes empty, Zetl turns Replay off and switches it back to `Standard`. Your own clipboard is restored after the final paste, so repeated paste behaves normally again with whatever you last copied.
 
 Replay Mode and Pop Mode cannot coexist. Turning on Replay turns Pop Mode off.
 

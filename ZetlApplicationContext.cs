@@ -7,6 +7,7 @@ namespace ZETL;
 internal sealed class ZetlApplicationContext : ApplicationContext
 {
     private const int MaxUndoActions = 100;
+    private const int ReplayClipboardRestoreDelayMs = 150;
     private readonly ZetlStateStore store = new();
     private readonly ZetlAppSettingsStore appSettings = new();
     private readonly NotifyIcon trayIcon;
@@ -15,6 +16,12 @@ internal sealed class ZetlApplicationContext : ApplicationContext
     private readonly Dictionary<(int KeyCode, bool Shifted), PendingShortcut> pendingShortcuts = new();
     private readonly List<ZetlUndoAction> undoStack = new();
     private readonly List<string> logLines = new();
+    // Replay borrows the system clipboard for each paste; these remember the
+    // user's own clipboard per lane ([0] normal, [1] Shift) so it can be put back
+    // afterwards. replayInjected tracks the value we last wrote, so a clipboard
+    // the user changed mid-replay is recognized rather than treated as ours.
+    private readonly string?[] replayUserClipboard = new string?[2];
+    private readonly string?[] replayInjectedClipboard = new string?[2];
     private BoardForm? boardForm;
 
     private readonly TimeSpan holdDelay;
@@ -92,11 +99,18 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         {
             if (store.TryPeekNextFifoNote(activeBucket, out var fifoNote) && fifoNote is not null)
             {
-                var project = store.GetActiveProject(context.ShiftLane);
+                var lane = context.ShiftLane;
+                var project = store.GetActiveProject(lane);
                 var noteId = fifoNote.Id;
                 var noteText = fifoNote.Text;
                 var bucketName = activeBucket.Name;
-                SetClipboardTextIfDifferent(noteText);
+
+                // Replay only borrows the clipboard for the paste: remember what
+                // the user actually had on it, swap in the queue item, then put
+                // their value back once the paste lands. A plain Ctrl+V then still
+                // pastes the user's real last copy instead of a replay leftover.
+                RememberUserClipboardBeforeReplay(lane);
+                SetReplayClipboard(lane, noteText);
                 if (!ChordlInput.SendPaste(Log))
                 {
                     BeginInvoke(() => ShowInfo($"Paste failed; {bucketName} item kept."));
@@ -121,20 +135,21 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                         var undoReviewBucket = reviewBucket;
                         var undoReviewNoteId = reviewNote?.Id;
                         PushUndo(
-                            context.ShiftLane,
+                            lane,
                             $"Restored replay item to {bucketName}.",
                             () => store.RestoreFifoConsumedNote(activeBucket, consumedNote, undoReviewBucket, undoReviewNoteId));
                     }
 
-                    if (!store.TryPeekNextFifoNote(activeBucket, out _))
+                    var replayComplete = !store.TryPeekNextFifoNote(activeBucket, out _);
+                    if (replayComplete)
                     {
                         store.SetBucketKind(activeBucket, "Standard");
-                        ShowInfo($"{bucketName} replay complete.");
-                        return;
                     }
 
-                    PrimeNextFifoClipboard(context.ShiftLane, activeBucket);
-                    ShowInfo($"Pasted next item from {bucketName}.");
+                    RestoreUserClipboardAfterReplay(lane, noteText);
+                    ShowInfo(replayComplete
+                        ? $"{bucketName} replay complete."
+                        : $"Pasted next item from {bucketName}.");
                 });
                 return true;
             }
@@ -167,21 +182,56 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         return false;
     }
 
-    private void PrimeNextFifoClipboard(bool shifted, ZetlBucket bucket)
+    // Snapshot the user's real clipboard before a replay paste borrows it. If the
+    // clipboard isn't the item we last injected for this lane, the user (or the
+    // target app) put it there, so it is their value to restore to later.
+    private void RememberUserClipboardBeforeReplay(bool shifted)
     {
+        var index = shifted ? 1 : 0;
+        var current = ClipboardText.TryGet();
+        if (!string.Equals(current?.Trim(), replayInjectedClipboard[index]?.Trim(), StringComparison.Ordinal))
+        {
+            replayUserClipboard[index] = current;
+        }
+    }
+
+    private void SetReplayClipboard(bool shifted, string text)
+    {
+        SetClipboardTextIfDifferent(text);
+        replayInjectedClipboard[shifted ? 1 : 0] = text;
+    }
+
+    private void RestoreUserClipboardAfterReplay(bool shifted, string injectedText)
+    {
+        var index = shifted ? 1 : 0;
+        var restoreTo = replayUserClipboard[index];
+        if (string.IsNullOrEmpty(restoreTo))
+        {
+            // Nothing meaningful to put back; leave the replay item on the
+            // clipboard rather than blanking it.
+            return;
+        }
+
         BeginInvoke(async () =>
         {
-            await Task.Delay(125);
-            if (!ZetlStateStore.IsFifoBucket(bucket)
-                || store.GetActiveBucket(shifted)?.Id != bucket.Id
-                || !store.TryPeekNextFifoNote(bucket, out var nextNote)
-                || nextNote is null)
+            // Let the target app consume the paste before restoring, otherwise it
+            // could read the restored value instead of the replay item.
+            await Task.Delay(ReplayClipboardRestoreDelayMs);
+            // Only restore if our injected item is still on the clipboard; if the
+            // user copied something new since, leave their new copy in place.
+            if (string.Equals(ClipboardText.TryGet()?.Trim(), injectedText.Trim(), StringComparison.Ordinal))
             {
-                return;
+                ClipboardText.Set(restoreTo);
+                replayInjectedClipboard[index] = restoreTo;
             }
-
-            SetClipboardTextIfDifferent(nextNote.Text);
         });
+    }
+
+    private void ResetReplayClipboardTracking(bool shifted)
+    {
+        var index = shifted ? 1 : 0;
+        replayUserClipboard[index] = null;
+        replayInjectedClipboard[index] = null;
     }
 
     private static void SetClipboardTextIfDifferent(string text)
@@ -365,16 +415,17 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         if (ZetlStateStore.IsFifoBucket(bucket))
         {
             store.SetBucketKind(bucket, "Standard");
+            ResetReplayClipboardTracking(shifted);
             ShowInfo($"{bucket.Name} replay is off.");
             return;
         }
 
         store.SetBucketKind(bucket, "Replay");
-        if (store.TryPeekNextFifoNote(bucket, out var nextNote) && nextNote is not null)
-        {
-            SetClipboardTextIfDifferent(nextNote.Text);
-        }
-
+        // Turning replay on no longer pre-loads the first item onto the clipboard:
+        // that would clobber the user's last copy. Each Ctrl+V borrows the queue
+        // item only for its own paste. Start tracking fresh so the first replay
+        // press snapshots the real clipboard.
+        ResetReplayClipboardTracking(shifted);
         ShowInfo($"{bucket.Name} replay is on.");
     }
 
