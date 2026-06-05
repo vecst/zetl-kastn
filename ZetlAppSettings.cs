@@ -5,6 +5,7 @@ internal sealed class ZetlAppSettings
     public bool HasSeenFirstRun { get; set; }
     public int ToastDisplayMs { get; set; } = 950;
     public bool AutoCaptureOnCopy { get; set; } = true;
+    public bool QuickNoteToClipboard { get; set; }
     public List<string> DefaultProjectBuckets { get; set; } = new() { "Inbox", "Scratch" };
     public string DefaultCompileMode { get; set; } = "Formatted";
     public int DefaultTsvRowLength { get; set; } = 5;

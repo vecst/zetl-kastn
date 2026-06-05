@@ -284,7 +284,9 @@ With an active project:
 - `Alt+B` focuses the inline new-bucket field.
 - `Ctrl+Enter` saves the note.
 
-When a copied or cut text value is prefilled, Zetl adds a trailing space so you can immediately keep typing. If you edit the note before saving, the system clipboard is updated to the edited text.
+When a copied or cut text value is prefilled, Zetl adds a trailing space so you can immediately keep typing.
+
+By default a quick note does not touch the clipboard: a held `Ctrl+X` jot is just saved, leaving whatever you had copied intact. Turn on **Quick note goes to clipboard** in Settings if you want the saved quick note placed on the clipboard. A held `Ctrl+C` copy note still keeps the clipboard in sync with your edits regardless of that setting.
 
 ## Copy Capture
 
@@ -357,7 +359,7 @@ Line breaks and tabs inside note text are normalized to spaces for TSV output.
 
 Compile spans the whole active project, including notes from earlier sessions. Reactivate an old project from the Board and held `Ctrl+V` can recompile everything in it. Check `This session only` in the dialog to narrow the list back to notes captured this session.
 
-If no project is active, held `Ctrl+V` can still compile current-session notes from an inactive `Scratch` bucket. This fallback stays session-scoped and does not activate the project.
+If no project is active, held `Ctrl+V` can still compile. When a `Scratch` bucket holds a current-session quick note, Zetl opens the compile dialog on that whole project — all of its buckets are available to select — without activating it. So a quick note jotted with held `Ctrl+X` is fully compilable even though it never started the project.
 
 ## Standard Buckets
 
@@ -455,6 +457,7 @@ The tray menu's `Settings` item edits app-wide preferences, stored in `%AppData%
 
 - **Toast display time** — how long each toast stays on screen, in milliseconds.
 - **Auto-capture on copy** — whether a plain `Ctrl+C` captures changed clipboard text into the active bucket. Turn it off to keep normal copy fully passive; held `Ctrl+C` still captures.
+- **Quick note goes to clipboard** — whether a saved held `Ctrl+X` quick note places its text on the clipboard. Off by default, so a quick jot does not overwrite what you already had copied. Held `Ctrl+C` copy notes update the clipboard regardless.
 - **Default project buckets** — the buckets a new project starts with (one per line), used for the dated default project and prefilled in `New Project`.
 - **Default compile mode** and **default TSV row length** — applied to newly created buckets. Each bucket can still override these in its own settings.
 

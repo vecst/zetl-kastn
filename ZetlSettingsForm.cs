@@ -4,6 +4,7 @@ internal sealed class ZetlSettingsForm : ZetlPopupForm
 {
     private readonly NumericUpDown toastMsBox = new();
     private readonly CheckBox autoCaptureBox = new();
+    private readonly CheckBox quickNoteClipboardBox = new();
     private readonly TextBox defaultBucketsBox = new();
     private readonly ComboBox compileModeBox = new();
     private readonly NumericUpDown tsvRowLengthBox = new();
@@ -15,23 +16,21 @@ internal sealed class ZetlSettingsForm : ZetlPopupForm
         Text = "Zetl Settings";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(500, 340);
+        ClientSize = new Size(500, 380);
 
         var layout = new TableLayoutPanel
         {
             ColumnCount = 2,
-            RowCount = 6,
+            RowCount = 7,
             Dock = DockStyle.Fill,
             Padding = new Padding(14)
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 230));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < 7; i++)
         {
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
-
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         toastMsBox.Minimum = 200;
         toastMsBox.Maximum = 5000;
@@ -42,6 +41,10 @@ internal sealed class ZetlSettingsForm : ZetlPopupForm
         autoCaptureBox.AutoSize = true;
         autoCaptureBox.Text = "Capture plain Ctrl+C into the active bucket";
         autoCaptureBox.Checked = settings.AutoCaptureOnCopy;
+
+        quickNoteClipboardBox.AutoSize = true;
+        quickNoteClipboardBox.Text = "Held Ctrl+X note also copies its text to the clipboard";
+        quickNoteClipboardBox.Checked = settings.QuickNoteToClipboard;
 
         defaultBucketsBox.Multiline = true;
         defaultBucketsBox.AcceptsReturn = true;
@@ -64,12 +67,14 @@ internal sealed class ZetlSettingsForm : ZetlPopupForm
         layout.Controls.Add(toastMsBox, 1, 0);
         layout.Controls.Add(MakeLabel("Auto-capture on copy"), 0, 1);
         layout.Controls.Add(autoCaptureBox, 1, 1);
-        layout.Controls.Add(MakeLabel("Default project buckets (one per line)"), 0, 2);
-        layout.Controls.Add(defaultBucketsBox, 1, 2);
-        layout.Controls.Add(MakeLabel("Default compile mode"), 0, 3);
-        layout.Controls.Add(compileModeBox, 1, 3);
-        layout.Controls.Add(MakeLabel("Default TSV row length"), 0, 4);
-        layout.Controls.Add(tsvRowLengthBox, 1, 4);
+        layout.Controls.Add(MakeLabel("Quick note to clipboard"), 0, 2);
+        layout.Controls.Add(quickNoteClipboardBox, 1, 2);
+        layout.Controls.Add(MakeLabel("Default project buckets (one per line)"), 0, 3);
+        layout.Controls.Add(defaultBucketsBox, 1, 3);
+        layout.Controls.Add(MakeLabel("Default compile mode"), 0, 4);
+        layout.Controls.Add(compileModeBox, 1, 4);
+        layout.Controls.Add(MakeLabel("Default TSV row length"), 0, 5);
+        layout.Controls.Add(tsvRowLengthBox, 1, 5);
 
         var buttons = new FlowLayoutPanel
         {
@@ -86,7 +91,7 @@ internal sealed class ZetlSettingsForm : ZetlPopupForm
         cancelButton.DialogResult = DialogResult.Cancel;
         buttons.Controls.Add(saveButton);
         buttons.Controls.Add(cancelButton);
-        layout.Controls.Add(buttons, 0, 5);
+        layout.Controls.Add(buttons, 0, 6);
         layout.SetColumnSpan(buttons, 2);
 
         AcceptButton = saveButton;
@@ -97,6 +102,8 @@ internal sealed class ZetlSettingsForm : ZetlPopupForm
     public int ToastDisplayMs => (int)toastMsBox.Value;
 
     public bool AutoCaptureOnCopy => autoCaptureBox.Checked;
+
+    public bool QuickNoteToClipboard => quickNoteClipboardBox.Checked;
 
     public List<string> DefaultProjectBuckets => defaultBucketsBox.Lines
         .Select(line => line.Trim())

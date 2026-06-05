@@ -1045,9 +1045,11 @@ internal static partial class Program
 
             AssertEqual(950, store.Settings.ToastDisplayMs, "Toast display should default to 950.");
             AssertTrue(store.Settings.AutoCaptureOnCopy, "Auto-capture should default to on.");
+            AssertFalse(store.Settings.QuickNoteToClipboard, "Quick note to clipboard should default to off.");
 
             store.Settings.ToastDisplayMs = 1500;
             store.Settings.AutoCaptureOnCopy = false;
+            store.Settings.QuickNoteToClipboard = true;
             store.Settings.DefaultProjectBuckets = new List<string> { "Notes", "Scratch" };
             store.Settings.DefaultCompileMode = "TSV";
             store.Settings.DefaultTsvRowLength = 4;
@@ -1056,6 +1058,7 @@ internal static partial class Program
             var loaded = new ZetlAppSettingsStore(settingsPath);
             AssertEqual(1500, loaded.Settings.ToastDisplayMs, "Toast display should round-trip.");
             AssertFalse(loaded.Settings.AutoCaptureOnCopy, "Auto-capture flag should round-trip.");
+            AssertTrue(loaded.Settings.QuickNoteToClipboard, "Quick note to clipboard flag should round-trip.");
             AssertEqual("Notes", loaded.Settings.DefaultProjectBuckets[0], "Default buckets should round-trip.");
             AssertEqual("TSV", loaded.Settings.DefaultCompileMode, "Default compile mode should round-trip.");
             AssertEqual(4, loaded.Settings.DefaultTsvRowLength, "Default TSV row length should round-trip.");

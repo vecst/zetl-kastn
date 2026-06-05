@@ -320,6 +320,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         var settings = appSettings.Settings;
         settings.ToastDisplayMs = form.ToastDisplayMs;
         settings.AutoCaptureOnCopy = form.AutoCaptureOnCopy;
+        settings.QuickNoteToClipboard = form.QuickNoteToClipboard;
         settings.DefaultProjectBuckets = form.DefaultProjectBuckets.Count > 0
             ? form.DefaultProjectBuckets
             : new List<string> { "Inbox", "Scratch" };
@@ -534,7 +535,10 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 return;
             }
 
-            bucketScope = [scratchBucket];
+            // The project isn't active (a quick note doesn't start it), but the
+            // scratch note means there's something to compile -- offer the whole
+            // project (all buckets), not just Scratch, so it's usable from here.
+            bucketScope = null;
         }
         else if (!store.HasCompilableNotes(project))
         {
@@ -716,7 +720,15 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                         shifted,
                         $"Undid save to {bucket.Name}.",
                         () => store.DeleteNote(bucket, note.Id));
-                    ClipboardText.Set(form.NoteText);
+                    // A held Ctrl+C copy note keeps the clipboard in sync with any
+                    // edits, but a quick note (held Ctrl+X) only touches the
+                    // clipboard if the user opted in, so a plain jot doesn't clobber
+                    // whatever is already copied.
+                    var isQuickNote = string.Equals(source, "cut", StringComparison.OrdinalIgnoreCase);
+                    if (!isQuickNote || appSettings.Settings.QuickNoteToClipboard)
+                    {
+                        ClipboardText.Set(form.NoteText);
+                    }
                     if (showStartProjectToggle && !createNewProjectToggle && !form.StartProject)
                     {
                         store.ClearActiveProject(shifted);
