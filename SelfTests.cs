@@ -59,6 +59,7 @@ internal static partial class Program
                 ("Zetl state round-trips JSON", StateRoundTripsJson),
                 ("Zetl state stores each project in its own folder", StateStoresEachProjectInItsOwnFolder),
                 ("Zetl state migrates a legacy single state file", StateMigratesLegacySingleFile),
+                ("Zetl state appends activity-log notes without activating", StateAppendsLogNotesWithoutActivating),
                 ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
                 ("Zetl state applies bucket defaults", StateAppliesBucketDefaults),
@@ -996,6 +997,31 @@ internal static partial class Program
 
             var reloaded = new ZetlStateStore(temp.Path);
             AssertEqual("Legacy", reloaded.State.Projects.Single().Name, "Migrated project should reload from the new layout.");
+        }
+
+        private static void StateAppendsLogNotesWithoutActivating()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Work", ["Inbox"], "Inbox");
+            var activeBefore = store.State.ActiveProjectId;
+
+            store.AppendLogNotes(["[09:00:00] one", "[09:00:01] two"], maxDayBuckets: 14, maxNotesPerBucket: 1000);
+
+            var logProject = store.State.Projects.Single(project => project.Name == ZetlStateStore.LogProjectName);
+            AssertEqual(activeBefore, store.State.ActiveProjectId, "Logging should not change the active project.");
+            var today = DateTime.Now.ToString("yyyy-MM-dd");
+            var dayBucket = logProject.Buckets.Single(bucket => bucket.Name == today);
+            AssertEqual(2, dayBucket.Notes.Count, "Both log lines should be stored as notes.");
+            AssertEqual("log", dayBucket.Notes[0].Source, "Log notes should use the log source.");
+
+            store.AppendLogNotes(["a", "b", "c", "d", "e"], maxDayBuckets: 14, maxNotesPerBucket: 3);
+            AssertEqual(3, logProject.Buckets.Single(bucket => bucket.Name == today).Notes.Count, "Day bucket should be capped to maxNotesPerBucket.");
+            AssertEqual("e", logProject.Buckets.Single(bucket => bucket.Name == today).Notes[^1].Text, "Capping should keep the newest notes.");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            AssertTrue(reloaded.State.Projects.Any(project => project.Name == ZetlStateStore.LogProjectName), "Log project should persist across reload.");
+            AssertEqual("Work", reloaded.ActiveProject?.Name, "Logging should leave the real active project untouched across reload.");
         }
 
         private static void AppSettingsRoundTripFirstRunFlag()

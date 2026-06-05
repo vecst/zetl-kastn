@@ -8,6 +8,9 @@ internal sealed class ZetlApplicationContext : ApplicationContext
 {
     private const int MaxUndoActions = 100;
     private const int ReplayClipboardRestoreDelayMs = 150;
+    private const int LogFlushIntervalMs = 5000;
+    private const int LogRetentionDays = 14;
+    private const int LogMaxNotesPerDay = 2000;
     private readonly ZetlStateStore store = new();
     private readonly ZetlAppSettingsStore appSettings = new();
     private readonly NotifyIcon trayIcon;
@@ -22,6 +25,10 @@ internal sealed class ZetlApplicationContext : ApplicationContext
     // the user changed mid-replay is recognized rather than treated as ours.
     private readonly string?[] replayUserClipboard = new string?[2];
     private readonly string?[] replayInjectedClipboard = new string?[2];
+    // Activity-log lines buffered between flushes so persisting them never sits
+    // on the per-keystroke path; a timer drains this into the "Zetl Logs" project.
+    private readonly List<string> pendingLogNotes = new();
+    private System.Windows.Forms.Timer? logFlushTimer;
     private BoardForm? boardForm;
 
     private readonly TimeSpan holdDelay;
@@ -43,6 +50,9 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             ContextMenuStrip = BuildTrayMenu()
         };
         trayIcon.DoubleClick += (_, _) => ShowBoard();
+        logFlushTimer = new System.Windows.Forms.Timer { Interval = LogFlushIntervalMs };
+        logFlushTimer.Tick += (_, _) => FlushLogNotes();
+        logFlushTimer.Start();
         BeginInvoke(ShowFirstRunIfNeeded);
     }
 
@@ -252,6 +262,9 @@ internal sealed class ZetlApplicationContext : ApplicationContext
     {
         if (disposing)
         {
+            logFlushTimer?.Stop();
+            logFlushTimer?.Dispose();
+            FlushLogNotes();
             boardForm?.Dispose();
             toastService.Dispose();
             trayIcon.Dispose();
@@ -820,6 +833,47 @@ internal sealed class ZetlApplicationContext : ApplicationContext
     private void ShowInfo(string message)
     {
         toastService.Show(message);
+        EnqueueLogNote(message);
+    }
+
+    private void EnqueueLogNote(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        lock (pendingLogNotes)
+        {
+            pendingLogNotes.Add(line);
+        }
+    }
+
+    private void FlushLogNotes()
+    {
+        List<string> batch;
+        lock (pendingLogNotes)
+        {
+            if (pendingLogNotes.Count == 0)
+            {
+                return;
+            }
+
+            batch = new List<string>(pendingLogNotes);
+            pendingLogNotes.Clear();
+        }
+
+        try
+        {
+            store.AppendLogNotes(batch, LogRetentionDays, LogMaxNotesPerDay);
+        }
+        catch (Exception ex)
+        {
+            // Keep flush failures off the toast path (that would re-enqueue and
+            // loop); the in-memory trace is enough to notice them.
+            Log($"Log note flush failed: {ex.Message}");
+        }
     }
 
     private static void RestoreForegroundWindow(IntPtr window)

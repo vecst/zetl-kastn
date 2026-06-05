@@ -100,6 +100,27 @@ Examples:
 
 Use the tray menu's `Notification History` item to review recent Zetl messages. Use `Clear Notification History` to empty that history.
 
+## Activity Log
+
+Every toast is also persisted as a note in a dedicated `Zetl Logs` project, so the activity trail survives restarts and is browsable in the Board like any other project. Notes are grouped into a bucket per day:
+
+```text
+Zetl Logs
+  2026-06-05
+    [09:14:02] Captured to Inbox.
+    [09:14:20] Pasted next item from Vehicles.
+    [09:14:21] Paste failed; Vehicles item kept.
+    [09:15:03] Vehicles replay complete.
+```
+
+The `Zetl Logs` project is infrastructure: it is never made the active project, so it cannot hijack a lane. Lines are buffered and flushed every few seconds (and on exit) so logging never sits on the per-keystroke path, and retention is bounded — each day's bucket is capped and only the most recent days are kept.
+
+This is handy for spotting issues during real use: a run of `Paste failed; … item kept.` entries, for example, means a target app rejected the synthetic paste.
+
+## Single Instance
+
+Only one Zetl runs per login session. A second launch detects the first (via a session-scoped mutex) and exits with a notice instead of installing a competing keyboard hook. Separate Windows sessions — for example, two RDP sessions — can each run their own Zetl.
+
 ## Chordl Timing
 
 Chordl timing lives in `hotkeys.json`.

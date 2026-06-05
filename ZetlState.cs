@@ -64,6 +64,9 @@ internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, 
 
 internal sealed class ZetlStateStore
 {
+    // Name of the dedicated activity-log project. It is never made active.
+    public const string LogProjectName = "Zetl Logs";
+
     private readonly ZetlStateStorage storage;
     private readonly string sessionId;
 
@@ -361,6 +364,74 @@ internal sealed class ZetlStateStore
         }
 
         return added;
+    }
+
+    // Appends activity-log lines as notes in a dedicated "Zetl Logs" project,
+    // grouped into a per-day bucket. The log project is infrastructure: it is
+    // never made the active project, so it cannot hijack a lane. Retention is
+    // bounded (the day bucket is capped and stale day buckets are dropped) so the
+    // file cannot grow without limit, and it saves once per call -- the caller
+    // batches lines so logging stays off the per-keystroke path.
+    public void AppendLogNotes(IReadOnlyCollection<string> messages, int maxDayBuckets, int maxNotesPerBucket)
+    {
+        if (messages.Count == 0)
+        {
+            return;
+        }
+
+        var project = State.Projects.FirstOrDefault(item =>
+            string.Equals(item.Name, LogProjectName, StringComparison.OrdinalIgnoreCase));
+        if (project is null)
+        {
+            project = new ZetlProject { Id = NewId(), Name = LogProjectName };
+            State.Projects.Add(project);
+        }
+
+        var dayName = DateTime.Now.ToString("yyyy-MM-dd");
+        var bucket = project.Buckets.FirstOrDefault(item =>
+            string.Equals(item.Name, dayName, StringComparison.OrdinalIgnoreCase));
+        if (bucket is null)
+        {
+            bucket = CreateBucket(dayName);
+            ApplyBucketDefaults(bucket);
+            project.Buckets.Add(bucket);
+        }
+
+        foreach (var message in messages)
+        {
+            var trimmed = (message ?? "").Trim();
+            if (trimmed.Length == 0)
+            {
+                continue;
+            }
+
+            bucket.Notes.Add(new ZetlNote
+            {
+                Id = NewId(),
+                Text = trimmed,
+                Source = "log",
+                SessionId = sessionId,
+                CreatedAtUtc = DateTime.UtcNow
+            });
+        }
+
+        if (bucket.Notes.Count > maxNotesPerBucket)
+        {
+            bucket.Notes.RemoveRange(0, bucket.Notes.Count - maxNotesPerBucket);
+        }
+
+        // Day-bucket names are yyyy-MM-dd, so ordinal-descending order is newest
+        // first. Keep only the most recent day buckets; never drop Scratch.
+        foreach (var stale in project.Buckets
+            .Where(item => !IsScratchBucket(item))
+            .OrderByDescending(item => item.Name, StringComparer.Ordinal)
+            .Skip(maxDayBuckets)
+            .ToList())
+        {
+            project.Buckets.Remove(stale);
+        }
+
+        PersistProject(project);
     }
 
     public void DeleteNote(ZetlBucket bucket, string noteId)
