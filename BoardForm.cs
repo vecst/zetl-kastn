@@ -96,6 +96,10 @@ internal sealed partial class BoardForm : ZetlPopupForm
         };
         FormClosing += (_, args) =>
         {
+            // Clicking off to another app deactivates the board without firing the
+            // editor's Leave, and the auto-hide then closes it -- so commit any
+            // pending note edit here, before the board hides or disposes.
+            SaveNote();
             if (args.CloseReason == CloseReason.UserClosing)
             {
                 args.Cancel = true;
