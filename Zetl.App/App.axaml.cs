@@ -1,3 +1,4 @@
+using System.IO;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -15,10 +16,14 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // Zetl is ultimately a tray app with no main window; this placeholder
-            // just proves the Avalonia head renders. It will be replaced by the
-            // tray icon and the ported dialogs.
-            desktop.MainWindow = new MainWindow();
+            // DEV HARNESS: preview the ported note-capture window against a
+            // throwaway store so the Avalonia UI can be exercised and compared to
+            // the WinForms version. Replaced by the tray app + real orchestration.
+            var stateDir = Path.Combine(Path.GetTempPath(), "ZetlAvaloniaPreview");
+            var store = new ZetlStateStore(Path.Combine(stateDir, "state.json"));
+            var project = store.GetActiveProject()
+                ?? store.CreateProject("Preview", new[] { "Inbox", "Ideas", "Scratch" }, "Inbox");
+            desktop.MainWindow = new NoteCaptureWindow(store, project, store.GetActiveBucket(), "sample copied text");
         }
 
         base.OnFrameworkInitializationCompleted();
