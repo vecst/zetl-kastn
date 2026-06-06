@@ -34,9 +34,27 @@ So the brain needs no changes; only the plumbing on either side differs.
 
 ## Build order (each step independently valuable)
 
-Status: the Windows-side foundation (steps 2-3) is done — they need no Linux box.
-The spike and the Linux backend (steps 1, 4) are next and need the CachyOS
-machine.
+Status: the Windows-side foundation (steps 2-3) is done and the Avalonia head is
+scaffolded and running on Windows. Two tracks now run in parallel — the Avalonia
+UI (entirely on Windows) and the Linux input backend (needs the CachyOS box) are
+independent.
+
+## UI: unify on Avalonia (decided)
+
+Rather than keep WinForms on Windows and Avalonia on Linux, both platforms will
+share ONE Avalonia UI — one set of behaviors and bugs, one place to fix things.
+Sequencing, so the daily-driver Windows app is never regressed and the hard parts
+aren't solved twice:
+
+1. Build the Avalonia UI once, developing and polishing it ON WINDOWS, side by
+   side with the WinForms app for parity. (`Zetl.App` is the head; scaffold done.)
+2. Migrate Windows to it only once it reaches parity; then retire the WinForms
+   head. The seam + `Zetl.Core` split is what lets both heads coexist meanwhile.
+
+Caveat: the WinForms popups lean on Win32 focus tricks (`ZetlForms.cs`). Avalonia
+can reproduce them on Windows, but Wayland deliberately restricts foreground
+stealing / global popup placement — so a small platform-conditional slice of
+window behavior is unavoidable on Linux. One UI, with a Wayland-specific corner.
 
 1. **Spike (de-risk first).** Throwaway: open `/dev/input/eventX`, `EVIOCGRAB`,
    create a uinput device, forward all keys, wire only Ctrl+C through
@@ -51,8 +69,11 @@ machine.
 4. **Linux backend.** evdev reader + uinput sender + clipboard (wl-clipboard /
    xclip), implementing the seam, reusing `ChordlProcessor`. Start headless
    (drive a quick note from a terminal) to validate capture -> action first.
-5. **Linux UI.** Avalonia rewrite of the forms / tray / toasts. Biggest volume,
-   lowest uncertainty, last.
+5. **Avalonia UI head (`Zetl.App`).** *(scaffold done; in progress on Windows)*
+   Port tray + dialogs (note capture, board, compile, settings, first-run), and
+   lift the platform-agnostic orchestration out of `ZetlApplicationContext` into
+   a shared controller both heads drive. Runs on Windows now; the same head
+   serves Linux once the input backend lands.
 
 ## Project layout (after steps 2-3)
 
