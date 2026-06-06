@@ -10,5 +10,6 @@
     <!-- The platform heads (Windows WinForms today, Linux/Avalonia later) consume
          these internal types directly rather than through a public API surface. -->
     <InternalsVisibleTo Include="Zetl" />
+    <InternalsVisibleTo Include="Zetl.App" />
   </ItemGroup>
 </Project>

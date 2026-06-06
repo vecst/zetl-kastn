@@ -1,0 +1,13 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ZETL.MainWindow"
+        Width="460" Height="240"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Title="Zetl (Avalonia)">
+  <StackPanel Margin="24" Spacing="12">
+    <TextBlock FontSize="22" FontWeight="SemiBold" Text="Zetl — Avalonia head" />
+    <TextBlock TextWrapping="Wrap"
+               Text="Scaffold placeholder. This window confirms the Avalonia head builds and renders on Windows. The tray icon and the ported dialogs (note capture, board, compile, settings) will replace it." />
+  </StackPanel>
+</Window>
