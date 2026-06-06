@@ -12,9 +12,6 @@ internal static partial class Program
     internal static extern uint GetCurrentThreadId();
 
     [DllImport("user32.dll")]
-    internal static extern uint GetClipboardSequenceNumber();
-
-    [DllImport("user32.dll")]
     internal static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]

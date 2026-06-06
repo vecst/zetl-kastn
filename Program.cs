@@ -7,6 +7,7 @@ internal static partial class Program
     private static ChordlProcessor? chordlProcessor;
     private static ZetlApplicationContext? appContext;
     private static IKeyboardBackend? keyboardBackend;
+    private static IClipboard? clipboard;
     private static Mutex? singleInstanceMutex;
 
     [STAThread]
@@ -38,7 +39,8 @@ internal static partial class Program
         {
             var chordlConfig = LoadChordlConfig(out var configSource);
             keyboardBackend = new WindowsKeyboardBackend(LogEvent);
-            appContext = new ZetlApplicationContext(chordlConfig.HoldDelay, keyboardBackend);
+            clipboard = new WindowsClipboard();
+            appContext = new ZetlApplicationContext(chordlConfig.HoldDelay, keyboardBackend, clipboard);
             LogEvent(configSource);
             chordlProcessor = new ChordlProcessor(
                 chordlConfig.Actions,
@@ -50,7 +52,7 @@ internal static partial class Program
                 appContext.OnTapDispatched,
                 appContext.OnHoldDetected,
                 LogEvent,
-                GetClipboardSequenceNumber);
+                clipboard.GetChangeToken);
 
             if (!keyboardBackend.Start(chordlProcessor.HandleKeyEvent))
             {

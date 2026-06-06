@@ -33,11 +33,13 @@ internal sealed class ZetlApplicationContext : ApplicationContext
 
     private readonly TimeSpan holdDelay;
     private readonly IKeyboardBackend keyboard;
+    private readonly IClipboard clipboard;
 
-    public ZetlApplicationContext(TimeSpan holdDelay, IKeyboardBackend keyboard)
+    public ZetlApplicationContext(TimeSpan holdDelay, IKeyboardBackend keyboard, IClipboard clipboard)
     {
         this.holdDelay = holdDelay;
         this.keyboard = keyboard;
+        this.clipboard = clipboard;
         ApplyAppSettings();
         store.ConsolidateDefaultProject();
         store.ConsolidateDefaultProject(shifted: true);
@@ -178,7 +180,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         BeginInvoke(async () =>
         {
             await Task.Delay(75);
-            var text = ClipboardText.TryGet();
+            var text = clipboard.TryGetText();
             if (text is not null
                 && store.TryPopLastMatchingActiveNote(text, context.ShiftLane, out var bucket, out var note)
                 && bucket is not null
@@ -200,7 +202,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
     private void RememberUserClipboardBeforeReplay(bool shifted)
     {
         var index = shifted ? 1 : 0;
-        var current = ClipboardText.TryGet();
+        var current = clipboard.TryGetText();
         if (!string.Equals(current?.Trim(), replayInjectedClipboard[index]?.Trim(), StringComparison.Ordinal))
         {
             replayUserClipboard[index] = current;
@@ -231,9 +233,9 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             await Task.Delay(ReplayClipboardRestoreDelayMs);
             // Only restore if our injected item is still on the clipboard; if the
             // user copied something new since, leave their new copy in place.
-            if (string.Equals(ClipboardText.TryGet()?.Trim(), injectedText.Trim(), StringComparison.Ordinal))
+            if (string.Equals(clipboard.TryGetText()?.Trim(), injectedText.Trim(), StringComparison.Ordinal))
             {
-                ClipboardText.Set(restoreTo);
+                clipboard.SetText(restoreTo);
                 replayInjectedClipboard[index] = restoreTo;
             }
         });
@@ -253,11 +255,11 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         return project is null ? bucket.Name : $"{bucket.Name} in {project.Name}";
     }
 
-    private static void SetClipboardTextIfDifferent(string text)
+    private void SetClipboardTextIfDifferent(string text)
     {
-        if (!string.Equals(ClipboardText.TryGet()?.Trim(), text.Trim(), StringComparison.Ordinal))
+        if (!string.Equals(clipboard.TryGetText()?.Trim(), text.Trim(), StringComparison.Ordinal))
         {
-            ClipboardText.Set(text);
+            clipboard.SetText(text);
         }
     }
 
@@ -600,7 +602,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                     return;
                 }
 
-                ClipboardText.Set(form.CompiledText);
+                clipboard.SetText(form.CompiledText);
                 if (form.PasteNow)
                 {
                     if (targetWindow != IntPtr.Zero)
@@ -729,7 +731,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                     var isQuickNote = string.Equals(source, "cut", StringComparison.OrdinalIgnoreCase);
                     if (!isQuickNote || appSettings.Settings.QuickNoteToClipboard)
                     {
-                        ClipboardText.Set(form.NoteText);
+                        clipboard.SetText(form.NoteText);
                     }
                     if (showStartProjectToggle && !createNewProjectToggle && !form.StartProject)
                     {
@@ -835,9 +837,9 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         var started = Environment.TickCount64;
         do
         {
-            if (GetClipboardSequenceNumber() != beforeSequence)
+            if (clipboard.GetChangeToken() != beforeSequence)
             {
-                var text = ClipboardText.TryGet();
+                var text = clipboard.TryGetText();
                 if (!string.IsNullOrWhiteSpace(text))
                 {
                     return text.Trim();

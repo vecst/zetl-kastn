@@ -3,12 +3,13 @@ using System.Runtime.InteropServices;
 namespace ZETL;
 
 /// <summary>
-/// Clipboard text access that tolerates the transient failures Windows
-/// raises when another process holds the clipboard open.
+/// Windows <see cref="IClipboard"/>: the WinForms clipboard (tolerating the
+/// transient failures Windows raises when another process holds the clipboard
+/// open) plus GetClipboardSequenceNumber for change detection.
 /// </summary>
-internal static class ClipboardText
+internal sealed class WindowsClipboard : IClipboard
 {
-    public static string? TryGet()
+    public string? TryGetText()
     {
         try
         {
@@ -24,7 +25,7 @@ internal static class ClipboardText
         }
     }
 
-    public static void Set(string text)
+    public void SetText(string text)
     {
         try
         {
@@ -37,4 +38,12 @@ internal static class ClipboardText
         {
         }
     }
+
+    public uint GetChangeToken()
+    {
+        return GetClipboardSequenceNumber();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetClipboardSequenceNumber();
 }
