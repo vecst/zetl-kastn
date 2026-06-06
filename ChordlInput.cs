@@ -1,8 +1,12 @@
 using System.Runtime.InteropServices;
+using Chordl;
 
-namespace Chordl;
+namespace ZETL;
 
-public static class ChordlInput
+// Windows synthetic input: replays a Ctrl[+Shift]+<key> chord via SendInput.
+// Lives with the Windows backend rather than the portable Chordl library; a
+// Linux backend sends through uinput instead.
+internal static class ChordlInput
 {
     private const int INPUT_KEYBOARD = 1;
     private const uint KEYEVENTF_KEYUP = 0x0002;
