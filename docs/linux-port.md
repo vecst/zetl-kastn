@@ -34,20 +34,36 @@ So the brain needs no changes; only the plumbing on either side differs.
 
 ## Build order (each step independently valuable)
 
+Status: the Windows-side foundation (steps 2-3) is done — they need no Linux box.
+The spike and the Linux backend (steps 1, 4) are next and need the CachyOS
+machine.
+
 1. **Spike (de-risk first).** Throwaway: open `/dev/input/eventX`, `EVIOCGRAB`,
    create a uinput device, forward all keys, wire only Ctrl+C through
    `ChordlProcessor`. Prove tap/hold-while-Ctrl-held on real hardware + the
    compositor. Develop over SSH (a livelock could otherwise lock the keyboard).
-2. **Extract the platform seam on Windows (no-regret).** Interfaces +
-   Windows implementations, behavior unchanged. *(in progress)*
-3. **Extract `Zetl.Core`.** Move portable code (Chordl processor/models/config,
-   `ZetlState`/storage/settings) to a neutral `net10.0` library. Windows head
-   stays `net10.0-windows`/WinForms; add a Linux head project.
+2. **Extract the platform seam on Windows (no-regret).** *(done)* `IKeyboardBackend`
+   + `WindowsKeyboardBackend` (hook + SendInput), `IClipboard` +
+   `WindowsClipboard`. Behavior unchanged.
+3. **Extract `Zetl.Core`.** *(done)* Portable `net10.0` library: `Chordl` (now
+   neutral) + `Zetl.Core` (`ZetlState`/storage/settings + the platform
+   interfaces). Windows head stays `net10.0-windows`/WinForms and references both.
 4. **Linux backend.** evdev reader + uinput sender + clipboard (wl-clipboard /
    xclip), implementing the seam, reusing `ChordlProcessor`. Start headless
    (drive a quick note from a terminal) to validate capture -> action first.
 5. **Linux UI.** Avalonia rewrite of the forms / tray / toasts. Biggest volume,
    lowest uncertainty, last.
+
+## Project layout (after steps 2-3)
+
+- `Chordl/` (`net10.0`) — portable tap/hold engine: processor, models, keys,
+  config loader.
+- `Zetl.Core/` (`net10.0`) — portable workflow logic: state, storage, settings,
+  and the `IKeyboardBackend` / `IClipboard` seams. `InternalsVisibleTo("Zetl")`.
+- `ZetlHotkeys.csproj` (`net10.0-windows`, WinForms) — the Windows head: forms,
+  tray, `WindowsKeyboardBackend`, `WindowsClipboard`, `ChordlInput`, `Program`.
+- A future Linux head references `Chordl` + `Zetl.Core` and supplies
+  `LinuxKeyboardBackend` / `LinuxClipboard` + an Avalonia UI.
 
 ## The seam (step 2)
 

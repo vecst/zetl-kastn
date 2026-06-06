@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Chordl\**\*.cs" />
+    <Compile Remove="Zetl.Core\**\*.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Embed the canonical hotkeys.json so a single-file publish always has a
@@ -23,6 +24,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="Chordl\Chordl.csproj" />
+    <ProjectReference Include="Zetl.Core\Zetl.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="BoardForm.cs">

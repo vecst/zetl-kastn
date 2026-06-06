@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Zetl.Core</AssemblyName>
+    <RootNamespace>ZETL</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The platform heads (Windows WinForms today, Linux/Avalonia later) consume
+         these internal types directly rather than through a public API surface. -->
+    <InternalsVisibleTo Include="Zetl" />
+  </ItemGroup>
+</Project>
