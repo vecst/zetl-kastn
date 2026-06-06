@@ -32,10 +32,12 @@ internal sealed class ZetlApplicationContext : ApplicationContext
     private BoardForm? boardForm;
 
     private readonly TimeSpan holdDelay;
+    private readonly IKeyboardBackend keyboard;
 
-    public ZetlApplicationContext(TimeSpan holdDelay)
+    public ZetlApplicationContext(TimeSpan holdDelay, IKeyboardBackend keyboard)
     {
         this.holdDelay = holdDelay;
+        this.keyboard = keyboard;
         ApplyAppSettings();
         store.ConsolidateDefaultProject();
         store.ConsolidateDefaultProject(shifted: true);
@@ -121,7 +123,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                 // pastes the user's real last copy instead of a replay leftover.
                 RememberUserClipboardBeforeReplay(lane);
                 SetReplayClipboard(lane, noteText);
-                if (!ChordlInput.SendPaste(Log))
+                if (!keyboard.SendPaste())
                 {
                     BeginInvoke(() => ShowInfo($"Paste failed; {bucketName} item kept."));
                     return true;
@@ -167,7 +169,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
             BeginInvoke(() =>
             {
                 store.SetBucketKind(activeBucket, "Standard");
-                ChordlInput.SendPaste(Log);
+                keyboard.SendPaste();
                 ShowInfo($"{activeBucket.Name} replay complete.");
             });
             return true;
@@ -609,7 +611,7 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                     BeginInvoke(async () =>
                     {
                         await Task.Delay(75);
-                        ChordlInput.SendPaste(Log);
+                        keyboard.SendPaste();
                         ShowInfo("Pasted compiled text.");
                     });
                 }

@@ -1,15 +1,12 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Chordl;
 
 namespace ZETL;
 
 internal static partial class Program
 {
-    private static LowLevelKeyboardProc? hookProc;
-    private static IntPtr hookId = IntPtr.Zero;
     private static ChordlProcessor? chordlProcessor;
     private static ZetlApplicationContext? appContext;
+    private static IKeyboardBackend? keyboardBackend;
     private static Mutex? singleInstanceMutex;
 
     [STAThread]
@@ -40,7 +37,8 @@ internal static partial class Program
         try
         {
             var chordlConfig = LoadChordlConfig(out var configSource);
-            appContext = new ZetlApplicationContext(chordlConfig.HoldDelay);
+            keyboardBackend = new WindowsKeyboardBackend(LogEvent);
+            appContext = new ZetlApplicationContext(chordlConfig.HoldDelay, keyboardBackend);
             LogEvent(configSource);
             chordlProcessor = new ChordlProcessor(
                 chordlConfig.Actions,
@@ -54,9 +52,7 @@ internal static partial class Program
                 LogEvent,
                 GetClipboardSequenceNumber);
 
-            hookProc = HookCallback;
-            hookId = SetHook(hookProc);
-            if (hookId == IntPtr.Zero)
+            if (!keyboardBackend.Start(chordlProcessor.HandleKeyEvent))
             {
                 MessageBox.Show(
                     "Failed to install the global keyboard hook.",
@@ -78,11 +74,7 @@ internal static partial class Program
         finally
         {
             chordlProcessor?.Dispose();
-            if (hookId != IntPtr.Zero)
-            {
-                UnhookWindowsHookEx(hookId);
-            }
-
+            keyboardBackend?.Dispose();
             appContext?.Dispose();
             singleInstanceMutex?.Dispose();
         }
@@ -113,39 +105,6 @@ internal static partial class Program
         return reader.ReadToEnd();
     }
 
-    private static IntPtr SetHook(LowLevelKeyboardProc proc)
-    {
-        using var currentProcess = Process.GetCurrentProcess();
-        using var currentModule = currentProcess.MainModule;
-        return SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(currentModule?.ModuleName), 0);
-    }
-
-    private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-    {
-        if (nCode < 0)
-        {
-            return CallNextHookEx(hookId, nCode, wParam, lParam);
-        }
-
-        var hook = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-        if ((hook.flags & LLKHF_INJECTED) != 0)
-        {
-            return CallNextHookEx(hookId, nCode, wParam, lParam);
-        }
-
-        var vkCode = (int)hook.vkCode;
-        var message = wParam.ToInt32();
-        var isKeyDown = message is WM_KEYDOWN or WM_SYSKEYDOWN;
-        var isKeyUp = message is WM_KEYUP or WM_SYSKEYUP;
-
-        if (chordlProcessor?.HandleKeyEvent(vkCode, isKeyDown, isKeyUp) == true)
-        {
-            return (IntPtr)1;
-        }
-
-        return CallNextHookEx(hookId, nCode, wParam, lParam);
-    }
-
     private static void LogEvent(string message)
     {
         appContext?.Log(message);
@@ -153,7 +112,7 @@ internal static partial class Program
 
     private static void DispatchOriginalAction(int vkCode, bool includeShift, bool restoreCtrl, bool restoreShift)
     {
-        var sent = ChordlInput.SendCtrlChord(vkCode, includeShift, restoreCtrl, restoreShift, LogEvent);
+        var sent = keyboardBackend?.SendChord(vkCode, includeShift, restoreCtrl, restoreShift) ?? false;
         LogEvent(sent
             ? $"Sent synthetic {ChordlKeys.FormatComboName(vkCode, includeShift)}."
             : $"Failed to send synthetic {ChordlKeys.FormatComboName(vkCode, includeShift)}.");
