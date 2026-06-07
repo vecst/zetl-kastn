@@ -314,9 +314,9 @@ internal sealed class ZetlShortcutCoordinator
         var hadActiveProject = store.GetActiveProject(context.ShiftLane) is not null;
         var project = store.GetOrCreateDefaultProject(context.ShiftLane);
         var text = pending?.ObservedClipboardText
-            ?? await WaitForClipboardTextAsync(
-                pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber,
-                TimeSpan.FromMilliseconds(300))
+            ?? TryGetChangedClipboardText(
+                pending?.ClipboardSequenceNumber
+                    ?? context.ClipboardSequenceNumber)
             ?? "";
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -346,9 +346,9 @@ internal sealed class ZetlShortcutCoordinator
         var scratch = store.GetScratchBucket(project);
         var preferredBucket = hadActiveProject ? store.GetQuickNoteBucket(project) : scratch;
         var text = pending?.ObservedClipboardText
-            ?? await WaitForClipboardTextAsync(
-                pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber,
-                TimeSpan.FromMilliseconds(300))
+            ?? TryGetChangedClipboardText(
+                pending?.ClipboardSequenceNumber
+                    ?? context.ClipboardSequenceNumber)
             ?? "";
         return new ZetlNoteCaptureRequest(
             context.ShiftLane,
@@ -362,6 +362,19 @@ internal sealed class ZetlShortcutCoordinator
             CreateNewProjectToggle: false,
             ProjectToggleText: null,
             ProjectNameDefault: null);
+    }
+
+    private string? TryGetChangedClipboardText(uint beforeSequence)
+    {
+        if (clipboard.GetChangeToken() == beforeSequence)
+        {
+            return null;
+        }
+
+        var text = clipboard.TryGetText();
+        return string.IsNullOrWhiteSpace(text)
+            ? null
+            : text.Trim();
     }
 
     private ZetlShortcutRequest? CreateCompileRequest(bool shifted)

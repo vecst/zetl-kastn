@@ -234,7 +234,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         board.AutoHideOnDeactivate = target is not null;
         board.ShowActiveProject();
         PositionNearTopSixth(board);
-        ZetlWindowActivation.Show(board);
+        ZetlWindowActivation.Show(
+            board,
+            activationTarget: target);
     }
 
     private void ShowNoteCapture(
@@ -274,7 +276,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             }
         };
         PositionNearTopSixth(window);
-        ZetlWindowActivation.Show(window);
+        ZetlWindowActivation.Show(
+            window,
+            activationTarget: target);
     }
 
     private void ShowCompile(
@@ -313,7 +317,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             }
         };
         PositionNearTopSixth(window);
-        ZetlWindowActivation.Show(window);
+        ZetlWindowActivation.Show(
+            window,
+            activationTarget: target);
     }
 
     private async Task ShowProjectSetupAsync()

@@ -80,6 +80,7 @@ internal static class PortableSelfTests
                 ("Runtime auto-captures copied text", RuntimeAutoCapturesCopiedText),
                 ("Runtime hold cancellation prevents auto-capture", RuntimeHoldCancellationPreventsAutoCapture),
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
+                ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
@@ -1543,6 +1544,58 @@ internal static class PortableSelfTests
                 "The hold request should retain the observed clipboard text.");
         }
 
+        private static void RuntimeClaimedCopyHoldResolvesWithoutPolling()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var delay = new ManualDelay();
+            var clipboard = new FakeClipboard(
+                "copied text",
+                changeToken: 2);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                delay);
+            var context = ShortcutContext(
+                VK_C,
+                clipboardSequenceNumber: 1);
+            var pending = new ZetlPendingShortcut(
+                VK_C,
+                shiftLane: false,
+                clipboardSequenceNumber: 1);
+
+            var copiedTask = coordinator.HandleClaimedHoldAsync(
+                context,
+                pending);
+            AssertTrue(
+                copiedTask.IsCompleted,
+                "Changed clipboard text should resolve without polling.");
+            AssertTrue(
+                copiedTask.Result is ZetlNoteCaptureRequest,
+                "Changed clipboard text should open note capture.");
+
+            clipboard.SetState(null, changeToken: 2);
+            var emptyContext = ShortcutContext(
+                VK_C,
+                clipboardSequenceNumber: 2);
+            var emptyPending = new ZetlPendingShortcut(
+                VK_C,
+                shiftLane: false,
+                clipboardSequenceNumber: 2);
+            var emptyTask = coordinator.HandleClaimedHoldAsync(
+                emptyContext,
+                emptyPending);
+            AssertTrue(
+                emptyTask.IsCompleted,
+                "Unchanged clipboard should resolve without polling.");
+            AssertTrue(
+                emptyTask.Result is ZetlBoardRequest,
+                "Unchanged clipboard should open the Board immediately.");
+        }
+
         private static void RuntimeReplayTapConsumesAndRestoresClipboard()
         {
             using var temp = new TempStateFile();
@@ -2118,6 +2171,12 @@ internal static class PortableSelfTests
             public uint GetChangeToken()
             {
                 return ChangeToken;
+            }
+
+            public void SetState(string? text, uint changeToken)
+            {
+                Text = text;
+                ChangeToken = changeToken;
             }
         }
 }
