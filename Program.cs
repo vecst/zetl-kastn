@@ -15,7 +15,14 @@ internal static partial class Program
     {
         if (args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
         {
-            return SelfTests.Run();
+            return WindowsSelfTests.Run();
+        }
+
+        var parityDirectory = ReadValueArgument(args, "--parity-smoke=");
+        if (parityDirectory is not null)
+        {
+            ZetlParityScenario.Run(parityDirectory);
+            return 0;
         }
 
         // Only one Zetl may own the global keyboard hook per session: a second
@@ -40,7 +47,12 @@ internal static partial class Program
             var chordlConfig = LoadChordlConfig(out var configSource);
             keyboardBackend = new WindowsKeyboardBackend(LogEvent);
             clipboard = new WindowsClipboard();
-            appContext = new ZetlApplicationContext(chordlConfig.HoldDelay, keyboardBackend, clipboard);
+            var dataDirectory = ReadValueArgument(args, "--data-dir=");
+            appContext = new ZetlApplicationContext(
+                chordlConfig.HoldDelay,
+                keyboardBackend,
+                clipboard,
+                dataDirectory);
             LogEvent(configSource);
             chordlProcessor = new ChordlProcessor(
                 chordlConfig.Actions,
@@ -118,5 +130,12 @@ internal static partial class Program
         LogEvent(sent
             ? $"Sent synthetic {ChordlKeys.FormatComboName(vkCode, includeShift)}."
             : $"Failed to send synthetic {ChordlKeys.FormatComboName(vkCode, includeShift)}.");
+    }
+
+    private static string? ReadValueArgument(string[] args, string prefix)
+    {
+        return args.FirstOrDefault(arg =>
+                arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            ?[prefix.Length..];
     }
 }

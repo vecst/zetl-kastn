@@ -16,6 +16,7 @@ public sealed class ChordlProcessor : IDisposable
     private readonly Action<string> logEvent;
     private readonly Func<uint> getClipboardSequenceNumber;
     private readonly TimeSpan postCtrlReleaseSuppression = TimeSpan.FromMilliseconds(400);
+    private readonly HashSet<int> pressedShiftKeys = [];
 
     private bool ctrlDown;
     private bool shiftDown;
@@ -97,21 +98,31 @@ public sealed class ChordlProcessor : IDisposable
         {
             lock (gate)
             {
+                var wasShiftDown = shiftDown;
                 if (isKeyDown)
                 {
-                    shiftDown = true;
+                    pressedShiftKeys.Add(vkCode);
                 }
                 else if (isKeyUp)
                 {
-                    shiftDown = false;
+                    pressedShiftKeys.Remove(vkCode);
                 }
 
-                if (comboCandidateActive)
+                shiftDown = pressedShiftKeys.Count > 0;
+                if (!comboCandidateActive || shiftDown == wasShiftDown)
                 {
-                    RestartHoldCounter();
-                    UpdateActiveComboForCurrentModifiers();
-                    logEvent($"Switched active combo to {activeComboName}; hold counter restarted.");
+                    return false;
                 }
+
+                if (holdDetected)
+                {
+                    logEvent($"{activeComboName} modifier changed after hold; active combo retained.");
+                    return false;
+                }
+
+                UpdateActiveComboForCurrentModifiers();
+                RestartHoldCounter();
+                logEvent($"Switched active combo to {activeComboName}; hold counter restarted.");
             }
 
             return false;

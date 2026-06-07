@@ -9,6 +9,8 @@ internal sealed class ZetlAppSettings
     public List<string> DefaultProjectBuckets { get; set; } = new() { "Inbox", "Scratch" };
     public string DefaultCompileMode { get; set; } = "Formatted";
     public int DefaultTsvRowLength { get; set; } = 5;
+    public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
+    public string ThemeVariant { get; set; } = "System";
 }
 
 internal sealed class ZetlAppSettingsStore

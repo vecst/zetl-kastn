@@ -1,16 +1,14 @@
 using Chordl;
 using static Chordl.ChordlKeys;
 
-namespace ZETL;
+namespace ZETL.Tests;
 
-internal static partial class Program
+internal static class PortableSelfTests
 {
-    private static class SelfTests
+    public static int Run()
     {
-        public static int Run()
+        var tests = new (string Name, Action Test)[]
         {
-            var tests = new (string Name, Action Test)[]
-            {
                 ("Ctrl+C pass-through suppresses later repeats", CopyPassThroughSuppressesRepeats),
                 ("Ctrl+V tap dispatches paste on key-up", PasteTapDispatchesOnKeyUp),
                 ("Ctrl+V gallop tap dispatches after Ctrl key-up", PasteGallopTapDispatchesAfterCtrlKeyUp),
@@ -26,6 +24,8 @@ internal static partial class Program
                 ("Ctrl+R hold raises Replay toggle", FifoToggleHoldDoesNotDispatch),
                 ("Ctrl+Z hold raises Zetl undo", UndoHoldDoesNotDispatch),
                 ("Shift changes restart hold detection", ShiftChangeRestartsHold),
+                ("Shift repeat does not restart hold detection", ShiftRepeatDoesNotRestartHold),
+                ("Shift change after hold does not dispatch twice", ShiftChangeAfterHoldDoesNotDispatchTwice),
                 ("Zetl state creates projects and scratch buckets", StateCreatesProjectAndScratch),
                 ("Zetl state creates dated default projects on demand", StateCreatesDatedDefaultProject),
                 ("Zetl state reuses dated default projects", StateReusesDatedDefaultProject),
@@ -42,6 +42,9 @@ internal static partial class Program
                 ("Zetl adds notes preserving structure", StateAddsNotesPreservingStructure),
                 ("Zetl state preserves bucket settings", StatePreservesBucketSettings),
                 ("Zetl state protects the Scratch bucket", StateProtectsScratchBucket),
+                ("Zetl state deletes projects and repairs active lanes", StateDeletesProjectsAndRepairsActiveLanes),
+                ("Zetl state deletes bucket trees and repairs pointers", StateDeletesBucketTreesAndRepairsPointers),
+                ("Zetl state deletes notes", StateDeletesNotes),
                 ("Zetl state compiles selected notes", StateCompilesSelectedNotes),
                 ("Zetl state compiles selected notes unformatted", StateCompilesSelectedNotesUnformatted),
                 ("Zetl state compiles selected notes as TSV rows", StateCompilesSelectedNotesAsTsvRows),
@@ -62,27 +65,50 @@ internal static partial class Program
                 ("Zetl state appends activity-log notes without activating", StateAppendsLogNotesWithoutActivating),
                 ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
+                ("Zetl built-in theme validates", ThemeDefaultsValidate),
+                ("Zetl Dusk built-in theme validates", ThemeDuskValidates),
+                ("Zetl themes round-trip custom values", ThemeRoundTripsCustomValues),
+                ("Zetl themes preserve unknown JSON fields", ThemePreservesUnknownJsonFields),
+                ("Zetl theme store ignores invalid files", ThemeStoreIgnoresInvalidFiles),
                 ("Zetl state applies bucket defaults", StateAppliesBucketDefaults),
-                ("Zetl embeds a parseable default hotkeys config", EmbeddedDefaultConfigParses)
-            };
+                ("Zetl default hotkeys config parses", DefaultConfigParses),
+                ("Runtime applies app settings defaults", RuntimeAppliesAppSettingsDefaults),
+                ("Runtime undo stack keeps lanes separate", RuntimeUndoStackKeepsLanesSeparate),
+                ("Runtime activity log buffer drains safely", RuntimeActivityLogBufferDrainsSafely),
+                ("Runtime auto-captures copied text", RuntimeAutoCapturesCopiedText),
+                ("Runtime hold cancellation prevents auto-capture", RuntimeHoldCancellationPreventsAutoCapture),
+                ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
+                ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
+                ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
+                ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
+                ("Runtime cut hold defaults to Scratch", RuntimeCutHoldDefaultsToScratch),
+                ("Runtime hold toggles and undo stay portable", RuntimeHoldTogglesAndUndoStayPortable),
+                ("Runtime completes quick-note result", RuntimeCompletesQuickNoteResult),
+                ("Runtime completes flattened compile result", RuntimeCompletesCompileResult),
+                ("Runtime preserves structured compile saves", RuntimePreservesStructuredCompileSaves),
+                ("Runtime returns copy and paste compile outcomes", RuntimeReturnsCopyAndPasteCompileOutcomes),
+                ("Runtime reports rejected compiled paste", RuntimeReportsRejectedCompiledPaste),
+                ("Runtime parity scenario writes a reloadable snapshot", RuntimeParityScenarioWritesSnapshot)
+        };
 
-            var failures = new List<string>();
-            foreach (var (name, test) in tests)
+        var failures = new List<string>();
+        foreach (var (name, test) in tests)
+        {
+            try
             {
-                try
-                {
-                    test();
-                    Console.WriteLine($"PASS {name}");
-                }
-                catch (Exception ex)
-                {
-                    failures.Add($"{name}: {ex.Message}");
-                    Console.WriteLine($"FAIL {name}: {ex.Message}");
-                }
+                test();
+                Console.WriteLine($"PASS {name}");
             }
-
-            return failures.Count == 0 ? 0 : 1;
+            catch (Exception ex)
+            {
+                failures.Add($"{name}: {ex.Message}");
+                Console.WriteLine($"FAIL {name}: {ex.Message}");
+            }
         }
+
+        Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} portable tests passed.");
+        return failures.Count == 0 ? 0 : 1;
+    }
 
         private static void CopyPassThroughSuppressesRepeats()
         {
@@ -272,6 +298,45 @@ internal static partial class Program
             AssertEqual(1, holds.Count, "Hold should fire after Shift restart threshold.");
             AssertEqual("Ctrl+Shift+C", holds[0].Name, "Hold should use shifted chord.");
             processor.HandleKeyEvent(VK_C, isKeyDown: false, isKeyUp: true);
+            processor.HandleKeyEvent(VK_SHIFT, isKeyDown: false, isKeyUp: true);
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
+        }
+
+        private static void ShiftRepeatDoesNotRestartHold()
+        {
+            using var processor = CreateProcessor(out _, out _, out _, out var holds);
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
+            processor.HandleKeyEvent(VK_C, isKeyDown: true, isKeyUp: false);
+            Thread.Sleep(20);
+            processor.HandleKeyEvent(VK_SHIFT, isKeyDown: true, isKeyUp: false);
+            Thread.Sleep(45);
+            processor.HandleKeyEvent(VK_SHIFT, isKeyDown: true, isKeyUp: false);
+            Thread.Sleep(35);
+            AssertEqual(1, holds.Count, "Shift autorepeat should not postpone the restarted hold.");
+            AssertEqual("Ctrl+Shift+C", holds[0].Name, "Hold should retain the shifted chord.");
+            processor.HandleKeyEvent(VK_C, isKeyDown: false, isKeyUp: true);
+            processor.HandleKeyEvent(VK_SHIFT, isKeyDown: false, isKeyUp: true);
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
+        }
+
+        private static void ShiftChangeAfterHoldDoesNotDispatchTwice()
+        {
+            using var processor = CreateProcessor(
+                out var dispatched,
+                out _,
+                out var taps,
+                out var holds);
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
+            processor.HandleKeyEvent(VK_B, isKeyDown: true, isKeyUp: false);
+            Thread.Sleep(90);
+            AssertEqual(1, holds.Count, "Initial hold should fire once.");
+            processor.HandleKeyEvent(VK_SHIFT, isKeyDown: true, isKeyUp: false);
+            processor.HandleKeyEvent(VK_SHIFT, isKeyDown: true, isKeyUp: false);
+            Thread.Sleep(90);
+            processor.HandleKeyEvent(VK_B, isKeyDown: false, isKeyUp: true);
+            AssertEqual(1, holds.Count, "Modifier changes after a hold must not fire another hold.");
+            AssertEqual(0, taps.Count, "Modifier changes after a hold must not turn it into a tap.");
+            AssertEqual(0, dispatched.Count, "Modifier changes after a hold must not replay the shortcut.");
             processor.HandleKeyEvent(VK_SHIFT, isKeyDown: false, isKeyUp: true);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
@@ -510,19 +575,12 @@ internal static partial class Program
             AssertEqual(group.Id, sub.ParentBucketId, "Child bucket should keep its parent after consolidation regardless of list order.");
         }
 
-        private static void EmbeddedDefaultConfigParses()
+        private static void DefaultConfigParses()
         {
-            // Guards the single-file publish fallback: the canonical hotkeys.json
-            // must be embedded under this exact name and parse through the same
-            // loader path Program uses when no external file is found.
-            var assembly = typeof(Program).Assembly;
-            using var stream = assembly.GetManifestResourceStream("hotkeys.json");
-            AssertTrue(stream is not null, "Embedded default hotkeys.json should be present in the assembly.");
-
-            using var reader = new StreamReader(stream!);
-            var config = ChordlConfigLoader.LoadFromJson(reader.ReadToEnd());
-            AssertTrue(config.Actions.Count > 0, "Embedded default config should define at least one hotkey.");
-            AssertTrue(config.HoldDelay > TimeSpan.Zero, "Embedded default config should define a positive hold delay.");
+            var configPath = Path.Combine(AppContext.BaseDirectory, "hotkeys.json");
+            var config = ChordlConfigLoader.LoadFromFile(configPath);
+            AssertTrue(config.Actions.Count > 0, "Default config should define at least one hotkey.");
+            AssertTrue(config.HoldDelay > TimeSpan.Zero, "Default config should define a positive hold delay.");
         }
 
         private static void StateDetectsCompilableNotes()
@@ -659,6 +717,66 @@ internal static partial class Program
 
             store.DeleteBucket(project, scratch.Id);
             AssertTrue(project.Buckets.Any(bucket => bucket.Id == scratch.Id), "Scratch should not be deletable.");
+        }
+
+        private static void StateDeletesProjectsAndRepairsActiveLanes()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var first = store.CreateProject("First", ["Inbox"], "Inbox");
+            var second = store.CreateProject("Second", ["Queue"], "Queue", shifted: true);
+            store.SetActiveProject(first.Id);
+
+            store.DeleteProject(first.Id);
+
+            AssertFalse(store.State.Projects.Any(project => project.Id == first.Id), "Deleted project should be removed.");
+            AssertEqual(second.Id, store.GetActiveProject()?.Id, "Normal lane should fall back to a remaining project.");
+            AssertEqual(second.Id, store.GetActiveProject(shifted: true)?.Id, "Shift lane should preserve its remaining active project.");
+
+            var loaded = new ZetlStateStore(temp.Path);
+            AssertFalse(loaded.State.Projects.Any(project => project.Id == first.Id), "Project deletion should persist.");
+            AssertEqual(second.Id, loaded.GetActiveProject()?.Id, "Repaired normal lane should persist.");
+        }
+
+        private static void StateDeletesBucketTreesAndRepairsPointers()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var parent = store.AddBucket(project, "Parent");
+            var child = store.AddBucket(project, "Child", parent.Id);
+            store.SetQuickNoteBucket(project, child.Id);
+            store.SetActiveBucket(project, child.Id);
+
+            store.DeleteBucket(project, parent.Id);
+
+            AssertFalse(project.Buckets.Any(bucket => bucket.Id == parent.Id), "Deleted parent bucket should be removed.");
+            AssertFalse(project.Buckets.Any(bucket => bucket.Id == child.Id), "Deleted bucket descendants should be removed.");
+            AssertTrue(project.Buckets.Any(bucket => bucket.Id == project.ActiveBucketId), "Active bucket should move to a remaining bucket.");
+            AssertEqual<string?>(null, project.QuickNoteBucketId, "Deleted quick-note bucket should clear its pointer.");
+
+            var loaded = new ZetlStateStore(temp.Path);
+            var loadedProject = loaded.State.Projects.Single();
+            AssertTrue(loadedProject.Buckets.Any(bucket => bucket.Id == loadedProject.ActiveBucketId), "Repaired active bucket should persist.");
+            AssertEqual<string?>(null, loadedProject.QuickNoteBucketId, "Cleared quick-note pointer should persist.");
+        }
+
+        private static void StateDeletesNotes()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var bucket = store.ActiveBucket!;
+            var keep = store.AddNote(bucket, "keep", "copy");
+            var remove = store.AddNote(bucket, "remove", "copy");
+
+            store.DeleteNote(bucket, remove.Id);
+
+            AssertEqual(1, bucket.Notes.Count, "Deleting a note should remove only the selected note.");
+            AssertEqual(keep.Id, bucket.Notes.Single().Id, "Unselected notes should remain.");
+
+            var loaded = new ZetlStateStore(temp.Path);
+            AssertEqual(keep.Id, loaded.ActiveBucket!.Notes.Single().Id, "Note deletion should persist.");
         }
 
         private static void StatePreservesBucketSettings()
@@ -1053,6 +1171,8 @@ internal static partial class Program
             store.Settings.DefaultProjectBuckets = new List<string> { "Notes", "Scratch" };
             store.Settings.DefaultCompileMode = "TSV";
             store.Settings.DefaultTsvRowLength = 4;
+            store.Settings.ThemeId = "custom-theme";
+            store.Settings.ThemeVariant = "Dark";
             store.Save();
 
             var loaded = new ZetlAppSettingsStore(settingsPath);
@@ -1062,6 +1182,140 @@ internal static partial class Program
             AssertEqual("Notes", loaded.Settings.DefaultProjectBuckets[0], "Default buckets should round-trip.");
             AssertEqual("TSV", loaded.Settings.DefaultCompileMode, "Default compile mode should round-trip.");
             AssertEqual(4, loaded.Settings.DefaultTsvRowLength, "Default TSV row length should round-trip.");
+            AssertEqual("custom-theme", loaded.Settings.ThemeId, "Theme id should round-trip.");
+            AssertEqual("Dark", loaded.Settings.ThemeVariant, "Theme variant should round-trip.");
+        }
+
+        private static void ThemeDefaultsValidate()
+        {
+            var theme = ZetlThemeDefaults.Create();
+
+            AssertEqual(0, ZetlThemeValidator.Validate(theme).Count, "Built-in theme should validate.");
+            AssertEqual(ZetlThemeDocument.CurrentVersion, theme.Version, "Built-in theme should use the current schema.");
+
+            theme.Dark.Accent = "purple";
+            AssertTrue(
+                ZetlThemeValidator.Validate(theme).Any(error => error.Contains("accent", StringComparison.OrdinalIgnoreCase)),
+                "Invalid colors should produce a useful validation error.");
+        }
+
+        private static void ThemeDuskValidates()
+        {
+            var theme = ZetlThemeDefaults.CreateDusk();
+
+            AssertEqual(0, ZetlThemeValidator.Validate(theme).Count, "Dusk theme should validate.");
+            AssertEqual(ZetlThemeDefaults.DuskId, theme.Id, "Dusk should have a stable built-in id.");
+            AssertTrue(ZetlThemeDefaults.IsBuiltIn(theme.Id), "Dusk should be protected as built-in.");
+            AssertEqual(
+                "#8290FF",
+                theme.Dark.Accent,
+                "Dusk should retain the First Build periwinkle accent.");
+        }
+
+        private static void ThemeRoundTripsCustomValues()
+        {
+            using var temp = new TempStateFile();
+            var directory = System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(temp.Path)!,
+                "themes");
+            var store = new ZetlThemeStore(directory);
+            var theme = ZetlThemeDefaults.CreateCustom("Midnight Notes");
+            theme.Dark.Accent = "#12ABEF";
+            theme.Light.Surface = "#FAFAFA";
+            theme.Typography.FontFamily = "Segoe UI";
+            theme.Metrics.CornerRadius = 9;
+
+            store.Save(theme);
+
+            var loaded = store.Resolve(theme.Id);
+            AssertEqual("Midnight Notes", loaded.Name, "Custom theme name should round-trip.");
+            AssertEqual("#12ABEF", loaded.Dark.Accent, "Dark palette should round-trip.");
+            AssertEqual("#FAFAFA", loaded.Light.Surface, "Light palette should round-trip.");
+            AssertEqual("Segoe UI", loaded.Typography.FontFamily, "Typography should round-trip.");
+            AssertEqual(9d, loaded.Metrics.CornerRadius, "Theme metrics should round-trip.");
+        }
+
+        private static void ThemePreservesUnknownJsonFields()
+        {
+            using var temp = new TempStateFile();
+            var root = System.IO.Path.GetDirectoryName(temp.Path)!;
+            var source = System.IO.Path.Combine(root, "future-theme.json");
+            var directory = System.IO.Path.Combine(root, "themes");
+            File.WriteAllText(
+                source,
+                """
+                {
+                  "version": 2,
+                  "id": "future-theme",
+                  "name": "Future Theme",
+                  "futureRoot": { "enabled": true },
+                  "light": {
+                    "windowBackground": "#FFFFFF",
+                    "surface": "#F8F8F8",
+                    "surfaceAlt": "#EEEEEE",
+                    "text": "#111111",
+                    "mutedText": "#666666",
+                    "accent": "#3366FF",
+                    "accentText": "#FFFFFF",
+                    "border": "#BBBBBB",
+                    "error": "#AA0000",
+                    "futurePaletteMode": "soft"
+                  },
+                  "dark": {
+                    "windowBackground": "#111111",
+                    "surface": "#181818",
+                    "surfaceAlt": "#242424",
+                    "text": "#FFFFFF",
+                    "mutedText": "#AAAAAA",
+                    "accent": "#7799FF",
+                    "accentText": "#FFFFFF",
+                    "border": "#444444",
+                    "error": "#FF7777"
+                  },
+                  "typography": {
+                    "fontFamily": "Inter",
+                    "monoFontFamily": "Consolas",
+                    "bodyFontSize": 14,
+                    "headingFontSize": 16,
+                    "titleFontSize": 20
+                  },
+                  "metrics": {
+                    "windowPadding": 14,
+                    "controlSpacing": 8,
+                    "cornerRadius": 4
+                  }
+                }
+                """);
+            var store = new ZetlThemeStore(directory);
+
+            var imported = store.Import(source);
+            store.Save(imported);
+
+            var saved = File.ReadAllText(Directory.GetFiles(directory, "*.json").Single());
+            AssertTrue(saved.Contains("\"futureRoot\"", StringComparison.Ordinal), "Unknown root values should survive.");
+            AssertTrue(saved.Contains("\"futurePaletteMode\"", StringComparison.Ordinal), "Unknown palette values should survive.");
+        }
+
+        private static void ThemeStoreIgnoresInvalidFiles()
+        {
+            using var temp = new TempStateFile();
+            var directory = System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(temp.Path)!,
+                "themes");
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(System.IO.Path.Combine(directory, "broken.json"), "{ no");
+            var store = new ZetlThemeStore(directory);
+
+            var themes = store.LoadAll();
+
+            AssertEqual(
+                ZetlThemeDefaults.CreateAll().Count,
+                themes.Count,
+                "Invalid theme files should leave only the built-in presets.");
+            AssertTrue(
+                themes.Any(theme => theme.Id == ZetlThemeDefaults.DuskId),
+                "Dusk should remain available when a custom theme file is invalid.");
+            AssertEqual(ZetlThemeDefaults.BuiltInId, store.Resolve("missing").Id, "Missing themes should resolve to the built-in fallback.");
         }
 
         private static void StateAppliesBucketDefaults()
@@ -1083,6 +1337,493 @@ internal static partial class Program
             AssertEqual(4, added.DefaultTsvRowLength, "Added bucket should take the default TSV row length.");
         }
 
+        private static void RuntimeAppliesAppSettingsDefaults()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var settings = new ZetlAppSettings
+            {
+                DefaultProjectBuckets = [],
+                DefaultCompileMode = "TSV",
+                DefaultTsvRowLength = 4
+            };
+
+            ZetlRuntimeSettings.ApplyTo(store, settings);
+
+            AssertEqual("Inbox", store.Defaults.ProjectBuckets[0], "Empty settings should use Inbox.");
+            AssertEqual("Scratch", store.Defaults.ProjectBuckets[1], "Empty settings should use Scratch.");
+            AssertEqual("TSV", store.Defaults.CompileMode, "Compile mode should flow into state defaults.");
+            AssertEqual(4, store.Defaults.TsvRowLength, "TSV row length should flow into state defaults.");
+        }
+
+        private static void RuntimeUndoStackKeepsLanesSeparate()
+        {
+            var stack = new ZetlUndoStack(capacity: 3);
+            var normalUndone = false;
+            var shiftedUndone = false;
+            stack.Push(false, "normal", () => normalUndone = true);
+            stack.Push(true, "shifted", () => shiftedUndone = true);
+
+            AssertTrue(stack.TryPop(false, out var normal), "Normal lane action should be available.");
+            normal!.Undo();
+            AssertTrue(normalUndone, "Normal lane undo should run.");
+            AssertFalse(shiftedUndone, "Normal lane undo should not touch Shift.");
+            AssertTrue(stack.TryPop(true, out var shifted), "Shift lane action should remain available.");
+            shifted!.Undo();
+            AssertTrue(shiftedUndone, "Shift lane undo should run.");
+        }
+
+        private static void RuntimeActivityLogBufferDrainsSafely()
+        {
+            var now = new DateTime(2026, 6, 6, 12, 34, 56, DateTimeKind.Local);
+            var buffer = new ZetlActivityLogBuffer(() => now);
+            buffer.Enqueue("Saved.");
+            buffer.Enqueue(" ");
+
+            var first = buffer.Drain();
+            AssertEqual(1, first.Count, "Blank messages should not be queued.");
+            AssertEqual("[12:34:56] Saved.", first[0], "Log entries should include the enqueue time.");
+            AssertEqual(0, buffer.Drain().Count, "Drain should remove returned entries.");
+        }
+
+        private static void RuntimeAutoCapturesCopiedText()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var clipboard = new FakeClipboard(" copied text ", changeToken: 2);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out _,
+                out _);
+
+            coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+
+            var note = store.GetActiveBucket()!.Notes.Single();
+            AssertEqual("copied text", note.Text, "Auto-capture should trim and save copied text.");
+            AssertEqual("copy", note.Source, "Auto-capture should mark the copy source.");
+            AssertEqual(
+                "Captured to Inbox in Demo.",
+                notifications.Messages.Single(),
+                "Auto-capture should report its destination.");
+            AssertEqual(project.Id, store.GetActiveProject()!.Id, "Auto-capture should keep the active project.");
+        }
+
+        private static void RuntimeHoldCancellationPreventsAutoCapture()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var clipboard = new FakeClipboard("copied text", changeToken: 2);
+            var delay = new ManualDelay();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                delay);
+
+            var captureTask = coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1));
+            var pending = coordinator.CancelPending(VK_C, shifted: false);
+            AssertTrue(pending is not null, "Hold should find and cancel the pending copy.");
+            delay.Release();
+            captureTask.GetAwaiter().GetResult();
+
+            AssertEqual(0, store.GetActiveBucket()!.Notes.Count, "Cancelled copy should not auto-capture.");
+            AssertEqual("copied text", pending!.ObservedClipboardText, "Observed copy text should remain available to the hold flow.");
+        }
+
+        private static void RuntimeReplayTapConsumesAndRestoresClipboard()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out var undo);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Replay tap should suppress the physical paste.");
+            AssertEqual(1, keyboard.PasteCount, "Replay tap should send one synthetic paste.");
+            AssertEqual("user clipboard", clipboard.Text, "Replay should restore the user's clipboard.");
+            AssertEqual(0, queue.Notes.Count, "Replay should consume the queued note.");
+            var review = project.Buckets.Single(bucket => bucket.Id == queue.FifoReviewBucketId);
+            AssertEqual("queued value", review.Notes.Single().Text, "Replay should archive the consumed note.");
+            AssertEqual("Standard", queue.Kind, "An empty Replay bucket should return to Standard.");
+            AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
+        }
+
+        private static void RuntimePopTapRemovesMatchingNote()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var bucket = store.GetActiveBucket()!;
+            store.SetBucketPopMode(bucket, true);
+            store.AddNote(bucket, "paste once", "copy");
+            var clipboard = new FakeClipboard("paste once", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out var undo);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertFalse(handled, "Pop tap should allow the physical paste through.");
+            AssertEqual(0, bucket.Notes.Count, "Pop tap should remove the matching note.");
+            AssertTrue(undo.TryPop(false, out _), "Popped note should be undoable.");
+        }
+
+        private static void RuntimeCopyHoldCreatesNoteRequest()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(" copied ", changeToken: 2),
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            var request = coordinator.HandleHoldAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+
+            AssertTrue(request is ZetlNoteCaptureRequest, "Copied text should open note capture.");
+            var note = (ZetlNoteCaptureRequest)request!;
+            AssertEqual("copied", note.Text, "Copy request should contain trimmed clipboard text.");
+            AssertEqual("copy", note.Source, "Copy request should preserve its source.");
+            AssertTrue(note.ShowStartProjectToggle, "First copy hold should offer to start the project.");
+            AssertTrue(note.StartProjectDefault, "First copy hold should default to starting the project.");
+        }
+
+        private static void RuntimeEmptyCopyHoldOpensBoard()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            var request = coordinator.HandleHoldAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+
+            AssertTrue(request is ZetlBoardRequest, "Copy hold without new text should open the Board.");
+        }
+
+        private static void RuntimeCutHoldDefaultsToScratch()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            var request = coordinator.HandleHoldAsync(
+                ShortcutContext(VK_X, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+
+            AssertTrue(request is ZetlNoteCaptureRequest, "Cut hold should always open note capture.");
+            var note = (ZetlNoteCaptureRequest)request!;
+            AssertEqual("Scratch", note.PreferredBucket!.Name, "First quick note should default to Scratch.");
+            AssertTrue(note.ShowStartProjectToggle, "First quick note should offer project activation.");
+            AssertFalse(note.StartProjectDefault, "Quick note should not activate the project by default.");
+        }
+
+        private static void RuntimeHoldTogglesAndUndoStayPortable()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                notifications,
+                out _,
+                out var undo);
+
+            coordinator.HandleHoldAsync(ShortcutContext(VK_P)).GetAwaiter().GetResult();
+            AssertTrue(store.GetActiveBucket()!.PopMode, "Ctrl+P hold should enable Pop.");
+            coordinator.HandleHoldAsync(ShortcutContext(VK_R)).GetAwaiter().GetResult();
+            AssertEqual("Replay", store.GetActiveBucket()!.Kind, "Ctrl+R hold should enable Replay.");
+            AssertFalse(store.GetActiveBucket()!.PopMode, "Replay should disable Pop.");
+
+            var undone = false;
+            undo.Push(false, "Undone.", () => undone = true);
+            coordinator.HandleHoldAsync(ShortcutContext(VK_Z)).GetAwaiter().GetResult();
+            AssertTrue(undone, "Ctrl+Z hold should run the latest lane undo.");
+            AssertEqual("Undone.", notifications.Messages.Last(), "Undo should report its message.");
+        }
+
+        private static void RuntimeCompletesQuickNoteResult()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.GetOrCreateDefaultProject();
+            var scratch = store.GetScratchBucket(project);
+            var clipboard = new FakeClipboard("keep me", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+            var request = new ZetlNoteCaptureRequest(
+                Shifted: false,
+                project,
+                scratch,
+                Text: "",
+                Source: "cut",
+                ShowStartProjectToggle: true,
+                StartProjectDefault: false,
+                ScratchOnlyUntilProjectStarted: true,
+                CreateNewProjectToggle: false,
+                ProjectToggleText: null,
+                ProjectNameDefault: null);
+
+            coordinator.CompleteNoteCapture(
+                request,
+                new ZetlNoteCaptureResult(
+                    Committed: true,
+                    NoteText: "quick note",
+                    StartProject: false,
+                    CreateNewProject: false,
+                    ProjectName: project.Name,
+                    SelectedBucketName: scratch.Name,
+                    SelectedBucket: scratch));
+
+            AssertEqual("quick note", scratch.Notes.Single().Text, "Quick-note result should save the note.");
+            AssertEqual("keep me", clipboard.Text, "Quick note should preserve clipboard when disabled.");
+            AssertTrue(store.GetActiveProject() is null, "Quick note should leave the project inactive.");
+        }
+
+        private static void RuntimeCompletesCompileResult()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var source = store.CreateProject("Source", ["Inbox"], "Inbox");
+            store.AddNote(store.GetActiveBucket()!, "source note", "copy");
+            var destination = store.CreateProject("Destination", ["Output"], "Output");
+            store.SetActiveProject(source.Id);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                notifications,
+                out _,
+                out var undo);
+            var request = (ZetlCompileRequest)coordinator.HandleHoldAsync(
+                ShortcutContext(VK_V)).GetAwaiter().GetResult()!;
+
+            var outcome = coordinator.CompleteCompile(
+                request,
+                new ZetlCompileResult(
+                    Committed: true,
+                    CompiledText: "compiled text",
+                    SaveToBucket: true,
+                    DestinationProject: destination,
+                    DestinationBucketName: "Output",
+                    Flatten: true,
+                    SelectedNoteTexts: ["source note"],
+                    PasteNow: false));
+
+            AssertEqual(ZetlCompileOutcome.RestoreTarget, outcome, "Saved compile should restore the target.");
+            AssertEqual(
+                "compiled text",
+                destination.Buckets.Single(bucket => bucket.Name == "Output").Notes.Single().Text,
+                "Compile result should save to the selected destination.");
+            AssertTrue(undo.TryPop(false, out _), "Saved compile should be undoable.");
+            AssertTrue(
+                notifications.Messages.Single().StartsWith("Compiled to Output in Destination."),
+                "Compile should report its destination.");
+        }
+
+        private static void RuntimePreservesStructuredCompileSaves()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var source = store.CreateProject("Source", ["Inbox"], "Inbox");
+            var destination = store.CreateProject("Destination", ["Output"], "Output");
+            var destinationActiveBucketId = destination.ActiveBucketId;
+            store.SetActiveProject(source.Id);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _);
+            var request = new ZetlCompileRequest(false, source, null);
+
+            var outcome = coordinator.CompleteCompile(
+                request,
+                new ZetlCompileResult(
+                    Committed: true,
+                    CompiledText: "ignored combined text",
+                    SaveToBucket: true,
+                    DestinationProject: destination,
+                    DestinationBucketName: "Compiled",
+                    Flatten: false,
+                    SelectedNoteTexts: ["one", "two"],
+                    PasteNow: false));
+
+            var compiled = destination.Buckets.Single(bucket => bucket.Name == "Compiled");
+            AssertEqual(ZetlCompileOutcome.RestoreTarget, outcome, "Structured save should restore the target.");
+            AssertEqual(2, compiled.Notes.Count, "Structured save should preserve note boundaries.");
+            AssertEqual("one", compiled.Notes[0].Text, "Structured save should preserve note order.");
+            AssertEqual("two", compiled.Notes[1].Text, "Structured save should preserve note order.");
+            AssertEqual(source.Id, store.GetActiveProject()?.Id, "Structured save should not change the active project.");
+            AssertEqual(destinationActiveBucketId, destination.ActiveBucketId, "Structured save should not change the destination active bucket.");
+        }
+
+        private static void RuntimeReturnsCopyAndPasteCompileOutcomes()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var source = store.CreateProject("Source", ["Inbox"], "Inbox");
+            var clipboard = new FakeClipboard("before", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _);
+            var request = new ZetlCompileRequest(false, source, null);
+
+            var copyOutcome = coordinator.CompleteCompile(
+                request,
+                new ZetlCompileResult(
+                    Committed: true,
+                    CompiledText: "copied compile",
+                    SaveToBucket: false,
+                    DestinationProject: source,
+                    DestinationBucketName: "Inbox",
+                    Flatten: false,
+                    SelectedNoteTexts: ["copied compile"],
+                    PasteNow: false));
+
+            AssertEqual(ZetlCompileOutcome.RestoreTarget, copyOutcome, "Copy should restore the target.");
+            AssertEqual("copied compile", clipboard.Text, "Copy should place compiled text on the clipboard.");
+
+            var pasteOutcome = coordinator.CompleteCompile(
+                request,
+                new ZetlCompileResult(
+                    Committed: true,
+                    CompiledText: "pasted compile",
+                    SaveToBucket: false,
+                    DestinationProject: source,
+                    DestinationBucketName: "Inbox",
+                    Flatten: false,
+                    SelectedNoteTexts: ["pasted compile"],
+                    PasteNow: true));
+
+            AssertEqual(ZetlCompileOutcome.PasteNow, pasteOutcome, "Paste Now should request the paste path.");
+            AssertEqual("pasted compile", clipboard.Text, "Paste Now should stage compiled text on the clipboard.");
+        }
+
+        private static void RuntimeReportsRejectedCompiledPaste()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("compiled text", changeToken: 1),
+                notifications,
+                out var keyboard,
+                out _);
+            keyboard.PasteSucceeds = false;
+
+            coordinator.PasteCompiledTextAsync().GetAwaiter().GetResult();
+
+            AssertEqual(1, keyboard.PasteCount, "Compiled paste should be attempted once.");
+            AssertTrue(
+                notifications.Messages.Single().Contains("remains on the clipboard", StringComparison.Ordinal),
+                "Rejected paste should explain that the compiled text is preserved.");
+            AssertTrue(
+                notifications.Messages.Single().Contains("elevated", StringComparison.OrdinalIgnoreCase),
+                "Rejected paste should mention the Windows privilege mismatch.");
+        }
+
+        private static void RuntimeParityScenarioWritesSnapshot()
+        {
+            using var temp = new TempStateFile();
+            var directory = System.IO.Path.GetDirectoryName(temp.Path)!;
+
+            ZetlParityScenario.Run(directory);
+
+            AssertTrue(
+                File.Exists(System.IO.Path.Combine(directory, ZetlParityScenario.SnapshotFileName)),
+                "Parity scenario should write its normalized snapshot.");
+            var reloaded = new ZetlStateStore(temp.Path, sessionId: "reload");
+            AssertTrue(
+                reloaded.State.Projects.Any(project => project.Name == "Parity Project"),
+                "Parity scenario state should reload from disk.");
+            AssertTrue(
+                reloaded.State.Projects.Any(project => project.Name == "Shift Parity"),
+                "Parity scenario should persist the Shift lane project.");
+        }
+
+        private static ZetlShortcutCoordinator CreateShortcutCoordinator(
+            ZetlStateStore store,
+            FakeClipboard clipboard,
+            FakeNotificationSink notifications,
+            out FakeKeyboardBackend keyboard,
+            out ZetlUndoStack undo,
+            IZetlDelay? delay = null,
+            bool quickNoteToClipboard = false)
+        {
+            keyboard = new FakeKeyboardBackend();
+            undo = new ZetlUndoStack(100);
+            return new ZetlShortcutCoordinator(
+                store,
+                keyboard,
+                clipboard,
+                new ImmediateDispatcher(),
+                delay ?? new ImmediateDelay(),
+                notifications,
+                undo,
+                () => true,
+                () => quickNoteToClipboard,
+                _ => { },
+                TimeSpan.FromMilliseconds(60));
+        }
+
+        private static ChordlEventContext ShortcutContext(
+            int keyCode,
+            bool shifted = false,
+            uint clipboardSequenceNumber = 0)
+        {
+            return new ChordlEventContext(
+                keyCode,
+                ChordlKeys.FormatComboName(keyCode, shifted),
+                ChordlDispatchMode.None,
+                ReplayShift: false,
+                ShiftLane: shifted,
+                ClipboardSequenceNumber: clipboardSequenceNumber);
+        }
+
         private static ChordlProcessor CreateProcessor(
             out List<int> dispatched,
             out List<ChordlEventContext> passThrough,
@@ -1098,6 +1839,7 @@ internal static partial class Program
             var chordlMap = new Dictionary<ChordlChord, ChordlAction>
             {
                 [new ChordlChord(VK_B, Ctrl: true, Shift: false)] = new("Ctrl+B", ChordlDispatchMode.TapOnly, ReplayShift: false),
+                [new ChordlChord(VK_B, Ctrl: true, Shift: true)] = new("Ctrl+Shift+B", ChordlDispatchMode.TapOnly, ReplayShift: true),
                 [new ChordlChord(VK_C, Ctrl: true, Shift: false)] = new("Ctrl+C", ChordlDispatchMode.None, ReplayShift: false),
                 [new ChordlChord(VK_C, Ctrl: true, Shift: true)] = new("Ctrl+Shift+C", ChordlDispatchMode.None, ReplayShift: false),
                 [new ChordlChord(VK_P, Ctrl: true, Shift: false)] = new("Ctrl+P", ChordlDispatchMode.TapOnly, ReplayShift: false),
@@ -1172,5 +1914,106 @@ internal static partial class Program
                 }
             }
         }
-    }
+
+        private sealed class ImmediateDispatcher : IZetlDispatcher
+        {
+            public void Post(Action action)
+            {
+                action();
+            }
+        }
+
+        private sealed class ImmediateDelay : IZetlDelay
+        {
+            public Task WaitAsync(TimeSpan delay)
+            {
+                return Task.CompletedTask;
+            }
+        }
+
+        private sealed class ManualDelay : IZetlDelay
+        {
+            private readonly TaskCompletionSource completion = new(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public Task WaitAsync(TimeSpan delay)
+            {
+                return completion.Task;
+            }
+
+            public void Release()
+            {
+                completion.TrySetResult();
+            }
+        }
+
+        private sealed class FakeNotificationSink : IZetlNotificationSink
+        {
+            public List<string> Messages { get; } = new();
+
+            public void Show(string message)
+            {
+                Messages.Add(message);
+            }
+        }
+
+        private sealed class FakeKeyboardBackend : IKeyboardBackend
+        {
+            public int PasteCount { get; private set; }
+
+            public bool PasteSucceeds { get; set; } = true;
+
+            public bool Start(Func<int, bool, bool, bool> handleKeyEvent)
+            {
+                return true;
+            }
+
+            public bool SendChord(
+                int vkCode,
+                bool includeShift,
+                bool restoreCtrl,
+                bool restoreShift)
+            {
+                return true;
+            }
+
+            public bool SendPaste()
+            {
+                PasteCount++;
+                return PasteSucceeds;
+            }
+
+            public void Dispose()
+            {
+            }
+        }
+
+        private sealed class FakeClipboard : IClipboard
+        {
+            public FakeClipboard(string? text, uint changeToken)
+            {
+                Text = text;
+                ChangeToken = changeToken;
+            }
+
+            public string? Text { get; private set; }
+
+            public uint ChangeToken { get; private set; }
+
+            public string? TryGetText()
+            {
+                return Text;
+            }
+
+            public void SetText(string text)
+            {
+                Text = text;
+                ChangeToken++;
+            }
+
+            public uint GetChangeToken()
+            {
+                return ChangeToken;
+            }
+        }
 }

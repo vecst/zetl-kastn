@@ -3,16 +3,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>Zetl.Core</AssemblyName>
+    <AssemblyName>Zetl.Runtime</AssemblyName>
     <RootNamespace>ZETL</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <!-- The platform heads (Windows WinForms today, Linux/Avalonia later) consume
-         these internal types directly rather than through a public API surface. -->
     <InternalsVisibleTo Include="Zetl" />
     <InternalsVisibleTo Include="Zetl.Legacy" />
     <InternalsVisibleTo Include="Zetl.App" />
-    <InternalsVisibleTo Include="Zetl.Runtime" />
     <InternalsVisibleTo Include="Zetl.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Chordl\Chordl.csproj" />
+    <ProjectReference Include="..\Zetl.Core\Zetl.Core.csproj" />
   </ItemGroup>
 </Project>

@@ -4,42 +4,60 @@ using static ZETL.Program;
 
 namespace ZETL;
 
-internal sealed class ZetlApplicationContext : ApplicationContext
+internal sealed class ZetlApplicationContext :
+    ApplicationContext,
+    IZetlDispatcher,
+    IZetlNotificationSink
 {
     private const int MaxUndoActions = 100;
-    private const int ReplayClipboardRestoreDelayMs = 150;
     private const int LogFlushIntervalMs = 5000;
     private const int LogRetentionDays = 14;
     private const int LogMaxNotesPerDay = 2000;
-    private readonly ZetlStateStore store = new();
-    private readonly ZetlAppSettingsStore appSettings = new();
+    private readonly ZetlStateStore store;
+    private readonly ZetlAppSettingsStore appSettings;
     private readonly NotifyIcon trayIcon;
     private readonly Control invoker = new();
     private readonly ZetlToastService toastService = new();
-    private readonly Dictionary<(int KeyCode, bool Shifted), PendingShortcut> pendingShortcuts = new();
-    private readonly List<ZetlUndoAction> undoStack = new();
+    private readonly ZetlUndoStack undoStack = new(MaxUndoActions);
     private readonly List<string> logLines = new();
-    // Replay borrows the system clipboard for each paste; these remember the
-    // user's own clipboard per lane ([0] normal, [1] Shift) so it can be put back
-    // afterwards. replayInjected tracks the value we last wrote, so a clipboard
-    // the user changed mid-replay is recognized rather than treated as ours.
-    private readonly string?[] replayUserClipboard = new string?[2];
-    private readonly string?[] replayInjectedClipboard = new string?[2];
-    // Activity-log lines buffered between flushes so persisting them never sits
-    // on the per-keystroke path; a timer drains this into the "Zetl Logs" project.
-    private readonly List<string> pendingLogNotes = new();
+    // Activity-log lines are buffered so persisting them never sits on the
+    // per-keystroke path; a timer drains this into the "Zetl Logs" project.
+    private readonly ZetlActivityLogBuffer activityLogBuffer = new();
     private System.Windows.Forms.Timer? logFlushTimer;
     private BoardForm? boardForm;
 
     private readonly TimeSpan holdDelay;
     private readonly IKeyboardBackend keyboard;
     private readonly IClipboard clipboard;
+    private readonly ZetlShortcutCoordinator shortcutCoordinator;
 
-    public ZetlApplicationContext(TimeSpan holdDelay, IKeyboardBackend keyboard, IClipboard clipboard)
+    public ZetlApplicationContext(
+        TimeSpan holdDelay,
+        IKeyboardBackend keyboard,
+        IClipboard clipboard,
+        string? dataDirectory = null)
     {
         this.holdDelay = holdDelay;
         this.keyboard = keyboard;
         this.clipboard = clipboard;
+        store = dataDirectory is null
+            ? new ZetlStateStore()
+            : new ZetlStateStore(Path.Combine(dataDirectory, "state.json"));
+        appSettings = new ZetlAppSettingsStore(dataDirectory is null
+            ? null
+            : Path.Combine(dataDirectory, "settings.json"));
+        shortcutCoordinator = new ZetlShortcutCoordinator(
+            store,
+            keyboard,
+            clipboard,
+            this,
+            new SystemZetlDelay(),
+            this,
+            undoStack,
+            () => appSettings.Settings.AutoCaptureOnCopy,
+            () => appSettings.Settings.QuickNoteToClipboard,
+            Log,
+            holdDelay);
         ApplyAppSettings();
         store.ConsolidateDefaultProject();
         store.ConsolidateDefaultProject(shifted: true);
@@ -72,195 +90,19 @@ internal sealed class ZetlApplicationContext : ApplicationContext
 
     public void OnPhysicalShortcutPassedThrough(ChordlEventContext context)
     {
-        if (context.KeyCode is not (VK_C or VK_X))
-        {
-            return;
-        }
-
-        var pending = new PendingShortcut(context.KeyCode, context.ShiftLane, context.ClipboardSequenceNumber);
-        lock (pendingShortcuts)
-        {
-            pendingShortcuts[PendingKey(context.KeyCode, context.ShiftLane)] = pending;
-        }
-
-        BeginInvoke(async () => await ObserveClipboardChangeAsync(pending));
-
-        if (context.KeyCode == VK_C && appSettings.Settings.AutoCaptureOnCopy)
-        {
-            BeginInvoke(async () => await AutoCaptureCopyAsync(pending));
-        }
+        _ = shortcutCoordinator.OnPhysicalShortcutPassedThroughAsync(context);
     }
 
     private void ApplyAppSettings()
     {
         var settings = appSettings.Settings;
         toastService.DisplayMilliseconds = settings.ToastDisplayMs;
-        var projectBuckets = settings.DefaultProjectBuckets.Count > 0
-            ? settings.DefaultProjectBuckets.ToList()
-            : new List<string> { "Inbox", "Scratch" };
-        store.Defaults = new ZetlBucketDefaults(projectBuckets, settings.DefaultCompileMode, settings.DefaultTsvRowLength);
+        ZetlRuntimeSettings.ApplyTo(store, settings);
     }
 
     public bool OnTapDispatched(ChordlEventContext context)
     {
-        if (context.KeyCode != VK_V || context.ReplayShift)
-        {
-            return false;
-        }
-
-        var activeBucket = store.GetActiveBucket(context.ShiftLane);
-        if (activeBucket is not null && ZetlStateStore.IsFifoBucket(activeBucket))
-        {
-            if (store.TryPeekNextFifoNote(activeBucket, out var fifoNote) && fifoNote is not null)
-            {
-                var lane = context.ShiftLane;
-                var project = store.GetActiveProject(lane);
-                var noteId = fifoNote.Id;
-                var noteText = fifoNote.Text;
-                var bucketName = activeBucket.Name;
-
-                // Replay only borrows the clipboard for the paste: remember what
-                // the user actually had on it, swap in the queue item, then put
-                // their value back once the paste lands. A plain Ctrl+V then still
-                // pastes the user's real last copy instead of a replay leftover.
-                RememberUserClipboardBeforeReplay(lane);
-                SetReplayClipboard(lane, noteText);
-                if (!keyboard.SendPaste())
-                {
-                    BeginInvoke(() => ShowInfo($"Paste failed; {bucketName} item kept."));
-                    return true;
-                }
-
-                BeginInvoke(() =>
-                {
-                    ZetlBucket? reviewBucket = null;
-                    ZetlNote? consumedNote = null;
-                    ZetlNote? reviewNote = null;
-                    var consumed = project is not null
-                        ? store.TryConsumeFifoNoteToReview(project, activeBucket, noteId, out reviewBucket, out consumedNote, out reviewNote)
-                        : store.TryConsumeFifoNote(activeBucket, noteId, out consumedNote);
-                    if (consumed && reviewBucket is not null)
-                    {
-                        Log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
-                    }
-
-                    if (consumed && consumedNote is not null)
-                    {
-                        var undoReviewBucket = reviewBucket;
-                        var undoReviewNoteId = reviewNote?.Id;
-                        PushUndo(
-                            lane,
-                            $"Restored replay item to {bucketName}.",
-                            () => store.RestoreFifoConsumedNote(activeBucket, consumedNote, undoReviewBucket, undoReviewNoteId));
-                    }
-
-                    var replayComplete = !store.TryPeekNextFifoNote(activeBucket, out _);
-                    if (replayComplete)
-                    {
-                        store.SetBucketKind(activeBucket, "Standard");
-                    }
-
-                    RestoreUserClipboardAfterReplay(lane, noteText);
-                    ShowInfo(replayComplete
-                        ? $"{bucketName} replay complete."
-                        : $"Pasted next item from {bucketName}.");
-                });
-                return true;
-            }
-
-            BeginInvoke(() =>
-            {
-                store.SetBucketKind(activeBucket, "Standard");
-                keyboard.SendPaste();
-                ShowInfo($"{activeBucket.Name} replay complete.");
-            });
-            return true;
-        }
-
-        BeginInvoke(async () =>
-        {
-            await Task.Delay(75);
-            var text = clipboard.TryGetText();
-            if (text is not null
-                && store.TryPopLastMatchingActiveNote(text, context.ShiftLane, out var bucket, out var note)
-                && bucket is not null
-                && note is not null)
-            {
-                PushUndo(
-                    context.ShiftLane,
-                    $"Restored popped note to {bucket.Name}.",
-                    () => store.RestoreNote(bucket, note));
-                ShowInfo("Popped the pasted item from the active bucket.");
-            }
-        });
-        return false;
-    }
-
-    // Snapshot the user's real clipboard before a replay paste borrows it. If the
-    // clipboard isn't the item we last injected for this lane, the user (or the
-    // target app) put it there, so it is their value to restore to later.
-    private void RememberUserClipboardBeforeReplay(bool shifted)
-    {
-        var index = shifted ? 1 : 0;
-        var current = clipboard.TryGetText();
-        if (!string.Equals(current?.Trim(), replayInjectedClipboard[index]?.Trim(), StringComparison.Ordinal))
-        {
-            replayUserClipboard[index] = current;
-        }
-    }
-
-    private void SetReplayClipboard(bool shifted, string text)
-    {
-        SetClipboardTextIfDifferent(text);
-        replayInjectedClipboard[shifted ? 1 : 0] = text;
-    }
-
-    private void RestoreUserClipboardAfterReplay(bool shifted, string injectedText)
-    {
-        var index = shifted ? 1 : 0;
-        var restoreTo = replayUserClipboard[index];
-        if (string.IsNullOrEmpty(restoreTo))
-        {
-            // Nothing meaningful to put back; leave the replay item on the
-            // clipboard rather than blanking it.
-            return;
-        }
-
-        BeginInvoke(async () =>
-        {
-            // Let the target app consume the paste before restoring, otherwise it
-            // could read the restored value instead of the replay item.
-            await Task.Delay(ReplayClipboardRestoreDelayMs);
-            // Only restore if our injected item is still on the clipboard; if the
-            // user copied something new since, leave their new copy in place.
-            if (string.Equals(clipboard.TryGetText()?.Trim(), injectedText.Trim(), StringComparison.Ordinal))
-            {
-                clipboard.SetText(restoreTo);
-                replayInjectedClipboard[index] = restoreTo;
-            }
-        });
-    }
-
-    private void ResetReplayClipboardTracking(bool shifted)
-    {
-        var index = shifted ? 1 : 0;
-        replayUserClipboard[index] = null;
-        replayInjectedClipboard[index] = null;
-    }
-
-    // "<bucket> in <project>" for save toasts, so it's clear which project (and
-    // therefore which lane) a note landed in.
-    private static string DestinationLabel(ZetlProject? project, ZetlBucket bucket)
-    {
-        return project is null ? bucket.Name : $"{bucket.Name} in {project.Name}";
-    }
-
-    private void SetClipboardTextIfDifferent(string text)
-    {
-        if (!string.Equals(clipboard.TryGetText()?.Trim(), text.Trim(), StringComparison.Ordinal))
-        {
-            clipboard.SetText(text);
-        }
+        return shortcutCoordinator.OnTapDispatched(context);
     }
 
     public void OnHoldDetected(ChordlEventContext context)
@@ -370,193 +212,41 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         invoker.BeginInvoke(action);
     }
 
-    private async Task AutoCaptureCopyAsync(PendingShortcut pending)
-    {
-        await Task.Delay((int)holdDelay.TotalMilliseconds + 25);
-        if (pending.Cancelled)
-        {
-            return;
-        }
-
-        var bucket = store.GetActiveBucket(pending.ShiftLane);
-        if (bucket is null)
-        {
-            return;
-        }
-
-        var project = store.GetActiveProject(pending.ShiftLane);
-        var text = pending.ObservedClipboardText
-            ?? await WaitForClipboardTextAsync(pending.ClipboardSequenceNumber, 75);
-        if (text is null || pending.Cancelled)
-        {
-            return;
-        }
-
-        var note = store.AddNote(bucket, text, "copy");
-        PushUndo(
-            pending.ShiftLane,
-            $"Undid capture to {bucket.Name}.",
-            () => store.DeleteNote(bucket, note.Id));
-        ShowInfo($"Captured to {DestinationLabel(project, bucket)}.");
-    }
-
     private async Task HandleHoldAsync(ChordlEventContext context, IntPtr targetWindow)
     {
-        var pending = CancelPending(context.KeyCode, context.ShiftLane);
-        switch (context.KeyCode)
+        var request = await shortcutCoordinator.HandleHoldAsync(context);
+        switch (request)
         {
-            case VK_B:
-                ShowBoard(context.ShiftLane, targetWindow);
+            case ZetlBoardRequest board:
+                ShowBoard(board.Shifted, targetWindow);
                 break;
-            case VK_C:
-                await HandleCopyHoldAsync(context.ShiftLane, targetWindow, pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber, pending?.ObservedClipboardText);
+            case ZetlNoteCaptureRequest note:
+                ShowNoteDialog(note, targetWindow);
                 break;
-            case VK_P:
-                HandlePopToggleHold(context.ShiftLane);
-                break;
-            case VK_R:
-                HandleFifoToggleHold(context.ShiftLane);
-                break;
-            case VK_X:
-                await HandleCutHoldAsync(context.ShiftLane, targetWindow, pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber, pending?.ObservedClipboardText);
-                break;
-            case VK_V:
-                HandlePasteHold(context.ShiftLane, targetWindow);
-                break;
-            case VK_Z:
-                HandleUndoHold(context.ShiftLane);
+            case ZetlCompileRequest compile:
+                ShowCompileDialog(compile, targetWindow);
                 break;
         }
     }
 
-    private void HandleFifoToggleHold(bool shifted)
+    private void ShowCompileDialog(ZetlCompileRequest request, IntPtr targetWindow)
     {
-        var bucket = store.GetActiveBucket(shifted);
-        if (bucket is null)
-        {
-            ShowInfo("No active bucket yet.");
-            return;
-        }
-
-        if (ZetlStateStore.IsFifoBucket(bucket))
-        {
-            store.SetBucketKind(bucket, "Standard");
-            ResetReplayClipboardTracking(shifted);
-            ShowInfo($"{bucket.Name} replay is off.");
-            return;
-        }
-
-        store.SetBucketKind(bucket, "Replay");
-        // Turning replay on no longer pre-loads the first item onto the clipboard:
-        // that would clobber the user's last copy. Each Ctrl+V borrows the queue
-        // item only for its own paste. Start tracking fresh so the first replay
-        // press snapshots the real clipboard.
-        ResetReplayClipboardTracking(shifted);
-        ShowInfo($"{bucket.Name} replay is on.");
-    }
-
-    private void HandlePopToggleHold(bool shifted)
-    {
-        var bucket = store.GetActiveBucket(shifted);
-        if (bucket is null)
-        {
-            ShowInfo("No active bucket yet.");
-            return;
-        }
-
-        if (ZetlStateStore.IsFifoBucket(bucket))
-        {
-            // Replay and Pop are exclusive; switch a Replay bucket straight to
-            // Pop, mirroring how Ctrl+R switches a Pop bucket to Replay.
-            store.SetBucketKind(bucket, "Standard");
-            store.SetBucketPopMode(bucket, true);
-            ShowInfo($"{bucket.Name} pop is on.");
-            return;
-        }
-
-        store.ToggleActiveBucketPopMode(shifted);
-        ShowInfo($"{bucket.Name} pop is {(bucket.PopMode ? "on" : "off")}.");
-    }
-
-    private async Task HandleCopyHoldAsync(bool shifted, IntPtr targetWindow, uint beforeSequence, string? observedText)
-    {
-        var hadActiveProject = store.GetActiveProject(shifted) is not null;
-        store.GetOrCreateDefaultProject(shifted);
-        var text = observedText
-            ?? await WaitForClipboardTextAsync(beforeSequence, 300)
-            ?? "";
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            ShowBoard(shifted, targetWindow);
-            return;
-        }
-
-        ShowNoteDialog(
-            text,
-            store.GetActiveBucket(shifted),
-            "copy",
-            shifted,
-            targetWindow,
-            showStartProjectToggle: true,
-            startProjectDefault: !hadActiveProject,
-            scratchOnlyUntilProjectStarted: !hadActiveProject,
-            createNewProjectToggle: hadActiveProject,
-            projectToggleText: hadActiveProject ? "New project" : "Start project",
-            projectNameDefault: hadActiveProject ? DefaultProjectName(shifted) : null);
-    }
-
-    private async Task HandleCutHoldAsync(bool shifted, IntPtr targetWindow, uint beforeSequence, string? observedText)
-    {
-        var hadActiveProject = store.GetActiveProject(shifted) is not null;
-        var project = store.GetOrCreateDefaultProject(shifted);
-        var scratch = store.GetScratchBucket(project);
-        var preferredBucket = hadActiveProject ? store.GetQuickNoteBucket(project) : scratch;
-        var text = observedText
-            ?? await WaitForClipboardTextAsync(beforeSequence, 300)
-            ?? "";
-        ShowNoteDialog(
-            text,
-            preferredBucket,
-            "cut",
-            shifted,
-            targetWindow,
-            showStartProjectToggle: !hadActiveProject,
-            startProjectDefault: false,
-            scratchOnlyUntilProjectStarted: !hadActiveProject);
-    }
-
-    private void HandlePasteHold(bool shifted, IntPtr targetWindow)
-    {
-        var project = store.GetActiveProject(shifted);
-        IReadOnlyList<ZetlBucket>? bucketScope = null;
-        if (project is null)
-        {
-            if (!store.TryGetScratchCompileTarget(out project, out var scratchBucket, shifted)
-                || project is null
-                || scratchBucket is null)
-            {
-                ShowInfo("No Zetl notes to compile yet.");
-                return;
-            }
-
-            // The project isn't active (a quick note doesn't start it), but the
-            // scratch note means there's something to compile -- offer the whole
-            // project (all buckets), not just Scratch, so it's usable from here.
-            bucketScope = null;
-        }
-        else if (!store.HasCompilableNotes(project))
-        {
-            ShowInfo("No Zetl notes to compile yet.");
-            return;
-        }
-
-        ZetlProject compileProject = project;
-        var form = new CompileForm(store, compileProject, bucketScope);
+        var form = new CompileForm(store, request.Project, request.BucketScope);
         ZetlDialogPlacement.ShowForegroundPopup(
             form,
             onClosed: () =>
             {
-                if (form.DialogResult != DialogResult.OK || string.IsNullOrWhiteSpace(form.CompiledText))
+                var result = new ZetlCompileResult(
+                    form.DialogResult == DialogResult.OK,
+                    form.CompiledText,
+                    form.SaveToBucket,
+                    form.DestinationProject,
+                    form.DestinationBucketName,
+                    form.Flatten,
+                    form.SelectedNoteTexts,
+                    form.PasteNow);
+                var outcome = shortcutCoordinator.CompleteCompile(request, result);
+                if (outcome == ZetlCompileOutcome.None)
                 {
                     if (!ZetlDialogPlacement.WasClosedByDeactivate(form))
                     {
@@ -566,62 +256,18 @@ internal sealed class ZetlApplicationContext : ApplicationContext
                     return;
                 }
 
-                if (form.SaveToBucket)
+                if (outcome == ZetlCompileOutcome.RestoreTarget)
                 {
-                    var destinationProject = form.DestinationProject;
-                    var destination = store.GetOrCreateBucket(destinationProject, form.DestinationBucketName, setActive: false);
-                    var destinationLabel = DestinationLabel(destinationProject, destination);
-                    string savedSummary;
-                    if (form.Flatten)
-                    {
-                        var note = store.AddNote(destination, form.CompiledText, "compile");
-                        PushUndo(
-                            shifted,
-                            $"Undid compile to {destination.Name}.",
-                            () => store.DeleteNote(destination, note.Id));
-                        savedSummary = $"to {destinationLabel}";
-                    }
-                    else
-                    {
-                        var notes = store.AddNotes(destination, form.SelectedNoteTexts, "compile");
-                        PushUndo(
-                            shifted,
-                            $"Undid compile to {destination.Name}.",
-                            () =>
-                            {
-                                foreach (var note in notes)
-                                {
-                                    store.DeleteNote(destination, note.Id);
-                                }
-                            });
-                        savedSummary = $"{notes.Count} notes to {destinationLabel}";
-                    }
-
-                    ShowInfo($"Compiled {savedSummary}.");
                     RestoreForegroundWindow(targetWindow);
                     return;
                 }
 
-                clipboard.SetText(form.CompiledText);
-                if (form.PasteNow)
+                if (targetWindow != IntPtr.Zero)
                 {
-                    if (targetWindow != IntPtr.Zero)
-                    {
-                        SetForegroundWindow(targetWindow);
-                    }
+                    SetForegroundWindow(targetWindow);
+                }
 
-                    BeginInvoke(async () =>
-                    {
-                        await Task.Delay(75);
-                        keyboard.SendPaste();
-                        ShowInfo("Pasted compiled text.");
-                    });
-                }
-                else
-                {
-                    ShowInfo("Copied compiled text to clipboard.");
-                    RestoreForegroundWindow(targetWindow);
-                }
+                _ = shortcutCoordinator.PasteCompiledTextAsync();
             },
             owner: ZetlDialogPlacement.OwnerFromHandle(targetWindow),
             activationWindow: targetWindow);
@@ -639,106 +285,37 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         ShowBoard();
     }
 
-    private void ShowNoteDialog(
-        string text,
-        ZetlBucket? preferredBucket,
-        string source,
-        bool shifted,
-        IntPtr restoreWindow,
-        bool showStartProjectToggle = false,
-        bool startProjectDefault = true,
-        bool scratchOnlyUntilProjectStarted = false,
-        bool createNewProjectToggle = false,
-        string? projectToggleText = null,
-        string? projectNameDefault = null)
+    private void ShowNoteDialog(ZetlNoteCaptureRequest request, IntPtr restoreWindow)
     {
-        var project = store.GetActiveProject(shifted);
-        if (project is null)
-        {
-            return;
-        }
-
-        ZetlProject noteProject = project;
         var form = new NoteCaptureForm(
             store,
-            noteProject,
-            preferredBucket,
-            text,
-            showStartProjectToggle,
-            startProjectDefault,
-            scratchOnlyUntilProjectStarted,
-            createNewProjectToggle,
-            projectToggleText,
-            projectNameDefault);
+            request.Project,
+            request.PreferredBucket,
+            request.Text,
+            request.ShowStartProjectToggle,
+            request.StartProjectDefault,
+            request.ScratchOnlyUntilProjectStarted,
+            request.CreateNewProjectToggle,
+            request.ProjectToggleText,
+            request.ProjectNameDefault);
         ZetlDialogPlacement.ShowForegroundPopup(
             form,
             onClosed: () =>
             {
                 try
                 {
-                    // Clicking off the popup commits the note just like the Save
-                    // button does, using whatever toggle state the dialog is in.
                     var committed = form.DialogResult == DialogResult.OK
                         || ZetlDialogPlacement.WasClosedByDeactivate(form);
-                    if (!committed || string.IsNullOrWhiteSpace(form.NoteText))
-                    {
-                        if (showStartProjectToggle && !createNewProjectToggle)
-                        {
-                            store.ClearActiveProject(shifted);
-                        }
-
-                        return;
-                    }
-
-                    if (form.CreateNewProject)
-                    {
-                        var bucketNames = store.Defaults.ProjectBuckets.Count > 0
-                            ? store.Defaults.ProjectBuckets
-                            : new List<string> { "Inbox", "Scratch" };
-                        noteProject = store.CreateProject(form.ProjectName, bucketNames, form.SelectedBucketName, shifted);
-                    }
-                    else if (form.StartProject)
-                    {
-                        store.UpdateProjectName(noteProject, form.ProjectName, shifted);
-                    }
-
-                    var bucket = form.CreateNewProject
-                        ? noteProject.Buckets.FirstOrDefault(bucket =>
-                            string.Equals(bucket.Name, form.SelectedBucketName, StringComparison.OrdinalIgnoreCase))
-                            ?? noteProject.Buckets.First()
-                        : form.SelectedBucket;
-                    if (!form.CreateNewProject
-                        && form.StartProject
-                        && string.Equals(source, "copy", StringComparison.OrdinalIgnoreCase))
-                    {
-                        store.SetActiveBucket(noteProject, bucket.Id);
-                    }
-
-                    if (string.Equals(source, "cut", StringComparison.OrdinalIgnoreCase))
-                    {
-                        store.SetQuickNoteBucket(noteProject, bucket.Id);
-                    }
-
-                    var note = store.AddNote(bucket, form.NoteText, source);
-                    PushUndo(
-                        shifted,
-                        $"Undid save to {bucket.Name}.",
-                        () => store.DeleteNote(bucket, note.Id));
-                    // A held Ctrl+C copy note keeps the clipboard in sync with any
-                    // edits, but a quick note (held Ctrl+X) only touches the
-                    // clipboard if the user opted in, so a plain jot doesn't clobber
-                    // whatever is already copied.
-                    var isQuickNote = string.Equals(source, "cut", StringComparison.OrdinalIgnoreCase);
-                    if (!isQuickNote || appSettings.Settings.QuickNoteToClipboard)
-                    {
-                        clipboard.SetText(form.NoteText);
-                    }
-                    if (showStartProjectToggle && !createNewProjectToggle && !form.StartProject)
-                    {
-                        store.ClearActiveProject(shifted);
-                    }
-
-                    ShowInfo($"Saved to {DestinationLabel(noteProject, bucket)}.");
+                    shortcutCoordinator.CompleteNoteCapture(
+                        request,
+                        new ZetlNoteCaptureResult(
+                            committed,
+                            form.NoteText,
+                            form.StartProject,
+                            form.CreateNewProject,
+                            form.ProjectName,
+                            form.SelectedBucketName,
+                            form.SelectedBucket));
                 }
                 finally
                 {
@@ -779,80 +356,6 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         ZetlDialogPlacement.BringToForeground(boardForm, restoreWindow);
     }
 
-    private void HandleUndoHold(bool shifted)
-    {
-        var undoIndex = undoStack.FindLastIndex(action => action.Shifted == shifted);
-        if (undoIndex < 0)
-        {
-            ShowInfo("Nothing to undo.");
-            return;
-        }
-
-        var action = undoStack[undoIndex];
-        undoStack.RemoveAt(undoIndex);
-        try
-        {
-            action.Undo();
-            ShowInfo(action.Message);
-        }
-        catch (Exception ex)
-        {
-            Log($"Undo failed: {ex.Message}");
-            ShowInfo("Zetl undo failed.");
-        }
-    }
-
-    private void PushUndo(bool shifted, string message, Action undo)
-    {
-        undoStack.Add(new ZetlUndoAction(shifted, message, undo));
-        if (undoStack.Count > MaxUndoActions)
-        {
-            undoStack.RemoveRange(0, undoStack.Count - MaxUndoActions);
-        }
-    }
-
-    private PendingShortcut? CancelPending(int keyCode, bool shifted)
-    {
-        lock (pendingShortcuts)
-        {
-            var key = PendingKey(keyCode, shifted);
-            if (!pendingShortcuts.TryGetValue(key, out var pending))
-            {
-                return null;
-            }
-
-            pending.Cancelled = true;
-            pendingShortcuts.Remove(key);
-            return pending;
-        }
-    }
-
-    private async Task ObserveClipboardChangeAsync(PendingShortcut pending)
-    {
-        pending.ObservedClipboardText = await WaitForClipboardTextAsync(pending.ClipboardSequenceNumber, 500);
-    }
-
-    private async Task<string?> WaitForClipboardTextAsync(uint beforeSequence, int timeoutMs)
-    {
-        var started = Environment.TickCount64;
-        do
-        {
-            if (clipboard.GetChangeToken() != beforeSequence)
-            {
-                var text = clipboard.TryGetText();
-                if (!string.IsNullOrWhiteSpace(text))
-                {
-                    return text.Trim();
-                }
-            }
-
-            await Task.Delay(20);
-        }
-        while (Environment.TickCount64 - started < timeoutMs);
-
-        return null;
-    }
-
     private void ShowInfo(string message)
     {
         toastService.Show(message);
@@ -861,30 +364,15 @@ internal sealed class ZetlApplicationContext : ApplicationContext
 
     private void EnqueueLogNote(string message)
     {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return;
-        }
-
-        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
-        lock (pendingLogNotes)
-        {
-            pendingLogNotes.Add(line);
-        }
+        activityLogBuffer.Enqueue(message);
     }
 
     private void FlushLogNotes()
     {
-        List<string> batch;
-        lock (pendingLogNotes)
+        var batch = activityLogBuffer.Drain();
+        if (batch.Count == 0)
         {
-            if (pendingLogNotes.Count == 0)
-            {
-                return;
-            }
-
-            batch = new List<string>(pendingLogNotes);
-            pendingLogNotes.Clear();
+            return;
         }
 
         try
@@ -907,25 +395,13 @@ internal sealed class ZetlApplicationContext : ApplicationContext
         }
     }
 
-    private static (int KeyCode, bool Shifted) PendingKey(int keyCode, bool shifted)
+    void IZetlDispatcher.Post(Action action)
     {
-        return (keyCode, shifted);
+        BeginInvoke(action);
     }
 
-    private static string DefaultProjectName(bool shifted = false)
+    void IZetlNotificationSink.Show(string message)
     {
-        var name = DateTime.Now.ToString("yyyy-MM-dd");
-        return shifted ? $"{name} Shift" : name;
+        ShowInfo(message);
     }
-
-    private sealed class PendingShortcut(int keyCode, bool shiftLane, uint clipboardSequenceNumber)
-    {
-        public int KeyCode { get; } = keyCode;
-        public bool ShiftLane { get; } = shiftLane;
-        public uint ClipboardSequenceNumber { get; } = clipboardSequenceNumber;
-        public string? ObservedClipboardText { get; set; }
-        public bool Cancelled { get; set; }
-    }
-
-    private sealed record ZetlUndoAction(bool Shifted, string Message, Action Undo);
 }

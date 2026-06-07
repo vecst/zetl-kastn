@@ -1,0 +1,680 @@
+using Chordl;
+using static Chordl.ChordlKeys;
+
+namespace ZETL;
+
+internal sealed class ZetlShortcutCoordinator
+{
+    private static readonly TimeSpan ClipboardPollInterval = TimeSpan.FromMilliseconds(20);
+    private static readonly TimeSpan ClipboardObservationTimeout = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan AutoCaptureClipboardTimeout = TimeSpan.FromMilliseconds(75);
+    private static readonly TimeSpan PopClipboardDelay = TimeSpan.FromMilliseconds(75);
+    private static readonly TimeSpan ReplayClipboardRestoreDelay = TimeSpan.FromMilliseconds(150);
+
+    private readonly object pendingGate = new();
+    private readonly Dictionary<(int KeyCode, bool Shifted), ZetlPendingShortcut> pendingShortcuts = new();
+    private readonly string?[] replayUserClipboard = new string?[2];
+    private readonly string?[] replayInjectedClipboard = new string?[2];
+    private readonly ZetlStateStore store;
+    private readonly IKeyboardBackend keyboard;
+    private readonly IClipboard clipboard;
+    private readonly IZetlDispatcher dispatcher;
+    private readonly IZetlDelay delay;
+    private readonly IZetlNotificationSink notifications;
+    private readonly ZetlUndoStack undoStack;
+    private readonly Func<bool> autoCaptureOnCopy;
+    private readonly Func<bool> quickNoteToClipboard;
+    private readonly Action<string> log;
+    private readonly TimeSpan holdDelay;
+
+    public ZetlShortcutCoordinator(
+        ZetlStateStore store,
+        IKeyboardBackend keyboard,
+        IClipboard clipboard,
+        IZetlDispatcher dispatcher,
+        IZetlDelay delay,
+        IZetlNotificationSink notifications,
+        ZetlUndoStack undoStack,
+        Func<bool> autoCaptureOnCopy,
+        Func<bool> quickNoteToClipboard,
+        Action<string> log,
+        TimeSpan holdDelay)
+    {
+        this.store = store;
+        this.keyboard = keyboard;
+        this.clipboard = clipboard;
+        this.dispatcher = dispatcher;
+        this.delay = delay;
+        this.notifications = notifications;
+        this.undoStack = undoStack;
+        this.autoCaptureOnCopy = autoCaptureOnCopy;
+        this.quickNoteToClipboard = quickNoteToClipboard;
+        this.log = log;
+        this.holdDelay = holdDelay;
+    }
+
+    public async Task OnPhysicalShortcutPassedThroughAsync(ChordlEventContext context)
+    {
+        if (context.KeyCode is not (VK_C or VK_X))
+        {
+            return;
+        }
+
+        var pending = new ZetlPendingShortcut(
+            context.KeyCode,
+            context.ShiftLane,
+            context.ClipboardSequenceNumber);
+        lock (pendingGate)
+        {
+            pendingShortcuts[PendingKey(context.KeyCode, context.ShiftLane)] = pending;
+        }
+
+        var observeTask = ObserveClipboardChangeAsync(pending);
+        var autoCaptureTask = context.KeyCode == VK_C && autoCaptureOnCopy()
+            ? AutoCaptureCopyAsync(pending)
+            : Task.CompletedTask;
+        await Task.WhenAll(observeTask, autoCaptureTask);
+    }
+
+    public ZetlPendingShortcut? CancelPending(int keyCode, bool shifted)
+    {
+        lock (pendingGate)
+        {
+            var key = PendingKey(keyCode, shifted);
+            if (!pendingShortcuts.Remove(key, out var pending))
+            {
+                return null;
+            }
+
+            pending.Cancel();
+            return pending;
+        }
+    }
+
+    public bool OnTapDispatched(ChordlEventContext context)
+    {
+        if (context.KeyCode != VK_V || context.ReplayShift)
+        {
+            return false;
+        }
+
+        var activeBucket = store.GetActiveBucket(context.ShiftLane);
+        if (activeBucket is not null && ZetlStateStore.IsFifoBucket(activeBucket))
+        {
+            HandleReplayTap(context.ShiftLane, activeBucket);
+            return true;
+        }
+
+        _ = HandlePopTapAsync(context.ShiftLane);
+        return false;
+    }
+
+    public async Task<ZetlShortcutRequest?> HandleHoldAsync(ChordlEventContext context)
+    {
+        var pending = CancelPending(context.KeyCode, context.ShiftLane);
+        return context.KeyCode switch
+        {
+            VK_B => new ZetlBoardRequest(context.ShiftLane),
+            VK_C => await CreateCopyHoldRequestAsync(context, pending),
+            VK_P => HandlePopToggle(context.ShiftLane),
+            VK_R => HandleReplayToggle(context.ShiftLane),
+            VK_X => await CreateCutHoldRequestAsync(context, pending),
+            VK_V => CreateCompileRequest(context.ShiftLane),
+            VK_Z => HandleUndo(context.ShiftLane),
+            _ => null
+        };
+    }
+
+    public void CompleteNoteCapture(
+        ZetlNoteCaptureRequest request,
+        ZetlNoteCaptureResult result)
+    {
+        if (!result.Committed || string.IsNullOrWhiteSpace(result.NoteText))
+        {
+            if (request.ShowStartProjectToggle && !request.CreateNewProjectToggle)
+            {
+                store.ClearActiveProject(request.Shifted);
+            }
+
+            return;
+        }
+
+        var noteProject = request.Project;
+        if (result.CreateNewProject)
+        {
+            var bucketNames = store.Defaults.ProjectBuckets.Count > 0
+                ? store.Defaults.ProjectBuckets
+                : new List<string> { "Inbox", "Scratch" };
+            noteProject = store.CreateProject(
+                result.ProjectName,
+                bucketNames,
+                result.SelectedBucketName,
+                request.Shifted);
+        }
+        else if (result.StartProject)
+        {
+            store.UpdateProjectName(noteProject, result.ProjectName, request.Shifted);
+        }
+
+        var bucket = result.CreateNewProject
+            ? noteProject.Buckets.FirstOrDefault(item =>
+                string.Equals(
+                    item.Name,
+                    result.SelectedBucketName,
+                    StringComparison.OrdinalIgnoreCase))
+                ?? noteProject.Buckets.First()
+            : result.SelectedBucket;
+        if (!result.CreateNewProject
+            && result.StartProject
+            && string.Equals(request.Source, "copy", StringComparison.OrdinalIgnoreCase))
+        {
+            store.SetActiveBucket(noteProject, bucket.Id);
+        }
+
+        var isQuickNote = string.Equals(request.Source, "cut", StringComparison.OrdinalIgnoreCase);
+        if (isQuickNote)
+        {
+            store.SetQuickNoteBucket(noteProject, bucket.Id);
+        }
+
+        var note = store.AddNote(bucket, result.NoteText, request.Source);
+        undoStack.Push(
+            request.Shifted,
+            $"Undid save to {bucket.Name}.",
+            () => store.DeleteNote(bucket, note.Id));
+        if (!isQuickNote || quickNoteToClipboard())
+        {
+            clipboard.SetText(result.NoteText);
+        }
+
+        if (request.ShowStartProjectToggle
+            && !request.CreateNewProjectToggle
+            && !result.StartProject)
+        {
+            store.ClearActiveProject(request.Shifted);
+        }
+
+        notifications.Show($"Saved to {ZetlRuntimeLabels.Destination(noteProject, bucket)}.");
+    }
+
+    public ZetlCompileOutcome CompleteCompile(
+        ZetlCompileRequest request,
+        ZetlCompileResult result)
+    {
+        if (!result.Committed || string.IsNullOrWhiteSpace(result.CompiledText))
+        {
+            return ZetlCompileOutcome.None;
+        }
+
+        if (result.SaveToBucket)
+        {
+            var destination = store.GetOrCreateBucket(
+                result.DestinationProject,
+                result.DestinationBucketName,
+                setActive: false);
+            var destinationLabel = ZetlRuntimeLabels.Destination(
+                result.DestinationProject,
+                destination);
+            string savedSummary;
+            if (result.Flatten)
+            {
+                var note = store.AddNote(destination, result.CompiledText, "compile");
+                undoStack.Push(
+                    request.Shifted,
+                    $"Undid compile to {destination.Name}.",
+                    () => store.DeleteNote(destination, note.Id));
+                savedSummary = $"to {destinationLabel}";
+            }
+            else
+            {
+                var notes = store.AddNotes(destination, result.SelectedNoteTexts, "compile");
+                undoStack.Push(
+                    request.Shifted,
+                    $"Undid compile to {destination.Name}.",
+                    () =>
+                    {
+                        foreach (var note in notes)
+                        {
+                            store.DeleteNote(destination, note.Id);
+                        }
+                    });
+                savedSummary = $"{notes.Count} notes to {destinationLabel}";
+            }
+
+            notifications.Show($"Compiled {savedSummary}.");
+            return ZetlCompileOutcome.RestoreTarget;
+        }
+
+        clipboard.SetText(result.CompiledText);
+        if (result.PasteNow)
+        {
+            return ZetlCompileOutcome.PasteNow;
+        }
+
+        notifications.Show("Copied compiled text to clipboard.");
+        return ZetlCompileOutcome.RestoreTarget;
+    }
+
+    public async Task PasteCompiledTextAsync()
+    {
+        await delay.WaitAsync(PopClipboardDelay);
+        var pasted = keyboard.SendPaste();
+        dispatcher.Post(() => notifications.Show(pasted
+            ? "Pasted compiled text."
+            : "Paste failed; compiled text remains on the clipboard. If the target is elevated, run Zetl elevated too."));
+    }
+
+    public async Task<string?> WaitForClipboardTextAsync(uint beforeSequence, TimeSpan timeout)
+    {
+        var elapsed = TimeSpan.Zero;
+        do
+        {
+            if (clipboard.GetChangeToken() != beforeSequence)
+            {
+                var text = clipboard.TryGetText();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return text.Trim();
+                }
+            }
+
+            await delay.WaitAsync(ClipboardPollInterval);
+            elapsed += ClipboardPollInterval;
+        }
+        while (elapsed < timeout);
+
+        return null;
+    }
+
+    public void ResetReplayClipboardTracking(bool shifted)
+    {
+        var index = shifted ? 1 : 0;
+        replayUserClipboard[index] = null;
+        replayInjectedClipboard[index] = null;
+    }
+
+    private async Task<ZetlShortcutRequest?> CreateCopyHoldRequestAsync(
+        ChordlEventContext context,
+        ZetlPendingShortcut? pending)
+    {
+        var hadActiveProject = store.GetActiveProject(context.ShiftLane) is not null;
+        var project = store.GetOrCreateDefaultProject(context.ShiftLane);
+        var text = pending?.ObservedClipboardText
+            ?? await WaitForClipboardTextAsync(
+                pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber,
+                TimeSpan.FromMilliseconds(300))
+            ?? "";
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new ZetlBoardRequest(context.ShiftLane);
+        }
+
+        return new ZetlNoteCaptureRequest(
+            context.ShiftLane,
+            project,
+            store.GetActiveBucket(context.ShiftLane),
+            text,
+            "copy",
+            ShowStartProjectToggle: true,
+            StartProjectDefault: !hadActiveProject,
+            ScratchOnlyUntilProjectStarted: !hadActiveProject,
+            CreateNewProjectToggle: hadActiveProject,
+            ProjectToggleText: hadActiveProject ? "New project" : "Start project",
+            ProjectNameDefault: hadActiveProject ? DefaultProjectName(context.ShiftLane) : null);
+    }
+
+    private async Task<ZetlShortcutRequest> CreateCutHoldRequestAsync(
+        ChordlEventContext context,
+        ZetlPendingShortcut? pending)
+    {
+        var hadActiveProject = store.GetActiveProject(context.ShiftLane) is not null;
+        var project = store.GetOrCreateDefaultProject(context.ShiftLane);
+        var scratch = store.GetScratchBucket(project);
+        var preferredBucket = hadActiveProject ? store.GetQuickNoteBucket(project) : scratch;
+        var text = pending?.ObservedClipboardText
+            ?? await WaitForClipboardTextAsync(
+                pending?.ClipboardSequenceNumber ?? context.ClipboardSequenceNumber,
+                TimeSpan.FromMilliseconds(300))
+            ?? "";
+        return new ZetlNoteCaptureRequest(
+            context.ShiftLane,
+            project,
+            preferredBucket,
+            text,
+            "cut",
+            ShowStartProjectToggle: !hadActiveProject,
+            StartProjectDefault: false,
+            ScratchOnlyUntilProjectStarted: !hadActiveProject,
+            CreateNewProjectToggle: false,
+            ProjectToggleText: null,
+            ProjectNameDefault: null);
+    }
+
+    private ZetlShortcutRequest? CreateCompileRequest(bool shifted)
+    {
+        var project = store.GetActiveProject(shifted);
+        if (project is null)
+        {
+            if (!store.TryGetScratchCompileTarget(
+                    out project,
+                    out var scratchBucket,
+                    shifted)
+                || project is null
+                || scratchBucket is null)
+            {
+                notifications.Show("No Zetl notes to compile yet.");
+                return null;
+            }
+        }
+        else if (!store.HasCompilableNotes(project))
+        {
+            notifications.Show("No Zetl notes to compile yet.");
+            return null;
+        }
+
+        return new ZetlCompileRequest(shifted, project, BucketScope: null);
+    }
+
+    private ZetlShortcutRequest? HandlePopToggle(bool shifted)
+    {
+        var bucket = store.GetActiveBucket(shifted);
+        if (bucket is null)
+        {
+            notifications.Show("No active bucket yet.");
+            return null;
+        }
+
+        if (ZetlStateStore.IsFifoBucket(bucket))
+        {
+            store.SetBucketKind(bucket, "Standard");
+            store.SetBucketPopMode(bucket, true);
+            notifications.Show($"{bucket.Name} pop is on.");
+            return null;
+        }
+
+        store.ToggleActiveBucketPopMode(shifted);
+        notifications.Show($"{bucket.Name} pop is {(bucket.PopMode ? "on" : "off")}.");
+        return null;
+    }
+
+    private ZetlShortcutRequest? HandleReplayToggle(bool shifted)
+    {
+        var bucket = store.GetActiveBucket(shifted);
+        if (bucket is null)
+        {
+            notifications.Show("No active bucket yet.");
+            return null;
+        }
+
+        if (ZetlStateStore.IsFifoBucket(bucket))
+        {
+            store.SetBucketKind(bucket, "Standard");
+            ResetReplayClipboardTracking(shifted);
+            notifications.Show($"{bucket.Name} replay is off.");
+            return null;
+        }
+
+        store.SetBucketKind(bucket, "Replay");
+        ResetReplayClipboardTracking(shifted);
+        notifications.Show($"{bucket.Name} replay is on.");
+        return null;
+    }
+
+    private ZetlShortcutRequest? HandleUndo(bool shifted)
+    {
+        if (!undoStack.TryPop(shifted, out var action) || action is null)
+        {
+            notifications.Show("Nothing to undo.");
+            return null;
+        }
+
+        try
+        {
+            action.Undo();
+            notifications.Show(action.Message);
+        }
+        catch (Exception ex)
+        {
+            log($"Undo failed: {ex.Message}");
+            notifications.Show("Zetl undo failed.");
+        }
+
+        return null;
+    }
+
+    private async Task ObserveClipboardChangeAsync(ZetlPendingShortcut pending)
+    {
+        pending.SetObservedClipboardText(await WaitForClipboardTextAsync(
+            pending.ClipboardSequenceNumber,
+            ClipboardObservationTimeout));
+    }
+
+    private async Task AutoCaptureCopyAsync(ZetlPendingShortcut pending)
+    {
+        await delay.WaitAsync(holdDelay + TimeSpan.FromMilliseconds(25));
+        if (pending.Cancelled)
+        {
+            return;
+        }
+
+        var text = pending.ObservedClipboardText
+            ?? await WaitForClipboardTextAsync(
+                pending.ClipboardSequenceNumber,
+                AutoCaptureClipboardTimeout);
+        if (text is null || pending.Cancelled)
+        {
+            return;
+        }
+
+        dispatcher.Post(() =>
+        {
+            if (pending.Cancelled)
+            {
+                return;
+            }
+
+            var bucket = store.GetActiveBucket(pending.ShiftLane);
+            if (bucket is null)
+            {
+                return;
+            }
+
+            var project = store.GetActiveProject(pending.ShiftLane);
+            var note = store.AddNote(bucket, text, "copy");
+            undoStack.Push(
+                pending.ShiftLane,
+                $"Undid capture to {bucket.Name}.",
+                () => store.DeleteNote(bucket, note.Id));
+            notifications.Show($"Captured to {ZetlRuntimeLabels.Destination(project, bucket)}.");
+        });
+    }
+
+    private void HandleReplayTap(bool shifted, ZetlBucket activeBucket)
+    {
+        if (!store.TryPeekNextFifoNote(activeBucket, out var fifoNote) || fifoNote is null)
+        {
+            dispatcher.Post(() =>
+            {
+                store.SetBucketKind(activeBucket, "Standard");
+                keyboard.SendPaste();
+                notifications.Show($"{activeBucket.Name} replay complete.");
+            });
+            return;
+        }
+
+        var project = store.GetActiveProject(shifted);
+        var noteId = fifoNote.Id;
+        var noteText = fifoNote.Text;
+        var bucketName = activeBucket.Name;
+        RememberUserClipboardBeforeReplay(shifted);
+        SetReplayClipboard(shifted, noteText);
+        if (!keyboard.SendPaste())
+        {
+            dispatcher.Post(() => notifications.Show($"Paste failed; {bucketName} item kept."));
+            return;
+        }
+
+        dispatcher.Post(() =>
+        {
+            ZetlBucket? reviewBucket = null;
+            ZetlNote? consumedNote = null;
+            ZetlNote? reviewNote = null;
+            var consumed = project is not null
+                ? store.TryConsumeFifoNoteToReview(
+                    project,
+                    activeBucket,
+                    noteId,
+                    out reviewBucket,
+                    out consumedNote,
+                    out reviewNote)
+                : store.TryConsumeFifoNote(activeBucket, noteId, out consumedNote);
+            if (consumed && reviewBucket is not null)
+            {
+                log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
+            }
+
+            if (consumed && consumedNote is not null)
+            {
+                var undoReviewBucket = reviewBucket;
+                var undoReviewNoteId = reviewNote?.Id;
+                undoStack.Push(
+                    shifted,
+                    $"Restored replay item to {bucketName}.",
+                    () => store.RestoreFifoConsumedNote(
+                        activeBucket,
+                        consumedNote,
+                        undoReviewBucket,
+                        undoReviewNoteId));
+            }
+
+            var replayComplete = !store.TryPeekNextFifoNote(activeBucket, out _);
+            if (replayComplete)
+            {
+                store.SetBucketKind(activeBucket, "Standard");
+            }
+
+            _ = RestoreUserClipboardAfterReplayAsync(shifted, noteText);
+            notifications.Show(replayComplete
+                ? $"{bucketName} replay complete."
+                : $"Pasted next item from {bucketName}.");
+        });
+    }
+
+    private async Task HandlePopTapAsync(bool shifted)
+    {
+        await delay.WaitAsync(PopClipboardDelay);
+        var text = clipboard.TryGetText();
+        if (text is null)
+        {
+            return;
+        }
+
+        dispatcher.Post(() =>
+        {
+            if (store.TryPopLastMatchingActiveNote(
+                    text,
+                    shifted,
+                    out var bucket,
+                    out var note)
+                && bucket is not null
+                && note is not null)
+            {
+                undoStack.Push(
+                    shifted,
+                    $"Restored popped note to {bucket.Name}.",
+                    () => store.RestoreNote(bucket, note));
+                notifications.Show("Popped the pasted item from the active bucket.");
+            }
+        });
+    }
+
+    private void RememberUserClipboardBeforeReplay(bool shifted)
+    {
+        var index = shifted ? 1 : 0;
+        var current = clipboard.TryGetText();
+        if (!string.Equals(
+                current?.Trim(),
+                replayInjectedClipboard[index]?.Trim(),
+                StringComparison.Ordinal))
+        {
+            replayUserClipboard[index] = current;
+        }
+    }
+
+    private void SetReplayClipboard(bool shifted, string text)
+    {
+        if (!string.Equals(
+                clipboard.TryGetText()?.Trim(),
+                text.Trim(),
+                StringComparison.Ordinal))
+        {
+            clipboard.SetText(text);
+        }
+
+        replayInjectedClipboard[shifted ? 1 : 0] = text;
+    }
+
+    private async Task RestoreUserClipboardAfterReplayAsync(bool shifted, string injectedText)
+    {
+        var index = shifted ? 1 : 0;
+        var restoreTo = replayUserClipboard[index];
+        if (string.IsNullOrEmpty(restoreTo))
+        {
+            return;
+        }
+
+        await delay.WaitAsync(ReplayClipboardRestoreDelay);
+        dispatcher.Post(() =>
+        {
+            if (string.Equals(
+                    clipboard.TryGetText()?.Trim(),
+                    injectedText.Trim(),
+                    StringComparison.Ordinal))
+            {
+                clipboard.SetText(restoreTo);
+                replayInjectedClipboard[index] = restoreTo;
+            }
+        });
+    }
+
+    private static (int KeyCode, bool Shifted) PendingKey(int keyCode, bool shifted)
+    {
+        return (keyCode, shifted);
+    }
+
+    private static string DefaultProjectName(bool shifted)
+    {
+        var name = DateTime.Now.ToString("yyyy-MM-dd");
+        return shifted ? $"{name} Shift" : name;
+    }
+}
+
+internal sealed class ZetlPendingShortcut
+{
+    public ZetlPendingShortcut(int keyCode, bool shiftLane, uint clipboardSequenceNumber)
+    {
+        KeyCode = keyCode;
+        ShiftLane = shiftLane;
+        ClipboardSequenceNumber = clipboardSequenceNumber;
+    }
+
+    public int KeyCode { get; }
+
+    public bool ShiftLane { get; }
+
+    public uint ClipboardSequenceNumber { get; }
+
+    public string? ObservedClipboardText { get; private set; }
+
+    public bool Cancelled { get; private set; }
+
+    public void Cancel()
+    {
+        Cancelled = true;
+    }
+
+    public void SetObservedClipboardText(string? text)
+    {
+        ObservedClipboardText = text;
+    }
+}

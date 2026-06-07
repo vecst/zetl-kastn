@@ -1,4 +1,6 @@
 bin/
 obj/
+artifacts/
+.a7-*/
 .vs/
 *.user

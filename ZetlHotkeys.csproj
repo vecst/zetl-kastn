@@ -5,12 +5,18 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>Zetl</AssemblyName>
+    <AssemblyName>Zetl.Legacy</AssemblyName>
     <RootNamespace>ZETL</RootNamespace>
+    <Product>Zetl Legacy</Product>
+    <Description>Legacy WinForms Zetl fallback</Description>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Chordl\**\*.cs" />
+    <Compile Remove="Zetl.App\**\*.cs" />
     <Compile Remove="Zetl.Core\**\*.cs" />
+    <Compile Remove="Zetl.Linux.Spike\**\*.cs" />
+    <Compile Remove="Zetl.Runtime\**\*.cs" />
+    <Compile Remove="Zetl.Tests\**\*.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Embed the canonical hotkeys.json so a single-file publish always has a
@@ -25,6 +31,7 @@
   <ItemGroup>
     <ProjectReference Include="Chordl\Chordl.csproj" />
     <ProjectReference Include="Zetl.Core\Zetl.Core.csproj" />
+    <ProjectReference Include="Zetl.Runtime\Zetl.Runtime.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="BoardForm.cs">
