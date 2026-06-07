@@ -27,6 +27,7 @@ internal static class PortableSelfTests
                 ("Shift changes restart hold detection", ShiftChangeRestartsHold),
                 ("Shift repeat does not restart hold detection", ShiftRepeatDoesNotRestartHold),
                 ("Shift change after hold does not dispatch twice", ShiftChangeAfterHoldDoesNotDispatchTwice),
+                ("Synthetic modifier injection uses an unheld side", SyntheticModifierUsesUnheldSide),
                 ("Zetl state creates projects and scratch buckets", StateCreatesProjectAndScratch),
                 ("Zetl state creates dated default projects on demand", StateCreatesDatedDefaultProject),
                 ("Zetl state reuses dated default projects", StateReusesDatedDefaultProject),
@@ -361,6 +362,42 @@ internal static class PortableSelfTests
             AssertEqual(0, dispatched.Count, "Modifier changes after a hold must not replay the shortcut.");
             processor.HandleKeyEvent(VK_SHIFT, isKeyDown: false, isKeyUp: true);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
+        }
+
+        private static void SyntheticModifierUsesUnheldSide()
+        {
+            AssertEqual<int?>(
+                VK_LCONTROL,
+                ZetlSyntheticModifier.SelectInjection(
+                    leftDown: false,
+                    rightDown: false,
+                    VK_LCONTROL,
+                    VK_RCONTROL),
+                "With neither side held, injection should use left Ctrl.");
+            AssertEqual<int?>(
+                VK_RCONTROL,
+                ZetlSyntheticModifier.SelectInjection(
+                    leftDown: true,
+                    rightDown: false,
+                    VK_LCONTROL,
+                    VK_RCONTROL),
+                "With left held, injection should use right Ctrl.");
+            AssertEqual<int?>(
+                VK_LCONTROL,
+                ZetlSyntheticModifier.SelectInjection(
+                    leftDown: false,
+                    rightDown: true,
+                    VK_LCONTROL,
+                    VK_RCONTROL),
+                "With right held, injection should use left Ctrl.");
+            AssertEqual<int?>(
+                null,
+                ZetlSyntheticModifier.SelectInjection(
+                    leftDown: true,
+                    rightDown: true,
+                    VK_LCONTROL,
+                    VK_RCONTROL),
+                "With both sides held, no synthetic modifier is needed.");
         }
 
         private static void StateCreatesProjectAndScratch()

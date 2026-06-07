@@ -27,7 +27,7 @@ Completed:
 - [x] Project setup is ported to Avalonia.
 - [x] Settings are ported to Avalonia.
 - [x] Both heads build side by side.
-- [x] The portable 81-test suite and Windows artifact test pass.
+- [x] The portable 82-test suite and Windows artifact test pass.
 - [ ] Re-verify the B1 evdev/uinput safety spike after correcting virtual
       modifier cleanup.
 

@@ -63,36 +63,46 @@ internal static class ChordlInput
     private static bool SendCtrlChordNow(int vkCode, bool includeShift, Action<string>? log)
     {
         var modifiers = ModifierSnapshot.Capture();
-        var injectCtrl = !modifiers.AnyCtrlDown;
-        var injectShift = includeShift && !modifiers.AnyShiftDown;
+        var injectedCtrl = ZetlSyntheticModifier.SelectInjection(
+            modifiers.LeftCtrl,
+            modifiers.RightCtrl,
+            ChordlKeys.VK_LCONTROL,
+            ChordlKeys.VK_RCONTROL);
+        var injectedShift = includeShift
+            ? ZetlSyntheticModifier.SelectInjection(
+                modifiers.LeftShift,
+                modifiers.RightShift,
+                ChordlKeys.VK_LSHIFT,
+                ChordlKeys.VK_RSHIFT)
+            : null;
         var inputCount =
             3
-            + (injectCtrl ? 2 : 0)
-            + (injectShift ? 2 : 0);
+            + (injectedCtrl.HasValue ? 2 : 0)
+            + (injectedShift.HasValue ? 2 : 0);
 
         var inputs = new INPUT[inputCount];
         var index = 0;
         AddKeyInput(vkCode, keyUp: true);
-        if (injectCtrl)
+        if (injectedCtrl is { } ctrlKey)
         {
-            AddKeyInput(ChordlKeys.VK_LCONTROL, keyUp: false);
+            AddKeyInput(ctrlKey, keyUp: false);
         }
 
-        if (injectShift)
+        if (injectedShift is { } shiftKey)
         {
-            AddKeyInput(ChordlKeys.VK_LSHIFT, keyUp: false);
+            AddKeyInput(shiftKey, keyUp: false);
         }
 
         AddKeyInput(vkCode, keyUp: false);
         AddKeyInput(vkCode, keyUp: true);
-        if (injectShift)
+        if (injectedShift is { } releasedShiftKey)
         {
-            AddKeyInput(ChordlKeys.VK_LSHIFT, keyUp: true);
+            AddKeyInput(releasedShiftKey, keyUp: true);
         }
 
-        if (injectCtrl)
+        if (injectedCtrl is { } releasedCtrlKey)
         {
-            AddKeyInput(ChordlKeys.VK_LCONTROL, keyUp: true);
+            AddKeyInput(releasedCtrlKey, keyUp: true);
         }
 
         Marshal.SetLastPInvokeError(0);
@@ -139,9 +149,6 @@ internal static class ChordlInput
         bool LeftShift,
         bool RightShift)
     {
-        public bool AnyCtrlDown => LeftCtrl || RightCtrl;
-        public bool AnyShiftDown => LeftShift || RightShift;
-
         public static ModifierSnapshot Capture()
         {
             return new ModifierSnapshot(

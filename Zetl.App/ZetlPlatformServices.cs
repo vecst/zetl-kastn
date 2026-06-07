@@ -203,34 +203,44 @@ internal static class AvaloniaWindowsInput
         Action<string> log)
     {
         var modifiers = ModifierSnapshot.Capture();
-        var injectCtrl = !modifiers.AnyCtrlDown;
-        var injectShift = includeShift && !modifiers.AnyShiftDown;
+        var injectedCtrl = ZetlSyntheticModifier.SelectInjection(
+            modifiers.LeftCtrl,
+            modifiers.RightCtrl,
+            ChordlKeys.VK_LCONTROL,
+            ChordlKeys.VK_RCONTROL);
+        var injectedShift = includeShift
+            ? ZetlSyntheticModifier.SelectInjection(
+                modifiers.LeftShift,
+                modifiers.RightShift,
+                ChordlKeys.VK_LSHIFT,
+                ChordlKeys.VK_RSHIFT)
+            : null;
         var count = 3
-            + (injectCtrl ? 2 : 0)
-            + (injectShift ? 2 : 0);
+            + (injectedCtrl.HasValue ? 2 : 0)
+            + (injectedShift.HasValue ? 2 : 0);
         var inputs = new Input[count];
         var index = 0;
         Add(virtualKey, keyUp: true);
-        if (injectCtrl)
+        if (injectedCtrl is { } ctrlKey)
         {
-            Add(ChordlKeys.VK_LCONTROL, keyUp: false);
+            Add(ctrlKey, keyUp: false);
         }
 
-        if (injectShift)
+        if (injectedShift is { } shiftKey)
         {
-            Add(ChordlKeys.VK_LSHIFT, keyUp: false);
+            Add(shiftKey, keyUp: false);
         }
 
         Add(virtualKey, keyUp: false);
         Add(virtualKey, keyUp: true);
-        if (injectShift)
+        if (injectedShift is { } releasedShiftKey)
         {
-            Add(ChordlKeys.VK_LSHIFT, keyUp: true);
+            Add(releasedShiftKey, keyUp: true);
         }
 
-        if (injectCtrl)
+        if (injectedCtrl is { } releasedCtrlKey)
         {
-            Add(ChordlKeys.VK_LCONTROL, keyUp: true);
+            Add(releasedCtrlKey, keyUp: true);
         }
 
         Marshal.SetLastPInvokeError(0);
@@ -278,9 +288,6 @@ internal static class AvaloniaWindowsInput
         bool LeftShift,
         bool RightShift)
     {
-        public bool AnyCtrlDown => LeftCtrl || RightCtrl;
-        public bool AnyShiftDown => LeftShift || RightShift;
-
         public static ModifierSnapshot Capture()
         {
             return new ModifierSnapshot(
