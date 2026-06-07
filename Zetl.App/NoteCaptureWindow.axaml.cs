@@ -8,7 +8,7 @@ namespace ZETL;
 // store-driven behavior (bucket list, inline bucket creation, project-mode
 // toggle) mirrors the WinForms version one-to-one. Internal because it consumes
 // Zetl.Core's internal types.
-internal partial class NoteCaptureWindow : Window
+internal partial class NoteCaptureWindow : Window, IClickAwayDismissable
 {
     private readonly ZetlStateStore store = null!;
     private readonly ZetlProject project = null!;
@@ -98,16 +98,7 @@ internal partial class NoteCaptureWindow : Window
                 deactivateCommitArmed = true;
             }
         };
-        Deactivated += (_, _) =>
-        {
-            if (CommitOnDeactivate
-                && deactivateCommitArmed
-                && !completionDecided)
-            {
-                ClosedByDeactivate = true;
-                Commit(saved: true);
-            }
-        };
+        Deactivated += (_, _) => DismissFromClickAway();
         Closing += (_, _) =>
         {
             deactivateArmTimer.Stop();
@@ -141,6 +132,17 @@ internal partial class NoteCaptureWindow : Window
     public bool CreateNewProject => showStartProjectToggle && createNewProjectMode && startProjectBox.IsChecked == true;
 
     public string ProjectName => projectNameBox.Text?.Trim() ?? "";
+
+    public void DismissFromClickAway()
+    {
+        if (CommitOnDeactivate
+            && deactivateCommitArmed
+            && !completionDecided)
+        {
+            ClosedByDeactivate = true;
+            Commit(saved: true);
+        }
+    }
 
     private void Commit(bool saved)
     {

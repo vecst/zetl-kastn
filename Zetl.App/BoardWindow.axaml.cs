@@ -5,7 +5,7 @@ using Avalonia.Threading;
 
 namespace ZETL;
 
-internal partial class BoardWindow : Window
+internal partial class BoardWindow : Window, IClickAwayDismissable
 {
     private readonly ZetlStateStore store = null!;
     private readonly bool shiftedLane;
@@ -126,23 +126,7 @@ internal partial class BoardWindow : Window
                 autoHideArmed = true;
             }
         };
-        Deactivated += (_, _) =>
-        {
-            if (AutoHideOnDeactivate && autoHideArmed && !childDialogOpen)
-            {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (AutoHideOnDeactivate
-                        && autoHideArmed
-                        && !childDialogOpen
-                        && !IsActive)
-                    {
-                        ClosedByDeactivate = true;
-                        CloseBoard();
-                    }
-                });
-            }
-        };
+        Deactivated += (_, _) => DismissFromClickAway();
         Closed += (_, _) => store.Changed -= OnStoreChanged;
         store.Changed += OnStoreChanged;
 
@@ -480,6 +464,22 @@ internal partial class BoardWindow : Window
         {
             args.Handled = true;
             activeProjectBox.IsChecked = activeProjectBox.IsChecked != true;
+        }
+    }
+
+    public void DismissFromClickAway()
+    {
+        // Close directly when armed, matching the note/compile popups. The arm
+        // timer filters the spurious initial deactivation and childDialogOpen
+        // guards owned dialogs; IsVisible guards against a double close when the
+        // Deactivated and click-away paths both fire.
+        if (AutoHideOnDeactivate
+            && autoHideArmed
+            && !childDialogOpen
+            && IsVisible)
+        {
+            ClosedByDeactivate = true;
+            CloseBoard();
         }
     }
 

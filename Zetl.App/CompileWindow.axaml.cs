@@ -8,7 +8,7 @@ namespace ZETL;
 
 // Avalonia port of CompileForm. Completion properties intentionally mirror the
 // WinForms form so the runtime host can consume either implementation.
-internal partial class CompileWindow : Window
+internal partial class CompileWindow : Window, IClickAwayDismissable
 {
     private readonly ZetlStateStore store = null!;
     private readonly List<BucketSelection> selections = [];
@@ -87,17 +87,7 @@ internal partial class CompileWindow : Window
                 deactivateCloseArmed = true;
             }
         };
-        Deactivated += (_, _) =>
-        {
-            if (CloseOnDeactivate
-                && deactivateCloseArmed
-                && !completionDecided)
-            {
-                ClosedByDeactivate = true;
-                completionDecided = true;
-                Close();
-            }
-        };
+        Deactivated += (_, _) => DismissFromClickAway();
         Closing += (_, _) =>
         {
             deactivateArmTimer.Stop();
@@ -418,6 +408,18 @@ internal partial class CompileWindow : Window
     {
         completionDecided = true;
         Close();
+    }
+
+    public void DismissFromClickAway()
+    {
+        if (CloseOnDeactivate
+            && deactivateCloseArmed
+            && !completionDecided)
+        {
+            ClosedByDeactivate = true;
+            completionDecided = true;
+            Close();
+        }
     }
 
     private void ShowValidation(string message)

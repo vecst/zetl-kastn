@@ -36,6 +36,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly string diagnosticLogPath;
     private readonly BlockingCollection<string> diagnosticLines = [];
     private readonly Thread diagnosticThread;
+    private readonly List<IClickAwayDismissable> clickAwayPopups = [];
+    private ZetlClickAwayMonitor? clickAwayMonitor;
     private bool disposed;
 
     public ZetlAvaloniaHost(
@@ -67,6 +69,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             Name = "Zetl diagnostics"
         };
         diagnosticThread.Start();
+        clickAwayMonitor = new ZetlClickAwayMonitor(OnClickOutsideApp);
 
         themeManager = new ZetlThemeManager(application, settingsStore);
         themeManager.Apply(
@@ -163,6 +166,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         }
 
         disposed = true;
+        clickAwayMonitor?.Dispose();
+        clickAwayMonitor = null;
         logFlushTimer.Stop();
         FlushLogNotes();
         foreach (var board in boards.Values.ToList())
@@ -177,6 +182,41 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         keyboard.Dispose();
         diagnosticLines.CompleteAdding();
         diagnosticThread.Join(TimeSpan.FromSeconds(1));
+    }
+
+    // Fired off the global mouse hook (non-UI thread) when a click lands
+    // outside Zetl's windows. Marshal to the UI thread and dismiss any
+    // click-away popups, covering cases the OS Deactivated event misses (e.g.
+    // clicking the bare desktop, which does not move the foreground).
+    private void OnClickOutsideApp()
+    {
+        if (clickAwayPopups.Count == 0)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            foreach (var popup in clickAwayPopups.ToList())
+            {
+                popup.DismissFromClickAway();
+            }
+        });
+    }
+
+    private void RegisterClickAwayPopup(Window window)
+    {
+        if (window is not IClickAwayDismissable dismissable)
+        {
+            return;
+        }
+
+        if (!clickAwayPopups.Contains(dismissable))
+        {
+            clickAwayPopups.Add(dismissable);
+        }
+
+        window.Closed += (_, _) => clickAwayPopups.Remove(dismissable);
     }
 
     private TrayIcon CreateTrayIcon()
@@ -282,6 +322,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             };
             var lane = shifted;
             board.Closed += (_, _) => boards.Remove(lane);
+            RegisterClickAwayPopup(board);
             boards[lane] = board;
         }
 
@@ -313,6 +354,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ShowInTaskbar = false,
             CommitOnDeactivate = target is not null
         };
+        RegisterClickAwayPopup(window);
         window.Opened += (_, _) => Log("Note popup opened.");
         window.Activated += (_, _) => Log("Note popup activated.");
         window.Deactivated += (_, _) => Log("Note popup deactivated.");
@@ -356,6 +398,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ShowInTaskbar = false,
             CloseOnDeactivate = target is not null
         };
+        RegisterClickAwayPopup(window);
         window.Opened += (_, _) => Log("Compile popup opened.");
         window.Activated += (_, _) => Log("Compile popup activated.");
         window.Deactivated += (_, _) => Log("Compile popup deactivated.");
