@@ -3,6 +3,7 @@
         x:Class="ZETL.TextPromptWindow"
         Width="360" Height="150"
         CanResize="False"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen">
   <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="Auto,Auto,Auto">
     <TextBlock Grid.Row="0" x:Name="promptLabel" Margin="0,0,0,4" />

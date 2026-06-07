@@ -3,6 +3,7 @@
         x:Class="ZETL.CompileWindow"
         Width="1120" Height="700"
         MinWidth="900" MinHeight="560"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="Compile Zetl Notes">
   <Grid Margin="{DynamicResource ZetlWindowPadding}"

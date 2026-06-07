@@ -3,6 +3,7 @@
         x:Class="ZETL.BucketSettingsWindow"
         Width="520" Height="460"
         MinWidth="440" MinHeight="400"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="Bucket Settings">
   <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">

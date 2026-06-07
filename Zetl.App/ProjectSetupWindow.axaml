@@ -3,6 +3,7 @@
         x:Class="ZETL.ProjectSetupWindow"
         Width="444" Height="371"
         CanResize="False"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="New Zetl Project">
   <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">

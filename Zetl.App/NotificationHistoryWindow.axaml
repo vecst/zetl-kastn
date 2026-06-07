@@ -3,6 +3,7 @@
         x:Class="ZETL.NotificationHistoryWindow"
         Width="560" Height="440"
         MinWidth="420" MinHeight="300"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="Zetl Notifications">
   <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="*,Auto">

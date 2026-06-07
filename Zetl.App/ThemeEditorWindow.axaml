@@ -3,6 +3,7 @@
         x:Class="ZETL.ThemeEditorWindow"
         Width="1080" Height="760"
         MinWidth="900" MinHeight="620"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="Zetl Theme Editor">
   <Grid Margin="{DynamicResource ZetlWindowPadding}"

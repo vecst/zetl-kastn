@@ -3,6 +3,7 @@
         x:Class="ZETL.ConfirmWindow"
         Width="420" Height="170"
         CanResize="False"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterOwner"
         Title="Zetl">
   <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="*,Auto">

@@ -3,6 +3,7 @@
         x:Class="ZETL.NoteCaptureWindow"
         Width="619" Height="281"
         CanResize="True"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="Save Zetl Note">
   <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">

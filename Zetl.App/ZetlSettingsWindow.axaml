@@ -3,6 +3,7 @@
         x:Class="ZETL.ZetlSettingsWindow"
         Width="560" Height="430"
         CanResize="False"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="Zetl Settings">
   <Grid Margin="{DynamicResource ZetlWindowPadding}"

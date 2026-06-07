@@ -3,6 +3,7 @@
         x:Class="ZETL.FirstRunWindow"
         Width="1080" Height="760"
         MinWidth="760" MinHeight="560"
+        SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="How Zetl Works">
   <Grid RowDefinitions="*,Auto">
