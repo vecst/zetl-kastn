@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Threading;
 
 namespace ZETL;
 
@@ -16,6 +17,11 @@ internal partial class NoteCaptureWindow : Window
     private readonly bool createNewProjectMode;
     private ZetlBucket? lastFullProjectBucket;
     private bool completionDecided;
+    private bool deactivateCommitArmed;
+    private readonly DispatcherTimer deactivateArmTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(300)
+    };
 
     // Parameterless ctor for the Avalonia previewer / XAML tooling.
     public NoteCaptureWindow()
@@ -75,15 +81,40 @@ internal partial class NoteCaptureWindow : Window
             UpdateInlineBucketLabel();
             FocusNoteBox();
         };
+        deactivateArmTimer.Tick += (_, _) =>
+        {
+            deactivateArmTimer.Stop();
+            if (CommitOnDeactivate && IsActive && !completionDecided)
+            {
+                deactivateCommitArmed = true;
+            }
+        };
+        Activated += (_, _) =>
+        {
+            if (!CommitOnDeactivate || completionDecided)
+            {
+                return;
+            }
+
+            deactivateCommitArmed = false;
+            deactivateArmTimer.Stop();
+            deactivateArmTimer.Start();
+        };
         Deactivated += (_, _) =>
         {
-            if (CommitOnDeactivate && !completionDecided)
+            if (CommitOnDeactivate
+                && deactivateCommitArmed
+                && !completionDecided)
             {
                 ClosedByDeactivate = true;
                 Commit(saved: true);
             }
         };
-        Closing += (_, _) => completionDecided = true;
+        Closing += (_, _) =>
+        {
+            deactivateArmTimer.Stop();
+            completionDecided = true;
+        };
         ZetlWindowShortcuts.Enable(
             this,
             () => Commit(saved: true),

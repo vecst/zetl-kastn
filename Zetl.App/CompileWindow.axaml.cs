@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 
 namespace ZETL;
 
@@ -15,6 +16,11 @@ internal partial class CompileWindow : Window
     private IReadOnlyList<ZetlBucket>? sourceScope;
     private bool refreshing;
     private bool completionDecided;
+    private bool deactivateCloseArmed;
+    private readonly DispatcherTimer deactivateArmTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(300)
+    };
 
     public CompileWindow()
     {
@@ -61,16 +67,41 @@ internal partial class CompileWindow : Window
             this,
             () => Complete(pasteNow: false, saveToBucket: false),
             Cancel);
+        deactivateArmTimer.Tick += (_, _) =>
+        {
+            deactivateArmTimer.Stop();
+            if (CloseOnDeactivate && IsActive && !completionDecided)
+            {
+                deactivateCloseArmed = true;
+            }
+        };
+        Activated += (_, _) =>
+        {
+            if (!CloseOnDeactivate || completionDecided)
+            {
+                return;
+            }
+
+            deactivateCloseArmed = false;
+            deactivateArmTimer.Stop();
+            deactivateArmTimer.Start();
+        };
         Deactivated += (_, _) =>
         {
-            if (CloseOnDeactivate && !completionDecided)
+            if (CloseOnDeactivate
+                && deactivateCloseArmed
+                && !completionDecided)
             {
                 ClosedByDeactivate = true;
                 completionDecided = true;
                 Close();
             }
         };
-        Closing += (_, _) => completionDecided = true;
+        Closing += (_, _) =>
+        {
+            deactivateArmTimer.Stop();
+            completionDecided = true;
+        };
 
         UpdateCompileModeControls();
         RefreshPreview();

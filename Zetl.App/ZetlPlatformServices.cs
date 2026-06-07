@@ -513,49 +513,97 @@ internal static class ZetlForegroundService
 {
     public static object? CaptureTarget()
     {
-        return OperatingSystem.IsWindows()
-            ? GetForegroundWindow()
-            : null;
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        var handle = GetForegroundWindow();
+        if (handle == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        var threadId = GetWindowThreadProcessId(handle, out var processId);
+        return threadId == 0 || processId == 0
+            ? null
+            : new WindowsForegroundTarget(handle, processId);
     }
 
     public static void RestoreTarget(object? target)
     {
         if (OperatingSystem.IsWindows()
-            && target is IntPtr handle
-            && handle != IntPtr.Zero
-            && IsWindow(handle))
+            && target is WindowsForegroundTarget windowsTarget
+            && windowsTarget.Handle != IntPtr.Zero
+            && IsWindow(windowsTarget.Handle)
+            && TargetProcessStillMatches(windowsTarget))
         {
-            var targetThreadId = GetWindowThreadProcessId(
-                handle,
-                out _);
-            var currentThreadId = GetCurrentThreadId();
-            var attached = targetThreadId != 0
-                && targetThreadId != currentThreadId
-                && AttachThreadInput(
-                    currentThreadId,
+            RestoreWindowsTarget(windowsTarget.Handle);
+        }
+    }
+
+    public static IntPtr? GetWindowsHandle(object? target)
+    {
+        return target is WindowsForegroundTarget windowsTarget
+            ? windowsTarget.Handle
+            : null;
+    }
+
+    public static string DescribeTarget(object? target)
+    {
+        if (target is not WindowsForegroundTarget windowsTarget)
+        {
+            return "none";
+        }
+
+        return $"hwnd=0x{windowsTarget.Handle.ToInt64():X}, pid={windowsTarget.ProcessId}";
+    }
+
+    private static void RestoreWindowsTarget(IntPtr handle)
+    {
+        var currentForeground = GetForegroundWindow();
+        if (currentForeground == handle)
+        {
+            return;
+        }
+
+        var foregroundThreadId = currentForeground == IntPtr.Zero
+            ? 0
+            : GetWindowThreadProcessId(currentForeground, out _);
+        var targetThreadId = GetWindowThreadProcessId(handle, out _);
+        var attached = foregroundThreadId != 0
+            && targetThreadId != 0
+            && foregroundThreadId != targetThreadId
+            && AttachThreadInput(
+                targetThreadId,
+                foregroundThreadId,
+                attach: true);
+        try
+        {
+            SetForegroundWindow(handle);
+        }
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(
                     targetThreadId,
-                    attach: true);
-            try
-            {
-                ShowWindow(handle, ShowNormal);
-                BringWindowToTop(handle);
-                SetForegroundWindow(handle);
-                SetActiveWindow(handle);
-            }
-            finally
-            {
-                if (attached)
-                {
-                    AttachThreadInput(
-                        currentThreadId,
-                        targetThreadId,
-                        attach: false);
-                }
+                    foregroundThreadId,
+                    attach: false);
             }
         }
     }
 
-    private const int ShowNormal = 1;
+    private static bool TargetProcessStillMatches(
+        WindowsForegroundTarget target)
+    {
+        GetWindowThreadProcessId(target.Handle, out var processId);
+        return processId == target.ProcessId;
+    }
+
+    private readonly record struct WindowsForegroundTarget(
+        IntPtr Handle,
+        uint ProcessId);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -571,23 +619,9 @@ internal static class ZetlForegroundService
         IntPtr window,
         out uint processId);
 
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
-
     [DllImport("user32.dll")]
     private static extern bool AttachThreadInput(
         uint currentThreadId,
         uint targetThreadId,
         bool attach);
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(
-        IntPtr window,
-        int command);
-
-    [DllImport("user32.dll")]
-    private static extern bool BringWindowToTop(IntPtr window);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SetActiveWindow(IntPtr window);
 }

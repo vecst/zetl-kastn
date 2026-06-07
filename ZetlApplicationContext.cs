@@ -90,10 +90,7 @@ internal sealed class ZetlApplicationContext :
 
     public void OnPhysicalShortcutPassedThrough(ChordlEventContext context)
     {
-        var targetWindow = GetForegroundWindow();
-        _ = shortcutCoordinator.OnPhysicalShortcutPassedThroughAsync(
-            context,
-            targetWindow);
+        _ = shortcutCoordinator.OnPhysicalShortcutPassedThroughAsync(context);
     }
 
     private void ApplyAppSettings()
@@ -111,9 +108,7 @@ internal sealed class ZetlApplicationContext :
     public void OnHoldDetected(ChordlEventContext context)
     {
         var pending = shortcutCoordinator.ClaimPendingForHold(context);
-        var targetWindow = pending?.ActivationTarget is IntPtr target
-            ? target
-            : GetForegroundWindow();
+        var targetWindow = GetForegroundWindow();
         BeginInvoke(async () =>
             await HandleHoldAsync(context, targetWindow, pending));
     }

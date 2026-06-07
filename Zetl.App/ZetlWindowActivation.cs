@@ -10,8 +10,12 @@ internal static class ZetlWindowActivation
     public static void Show(
         Window window,
         Window? owner = null,
-        object? activationTarget = null)
+        object? activationTarget = null,
+        Action<string>? log = null)
     {
+        var foregroundBeforeShow = OperatingSystem.IsWindows()
+            ? GetForegroundWindow()
+            : IntPtr.Zero;
         if (!window.IsVisible)
         {
             if (owner is not null)
@@ -33,17 +37,20 @@ internal static class ZetlWindowActivation
             BringToForeground(
                 window,
                 handle,
-                activationTarget is IntPtr target ? target : IntPtr.Zero);
+                ZetlForegroundService.GetWindowsHandle(activationTarget)
+                    ?? foregroundBeforeShow,
+                log);
         }
     }
 
     private static void BringToForeground(
         Window window,
         IntPtr windowHandle,
-        IntPtr preferredForegroundWindow)
+        IntPtr foregroundBeforeShow,
+        Action<string>? log)
     {
-        var foregroundWindow = preferredForegroundWindow != IntPtr.Zero
-            ? preferredForegroundWindow
+        var foregroundWindow = foregroundBeforeShow != IntPtr.Zero
+            ? foregroundBeforeShow
             : GetForegroundWindow();
         var foregroundThreadId = foregroundWindow == IntPtr.Zero
             ? 0
@@ -77,16 +84,33 @@ internal static class ZetlWindowActivation
 
         var releaseTopmost = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(250)
+            Interval = TimeSpan.FromMilliseconds(75)
         };
+        var attempts = 0;
         releaseTopmost.Tick += (_, _) =>
         {
-            releaseTopmost.Stop();
-            if (window.IsVisible)
+            attempts++;
+            if (!window.IsVisible)
+            {
+                releaseTopmost.Stop();
+                return;
+            }
+
+            var activeWindow = GetForegroundWindow();
+            if (activeWindow == windowHandle || attempts >= 6)
             {
                 window.Topmost = false;
-                window.Activate();
+                releaseTopmost.Stop();
             }
+
+            BringWindowToTop(windowHandle);
+            SetForegroundWindow(windowHandle);
+            SetActiveWindow(windowHandle);
+            window.Activate();
+            log?.Invoke(
+                $"Activation retry {attempts}: "
+                + $"foreground=0x{activeWindow.ToInt64():X}, "
+                + $"window=0x{windowHandle.ToInt64():X}.");
         };
         releaseTopmost.Start();
     }

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Collections.Concurrent;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -30,6 +31,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly TrayIcon trayIcon;
     private readonly ZetlThemeManager themeManager;
     private readonly Dictionary<bool, BoardWindow> boards = [];
+    private readonly object shortcutTargetsGate = new();
+    private readonly Dictionary<int, object?> shortcutTargets = [];
+    private readonly string diagnosticLogPath;
+    private readonly BlockingCollection<string> diagnosticLines = [];
+    private readonly Thread diagnosticThread;
     private bool disposed;
 
     public ZetlAvaloniaHost(
@@ -48,6 +54,19 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         themeStore = new ZetlThemeStore(dataDirectory is null
             ? null
             : Path.Combine(dataDirectory, "themes"));
+        diagnosticLogPath = Path.Combine(
+            dataDirectory
+                ?? Path.Combine(
+                    Environment.GetFolderPath(
+                        Environment.SpecialFolder.ApplicationData),
+                    "Zetl"),
+            "diagnostics.log");
+        diagnosticThread = new Thread(ProcessDiagnosticLines)
+        {
+            IsBackground = true,
+            Name = "Zetl diagnostics"
+        };
+        diagnosticThread.Start();
 
         themeManager = new ZetlThemeManager(application, settingsStore);
         themeManager.Apply(
@@ -85,13 +104,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             config.RepeatSuppressionDelay,
             config.HoldDelay,
             DispatchOriginalAction,
-            context =>
-            {
-                var target = ZetlForegroundService.CaptureTarget();
-                _ = coordinator.OnPhysicalShortcutPassedThroughAsync(
-                    context,
-                    target);
-            },
+            OnPhysicalShortcutPassedThrough,
             coordinator.OnTapDispatched,
             OnHoldDetected,
             Log,
@@ -133,6 +146,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             logLines.RemoveAt(0);
         }
+
+        WriteDiagnosticLine(line);
     }
 
     public void OpenBoard()
@@ -160,6 +175,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         notifications.Dispose();
         processor?.Dispose();
         keyboard.Dispose();
+        diagnosticLines.CompleteAdding();
+        diagnosticThread.Join(TimeSpan.FromSeconds(1));
     }
 
     private TrayIcon CreateTrayIcon()
@@ -197,10 +214,40 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private void OnHoldDetected(ChordlEventContext context)
     {
         var pending = coordinator.ClaimPendingForHold(context);
-        var target = pending?.ActivationTarget
+        var target = TakeShortcutTarget(context.KeyCode)
             ?? ZetlForegroundService.CaptureTarget();
+        Log($"{context.Name} hold target: {ZetlForegroundService.DescribeTarget(target)}.");
         Dispatcher.UIThread.Post(async () =>
             await HandleHoldAsync(context, target, pending));
+    }
+
+    private void OnPhysicalShortcutPassedThrough(ChordlEventContext context)
+    {
+        if (context.KeyCode is ChordlKeys.VK_C or ChordlKeys.VK_X)
+        {
+            var target = ZetlForegroundService.CaptureTarget();
+            lock (shortcutTargetsGate)
+            {
+                shortcutTargets[context.KeyCode] = target;
+            }
+
+            Log($"{context.Name} keydown target: {ZetlForegroundService.DescribeTarget(target)}.");
+        }
+
+        _ = coordinator.OnPhysicalShortcutPassedThroughAsync(context);
+    }
+
+    private object? TakeShortcutTarget(int keyCode)
+    {
+        lock (shortcutTargetsGate)
+        {
+            if (!shortcutTargets.Remove(keyCode, out var target))
+            {
+                return null;
+            }
+
+            return target;
+        }
     }
 
     private async Task HandleHoldAsync(
@@ -243,7 +290,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         PositionNearTopSixth(board);
         ZetlWindowActivation.Show(
             board,
-            activationTarget: target);
+            activationTarget: target,
+            log: Log);
     }
 
     private void ShowNoteCapture(
@@ -265,15 +313,15 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ShowInTaskbar = false,
             CommitOnDeactivate = target is not null
         };
-        window.Closing += (_, _) =>
-        {
-            if (!window.ClosedByDeactivate)
-            {
-                ZetlForegroundService.RestoreTarget(target);
-            }
-        };
+        window.Opened += (_, _) => Log("Note popup opened.");
+        window.Activated += (_, _) => Log("Note popup activated.");
+        window.Deactivated += (_, _) => Log("Note popup deactivated.");
         window.Closed += (_, _) =>
         {
+            Log(
+                "Note popup closed: "
+                + $"saved={window.Saved}, "
+                + $"deactivate={window.ClosedByDeactivate}.");
             coordinator.CompleteNoteCapture(
                 request,
                 new ZetlNoteCaptureResult(
@@ -284,11 +332,16 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     window.ProjectName,
                     window.SelectedBucketName,
                     window.SelectedBucket));
+            if (!window.ClosedByDeactivate)
+            {
+                ZetlForegroundService.RestoreTarget(target);
+            }
         };
         PositionNearTopSixth(window);
         ZetlWindowActivation.Show(
             window,
-            activationTarget: target);
+            activationTarget: target,
+            log: Log);
     }
 
     private void ShowCompile(
@@ -303,15 +356,15 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ShowInTaskbar = false,
             CloseOnDeactivate = target is not null
         };
-        window.Closing += (_, _) =>
-        {
-            if (!window.ClosedByDeactivate)
-            {
-                ZetlForegroundService.RestoreTarget(target);
-            }
-        };
+        window.Opened += (_, _) => Log("Compile popup opened.");
+        window.Activated += (_, _) => Log("Compile popup activated.");
+        window.Deactivated += (_, _) => Log("Compile popup deactivated.");
         window.Closed += (_, _) =>
         {
+            Log(
+                "Compile popup closed: "
+                + $"saved={window.Saved}, "
+                + $"deactivate={window.ClosedByDeactivate}.");
             var outcome = coordinator.CompleteCompile(
                 request,
                 new ZetlCompileResult(
@@ -325,13 +378,19 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     window.PasteNow));
             if (outcome == ZetlCompileOutcome.PasteNow)
             {
+                ZetlForegroundService.RestoreTarget(target);
                 _ = coordinator.PasteCompiledTextAsync();
+            }
+            else if (!window.ClosedByDeactivate)
+            {
+                ZetlForegroundService.RestoreTarget(target);
             }
         };
         PositionNearTopSixth(window);
         ZetlWindowActivation.Show(
             window,
-            activationTarget: target);
+            activationTarget: target,
+            log: Log);
     }
 
     private async Task ShowProjectSetupAsync()
@@ -466,6 +525,41 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         Log(sent
             ? $"Sent synthetic {ChordlKeys.FormatComboName(virtualKey, includeShift)}."
             : $"Failed to send synthetic {ChordlKeys.FormatComboName(virtualKey, includeShift)}.");
+    }
+
+    private void WriteDiagnosticLine(string line)
+    {
+        try
+        {
+            diagnosticLines.Add(line);
+        }
+        catch (InvalidOperationException)
+        {
+            // Shutdown can complete the queue while a final callback is logging.
+        }
+    }
+
+    private void ProcessDiagnosticLines()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(
+                Path.GetFullPath(diagnosticLogPath))!);
+            using var writer = new StreamWriter(
+                diagnosticLogPath,
+                append: true)
+            {
+                AutoFlush = true
+            };
+            foreach (var line in diagnosticLines.GetConsumingEnumerable())
+            {
+                writer.WriteLine(line);
+            }
+        }
+        catch
+        {
+            // Diagnostics must never interfere with keyboard handling.
+        }
     }
 
     private static ChordlConfiguration LoadChordlConfiguration(
