@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Collections.Concurrent;
 using Chordl;
 
 namespace ZETL;
@@ -144,6 +145,17 @@ internal static class AvaloniaWindowsInput
 {
     private const int InputKeyboard = 1;
     private const uint KeyEventKeyUp = 0x0002;
+    private static readonly BlockingCollection<Action> ReplayQueue = [];
+
+    static AvaloniaWindowsInput()
+    {
+        var thread = new Thread(ProcessReplayQueue)
+        {
+            IsBackground = true,
+            Name = "Zetl Windows synthetic input"
+        };
+        thread.Start();
+    }
 
     public static bool SendCtrlChord(
         int virtualKey,
@@ -152,37 +164,73 @@ internal static class AvaloniaWindowsInput
         bool restoreShift,
         Action<string> log)
     {
-        var count = 7
-            + (includeShift ? 2 : 0)
-            + (restoreCtrl ? 1 : 0)
-            + (restoreShift ? 1 : 0);
+        try
+        {
+            ReplayQueue.Add(() =>
+            {
+                try
+                {
+                    SendCtrlChordNow(
+                        virtualKey,
+                        includeShift,
+                        log);
+                }
+                catch (Exception ex)
+                {
+                    log($"Synthetic input failed: {ex.Message}.");
+                }
+            });
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            log($"Synthetic input could not be queued: {ex.Message}.");
+            return false;
+        }
+    }
+
+    private static void ProcessReplayQueue()
+    {
+        foreach (var action in ReplayQueue.GetConsumingEnumerable())
+        {
+            action();
+        }
+    }
+
+    private static bool SendCtrlChordNow(
+        int virtualKey,
+        bool includeShift,
+        Action<string> log)
+    {
+        var modifiers = ModifierSnapshot.Capture();
+        var injectCtrl = !modifiers.AnyCtrlDown;
+        var injectShift = includeShift && !modifiers.AnyShiftDown;
+        var count = 3
+            + (injectCtrl ? 2 : 0)
+            + (injectShift ? 2 : 0);
         var inputs = new Input[count];
         var index = 0;
         Add(virtualKey, keyUp: true);
-        Add(ChordlKeys.VK_SHIFT, keyUp: true);
-        Add(ChordlKeys.VK_CONTROL, keyUp: true);
-        Add(ChordlKeys.VK_CONTROL, keyUp: false);
-        if (includeShift)
+        if (injectCtrl)
         {
-            Add(ChordlKeys.VK_SHIFT, keyUp: false);
+            Add(ChordlKeys.VK_LCONTROL, keyUp: false);
+        }
+
+        if (injectShift)
+        {
+            Add(ChordlKeys.VK_LSHIFT, keyUp: false);
         }
 
         Add(virtualKey, keyUp: false);
         Add(virtualKey, keyUp: true);
-        if (includeShift)
+        if (injectShift)
         {
-            Add(ChordlKeys.VK_SHIFT, keyUp: true);
+            Add(ChordlKeys.VK_LSHIFT, keyUp: true);
         }
 
-        Add(ChordlKeys.VK_CONTROL, keyUp: true);
-        if (restoreCtrl)
+        if (injectCtrl)
         {
-            Add(ChordlKeys.VK_CONTROL, keyUp: false);
-        }
-
-        if (restoreShift)
-        {
-            Add(ChordlKeys.VK_SHIFT, keyUp: false);
+            Add(ChordlKeys.VK_LCONTROL, keyUp: true);
         }
 
         Marshal.SetLastPInvokeError(0);
@@ -220,6 +268,33 @@ internal static class AvaloniaWindowsInput
         uint inputCount,
         Input[] inputs,
         int inputSize);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
+
+    private readonly record struct ModifierSnapshot(
+        bool LeftCtrl,
+        bool RightCtrl,
+        bool LeftShift,
+        bool RightShift)
+    {
+        public bool AnyCtrlDown => LeftCtrl || RightCtrl;
+        public bool AnyShiftDown => LeftShift || RightShift;
+
+        public static ModifierSnapshot Capture()
+        {
+            return new ModifierSnapshot(
+                IsDown(ChordlKeys.VK_LCONTROL),
+                IsDown(ChordlKeys.VK_RCONTROL),
+                IsDown(ChordlKeys.VK_LSHIFT),
+                IsDown(ChordlKeys.VK_RSHIFT));
+        }
+
+        private static bool IsDown(int virtualKey)
+        {
+            return (GetAsyncKeyState(virtualKey) & unchecked((short)0x8000)) != 0;
+        }
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Input

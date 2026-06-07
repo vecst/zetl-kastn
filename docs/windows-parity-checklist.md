@@ -39,6 +39,9 @@ this pass is complete.
 - [ ] Replay pastes in order, archives consumed notes, restores the user's
       clipboard, and can be undone.
 - [ ] Pop removes the matching pasted note and can be undone.
+- [ ] After rapid tap/hold replay stress and after forced Zetl termination,
+      type in a plain editor and confirm Ctrl, Shift, Caps Lock, and the
+      configured target keys are not inverted or stuck.
 
 ## Board, Compile, And Theme
 
