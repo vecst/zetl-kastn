@@ -522,15 +522,72 @@ internal static class ZetlForegroundService
     {
         if (OperatingSystem.IsWindows()
             && target is IntPtr handle
-            && handle != IntPtr.Zero)
+            && handle != IntPtr.Zero
+            && IsWindow(handle))
         {
-            SetForegroundWindow(handle);
+            var targetThreadId = GetWindowThreadProcessId(
+                handle,
+                out _);
+            var currentThreadId = GetCurrentThreadId();
+            var attached = targetThreadId != 0
+                && targetThreadId != currentThreadId
+                && AttachThreadInput(
+                    currentThreadId,
+                    targetThreadId,
+                    attach: true);
+            try
+            {
+                ShowWindow(handle, ShowNormal);
+                BringWindowToTop(handle);
+                SetForegroundWindow(handle);
+                SetActiveWindow(handle);
+            }
+            finally
+            {
+                if (attached)
+                {
+                    AttachThreadInput(
+                        currentThreadId,
+                        targetThreadId,
+                        attach: false);
+                }
+            }
         }
     }
+
+    private const int ShowNormal = 1;
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(
+        IntPtr window,
+        out uint processId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(
+        uint currentThreadId,
+        uint targetThreadId,
+        bool attach);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(
+        IntPtr window,
+        int command);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetActiveWindow(IntPtr window);
 }
