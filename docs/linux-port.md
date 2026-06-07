@@ -4,6 +4,9 @@ Goal: run Zetl on Linux (X11 and Wayland) while keeping a single C# codebase and
 one behavior model shared with Windows. No external daemon (keyd/kmonad); Zetl
 owns its own keyboard interception, the same way it does on Windows.
 
+The milestone checklist and execution order are maintained in
+[`linux-roadmap.md`](linux-roadmap.md).
+
 ## Why roll our own (vs keyd / kmonad)
 
 The hard part — the tap/hold state machine — is already written and tested in
@@ -36,8 +39,13 @@ So the brain needs no changes; only the plumbing on either side differs.
 
 Status: the Windows-side foundation (steps 2-3) is done and the Avalonia head is
 scaffolded and running on Windows. Two tracks now run in parallel — the Avalonia
-UI (entirely on Windows) and the Linux input backend (needs the CachyOS box) are
+UI (entirely on Windows) and the Linux input backend (tested on the AerynOS box) are
 independent.
+
+Portable shortcut orchestration now lives in `Zetl.Runtime`: pending clipboard
+observation, auto-capture, tap Replay/Pop behavior, hold routing, undo, note
+capture completion, and compile completion. The WinForms application context is
+the current UI/foreground adapter for that runtime.
 
 ## UI: unify on Avalonia (decided)
 
@@ -69,11 +77,29 @@ window behavior is unavoidable on Linux. One UI, with a Wayland-specific corner.
 4. **Linux backend.** evdev reader + uinput sender + clipboard (wl-clipboard /
    xclip), implementing the seam, reusing `ChordlProcessor`. Start headless
    (drive a quick note from a terminal) to validate capture -> action first.
-5. **Avalonia UI head (`Zetl.App`).** *(scaffold done; in progress on Windows)*
+5. **Avalonia UI head (`Zetl.App`).** *(Windows daily-driver host complete)*
    Port tray + dialogs (note capture, board, compile, settings, first-run), and
    lift the platform-agnostic orchestration out of `ZetlApplicationContext` into
    a shared controller both heads drive. Runs on Windows now; the same head
-   serves Linux once the input backend lands.
+   serves Linux once the input backend lands. Ported so far: note capture,
+   project setup, settings, first-run, bucket settings, text prompt,
+   notification history, native toasts, the Board workspace, the Compile
+   workspace, the tray host, and the live theme editor. Normal startup now runs
+   the real persisted runtime. The development harness accepts `--preview=note`,
+   `project`, `settings`, `first-run`, `bucket`, `prompt`, `notifications`,
+   `toast`, `board`, `board-shift`, `compile`, `theme`, or `theme-board`, plus
+   `--theme=light|dark`.
+
+### Avalonia window policy
+
+- Shortcut-opened note capture commits when focus moves away.
+- Shortcut-opened compile cancels when focus moves away.
+- Shortcut-opened Boards auto-hide when focus moves away; Boards opened from
+  the tray remain open.
+- Child dialogs temporarily guard their owning Board from auto-hide.
+- Windows restores and activates the captured target before paste. Other
+  platforms use Avalonia activation and continue cleanly when a compositor,
+  including Wayland, denies exact placement or foreground activation.
 
 ## Project layout (after steps 2-3)
 
@@ -81,9 +107,14 @@ window behavior is unavoidable on Linux. One UI, with a Wayland-specific corner.
   config loader.
 - `Zetl.Core/` (`net10.0`) — portable workflow logic: state, storage, settings,
   and the `IKeyboardBackend` / `IClipboard` seams. `InternalsVisibleTo("Zetl")`.
-- `ZetlHotkeys.csproj` (`net10.0-windows`, WinForms) — the Windows head: forms,
-  tray, `WindowsKeyboardBackend`, `WindowsClipboard`, `ChordlInput`, `Program`.
-- A future Linux head references `Chordl` + `Zetl.Core` and supplies
+- `Zetl.App/` (`net10.0`, Avalonia) is the canonical head and publishes the
+  Windows `Zetl.exe`.
+- `ZetlHotkeys.csproj` (`net10.0-windows`, WinForms) publishes
+  `Zetl.Legacy.exe` as the temporary A7 fallback.
+- `Zetl.Runtime/` (`net10.0`) contains portable orchestration and host contracts
+  extracted incrementally from `ZetlApplicationContext`.
+- `Zetl.Tests/` (`net10.0`) is the dependency-free portable behavior runner.
+- A future Linux head references `Chordl` + `Zetl.Core` + `Zetl.Runtime` and supplies
   `LinuxKeyboardBackend` / `LinuxClipboard` + an Avalonia UI.
 
 ## The seam (step 2)
