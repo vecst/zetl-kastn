@@ -11,6 +11,11 @@ internal partial class BoardWindow : Window
     private readonly bool shiftedLane;
     private bool refreshing;
     private bool childDialogOpen;
+    private bool autoHideArmed;
+    private readonly DispatcherTimer autoHideArmTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(300)
+    };
     private ZetlNote? editingNote;
 
     public BoardWindow()
@@ -96,14 +101,40 @@ internal partial class BoardWindow : Window
             CloseBoard,
             CloseBoard,
             HandleAdditionalShortcut);
-        Closing += (_, _) => SaveEditingNote();
+        Closing += (_, _) =>
+        {
+            autoHideArmTimer.Stop();
+            SaveEditingNote();
+        };
+        autoHideArmTimer.Tick += (_, _) =>
+        {
+            autoHideArmTimer.Stop();
+            if (AutoHideOnDeactivate && IsActive && !childDialogOpen)
+            {
+                autoHideArmed = true;
+            }
+        };
+        Activated += (_, _) =>
+        {
+            if (!AutoHideOnDeactivate)
+            {
+                return;
+            }
+
+            autoHideArmed = false;
+            autoHideArmTimer.Stop();
+            autoHideArmTimer.Start();
+        };
         Deactivated += (_, _) =>
         {
-            if (AutoHideOnDeactivate && !childDialogOpen)
+            if (AutoHideOnDeactivate && autoHideArmed && !childDialogOpen)
             {
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (AutoHideOnDeactivate && !childDialogOpen && !IsActive)
+                    if (AutoHideOnDeactivate
+                        && autoHideArmed
+                        && !childDialogOpen
+                        && !IsActive)
                     {
                         ClosedByDeactivate = true;
                         CloseBoard();
