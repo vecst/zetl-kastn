@@ -91,6 +91,12 @@ internal sealed class ZetlShortcutCoordinator
         }
     }
 
+    public ZetlPendingShortcut? ClaimPendingForHold(
+        ChordlEventContext context)
+    {
+        return CancelPending(context.KeyCode, context.ShiftLane);
+    }
+
     public bool OnTapDispatched(ChordlEventContext context)
     {
         if (context.KeyCode != VK_V || context.ReplayShift)
@@ -111,7 +117,15 @@ internal sealed class ZetlShortcutCoordinator
 
     public async Task<ZetlShortcutRequest?> HandleHoldAsync(ChordlEventContext context)
     {
-        var pending = CancelPending(context.KeyCode, context.ShiftLane);
+        return await HandleClaimedHoldAsync(
+            context,
+            ClaimPendingForHold(context));
+    }
+
+    public async Task<ZetlShortcutRequest?> HandleClaimedHoldAsync(
+        ChordlEventContext context,
+        ZetlPendingShortcut? pending)
+    {
         return context.KeyCode switch
         {
             VK_B => new ZetlBoardRequest(context.ShiftLane),
@@ -651,6 +665,10 @@ internal sealed class ZetlShortcutCoordinator
 
 internal sealed class ZetlPendingShortcut
 {
+    private readonly object gate = new();
+    private string? observedClipboardText;
+    private bool cancelled;
+
     public ZetlPendingShortcut(int keyCode, bool shiftLane, uint clipboardSequenceNumber)
     {
         KeyCode = keyCode;
@@ -664,17 +682,41 @@ internal sealed class ZetlPendingShortcut
 
     public uint ClipboardSequenceNumber { get; }
 
-    public string? ObservedClipboardText { get; private set; }
+    public string? ObservedClipboardText
+    {
+        get
+        {
+            lock (gate)
+            {
+                return observedClipboardText;
+            }
+        }
+    }
 
-    public bool Cancelled { get; private set; }
+    public bool Cancelled
+    {
+        get
+        {
+            lock (gate)
+            {
+                return cancelled;
+            }
+        }
+    }
 
     public void Cancel()
     {
-        Cancelled = true;
+        lock (gate)
+        {
+            cancelled = true;
+        }
     }
 
     public void SetObservedClipboardText(string? text)
     {
-        ObservedClipboardText = text;
+        lock (gate)
+        {
+            observedClipboardText = text;
+        }
     }
 }

@@ -190,16 +190,20 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     private void OnHoldDetected(ChordlEventContext context)
     {
+        var pending = coordinator.ClaimPendingForHold(context);
         var target = ZetlForegroundService.CaptureTarget();
         Dispatcher.UIThread.Post(async () =>
-            await HandleHoldAsync(context, target));
+            await HandleHoldAsync(context, target, pending));
     }
 
     private async Task HandleHoldAsync(
         ChordlEventContext context,
-        object? target)
+        object? target,
+        ZetlPendingShortcut? pending)
     {
-        var request = await coordinator.HandleHoldAsync(context);
+        var request = await coordinator.HandleClaimedHoldAsync(
+            context,
+            pending);
         switch (request)
         {
             case ZetlBoardRequest board:

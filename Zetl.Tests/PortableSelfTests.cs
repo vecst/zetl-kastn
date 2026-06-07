@@ -79,6 +79,7 @@ internal static class PortableSelfTests
                 ("Runtime activity log buffer drains safely", RuntimeActivityLogBufferDrainsSafely),
                 ("Runtime auto-captures copied text", RuntimeAutoCapturesCopiedText),
                 ("Runtime hold cancellation prevents auto-capture", RuntimeHoldCancellationPreventsAutoCapture),
+                ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
@@ -1496,6 +1497,50 @@ internal static class PortableSelfTests
 
             AssertEqual(0, store.GetActiveBucket()!.Notes.Count, "Cancelled copy should not auto-capture.");
             AssertEqual("copied text", pending!.ObservedClipboardText, "Observed copy text should remain available to the hold flow.");
+        }
+
+        private static void RuntimeClaimedHoldPreventsDelayedAutoCapture()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var clipboard = new FakeClipboard("copied text", changeToken: 2);
+            var delay = new ManualDelay();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                delay);
+            var context = ShortcutContext(
+                VK_C,
+                clipboardSequenceNumber: 1);
+
+            var captureTask = coordinator.OnPhysicalShortcutPassedThroughAsync(
+                context);
+            var pending = coordinator.ClaimPendingForHold(context);
+            AssertTrue(
+                pending is not null,
+                "Hold callback should claim the pending copy immediately.");
+            var holdTask = coordinator.HandleClaimedHoldAsync(
+                context,
+                pending);
+
+            delay.Release();
+            Task.WhenAll(captureTask, holdTask).GetAwaiter().GetResult();
+
+            AssertEqual(
+                0,
+                store.GetActiveBucket()!.Notes.Count,
+                "A claimed hold must not auto-save the copied text.");
+            AssertTrue(
+                holdTask.Result is ZetlNoteCaptureRequest,
+                "A claimed hold with copied text should open note capture.");
+            AssertEqual(
+                "copied text",
+                ((ZetlNoteCaptureRequest)holdTask.Result!).Text,
+                "The hold request should retain the observed clipboard text.");
         }
 
         private static void RuntimeReplayTapConsumesAndRestoresClipboard()

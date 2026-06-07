@@ -107,8 +107,10 @@ internal sealed class ZetlApplicationContext :
 
     public void OnHoldDetected(ChordlEventContext context)
     {
+        var pending = shortcutCoordinator.ClaimPendingForHold(context);
         var targetWindow = GetForegroundWindow();
-        BeginInvoke(async () => await HandleHoldAsync(context, targetWindow));
+        BeginInvoke(async () =>
+            await HandleHoldAsync(context, targetWindow, pending));
     }
 
     protected override void Dispose(bool disposing)
@@ -212,9 +214,14 @@ internal sealed class ZetlApplicationContext :
         invoker.BeginInvoke(action);
     }
 
-    private async Task HandleHoldAsync(ChordlEventContext context, IntPtr targetWindow)
+    private async Task HandleHoldAsync(
+        ChordlEventContext context,
+        IntPtr targetWindow,
+        ZetlPendingShortcut? pending)
     {
-        var request = await shortcutCoordinator.HandleHoldAsync(context);
+        var request = await shortcutCoordinator.HandleClaimedHoldAsync(
+            context,
+            pending);
         switch (request)
         {
             case ZetlBoardRequest board:
