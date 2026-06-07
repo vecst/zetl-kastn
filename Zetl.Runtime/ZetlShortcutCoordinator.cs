@@ -53,7 +53,9 @@ internal sealed class ZetlShortcutCoordinator
         this.holdDelay = holdDelay;
     }
 
-    public async Task OnPhysicalShortcutPassedThroughAsync(ChordlEventContext context)
+    public async Task OnPhysicalShortcutPassedThroughAsync(
+        ChordlEventContext context,
+        object? activationTarget = null)
     {
         if (context.KeyCode is not (VK_C or VK_X))
         {
@@ -63,7 +65,8 @@ internal sealed class ZetlShortcutCoordinator
         var pending = new ZetlPendingShortcut(
             context.KeyCode,
             context.ShiftLane,
-            context.ClipboardSequenceNumber);
+            context.ClipboardSequenceNumber,
+            activationTarget);
         lock (pendingGate)
         {
             pendingShortcuts[PendingKey(context.KeyCode, context.ShiftLane)] = pending;
@@ -682,11 +685,16 @@ internal sealed class ZetlPendingShortcut
     private string? observedClipboardText;
     private bool cancelled;
 
-    public ZetlPendingShortcut(int keyCode, bool shiftLane, uint clipboardSequenceNumber)
+    public ZetlPendingShortcut(
+        int keyCode,
+        bool shiftLane,
+        uint clipboardSequenceNumber,
+        object? activationTarget = null)
     {
         KeyCode = keyCode;
         ShiftLane = shiftLane;
         ClipboardSequenceNumber = clipboardSequenceNumber;
+        ActivationTarget = activationTarget;
     }
 
     public int KeyCode { get; }
@@ -694,6 +702,8 @@ internal sealed class ZetlPendingShortcut
     public bool ShiftLane { get; }
 
     public uint ClipboardSequenceNumber { get; }
+
+    public object? ActivationTarget { get; }
 
     public string? ObservedClipboardText
     {

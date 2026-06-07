@@ -85,7 +85,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             config.RepeatSuppressionDelay,
             config.HoldDelay,
             DispatchOriginalAction,
-            context => _ = coordinator.OnPhysicalShortcutPassedThroughAsync(context),
+            context =>
+            {
+                var target = ZetlForegroundService.CaptureTarget();
+                _ = coordinator.OnPhysicalShortcutPassedThroughAsync(
+                    context,
+                    target);
+            },
             coordinator.OnTapDispatched,
             OnHoldDetected,
             Log,
@@ -191,7 +197,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private void OnHoldDetected(ChordlEventContext context)
     {
         var pending = coordinator.ClaimPendingForHold(context);
-        var target = ZetlForegroundService.CaptureTarget();
+        var target = pending?.ActivationTarget
+            ?? ZetlForegroundService.CaptureTarget();
         Dispatcher.UIThread.Post(async () =>
             await HandleHoldAsync(context, target, pending));
     }

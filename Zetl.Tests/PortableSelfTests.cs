@@ -81,6 +81,7 @@ internal static class PortableSelfTests
                 ("Runtime hold cancellation prevents auto-capture", RuntimeHoldCancellationPreventsAutoCapture),
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
                 ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
+                ("Runtime pending shortcut preserves activation target", RuntimePendingShortcutPreservesActivationTarget),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
@@ -1594,6 +1595,38 @@ internal static class PortableSelfTests
             AssertTrue(
                 emptyTask.Result is ZetlBoardRequest,
                 "Unchanged clipboard should open the Board immediately.");
+        }
+
+        private static void RuntimePendingShortcutPreservesActivationTarget()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var delay = new ManualDelay();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                delay);
+            var context = ShortcutContext(
+                VK_C,
+                clipboardSequenceNumber: 1);
+            var target = new object();
+
+            var observation = coordinator.OnPhysicalShortcutPassedThroughAsync(
+                context,
+                target);
+            var pending = coordinator.ClaimPendingForHold(context);
+
+            AssertTrue(
+                pending is not null,
+                "Copy key-down should create pending shortcut state.");
+            AssertTrue(
+                ReferenceEquals(target, pending!.ActivationTarget),
+                "Pending shortcut should retain the key-down foreground target.");
+            delay.Release();
+            observation.GetAwaiter().GetResult();
         }
 
         private static void RuntimeReplayTapConsumesAndRestoresClipboard()
