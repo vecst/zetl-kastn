@@ -258,6 +258,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ShowInTaskbar = false,
             CommitOnDeactivate = target is not null
         };
+        window.Closing += (_, _) =>
+        {
+            if (!window.ClosedByDeactivate)
+            {
+                ZetlForegroundService.RestoreTarget(target);
+            }
+        };
         window.Closed += (_, _) =>
         {
             coordinator.CompleteNoteCapture(
@@ -270,10 +277,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     window.ProjectName,
                     window.SelectedBucketName,
                     window.SelectedBucket));
-            if (!window.ClosedByDeactivate)
-            {
-                ZetlForegroundService.RestoreTarget(target);
-            }
         };
         PositionNearTopSixth(window);
         ZetlWindowActivation.Show(
@@ -293,6 +296,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ShowInTaskbar = false,
             CloseOnDeactivate = target is not null
         };
+        window.Closing += (_, _) =>
+        {
+            if (!window.ClosedByDeactivate)
+            {
+                ZetlForegroundService.RestoreTarget(target);
+            }
+        };
         window.Closed += (_, _) =>
         {
             var outcome = coordinator.CompleteCompile(
@@ -308,12 +318,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     window.PasteNow));
             if (outcome == ZetlCompileOutcome.PasteNow)
             {
-                ZetlForegroundService.RestoreTarget(target);
                 _ = coordinator.PasteCompiledTextAsync();
-            }
-            else if (!window.ClosedByDeactivate)
-            {
-                ZetlForegroundService.RestoreTarget(target);
             }
         };
         PositionNearTopSixth(window);
