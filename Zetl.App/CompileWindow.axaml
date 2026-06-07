@@ -1,0 +1,151 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ZETL.CompileWindow"
+        Width="1120" Height="700"
+        MinWidth="900" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        Title="Compile Zetl Notes">
+  <Grid Margin="{DynamicResource ZetlWindowPadding}"
+        RowDefinitions="Auto,*,Auto,Auto,Auto"
+        RowSpacing="10">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,280,Auto,*" ColumnSpacing="8">
+      <TextBlock Grid.Column="0"
+                 Text="Compile from"
+                 VerticalAlignment="Center" />
+      <ComboBox Grid.Column="1"
+                x:Name="sourceProjectBox"
+                DisplayMemberBinding="{Binding Name}" />
+      <CheckBox Grid.Column="2"
+                x:Name="sessionOnlyCheck"
+                Content="This session only"
+                VerticalAlignment="Center"
+                Margin="12,0,0,0" />
+    </Grid>
+
+    <Grid Grid.Row="1" ColumnDefinitions="360,8,*">
+      <Grid Grid.Column="0" RowDefinitions="Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
+          <TextBlock Grid.Column="0"
+                     Text="Notes"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
+          <Button Grid.Column="1"
+                  x:Name="selectAllButton"
+                  Content="Select All"
+                  Margin="0,0,8,0" />
+          <Button Grid.Column="2"
+                  x:Name="selectNoneButton"
+                  Content="Select None" />
+        </Grid>
+        <Border Grid.Row="1"
+                Classes="surface"
+                BorderThickness="1"
+                CornerRadius="4">
+          <ScrollViewer VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <Grid Margin="8">
+              <StackPanel x:Name="selectionHost" Spacing="8" />
+              <TextBlock x:Name="emptySelectionText"
+                         Text="No notes match this source and session filter."
+                         TextWrapping="Wrap"
+                         Opacity="0.7"
+                         Margin="4"
+                         IsVisible="False" />
+            </Grid>
+          </ScrollViewer>
+        </Border>
+      </Grid>
+
+      <GridSplitter Grid.Column="1"
+                    Width="8"
+                    ResizeDirection="Columns" />
+
+      <Grid Grid.Column="2" RowDefinitions="Auto,*">
+        <TextBlock Grid.Row="0"
+                   Text="Preview"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,8" />
+        <TextBox Grid.Row="1"
+                 x:Name="previewBox"
+                 AcceptsReturn="True"
+                 IsReadOnly="True"
+                 TextWrapping="NoWrap"
+                 FontFamily="{DynamicResource ZetlMonoFontFamily}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+      </Grid>
+    </Grid>
+
+    <Grid Grid.Row="2"
+          ColumnDefinitions="Auto,160,Auto,100,*"
+          ColumnSpacing="8">
+      <TextBlock Grid.Column="0"
+                 Text="Format"
+                 VerticalAlignment="Center" />
+      <ComboBox Grid.Column="1" x:Name="compileModeBox" />
+      <TextBlock Grid.Column="2"
+                 x:Name="tsvRowLengthLabel"
+                 Text="TSV row length"
+                 VerticalAlignment="Center"
+                 Margin="12,0,0,0" />
+      <NumericUpDown Grid.Column="3"
+                     x:Name="tsvRowLengthBox"
+                     Minimum="1"
+                     Maximum="1000"
+                     Increment="1"
+                     Value="5" />
+    </Grid>
+
+    <Grid Grid.Row="3"
+          ColumnDefinitions="Auto,220,260,Auto,*"
+          ColumnSpacing="8">
+      <TextBlock Grid.Column="0"
+                 Text="Compile to"
+                 VerticalAlignment="Center" />
+      <ComboBox Grid.Column="1"
+                x:Name="destinationProjectBox"
+                DisplayMemberBinding="{Binding Name}" />
+      <ComboBox Grid.Column="2"
+                x:Name="destinationBucketBox"
+                IsEditable="True" />
+      <CheckBox Grid.Column="3"
+                x:Name="flattenCheck"
+                Content="Flatten into one note"
+                VerticalAlignment="Center"
+                Margin="12,0,0,0" />
+    </Grid>
+
+    <Grid Grid.Row="4" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <TextBlock Grid.Column="0"
+                 x:Name="validationText"
+                 Classes="validation"
+                 VerticalAlignment="Center"
+                 TextWrapping="Wrap"
+                 IsVisible="False" />
+      <WrapPanel Grid.Column="1"
+                 Orientation="Horizontal"
+                 HorizontalAlignment="Right">
+        <Button x:Name="pasteButton"
+                Content="Paste Now"
+                Margin="0,0,8,0" />
+        <Button x:Name="pastePlainButton"
+                Content="Paste Selected Plain"
+                Margin="0,0,8,0" />
+        <Button x:Name="pasteLastButton"
+                Content="Paste Last Item"
+                Margin="0,0,8,0" />
+        <Button x:Name="copyButton"
+                Content="Copy to Clipboard"
+                IsDefault="True"
+                Classes="primary"
+                Margin="0,0,8,0" />
+        <Button x:Name="saveBucketButton"
+                Content="Save to Bucket"
+                Margin="0,0,8,0" />
+        <Button x:Name="cancelButton"
+                Content="Cancel"
+                IsCancel="True" />
+      </WrapPanel>
+    </Grid>
+  </Grid>
+</Window>

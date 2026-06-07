@@ -1,0 +1,109 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ZETL.BoardWindow"
+        Width="1040" Height="680"
+        MinWidth="820" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Title="Zetl Board">
+  <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="Auto,*">
+    <Grid Grid.Row="0"
+          ColumnDefinitions="Auto,180,180,Auto,Auto,Auto,Auto,*"
+          ColumnSpacing="8"
+          Margin="0,0,0,10">
+      <TextBlock Grid.Column="0" Text="Project" VerticalAlignment="Center" />
+      <ComboBox Grid.Column="1" x:Name="projectBox" HorizontalAlignment="Stretch">
+        <ComboBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding Name}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+      <TextBox Grid.Column="2" x:Name="projectNameBox" />
+      <Button Grid.Column="3" x:Name="saveProjectButton" Content="Save Name" />
+      <CheckBox Grid.Column="4" x:Name="activeProjectBox"
+                Content="Active project"
+                VerticalAlignment="Center" />
+      <Button Grid.Column="5" x:Name="newProjectButton" Content="New Project" />
+      <Button Grid.Column="6" x:Name="deleteProjectButton" Content="Delete Project" />
+    </Grid>
+
+    <Grid Grid.Row="1" ColumnDefinitions="320,8,*">
+      <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+        <TextBlock Grid.Row="0" Text="Buckets"
+                   Classes="heading"
+                   Margin="0,0,0,6" />
+        <ListBox Grid.Row="1" x:Name="bucketList">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Label}" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+        <TextBlock Grid.Row="2" Text="Selected bucket"
+                   FontWeight="SemiBold"
+                   Margin="0,10,0,4" />
+        <Grid Grid.Row="3"
+              ColumnDefinitions="Auto,*,Auto"
+              ColumnSpacing="6">
+          <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" />
+          <TextBox Grid.Column="1" x:Name="bucketNameBox" />
+          <Button Grid.Column="2" x:Name="saveBucketButton" Content="Save" Width="64" />
+        </Grid>
+        <Grid Grid.Row="4"
+              ColumnDefinitions="Auto,110,Auto,*"
+              ColumnSpacing="6"
+              Margin="0,8,0,0">
+          <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" />
+          <ComboBox Grid.Column="1" x:Name="bucketKindBox" />
+          <CheckBox Grid.Column="2" x:Name="popModeBox"
+                    Content="Pop mode"
+                    VerticalAlignment="Center" />
+          <Button Grid.Column="3" x:Name="bucketSettingsButton"
+                  Content="Settings"
+                  HorizontalAlignment="Right" />
+        </Grid>
+        <StackPanel Grid.Row="5"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Margin="0,10,0,0">
+          <Button x:Name="addBucketButton" Content="Add Bucket" />
+          <Button x:Name="deleteBucketButton" Content="Delete" />
+        </StackPanel>
+      </Grid>
+
+      <GridSplitter Grid.Column="1"
+                    Width="8"
+                    ResizeDirection="Columns"
+                    Background="Transparent" />
+
+      <Grid Grid.Column="2" RowDefinitions="Auto,2*,Auto,3*,Auto" Margin="8,0,0,0">
+        <TextBlock Grid.Row="0" Text="Notes"
+                   Classes="heading"
+                   Margin="0,0,0,6" />
+        <ListBox Grid.Row="1" x:Name="noteList">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Text}"
+                         TextTrimming="CharacterEllipsis"
+                         MaxLines="2" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+        <TextBlock Grid.Row="2" Text="Selected note"
+                   FontWeight="SemiBold"
+                   Margin="0,10,0,4" />
+        <TextBox Grid.Row="3" x:Name="noteEditor"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+        <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" Margin="0,10,0,0">
+          <Button Grid.Column="0" x:Name="createNoteButton" Content="Create Note" />
+          <Button Grid.Column="1" x:Name="deleteNoteButton" Content="Delete Note" />
+          <Button Grid.Column="3" x:Name="closeBoardButton" Content="Close" Width="76" />
+        </Grid>
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>

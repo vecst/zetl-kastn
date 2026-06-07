@@ -1,0 +1,169 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ZETL.ThemeEditorWindow"
+        Width="1080" Height="760"
+        MinWidth="900" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        Title="Zetl Theme Editor">
+  <Grid Margin="{DynamicResource ZetlWindowPadding}"
+        ColumnDefinitions="250,*"
+        ColumnSpacing="14">
+    <Grid Grid.Column="0" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
+      <TextBlock Grid.Row="0" Text="Theme" Classes="heading" />
+      <ComboBox Grid.Row="1"
+                x:Name="themeBox"
+                DisplayMemberBinding="{Binding Name}" />
+      <ComboBox Grid.Row="2" x:Name="variantBox" />
+      <Border Grid.Row="3"
+              Classes="surface"
+              BorderThickness="1"
+              Padding="12">
+        <StackPanel Spacing="{DynamicResource ZetlControlSpacing}">
+          <TextBlock Text="Live preview" Classes="heading" />
+          <TextBlock Text="Changes apply to every open Avalonia window while this editor is open."
+                     TextWrapping="Wrap"
+                     Classes="muted" />
+          <TextBox Text="Editable text" />
+          <ComboBox SelectedIndex="0">
+            <ComboBoxItem Content="Selected option" />
+          </ComboBox>
+          <CheckBox Content="Accent control" IsChecked="True" />
+          <Button Content="Primary action"
+                  Classes="primary"
+                  HorizontalAlignment="Left" />
+          <Button Content="Secondary action"
+                  HorizontalAlignment="Left" />
+          <TextBlock Text="Validation and warnings use the configured error color."
+                     Classes="validation"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+      <StackPanel Grid.Row="4" Spacing="8">
+        <Button x:Name="saveButton"
+                Content="Save and Activate"
+                Classes="primary" />
+        <Button x:Name="duplicateButton" Content="Save As / Duplicate" />
+        <Button x:Name="resetButton" Content="Reset Values" />
+        <Button x:Name="importButton" Content="Import Theme" />
+        <Button x:Name="exportButton" Content="Export Theme" />
+      </StackPanel>
+    </Grid>
+
+    <Grid Grid.Column="1" RowDefinitions="*,Auto">
+      <ScrollViewer Grid.Row="0"
+                    VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="14" Margin="0,0,8,0">
+          <TextBlock Text="Identity" Classes="heading" />
+          <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto" RowSpacing="8">
+            <TextBlock Grid.Row="0" Grid.Column="0"
+                       Text="Name"
+                       VerticalAlignment="Center" />
+            <TextBox Grid.Row="0" Grid.Column="1" x:Name="nameBox" />
+            <TextBlock Grid.Row="1" Grid.Column="0"
+                       Text="Theme id"
+                       VerticalAlignment="Center" />
+            <TextBox Grid.Row="1" Grid.Column="1"
+                     x:Name="idBox"
+                     IsReadOnly="True" />
+          </Grid>
+
+          <TextBlock Text="Palette" Classes="heading" />
+          <Grid ColumnDefinitions="150,*,48"
+                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                RowSpacing="8"
+                ColumnSpacing="8">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Window background" VerticalAlignment="Center" />
+            <TextBox Grid.Row="0" Grid.Column="1" x:Name="windowBackgroundBox" />
+            <Border Grid.Row="0" Grid.Column="2" x:Name="windowBackgroundSwatch" BorderThickness="1" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Surface" VerticalAlignment="Center" />
+            <TextBox Grid.Row="1" Grid.Column="1" x:Name="surfaceBox" />
+            <Border Grid.Row="1" Grid.Column="2" x:Name="surfaceSwatch" BorderThickness="1" />
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Alternate surface" VerticalAlignment="Center" />
+            <TextBox Grid.Row="2" Grid.Column="1" x:Name="surfaceAltBox" />
+            <Border Grid.Row="2" Grid.Column="2" x:Name="surfaceAltSwatch" BorderThickness="1" />
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="Text" VerticalAlignment="Center" />
+            <TextBox Grid.Row="3" Grid.Column="1" x:Name="textBox" />
+            <Border Grid.Row="3" Grid.Column="2" x:Name="textSwatch" BorderThickness="1" />
+
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="Muted text" VerticalAlignment="Center" />
+            <TextBox Grid.Row="4" Grid.Column="1" x:Name="mutedTextBox" />
+            <Border Grid.Row="4" Grid.Column="2" x:Name="mutedTextSwatch" BorderThickness="1" />
+
+            <TextBlock Grid.Row="5" Grid.Column="0" Text="Accent" VerticalAlignment="Center" />
+            <TextBox Grid.Row="5" Grid.Column="1" x:Name="accentBox" />
+            <Border Grid.Row="5" Grid.Column="2" x:Name="accentSwatch" BorderThickness="1" />
+
+            <TextBlock Grid.Row="6" Grid.Column="0" Text="Accent text" VerticalAlignment="Center" />
+            <TextBox Grid.Row="6" Grid.Column="1" x:Name="accentTextBox" />
+            <Border Grid.Row="6" Grid.Column="2" x:Name="accentTextSwatch" BorderThickness="1" />
+
+            <TextBlock Grid.Row="7" Grid.Column="0" Text="Border" VerticalAlignment="Center" />
+            <TextBox Grid.Row="7" Grid.Column="1" x:Name="borderBox" />
+            <Border Grid.Row="7" Grid.Column="2" x:Name="borderSwatch" BorderThickness="1" />
+
+            <TextBlock Grid.Row="8" Grid.Column="0" Text="Error" VerticalAlignment="Center" />
+            <TextBox Grid.Row="8" Grid.Column="1" x:Name="errorBox" />
+            <Border Grid.Row="8" Grid.Column="2" x:Name="errorSwatch" BorderThickness="1" />
+          </Grid>
+
+          <TextBlock Text="Typography" Classes="heading" />
+          <Grid ColumnDefinitions="150,*"
+                RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                RowSpacing="8">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Font family" VerticalAlignment="Center" />
+            <TextBox Grid.Row="0" Grid.Column="1" x:Name="fontFamilyBox" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Monospace family" VerticalAlignment="Center" />
+            <TextBox Grid.Row="1" Grid.Column="1" x:Name="monoFontFamilyBox" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Body size" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Row="2" Grid.Column="1" x:Name="bodyFontSizeBox"
+                           Minimum="9" Maximum="30" Increment="0.5"
+                           Width="110" HorizontalAlignment="Left" />
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="Heading size" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Row="3" Grid.Column="1" x:Name="headingFontSizeBox"
+                           Minimum="10" Maximum="40" Increment="0.5"
+                           Width="110" HorizontalAlignment="Left" />
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="Title size" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Row="4" Grid.Column="1" x:Name="titleFontSizeBox"
+                           Minimum="12" Maximum="56" Increment="0.5"
+                           Width="110" HorizontalAlignment="Left" />
+          </Grid>
+
+          <TextBlock Text="Layout" Classes="heading" />
+          <Grid ColumnDefinitions="150,*"
+                RowDefinitions="Auto,Auto,Auto"
+                RowSpacing="8">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Window padding" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="windowPaddingBox"
+                           Minimum="0" Maximum="40" Increment="1"
+                           Width="110" HorizontalAlignment="Left" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Control spacing" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="controlSpacingBox"
+                           Minimum="0" Maximum="30" Increment="1"
+                           Width="110" HorizontalAlignment="Left" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Corner radius" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Row="2" Grid.Column="1" x:Name="cornerRadiusBox"
+                           Minimum="0" Maximum="24" Increment="1"
+                           Width="110" HorizontalAlignment="Left" />
+          </Grid>
+        </StackPanel>
+      </ScrollViewer>
+
+      <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+        <TextBlock Grid.Column="0"
+                   x:Name="validationText"
+                   Classes="validation"
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Center"
+                   IsVisible="False" />
+        <Button Grid.Column="1"
+                x:Name="closeButton"
+                Content="Close"
+                Width="90" />
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>

@@ -1,0 +1,20 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ZETL.ToastWindow"
+        Width="360" Height="84"
+        CanResize="False"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        SystemDecorations="None"
+        Title="Zetl Notification"
+        WindowStartupLocation="Manual">
+  <Border Classes="surface"
+          BorderThickness="1"
+          Padding="14">
+    <TextBlock x:Name="messageText"
+               TextWrapping="Wrap"
+               VerticalAlignment="Center"
+               MaxLines="3" />
+  </Border>
+</Window>

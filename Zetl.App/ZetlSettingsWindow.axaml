@@ -1,0 +1,77 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ZETL.ZetlSettingsWindow"
+        Width="560" Height="430"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Title="Zetl Settings">
+  <Grid Margin="{DynamicResource ZetlWindowPadding}"
+        ColumnDefinitions="230,*"
+        RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
+    <TextBlock Grid.Row="0" Grid.Column="0"
+               Text="Toast display time (ms)"
+               VerticalAlignment="Center" />
+    <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="toastMsBox"
+                   Width="100" HorizontalAlignment="Left"
+                   Minimum="200" Maximum="5000" Increment="50" />
+
+    <TextBlock Grid.Row="1" Grid.Column="0"
+               Text="Auto-capture on copy"
+               VerticalAlignment="Center" />
+    <CheckBox Grid.Row="1" Grid.Column="1" x:Name="autoCaptureBox"
+              Margin="0,8,0,0"
+              Content="Capture plain Ctrl+C into the active bucket" />
+
+    <TextBlock Grid.Row="2" Grid.Column="0"
+               Text="Quick note to clipboard"
+               VerticalAlignment="Center" />
+    <CheckBox Grid.Row="2" Grid.Column="1" x:Name="quickNoteClipboardBox"
+              Margin="0,8,0,0"
+              Content="Held Ctrl+X note also copies its text to the clipboard" />
+
+    <TextBlock Grid.Row="3" Grid.Column="0"
+               Text="Default project buckets (one per line)"
+               Margin="0,14,10,0"
+               VerticalAlignment="Top"
+               TextWrapping="Wrap" />
+    <TextBox Grid.Row="3" Grid.Column="1" x:Name="defaultBucketsBox"
+             Margin="0,12,0,0"
+             AcceptsReturn="True"
+             MinHeight="110"
+             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+
+    <TextBlock Grid.Row="4" Grid.Column="0"
+               Text="Default compile mode"
+               Margin="0,12,0,0"
+               VerticalAlignment="Center" />
+    <ComboBox Grid.Row="4" Grid.Column="1" x:Name="compileModeBox"
+              Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
+
+    <TextBlock Grid.Row="5" Grid.Column="0"
+               Text="Default TSV row length"
+               Margin="0,12,0,0"
+               VerticalAlignment="Center" />
+    <NumericUpDown Grid.Row="5" Grid.Column="1" x:Name="tsvRowLengthBox"
+                   Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
+                   Minimum="1" Maximum="50" Increment="1" />
+
+    <Grid Grid.Row="6" Grid.ColumnSpan="2"
+          ColumnDefinitions="Auto,*,Auto"
+          Margin="0,16,0,0">
+      <Button Grid.Column="0"
+              x:Name="themeButton"
+              Content="Edit Theme..." />
+      <StackPanel Grid.Column="2"
+                  Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8">
+        <Button x:Name="saveButton"
+                Content="Save"
+                Width="86"
+                IsDefault="True"
+                Classes="primary" />
+        <Button x:Name="cancelButton" Content="Cancel" Width="86" IsCancel="True" />
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Window>

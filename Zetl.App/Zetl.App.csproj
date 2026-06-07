@@ -4,8 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>Zetl.App</AssemblyName>
+    <AssemblyName>Zetl</AssemblyName>
     <RootNamespace>ZETL</RootNamespace>
+    <Product>Zetl</Product>
+    <Description>Cross-platform Zetl tray application</Description>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
@@ -18,5 +20,14 @@
   <ItemGroup>
     <ProjectReference Include="..\Chordl\Chordl.csproj" />
     <ProjectReference Include="..\Zetl.Core\Zetl.Core.csproj" />
+    <ProjectReference Include="..\Zetl.Runtime\Zetl.Runtime.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="..\hotkeys.json" />
+    <EmbeddedResource Include="..\hotkeys.json">
+      <LogicalName>hotkeys.json</LogicalName>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>hotkeys.json</Link>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

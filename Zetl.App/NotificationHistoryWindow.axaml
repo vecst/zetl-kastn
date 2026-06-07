@@ -1,0 +1,22 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ZETL.NotificationHistoryWindow"
+        Width="560" Height="440"
+        MinWidth="420" MinHeight="300"
+        WindowStartupLocation="CenterScreen"
+        Title="Zetl Notifications">
+  <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="*,Auto">
+    <TextBox Grid.Row="0" x:Name="historyBox"
+             IsReadOnly="True"
+             AcceptsReturn="True"
+             TextWrapping="Wrap"
+             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+    <Button Grid.Row="1" x:Name="closeButton"
+            Content="Close"
+            Width="86"
+            HorizontalAlignment="Right"
+            Margin="0,10,0,0"
+            IsDefault="True"
+            IsCancel="True" />
+  </Grid>
+</Window>

@@ -42,15 +42,18 @@ Tiny app-wide settings are stored at:
 Build or run with the .NET SDK:
 
 ```powershell
-dotnet run
+dotnet run --project Zetl.App
 ```
 
-For a self-contained build, publish from Visual Studio or with `dotnet publish`.
+Publish the primary self-contained Windows artifact with:
 
-The output now contains two main assemblies:
+```powershell
+dotnet publish Zetl.App\Zetl.App.csproj -p:PublishProfile=win-x64
+```
 
-- `Zetl.exe` / `Zetl.dll`: the tray app and workflow layer.
-- `Chordl.dll`: the reusable tap/hold keyboard interaction library that Zetl is built on.
+The result is `artifacts\publish\win-x64\Zetl.exe`. The Avalonia application is
+the primary Windows artifact. The old WinForms head remains available during
+A7 as `Zetl.Legacy.exe`.
 
 The app runs in the Windows tray. Use the tray menu for:
 
@@ -63,7 +66,10 @@ The app runs in the Windows tray. Use the tray menu for:
 - `Settings`
 - `Quit`
 
-If hotkeys do not work in an elevated app, run Zetl elevated too. Windows low-level keyboard hooks cannot intercept secure desktop input.
+Windows blocks keyboard hooks and synthetic input across integrity levels. If
+hotkeys do not work in an elevated app, run Zetl elevated too. When Windows
+rejects a compiled paste, Zetl keeps the text on the clipboard and reports the
+privilege mismatch. Windows secure-desktop input cannot be intercepted.
 
 ## First Run
 
@@ -461,33 +467,58 @@ The tray menu's `Settings` item edits app-wide preferences, stored in `%AppData%
 - **Default project buckets** — the buckets a new project starts with (one per line), used for the dated default project and prefilled in `New Project`.
 - **Default compile mode** and **default TSV row length** — applied to newly created buckets. Each bucket can still override these in its own settings.
 
+The Avalonia Settings window also opens a live theme editor. Themes have
+separate light and dark palettes plus configurable fonts, font sizes, window
+padding, control spacing, and corner radius. Changes preview across every open
+Avalonia window before saving. Custom themes can be duplicated, reset,
+imported, and exported as versioned JSON files. The active theme is recorded in
+`settings.json`; custom files live under `%AppData%\Zetl\themes`. Invalid or
+missing files fall back to the built-in theme.
+
+Zetl ships with two protected presets: `Zetl Default` and `Zetl Dusk`. Dusk was
+developed from the first A7 dogfood theme and pairs warm aubergine dark surfaces,
+ivory text, and a periwinkle accent with a soft paper-and-lilac light palette.
+Editing a built-in saves a custom copy rather than overwriting the preset.
+
 Older `settings.json` files without these fields load with the built-in defaults. Chordl timing (`holdDelayMs`, `repeatSuppressionDelayMs`) stays in `hotkeys.json`.
+
+## Development Previews
+
+Preview mode uses disposable data and is development-only:
+
+```powershell
+dotnet run --project Zetl.App -- --preview=board
+dotnet run --project Zetl.App -- --preview=toast
+```
+
+Shortcut-opened note capture commits on click-away. Shortcut-opened compile
+cancels on click-away. Shortcut-opened Boards auto-hide, while Boards opened
+from the tray stay open. On Windows, paste workflows restore the captured
+foreground target before sending input.
 
 ## Development
 
 Build:
 
 ```powershell
-dotnet build
+dotnet build Zetl.slnx
 ```
 
-Run self-tests:
+Run portable and Windows-specific tests:
 
 ```powershell
-dotnet run -- --self-test
+dotnet run --project Zetl.Tests
+dotnet run --project ZetlHotkeys.csproj -- --self-test
 ```
 
 The code is split around the product distinction:
 
 - `Chordl/` is a standalone class library that builds to `Chordl.dll`. It contains the tap/hold keyboard grammar: config loading, chord definitions, dispatch modes, hold timing, replay input, and the low-level event processor.
-- Zetl app files interpret Chordl events as notes, buckets, projects, Replay, compile, undo, toasts, and WinForms UI.
+- `Zetl.Core/` owns portable state, persistence, settings, and themes.
+- `Zetl.Runtime/` owns shared shortcut and workflow orchestration.
+- `Zetl.App/` is the canonical Avalonia tray application.
+- `ZetlHotkeys.csproj` builds `Zetl.Legacy.exe`, the temporary WinForms
+  fallback retained through the A7 dogfood period.
 
-The WinForms UI is split into designer-friendly partial forms:
-
-- `BoardForm.cs` / `BoardForm.Designer.cs`
-- `CompileForm.cs` / `CompileForm.Designer.cs`
-- `NoteCaptureForm.cs` / `NoteCaptureForm.Designer.cs`
-- `ProjectSetupForm.cs` / `ProjectSetupForm.Designer.cs`
-- `TextPromptForm.cs` / `TextPromptForm.Designer.cs`
-
-Edit layout in the `.Designer.cs` files through Visual Studio Designer when possible. Keep behavior code in the main `.cs` files.
+The A7 hands-on pass is documented in
+[`docs/windows-parity-checklist.md`](docs/windows-parity-checklist.md).

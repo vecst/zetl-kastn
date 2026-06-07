@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ZETL.ProjectSetupWindow"
+        Width="444" Height="371"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Title="New Zetl Project">
+  <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
+    <TextBlock Grid.Row="0" Text="Project name" />
+    <TextBox Grid.Row="1" x:Name="projectNameBox" Margin="0,4,0,0" />
+
+    <TextBlock Grid.Row="2" Text="Buckets, one per line" Margin="0,12,0,4" />
+    <TextBox Grid.Row="3" x:Name="bucketNamesBox"
+             AcceptsReturn="True"
+             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+
+    <TextBlock Grid.Row="4" Text="Active bucket" Margin="0,12,0,4" />
+    <ComboBox Grid.Row="5" x:Name="activeBucketBox" HorizontalAlignment="Stretch" />
+
+    <Grid Grid.Row="6" ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+      <TextBlock x:Name="validationText"
+                 Classes="validation"
+                 VerticalAlignment="Center"
+                 IsVisible="False" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <Button x:Name="createButton" Content="Create" Width="86" IsDefault="True" Classes="primary" />
+        <Button x:Name="cancelButton" Content="Cancel" Width="86" IsCancel="True" />
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Window>

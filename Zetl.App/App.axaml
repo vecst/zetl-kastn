@@ -2,7 +2,85 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="ZETL.App"
              RequestedThemeVariant="Default">
+  <Application.Resources>
+    <SolidColorBrush x:Key="ZetlWindowBackgroundBrush" Color="#111318" />
+    <SolidColorBrush x:Key="ZetlSurfaceBrush" Color="#1A1D24" />
+    <SolidColorBrush x:Key="ZetlSurfaceAltBrush" Color="#262A33" />
+    <SolidColorBrush x:Key="ZetlTextBrush" Color="#F2F4F8" />
+    <SolidColorBrush x:Key="ZetlMutedTextBrush" Color="#AAB1BE" />
+    <SolidColorBrush x:Key="ZetlAccentBrush" Color="#8B7CF6" />
+    <SolidColorBrush x:Key="ZetlAccentTextBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="ZetlBorderBrush" Color="#3B414C" />
+    <SolidColorBrush x:Key="ZetlErrorBrush" Color="#FF6B6B" />
+    <FontFamily x:Key="ZetlFontFamily">Inter</FontFamily>
+    <FontFamily x:Key="ZetlMonoFontFamily">Cascadia Mono,Consolas,monospace</FontFamily>
+    <x:Double x:Key="ZetlBodyFontSize">14</x:Double>
+    <x:Double x:Key="ZetlHeadingFontSize">16</x:Double>
+    <x:Double x:Key="ZetlTitleFontSize">20</x:Double>
+    <Thickness x:Key="ZetlWindowPadding">14</Thickness>
+    <x:Double x:Key="ZetlControlSpacing">8</x:Double>
+    <CornerRadius x:Key="ZetlCornerRadius">4</CornerRadius>
+  </Application.Resources>
   <Application.Styles>
     <FluentTheme />
+    <Style Selector="Window">
+      <Setter Property="Background" Value="{DynamicResource ZetlWindowBackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ZetlTextBrush}" />
+      <Setter Property="FontFamily" Value="{DynamicResource ZetlFontFamily}" />
+      <Setter Property="FontSize" Value="{DynamicResource ZetlBodyFontSize}" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="{DynamicResource ZetlMutedTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.validation">
+      <Setter Property="Foreground" Value="{DynamicResource ZetlErrorBrush}" />
+    </Style>
+    <Style Selector="TextBlock.heading">
+      <Setter Property="FontSize" Value="{DynamicResource ZetlHeadingFontSize}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.title">
+      <Setter Property="FontSize" Value="{DynamicResource ZetlTitleFontSize}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{DynamicResource ZetlSurfaceBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ZetlTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ZetlBorderBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ZetlCornerRadius}" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="Background" Value="{DynamicResource ZetlSurfaceBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ZetlTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ZetlBorderBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ZetlCornerRadius}" />
+    </Style>
+    <Style Selector="NumericUpDown">
+      <Setter Property="Background" Value="{DynamicResource ZetlSurfaceBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ZetlTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ZetlBorderBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ZetlCornerRadius}" />
+    </Style>
+    <Style Selector="ListBox">
+      <Setter Property="Background" Value="{DynamicResource ZetlSurfaceBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ZetlTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ZetlBorderBrush}" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Background" Value="{DynamicResource ZetlSurfaceAltBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ZetlTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ZetlBorderBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ZetlCornerRadius}" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{DynamicResource ZetlAccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ZetlAccentTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ZetlAccentBrush}" />
+    </Style>
+    <Style Selector="Border.surface">
+      <Setter Property="Background" Value="{DynamicResource ZetlSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ZetlBorderBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ZetlCornerRadius}" />
+    </Style>
   </Application.Styles>
 </Application>

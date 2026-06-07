@@ -15,6 +15,7 @@ internal partial class NoteCaptureWindow : Window
     private readonly bool scratchOnlyUntilProjectStarted;
     private readonly bool createNewProjectMode;
     private ZetlBucket? lastFullProjectBucket;
+    private bool completionDecided;
 
     // Parameterless ctor for the Avalonia previewer / XAML tooling.
     public NoteCaptureWindow()
@@ -74,7 +75,20 @@ internal partial class NoteCaptureWindow : Window
             UpdateInlineBucketLabel();
             FocusNoteBox();
         };
-        KeyDown += OnKeyDown;
+        Deactivated += (_, _) =>
+        {
+            if (CommitOnDeactivate && !completionDecided)
+            {
+                ClosedByDeactivate = true;
+                Commit(saved: true);
+            }
+        };
+        Closing += (_, _) => completionDecided = true;
+        ZetlWindowShortcuts.Enable(
+            this,
+            () => Commit(saved: true),
+            () => Commit(saved: false),
+            HandleAdditionalShortcut);
 
         RefreshBuckets(preferredBucket);
         UpdateProjectModeControls();
@@ -82,6 +96,10 @@ internal partial class NoteCaptureWindow : Window
 
     // Whether the user committed (Save / Ctrl+Enter) vs cancelled (Cancel / Esc).
     public bool Saved { get; private set; }
+
+    public bool CommitOnDeactivate { get; set; }
+
+    public bool ClosedByDeactivate { get; private set; }
 
     public ZetlBucket SelectedBucket => ((BucketDisplayItem)bucketBox.SelectedItem!).Bucket;
 
@@ -97,21 +115,16 @@ internal partial class NoteCaptureWindow : Window
 
     private void Commit(bool saved)
     {
+        completionDecided = true;
         Saved = saved;
         Close();
     }
 
-    private void OnKeyDown(object? sender, KeyEventArgs e)
+    private void HandleAdditionalShortcut(KeyEventArgs e)
     {
-        // Esc -> Cancel is wired by the cancel button's IsCancel. Match the other
-        // WinForms shortcuts here: Ctrl+Enter saves, Alt+B focuses the inline
-        // new-bucket field.
-        if (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            e.Handled = true;
-            Commit(saved: true);
-        }
-        else if (e.Key == Key.B && e.KeyModifiers.HasFlag(KeyModifiers.Alt) && inlineBucketPanel.IsVisible)
+        if (e.Key == Key.B
+            && e.KeyModifiers.HasFlag(KeyModifiers.Alt)
+            && inlineBucketPanel.IsVisible)
         {
             e.Handled = true;
             FocusInlineBucketName();
