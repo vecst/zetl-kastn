@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
-using Avalonia.Platform;
 using Avalonia.Threading;
 
 namespace ZETL;
@@ -13,9 +12,6 @@ internal static class ZetlWindowActivation
         object? activationTarget = null,
         Action<string>? log = null)
     {
-        var foregroundBeforeShow = OperatingSystem.IsWindows()
-            ? GetForegroundWindow()
-            : IntPtr.Zero;
         if (!window.IsVisible)
         {
             if (owner is not null)
@@ -29,90 +25,95 @@ internal static class ZetlWindowActivation
         }
 
         window.WindowState = WindowState.Normal;
-        window.Activate();
-        if (OperatingSystem.IsWindows()
-            && window.TryGetPlatformHandle()?.Handle is { } handle
-            && handle != IntPtr.Zero)
+
+        if (!OperatingSystem.IsWindows())
         {
-            BringToForeground(
-                window,
-                handle,
-                ZetlForegroundService.GetWindowsHandle(activationTarget)
-                    ?? foregroundBeforeShow,
-                log);
+            // Other platforms (incl. Wayland) may deny activation; degrade
+            // cleanly with Avalonia's own activation.
+            window.Activate();
+            return;
         }
+
+        ActivateWindowsForeground(window, activationTarget, log);
     }
 
-    private static void BringToForeground(
+    private static void ActivateWindowsForeground(
         Window window,
-        IntPtr windowHandle,
-        IntPtr foregroundBeforeShow,
+        object? activationTarget,
         Action<string>? log)
     {
-        var foregroundWindow = foregroundBeforeShow != IntPtr.Zero
-            ? foregroundBeforeShow
+        var handle = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        // The window we are taking the foreground from: the captured shortcut
+        // target if we have one, otherwise whatever is foreground right now.
+        var outgoing = ZetlForegroundService.GetWindowsHandle(activationTarget)
+            is { } target && target != IntPtr.Zero
+            ? target
             : GetForegroundWindow();
-        var foregroundThreadId = foregroundWindow == IntPtr.Zero
-            ? 0
-            : GetWindowThreadProcessId(foregroundWindow, out _);
-        var currentThreadId = GetCurrentThreadId();
-        var attached = foregroundThreadId != 0
-            && foregroundThreadId != currentThreadId
-            && AttachThreadInput(
-                currentThreadId,
-                foregroundThreadId,
-                attach: true);
 
+        // Force Z-order so the popup is visible even while the foreground steal
+        // is contested. Topmost is an Avalonia property (SetWindowPos with
+        // SWP_NOACTIVATE), so it does not perturb activation state.
         window.Topmost = true;
+        TryActivate(window, outgoing);
+
+        // Windows can deny SetForegroundWindow to a background process on the
+        // first try. Retry the activation through Avalonia (never raw Win32, so
+        // its focus manager stays in sync and IsActive matches reality) until
+        // the window actually holds the foreground.
+        var attempts = 0;
+        var timer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(60)
+        };
+        timer.Tick += (_, _) =>
+        {
+            attempts++;
+            if (!window.IsVisible)
+            {
+                timer.Stop();
+                return;
+            }
+
+            var foreground = GetForegroundWindow();
+            if (foreground == handle || attempts >= 6)
+            {
+                window.Topmost = false;
+                timer.Stop();
+                log?.Invoke(
+                    $"Activation settled: attempts={attempts}, "
+                    + $"foreground=0x{foreground.ToInt64():X}, "
+                    + $"window=0x{handle.ToInt64():X}, isActive={window.IsActive}.");
+                return;
+            }
+
+            TryActivate(window, outgoing);
+        };
+        timer.Start();
+    }
+
+    private static void TryActivate(Window window, IntPtr outgoing)
+    {
+        var outgoingThreadId = outgoing == IntPtr.Zero
+            ? 0
+            : GetWindowThreadProcessId(outgoing, out _);
+        var currentThreadId = GetCurrentThreadId();
+        // Attaching our input queue to the outgoing foreground thread lets a
+        // background process win SetForegroundWindow. Avalonia's Activate drives
+        // the actual activation so the focus manager engages.
+        var attached = outgoingThreadId != 0
+            && outgoingThreadId != currentThreadId
+            && AttachThreadInput(currentThreadId, outgoingThreadId, attach: true);
         try
         {
-            BringWindowToTop(windowHandle);
-            SetForegroundWindow(windowHandle);
-            SetActiveWindow(windowHandle);
             window.Activate();
         }
         finally
         {
             if (attached)
             {
-                AttachThreadInput(
-                    currentThreadId,
-                    foregroundThreadId,
-                    attach: false);
+                AttachThreadInput(currentThreadId, outgoingThreadId, attach: false);
             }
         }
-
-        var releaseTopmost = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(75)
-        };
-        var attempts = 0;
-        releaseTopmost.Tick += (_, _) =>
-        {
-            attempts++;
-            if (!window.IsVisible)
-            {
-                releaseTopmost.Stop();
-                return;
-            }
-
-            var activeWindow = GetForegroundWindow();
-            if (activeWindow == windowHandle || attempts >= 6)
-            {
-                window.Topmost = false;
-                releaseTopmost.Stop();
-            }
-
-            BringWindowToTop(windowHandle);
-            SetForegroundWindow(windowHandle);
-            SetActiveWindow(windowHandle);
-            window.Activate();
-            log?.Invoke(
-                $"Activation retry {attempts}: "
-                + $"foreground=0x{activeWindow.ToInt64():X}, "
-                + $"window=0x{windowHandle.ToInt64():X}.");
-        };
-        releaseTopmost.Start();
     }
 
     [DllImport("user32.dll")]
@@ -131,13 +132,4 @@ internal static class ZetlWindowActivation
         uint currentThreadId,
         uint targetThreadId,
         bool attach);
-
-    [DllImport("user32.dll")]
-    private static extern bool BringWindowToTop(IntPtr window);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr window);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SetActiveWindow(IntPtr window);
 }

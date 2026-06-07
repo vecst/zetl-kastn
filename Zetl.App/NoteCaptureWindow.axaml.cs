@@ -80,25 +80,23 @@ internal partial class NoteCaptureWindow : Window
         {
             UpdateInlineBucketLabel();
             FocusNoteBox();
+            // Arm after a settle delay rather than on Activated: forcing the
+            // window to the foreground via Win32 does not raise Avalonia's
+            // Activated, so IsActive can stay false even though the window is
+            // foreground. Opened always fires, so the delay alone distinguishes
+            // the spurious initial deactivation from a genuine click-away.
+            if (CommitOnDeactivate)
+            {
+                deactivateArmTimer.Start();
+            }
         };
         deactivateArmTimer.Tick += (_, _) =>
         {
             deactivateArmTimer.Stop();
-            if (CommitOnDeactivate && IsActive && !completionDecided)
+            if (!completionDecided)
             {
                 deactivateCommitArmed = true;
             }
-        };
-        Activated += (_, _) =>
-        {
-            if (!CommitOnDeactivate || completionDecided)
-            {
-                return;
-            }
-
-            deactivateCommitArmed = false;
-            deactivateArmTimer.Stop();
-            deactivateArmTimer.Start();
         };
         Deactivated += (_, _) =>
         {

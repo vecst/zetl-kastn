@@ -106,24 +106,25 @@ internal partial class BoardWindow : Window
             autoHideArmTimer.Stop();
             SaveEditingNote();
         };
+        Opened += (_, _) =>
+        {
+            // Arm after a settle delay rather than on Activated: forcing the
+            // window to the foreground via Win32 does not raise Avalonia's
+            // Activated, so IsActive can stay false even though the window is
+            // foreground. Opened always fires, so the delay alone distinguishes
+            // the spurious initial deactivation from a genuine click-away.
+            if (AutoHideOnDeactivate)
+            {
+                autoHideArmTimer.Start();
+            }
+        };
         autoHideArmTimer.Tick += (_, _) =>
         {
             autoHideArmTimer.Stop();
-            if (AutoHideOnDeactivate && IsActive && !childDialogOpen)
+            if (!childDialogOpen)
             {
                 autoHideArmed = true;
             }
-        };
-        Activated += (_, _) =>
-        {
-            if (!AutoHideOnDeactivate)
-            {
-                return;
-            }
-
-            autoHideArmed = false;
-            autoHideArmTimer.Stop();
-            autoHideArmTimer.Start();
         };
         Deactivated += (_, _) =>
         {

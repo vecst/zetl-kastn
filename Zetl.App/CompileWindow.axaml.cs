@@ -67,24 +67,25 @@ internal partial class CompileWindow : Window
             this,
             () => Complete(pasteNow: false, saveToBucket: false),
             Cancel);
+        Opened += (_, _) =>
+        {
+            // Arm after a settle delay rather than on Activated: forcing the
+            // window to the foreground via Win32 does not raise Avalonia's
+            // Activated, so IsActive can stay false even though the window is
+            // foreground. Opened always fires, so the delay alone distinguishes
+            // the spurious initial deactivation from a genuine click-away.
+            if (CloseOnDeactivate)
+            {
+                deactivateArmTimer.Start();
+            }
+        };
         deactivateArmTimer.Tick += (_, _) =>
         {
             deactivateArmTimer.Stop();
-            if (CloseOnDeactivate && IsActive && !completionDecided)
+            if (!completionDecided)
             {
                 deactivateCloseArmed = true;
             }
-        };
-        Activated += (_, _) =>
-        {
-            if (!CloseOnDeactivate || completionDecided)
-            {
-                return;
-            }
-
-            deactivateCloseArmed = false;
-            deactivateArmTimer.Stop();
-            deactivateArmTimer.Start();
         };
         Deactivated += (_, _) =>
         {
