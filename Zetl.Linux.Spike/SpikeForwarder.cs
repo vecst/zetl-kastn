@@ -172,7 +172,8 @@ internal sealed class SpikeForwarder : IDisposable
                 && processor?.HandleKeyEvent(
                     virtualKey,
                     isKeyDown: inputEvent.Value is 1 or 2,
-                    isKeyUp: inputEvent.Value == 0) == true;
+                    isKeyUp: inputEvent.Value == 0,
+                    isRepeat: inputEvent.Value == 2) == true;
             if (!suppress)
             {
                 WriteVirtualEvent(inputEvent);

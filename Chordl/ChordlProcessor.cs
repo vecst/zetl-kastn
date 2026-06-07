@@ -56,6 +56,19 @@ public sealed class ChordlProcessor : IDisposable
 
     public bool HandleKeyEvent(int vkCode, bool isKeyDown, bool isKeyUp)
     {
+        return HandleKeyEvent(
+            vkCode,
+            isKeyDown,
+            isKeyUp,
+            isRepeat: false);
+    }
+
+    public bool HandleKeyEvent(
+        int vkCode,
+        bool isKeyDown,
+        bool isKeyUp,
+        bool isRepeat)
+    {
         if (ChordlKeys.IsControlKey(vkCode))
         {
             lock (gate)
@@ -84,7 +97,7 @@ public sealed class ChordlProcessor : IDisposable
             return false;
         }
 
-        if (isKeyDown && ShouldSuppressPostCtrlReleaseRepeat(vkCode))
+        if (isKeyDown && isRepeat && ShouldSuppressPostCtrlReleaseRepeat(vkCode))
         {
             return true;
         }

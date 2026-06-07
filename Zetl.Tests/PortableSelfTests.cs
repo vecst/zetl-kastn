@@ -16,6 +16,7 @@ internal static class PortableSelfTests
                 ("Ctrl+V handled tap suppresses default paste", PasteHandledTapSuppressesDefaultPaste),
                 ("Ctrl+V hold reserves paste", PasteHoldDoesNotDispatch),
                 ("Ctrl+V hold suppresses repeats after Ctrl key-up", PasteHoldSuppressesRepeatsAfterCtrlKeyUp),
+                ("Fresh target key passes after Ctrl-up repeat guard", FreshTargetKeyPassesAfterCtrlUpRepeatGuard),
                 ("Ctrl+B tap dispatches board shortcut on key-up", BoardTapDispatchesOnKeyUp),
                 ("Ctrl+B hold opens board without dispatch", BoardHoldDoesNotDispatch),
                 ("Ctrl+P tap dispatches pop key on key-up", PopToggleTapDispatchesOnKeyUp),
@@ -192,8 +193,29 @@ internal static class PortableSelfTests
             Thread.Sleep(80);
             AssertEqual(1, holds.Count, "Hold callback should fire once.");
             AssertFalse(processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true), "Ctrl key up should pass through.");
-            AssertTrue(processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false), "Post-Ctrl target repeat should suppress.");
+            AssertTrue(
+                processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false, isRepeat: true),
+                "Post-Ctrl target repeat should suppress.");
             AssertTrue(processor.HandleKeyEvent(VK_V, isKeyDown: false, isKeyUp: true), "Held paste key up should suppress.");
+            AssertEqual(0, dispatched.Count, "Held paste should not dispatch paste.");
+        }
+
+        private static void FreshTargetKeyPassesAfterCtrlUpRepeatGuard()
+        {
+            using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
+            processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
+            AssertTrue(processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false), "Paste key down should suppress.");
+            Thread.Sleep(80);
+            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            AssertFalse(processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true), "Ctrl key up should pass through.");
+            AssertTrue(
+                processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false, isRepeat: true),
+                "Post-Ctrl target repeat should suppress.");
+            AssertTrue(processor.HandleKeyEvent(VK_V, isKeyDown: false, isKeyUp: true), "Held paste key up should suppress.");
+            AssertFalse(
+                processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false, isRepeat: false),
+                "Fresh target key press after the original key-up should pass through.");
+            AssertFalse(processor.HandleKeyEvent(VK_V, isKeyDown: false, isKeyUp: true), "Fresh target key-up should pass through.");
             AssertEqual(0, dispatched.Count, "Held paste should not dispatch paste.");
         }
 
