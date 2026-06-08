@@ -28,6 +28,7 @@ internal static class PortableSelfTests
                 ("Shift repeat does not restart hold detection", ShiftRepeatDoesNotRestartHold),
                 ("Shift change after hold does not dispatch twice", ShiftChangeAfterHoldDoesNotDispatchTwice),
                 ("Synthetic modifier injection uses an unheld side", SyntheticModifierUsesUnheldSide),
+                ("Chord injection suppresses a held Shift for a plain chord", ChordInjectionSuppressesHeldShiftForPlainChord),
                 ("Zetl state creates projects and scratch buckets", StateCreatesProjectAndScratch),
                 ("Zetl state creates dated default projects on demand", StateCreatesDatedDefaultProject),
                 ("Zetl state reuses dated default projects", StateReusesDatedDefaultProject),
@@ -400,6 +401,85 @@ internal static class PortableSelfTests
                     VK_LCONTROL,
                     VK_RCONTROL),
                 "With both sides held, no synthetic modifier is needed.");
+        }
+
+        private static void ChordInjectionSuppressesHeldShiftForPlainChord()
+        {
+            // Shift-lane copy/cut replays a plain Ctrl+C/Ctrl+X while the user
+            // physically holds Ctrl+Shift. A held Shift must be released for the
+            // chord (otherwise the app sees Ctrl+Shift+key, not a copy/cut) and
+            // restored afterwards.
+            var sequence = ZetlChordInjection.BuildCtrlChord(
+                VK_C,
+                includeShift: false,
+                leftCtrlDown: true,
+                rightCtrlDown: false,
+                leftShiftDown: true,
+                rightShiftDown: false);
+
+            var keyDownIndex = -1;
+            var keyUpAfterDownIndex = -1;
+            for (var i = 0; i < sequence.Count; i++)
+            {
+                if (sequence[i].VirtualKey == VK_C && !sequence[i].KeyUp)
+                {
+                    keyDownIndex = i;
+                }
+                else if (sequence[i].VirtualKey == VK_C
+                    && sequence[i].KeyUp
+                    && keyDownIndex >= 0
+                    && keyUpAfterDownIndex < 0)
+                {
+                    keyUpAfterDownIndex = i;
+                }
+            }
+
+            AssertTrue(keyDownIndex >= 0, "The chord must press the target key.");
+            AssertTrue(keyUpAfterDownIndex > keyDownIndex, "The chord must release the target key.");
+
+            var shiftDownDuringPress = false;
+            for (var i = 0; i < keyDownIndex; i++)
+            {
+                if (IsShiftKey(sequence[i].VirtualKey))
+                {
+                    shiftDownDuringPress = !sequence[i].KeyUp;
+                }
+            }
+
+            AssertTrue(
+                !shiftDownDuringPress,
+                "A held Shift must be released before a plain Ctrl chord so it is not Ctrl+Shift+key.");
+
+            var shiftRestoredAfter = false;
+            for (var i = keyUpAfterDownIndex + 1; i < sequence.Count; i++)
+            {
+                if (IsShiftKey(sequence[i].VirtualKey) && !sequence[i].KeyUp)
+                {
+                    shiftRestoredAfter = true;
+                }
+            }
+
+            AssertTrue(shiftRestoredAfter, "A suppressed Shift must be restored after the chord.");
+
+            // Sanity: a shifted chord with Shift already held keeps it down.
+            var shifted = ZetlChordInjection.BuildCtrlChord(
+                VK_C,
+                includeShift: true,
+                leftCtrlDown: true,
+                rightCtrlDown: true,
+                leftShiftDown: true,
+                rightShiftDown: true);
+            foreach (var keyEvent in shifted)
+            {
+                AssertTrue(
+                    !(IsShiftKey(keyEvent.VirtualKey) && keyEvent.KeyUp),
+                    "A shifted chord with both Shifts held must not release Shift.");
+            }
+        }
+
+        private static bool IsShiftKey(int virtualKey)
+        {
+            return virtualKey == VK_LSHIFT || virtualKey == VK_RSHIFT;
         }
 
         private static void StateCreatesProjectAndScratch()

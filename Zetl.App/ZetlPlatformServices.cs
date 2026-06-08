@@ -203,44 +203,28 @@ internal static class AvaloniaWindowsInput
         Action<string> log)
     {
         var modifiers = ModifierSnapshot.Capture();
-        var injectedCtrl = ZetlSyntheticModifier.SelectInjection(
+        var sequence = ZetlChordInjection.BuildCtrlChord(
+            virtualKey,
+            includeShift,
             modifiers.LeftCtrl,
             modifiers.RightCtrl,
-            ChordlKeys.VK_LCONTROL,
-            ChordlKeys.VK_RCONTROL);
-        var injectedShift = includeShift
-            ? ZetlSyntheticModifier.SelectInjection(
-                modifiers.LeftShift,
-                modifiers.RightShift,
-                ChordlKeys.VK_LSHIFT,
-                ChordlKeys.VK_RSHIFT)
-            : null;
-        var count = 3
-            + (injectedCtrl.HasValue ? 2 : 0)
-            + (injectedShift.HasValue ? 2 : 0);
-        var inputs = new Input[count];
-        var index = 0;
-        Add(virtualKey, keyUp: true);
-        if (injectedCtrl is { } ctrlKey)
+            modifiers.LeftShift,
+            modifiers.RightShift);
+        var inputs = new Input[sequence.Count];
+        for (var i = 0; i < sequence.Count; i++)
         {
-            Add(ctrlKey, keyUp: false);
-        }
-
-        if (injectedShift is { } shiftKey)
-        {
-            Add(shiftKey, keyUp: false);
-        }
-
-        Add(virtualKey, keyUp: false);
-        Add(virtualKey, keyUp: true);
-        if (injectedShift is { } releasedShiftKey)
-        {
-            Add(releasedShiftKey, keyUp: true);
-        }
-
-        if (injectedCtrl is { } releasedCtrlKey)
-        {
-            Add(releasedCtrlKey, keyUp: true);
+            inputs[i] = new Input
+            {
+                Type = InputKeyboard,
+                Union = new InputUnion
+                {
+                    Keyboard = new KeyboardInput
+                    {
+                        VirtualKey = (ushort)sequence[i].VirtualKey,
+                        Flags = sequence[i].KeyUp ? KeyEventKeyUp : 0
+                    }
+                }
+            };
         }
 
         Marshal.SetLastPInvokeError(0);
@@ -255,22 +239,6 @@ internal static class AvaloniaWindowsInput
 
         log($"Synthetic input sent {sent}/{inputs.Length} events. Error: {Marshal.GetLastPInvokeError()}.");
         return false;
-
-        void Add(int key, bool keyUp)
-        {
-            inputs[index++] = new Input
-            {
-                Type = InputKeyboard,
-                Union = new InputUnion
-                {
-                    Keyboard = new KeyboardInput
-                    {
-                        VirtualKey = (ushort)key,
-                        Flags = keyUp ? KeyEventKeyUp : 0
-                    }
-                }
-            };
-        }
     }
 
     [DllImport("user32.dll", SetLastError = true)]

@@ -63,46 +63,17 @@ internal static class ChordlInput
     private static bool SendCtrlChordNow(int vkCode, bool includeShift, Action<string>? log)
     {
         var modifiers = ModifierSnapshot.Capture();
-        var injectedCtrl = ZetlSyntheticModifier.SelectInjection(
+        var sequence = ZetlChordInjection.BuildCtrlChord(
+            vkCode,
+            includeShift,
             modifiers.LeftCtrl,
             modifiers.RightCtrl,
-            ChordlKeys.VK_LCONTROL,
-            ChordlKeys.VK_RCONTROL);
-        var injectedShift = includeShift
-            ? ZetlSyntheticModifier.SelectInjection(
-                modifiers.LeftShift,
-                modifiers.RightShift,
-                ChordlKeys.VK_LSHIFT,
-                ChordlKeys.VK_RSHIFT)
-            : null;
-        var inputCount =
-            3
-            + (injectedCtrl.HasValue ? 2 : 0)
-            + (injectedShift.HasValue ? 2 : 0);
-
-        var inputs = new INPUT[inputCount];
-        var index = 0;
-        AddKeyInput(vkCode, keyUp: true);
-        if (injectedCtrl is { } ctrlKey)
+            modifiers.LeftShift,
+            modifiers.RightShift);
+        var inputs = new INPUT[sequence.Count];
+        for (var i = 0; i < sequence.Count; i++)
         {
-            AddKeyInput(ctrlKey, keyUp: false);
-        }
-
-        if (injectedShift is { } shiftKey)
-        {
-            AddKeyInput(shiftKey, keyUp: false);
-        }
-
-        AddKeyInput(vkCode, keyUp: false);
-        AddKeyInput(vkCode, keyUp: true);
-        if (injectedShift is { } releasedShiftKey)
-        {
-            AddKeyInput(releasedShiftKey, keyUp: true);
-        }
-
-        if (injectedCtrl is { } releasedCtrlKey)
-        {
-            AddKeyInput(releasedCtrlKey, keyUp: true);
+            inputs[i] = KeyInput(sequence[i].VirtualKey, sequence[i].KeyUp);
         }
 
         Marshal.SetLastPInvokeError(0);
@@ -114,11 +85,6 @@ internal static class ChordlInput
         }
 
         return true;
-
-        void AddKeyInput(int keyCode, bool keyUp)
-        {
-            inputs[index++] = KeyInput(keyCode, keyUp);
-        }
     }
 
     private static INPUT KeyInput(int vkCode, bool keyUp)
