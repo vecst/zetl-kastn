@@ -18,16 +18,17 @@ internal sealed class WindowsKeyboardBackend : IKeyboardBackend
     private const int WM_SYSKEYUP = 0x0105;
 
     private readonly Action<string> log;
+    private readonly HashSet<int> downKeys = [];
     private LowLevelKeyboardProc? hookProc; // kept referenced so it isn't collected
     private IntPtr hookId = IntPtr.Zero;
-    private Func<int, bool, bool, bool>? handleKeyEvent;
+    private Func<int, bool, bool, bool, bool>? handleKeyEvent;
 
     public WindowsKeyboardBackend(Action<string> log)
     {
         this.log = log;
     }
 
-    public bool Start(Func<int, bool, bool, bool> handleKeyEvent)
+    public bool Start(Func<int, bool, bool, bool, bool> handleKeyEvent)
     {
         this.handleKeyEvent = handleKeyEvent;
         hookProc = HookCallback;
@@ -78,8 +79,19 @@ internal sealed class WindowsKeyboardBackend : IKeyboardBackend
         var message = wParam.ToInt32();
         var isKeyDown = message is WM_KEYDOWN or WM_SYSKEYDOWN;
         var isKeyUp = message is WM_KEYUP or WM_SYSKEYUP;
+        // A key-down for a key already held is a hardware auto-repeat. Injected
+        // events are filtered above, so downKeys tracks only physical keys.
+        var isRepeat = false;
+        if (isKeyDown)
+        {
+            isRepeat = !downKeys.Add(vkCode);
+        }
+        else if (isKeyUp)
+        {
+            downKeys.Remove(vkCode);
+        }
 
-        if (handleKeyEvent?.Invoke(vkCode, isKeyDown, isKeyUp) == true)
+        if (handleKeyEvent?.Invoke(vkCode, isKeyDown, isKeyUp, isRepeat) == true)
         {
             return (IntPtr)1;
         }

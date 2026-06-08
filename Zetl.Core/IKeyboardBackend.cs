@@ -11,11 +11,14 @@ internal interface IKeyboardBackend : IDisposable
 {
     /// <summary>
     /// Install the interception. Every raw key event is passed to
-    /// <paramref name="handleKeyEvent"/> as (vkCode, isKeyDown, isKeyUp);
-    /// returning true suppresses that event from the foreground app. Returns
-    /// false if the interception could not be installed.
+    /// <paramref name="handleKeyEvent"/> as (vkCode, isKeyDown, isKeyUp,
+    /// isRepeat); returning true suppresses that event from the foreground app.
+    /// <c>isRepeat</c> distinguishes a hardware auto-repeat key-down (a key held
+    /// down) from a fresh press, so the processor can suppress leaked repeats
+    /// after a hold without blocking a genuine re-press. Returns false if the
+    /// interception could not be installed.
     /// </summary>
-    bool Start(Func<int, bool, bool, bool> handleKeyEvent);
+    bool Start(Func<int, bool, bool, bool, bool> handleKeyEvent);
 
     /// <summary>
     /// Replay a Ctrl[+Shift]+&lt;key&gt; chord into the foreground app -- used to

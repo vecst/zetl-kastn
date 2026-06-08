@@ -2200,7 +2200,7 @@ internal static class PortableSelfTests
 
             public bool PasteSucceeds { get; set; } = true;
 
-            public bool Start(Func<int, bool, bool, bool> handleKeyEvent)
+            public bool Start(Func<int, bool, bool, bool, bool> handleKeyEvent)
             {
                 return true;
             }

@@ -30,11 +30,12 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
     private const int WmKeyUp = 0x0101;
     private const int WmSysKeyDown = 0x0104;
     private const int WmSysKeyUp = 0x0105;
+    private readonly HashSet<int> downKeys = [];
     private LowLevelKeyboardProc? hookProc;
     private IntPtr hookId;
-    private Func<int, bool, bool, bool>? handleKeyEvent;
+    private Func<int, bool, bool, bool, bool>? handleKeyEvent;
 
-    public bool Start(Func<int, bool, bool, bool> handler)
+    public bool Start(Func<int, bool, bool, bool, bool> handler)
     {
         handleKeyEvent = handler;
         hookProc = HookCallback;
@@ -97,7 +98,20 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
         var message = messagePointer.ToInt32();
         var keyDown = message is WmKeyDown or WmSysKeyDown;
         var keyUp = message is WmKeyUp or WmSysKeyUp;
-        if (handleKeyEvent?.Invoke((int)hook.VirtualKey, keyDown, keyUp) == true)
+        var virtualKey = (int)hook.VirtualKey;
+        // A key-down for a key already held is a hardware auto-repeat. Injected
+        // events are filtered above, so downKeys tracks only physical keys.
+        var isRepeat = false;
+        if (keyDown)
+        {
+            isRepeat = !downKeys.Add(virtualKey);
+        }
+        else if (keyUp)
+        {
+            downKeys.Remove(virtualKey);
+        }
+
+        if (handleKeyEvent?.Invoke(virtualKey, keyDown, keyUp, isRepeat) == true)
         {
             return (IntPtr)1;
         }
@@ -446,7 +460,7 @@ internal sealed class AvaloniaWindowsClipboard(Action<string> log) : IClipboard
 
 internal sealed class UnsupportedKeyboardBackend(Action<string> log) : IKeyboardBackend
 {
-    public bool Start(Func<int, bool, bool, bool> handleKeyEvent)
+    public bool Start(Func<int, bool, bool, bool, bool> handleKeyEvent)
     {
         log("Global shortcuts are unavailable: no platform keyboard backend is installed.");
         return false;
