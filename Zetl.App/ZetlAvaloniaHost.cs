@@ -80,6 +80,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         notifications = new AvaloniaNotificationService(activityLog);
         keyboard = ZetlPlatformServices.CreateKeyboard(Log);
         clipboard = ZetlPlatformServices.CreateClipboard(Log);
+        // Allow Zetl to take and restore the foreground from the first popup,
+        // rather than only after a real click has reset Windows' foreground lock.
+        Log(ZetlForegroundService.AllowForegroundActivation()
+            ? "Foreground-lock timeout cleared."
+            : "Foreground-lock timeout unchanged.");
 
         var config = LoadChordlConfiguration(out var configMessage);
         coordinator = new ZetlShortcutCoordinator(

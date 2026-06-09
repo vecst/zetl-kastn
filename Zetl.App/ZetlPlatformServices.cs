@@ -468,6 +468,25 @@ internal sealed class UnsupportedClipboard(Action<string> log) : IClipboard
 
 internal static class ZetlForegroundService
 {
+    // A background process is denied SetForegroundWindow until it has received
+    // genuine user input, so the first popup steals focus only partially and
+    // restores it to the wrong window — until a real click resets the lock for
+    // the session. Clearing the foreground-lock timeout at startup puts the
+    // process in that "allowed" state from the very first popup.
+    public static bool AllowForegroundActivation()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        return Win32Interop.SystemParametersInfo(
+            Win32Interop.SPI_SETFOREGROUNDLOCKTIMEOUT,
+            0,
+            IntPtr.Zero,
+            0);
+    }
+
     public static object? CaptureTarget()
     {
         if (!OperatingSystem.IsWindows())

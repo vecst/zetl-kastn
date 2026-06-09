@@ -55,4 +55,13 @@ internal static class Win32Interop
         uint currentThreadId,
         uint targetThreadId,
         bool attach);
+
+    internal const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern bool SystemParametersInfo(
+        uint action,
+        uint param,
+        IntPtr pvParam,
+        uint winIni);
 }
