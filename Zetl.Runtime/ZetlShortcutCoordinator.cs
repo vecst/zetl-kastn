@@ -334,7 +334,7 @@ internal sealed class ZetlShortcutCoordinator
             ScratchOnlyUntilProjectStarted: !hadActiveProject,
             CreateNewProjectToggle: hadActiveProject,
             ProjectToggleText: hadActiveProject ? "New project" : "Start project",
-            ProjectNameDefault: hadActiveProject ? DefaultProjectName(context.ShiftLane) : null);
+            ProjectNameDefault: hadActiveProject ? ZetlStateStore.DefaultProjectName(context.ShiftLane) : null);
     }
 
     private async Task<ZetlShortcutRequest> CreateCutHoldRequestAsync(
@@ -667,12 +667,6 @@ internal sealed class ZetlShortcutCoordinator
     private static (int KeyCode, bool Shifted) PendingKey(int keyCode, bool shifted)
     {
         return (keyCode, shifted);
-    }
-
-    private static string DefaultProjectName(bool shifted)
-    {
-        var name = DateTime.Now.ToString("yyyy-MM-dd");
-        return shifted ? $"{name} Shift" : name;
     }
 }
 

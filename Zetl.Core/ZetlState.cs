@@ -1395,7 +1395,7 @@ internal sealed class ZetlStateStore
         return Guid.NewGuid().ToString("N");
     }
 
-    private static string DefaultProjectName(bool shifted = false)
+    public static string DefaultProjectName(bool shifted = false)
     {
         var name = DateTime.Now.ToString("yyyy-MM-dd");
         return shifted ? $"{name} Shift" : name;
