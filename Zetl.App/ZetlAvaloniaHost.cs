@@ -340,13 +340,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             request.Project,
             request.PreferredBucket,
             request.Text,
-            request.ShowStartProjectToggle,
-            request.StartProjectDefault,
-            request.ScratchOnlyUntilProjectStarted,
-            request.CreateNewProjectToggle,
-            request.ProjectToggleText,
-            request.ProjectNameDefault,
-            quickNote: true)
+            noActiveProject: request.ShowStartProjectToggle,
+            activateByDefault: request.StartProjectDefault)
         {
             ShowInTaskbar = false,
             DismissOnDeactivate = target is not null
@@ -635,18 +630,53 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         return ChordlConfigLoader.LoadFromJson(reader.ReadToEnd());
     }
 
+    // Place a window centered horizontally and about a sixth of the way down,
+    // but never larger than (or hanging off) the screen's working area. The
+    // working area is in physical pixels while a window's Width/Height are
+    // logical, so everything is converted through the screen scaling — without
+    // that, the fit check would silently fail on the 125–150% displays most
+    // laptops use.
     private static void PositionNearTopSixth(Window window)
     {
-        var workingArea = window.Screens.Primary?.WorkingArea;
-        if (workingArea is not { } area)
+        var screen = window.Screens.Primary;
+        if (screen is null)
         {
             return;
         }
 
+        var area = screen.WorkingArea;
+        var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
+        var areaWidth = area.Width / scaling;
+        var areaHeight = area.Height / scaling;
+        const double margin = 16;
+
+        // Shrink to fit when the window is taller/wider than the screen, leaving
+        // a small margin; never go below the window's own minimum.
+        var maxWidth = Math.Max(window.MinWidth, areaWidth - margin);
+        var maxHeight = Math.Max(window.MinHeight, areaHeight - margin);
+        if (window.Width > maxWidth)
+        {
+            window.Width = maxWidth;
+        }
+
+        if (window.Height > maxHeight)
+        {
+            window.Height = maxHeight;
+        }
+
+        // Center horizontally; sit ~1/6 down, but pull up so the bottom (and its
+        // action buttons) stay on-screen.
+        var x = Math.Max(0, (areaWidth - window.Width) / 2);
+        var y = Math.Max(margin, areaHeight / 6);
+        if (y + window.Height > areaHeight)
+        {
+            y = Math.Max(0, areaHeight - window.Height);
+        }
+
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.Position = new PixelPoint(
-            area.X + Math.Max(0, (area.Width - (int)window.Width) / 2),
-            area.Y + Math.Max(24, area.Height / 6));
+            area.X + (int)(x * scaling),
+            area.Y + (int)(y * scaling));
     }
 
     private static WindowIcon CreateTrayWindowIcon()
