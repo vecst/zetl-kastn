@@ -6,18 +6,30 @@
         SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="Save Zetl Note">
-  <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
-    <TextBlock Grid.Row="0" Text="Bucket" Margin="0,0,0,4" />
-    <ComboBox Grid.Row="1" x:Name="bucketBox" HorizontalAlignment="Stretch" Margin="0,0,0,8" />
+  <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+    <StackPanel Grid.Row="0" x:Name="projectSelectorPanel" Spacing="6" Margin="0,0,0,8">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+        <TextBlock Grid.Column="0" Text="Project" VerticalAlignment="Center" Margin="0,0,8,0" />
+        <ComboBox Grid.Column="1" x:Name="projectBox" Width="323"
+                  DisplayMemberBinding="{Binding Name}" />
+        <ToggleButton Grid.Column="3" x:Name="activateProjectButton" Content="Activate project"
+                      Width="160" HorizontalContentAlignment="Center"
+                      VerticalAlignment="Center" Margin="8,0,0,0" />
+      </Grid>
+      <TextBox x:Name="newProjectNameBox" Watermark="New project name" IsVisible="False" />
+    </StackPanel>
 
-    <StackPanel Grid.Row="2" x:Name="projectModePanel" Orientation="Horizontal"
+    <TextBlock Grid.Row="1" Text="Bucket" Margin="0,0,0,4" />
+    <ComboBox Grid.Row="2" x:Name="bucketBox" HorizontalAlignment="Stretch" Margin="0,0,0,8" />
+
+    <StackPanel Grid.Row="3" x:Name="projectModePanel" Orientation="Horizontal"
                 Spacing="8" Margin="0,0,0,8">
       <CheckBox x:Name="startProjectBox" Content="Start project" VerticalAlignment="Center" />
       <TextBlock Text="Project" VerticalAlignment="Center" Margin="8,0,0,0" />
       <TextBox x:Name="projectNameBox" Width="180" />
     </StackPanel>
 
-    <StackPanel Grid.Row="3" x:Name="inlineBucketPanel" Orientation="Horizontal"
+    <StackPanel Grid.Row="4" x:Name="inlineBucketPanel" Orientation="Horizontal"
                 Spacing="6" Margin="0,0,0,8">
       <TextBlock Text="New bucket" VerticalAlignment="Center" />
       <TextBox x:Name="inlineBucketNameBox" Width="170" />
@@ -25,11 +37,11 @@
       <Button x:Name="inlineCreateButton" Content="Create" />
     </StackPanel>
 
-    <TextBox Grid.Row="4" x:Name="noteBox" AcceptsReturn="True" TextWrapping="Wrap"
+    <TextBox Grid.Row="5" x:Name="noteBox" AcceptsReturn="True" TextWrapping="Wrap"
              FontSize="16" VerticalContentAlignment="Top"
              ScrollViewer.VerticalScrollBarVisibility="Auto" />
 
-    <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8"
+    <StackPanel Grid.Row="6" Orientation="Horizontal" Spacing="8"
                 HorizontalAlignment="Right" Margin="0,10,0,0">
       <Button x:Name="saveButton" Content="Save" Width="86" IsDefault="True" Classes="primary" />
       <Button x:Name="cancelButton" Content="Cancel" Width="86" IsCancel="True" />

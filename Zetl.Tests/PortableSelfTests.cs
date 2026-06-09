@@ -91,6 +91,11 @@ internal static class PortableSelfTests
                 ("Runtime hold toggles and undo stay portable", RuntimeHoldTogglesAndUndoStayPortable),
                 ("Runtime completes quick-note result", RuntimeCompletesQuickNoteResult),
                 ("Runtime pastes cut back when held cut is discarded", RuntimePastesCutBackOnDiscardedCut),
+                ("Runtime files quick note into the selected project", RuntimeFilesQuickNoteIntoSelectedProject),
+                ("Runtime redirects quick note with no active project", RuntimeRedirectsQuickNoteWithNoActiveProject),
+                ("Runtime activates the selected project from a quick note", RuntimeActivatesSelectedProjectFromQuickNote),
+                ("Runtime deactivates the active project when toggled off", RuntimeDeactivatesActiveProjectWhenToggledOff),
+                ("Runtime creates a new project from the capture dialog", RuntimeCreatesNewProjectFromCapture),
                 ("Runtime completes flattened compile result", RuntimeCompletesCompileResult),
                 ("Runtime preserves structured compile saves", RuntimePreservesStructuredCompileSaves),
                 ("Runtime returns copy and paste compile outcomes", RuntimeReturnsCopyAndPasteCompileOutcomes),
@@ -1766,8 +1771,8 @@ internal static class PortableSelfTests
             var note = (ZetlNoteCaptureRequest)request!;
             AssertEqual("copied", note.Text, "Copy request should contain trimmed clipboard text.");
             AssertEqual("copy", note.Source, "Copy request should preserve its source.");
-            AssertTrue(note.ShowStartProjectToggle, "First copy hold should offer to start the project.");
-            AssertTrue(note.StartProjectDefault, "First copy hold should default to starting the project.");
+            AssertTrue(note.ShowStartProjectToggle, "First copy hold (no active project) should offer project activation.");
+            AssertTrue(note.StartProjectDefault, "Held copy should activate the project by default.");
         }
 
         private static void RuntimeEmptyCopyHoldOpensBoard()
@@ -1928,6 +1933,235 @@ internal static class PortableSelfTests
                     Cancelled() with { Committed = true, NoteText = "kept" }),
                 "Keeping the note should not paste the cut back.");
             AssertEqual("kept", scratch.Notes.Single(note => note.Source == "cut").Text, "Only the kept cut note should be saved; discarded cuts should not.");
+        }
+
+        private static void RuntimeFilesQuickNoteIntoSelectedProject()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var source = store.CreateProject("Source", ["Inbox"], "Inbox");
+            var target = store.CreateProject("Target", ["Notes"], "Notes");
+            store.SetActiveProject(source.Id);
+            var targetBucket = target.Buckets.First(bucket => bucket.Name == "Notes");
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("", changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+
+            var request = new ZetlNoteCaptureRequest(
+                Shifted: false,
+                source,
+                store.GetQuickNoteBucket(source),
+                Text: "",
+                Source: "cut",
+                ShowStartProjectToggle: false,
+                StartProjectDefault: false,
+                ScratchOnlyUntilProjectStarted: false,
+                CreateNewProjectToggle: false,
+                ProjectToggleText: null,
+                ProjectNameDefault: null);
+
+            coordinator.CompleteNoteCapture(
+                request,
+                new ZetlNoteCaptureResult(
+                    Committed: true,
+                    NoteText: "redirected jot",
+                    StartProject: false,
+                    CreateNewProject: false,
+                    ProjectName: source.Name,
+                    SelectedBucketName: targetBucket.Name,
+                    SelectedBucket: targetBucket,
+                    SelectedProject: target));
+
+            AssertEqual("redirected jot", targetBucket.Notes.Single().Text, "Note should be filed into the selected project's bucket.");
+            AssertEqual(0, source.Buckets.Sum(bucket => bucket.Notes.Count), "The request's project should receive no note.");
+            AssertEqual(targetBucket.Id, target.QuickNoteBucketId, "Selected project should remember its quick-note bucket.");
+            AssertEqual("Source", source.Name, "Filing into another project must not rename the request project.");
+            AssertEqual(source.Id, store.GetActiveProject()?.Id, "Redirecting without activating should leave the prior active project active.");
+        }
+
+        private static void RuntimeRedirectsQuickNoteWithNoActiveProject()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var other = store.CreateProject("Other", ["Notes"], "Notes");
+            store.ClearActiveProject();
+            var dated = store.GetOrCreateDefaultProject();
+            var otherBucket = other.Buckets.First(bucket => bucket.Name == "Notes");
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("", changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+
+            var request = new ZetlNoteCaptureRequest(
+                Shifted: false,
+                dated,
+                store.GetScratchBucket(dated),
+                Text: "",
+                Source: "cut",
+                ShowStartProjectToggle: true,
+                StartProjectDefault: false,
+                ScratchOnlyUntilProjectStarted: true,
+                CreateNewProjectToggle: false,
+                ProjectToggleText: null,
+                ProjectNameDefault: null);
+
+            coordinator.CompleteNoteCapture(
+                request,
+                new ZetlNoteCaptureResult(
+                    Committed: true,
+                    NoteText: "redirected jot",
+                    StartProject: false,
+                    CreateNewProject: false,
+                    ProjectName: "Renamed Attempt",
+                    SelectedBucketName: otherBucket.Name,
+                    SelectedBucket: otherBucket,
+                    SelectedProject: other));
+
+            AssertEqual("redirected jot", otherBucket.Notes.Single().Text, "Redirected jot should land in the chosen existing project.");
+            AssertEqual(0, dated.Buckets.Sum(bucket => bucket.Notes.Count), "The dated default should receive no note when redirected.");
+            AssertFalse(dated.Name == "Renamed Attempt", "Redirecting must not rename the dated default project.");
+            AssertEqual(otherBucket.Id, other.QuickNoteBucketId, "The chosen project should remember its quick-note bucket.");
+            AssertTrue(store.GetActiveProject() is null, "A redirected jot should leave no active project.");
+        }
+
+        private static void RuntimeActivatesSelectedProjectFromQuickNote()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var other = store.CreateProject("Other", ["Notes"], "Notes");
+            store.ClearActiveProject();
+            var dated = store.GetOrCreateDefaultProject();
+            var otherBucket = other.Buckets.First(bucket => bucket.Name == "Notes");
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("", changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+
+            var request = new ZetlNoteCaptureRequest(
+                Shifted: false,
+                dated,
+                store.GetScratchBucket(dated),
+                Text: "",
+                Source: "cut",
+                ShowStartProjectToggle: true,
+                StartProjectDefault: false,
+                ScratchOnlyUntilProjectStarted: true,
+                CreateNewProjectToggle: false,
+                ProjectToggleText: null,
+                ProjectNameDefault: null);
+
+            coordinator.CompleteNoteCapture(
+                request,
+                new ZetlNoteCaptureResult(
+                    Committed: true,
+                    NoteText: "activate me",
+                    StartProject: true,
+                    CreateNewProject: false,
+                    ProjectName: other.Name,
+                    SelectedBucketName: otherBucket.Name,
+                    SelectedBucket: otherBucket,
+                    SelectedProject: other));
+
+            AssertEqual("activate me", otherBucket.Notes.Single().Text, "Note should be filed into the chosen project.");
+            AssertEqual(other.Id, store.GetActiveProject()?.Id, "Activating from a quick note should make the chosen project active.");
+        }
+
+        private static void RuntimeDeactivatesActiveProjectWhenToggledOff()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var active = store.CreateProject("Active", ["Inbox"], "Inbox");
+            store.SetActiveProject(active.Id);
+            var bucket = active.Buckets.First(item => item.Name == "Inbox");
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("copied", changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+
+            var request = new ZetlNoteCaptureRequest(
+                Shifted: false,
+                active,
+                bucket,
+                Text: "copied",
+                Source: "copy",
+                ShowStartProjectToggle: false,
+                StartProjectDefault: true,
+                ScratchOnlyUntilProjectStarted: false,
+                CreateNewProjectToggle: false,
+                ProjectToggleText: null,
+                ProjectNameDefault: null);
+
+            coordinator.CompleteNoteCapture(
+                request,
+                new ZetlNoteCaptureResult(
+                    Committed: true,
+                    NoteText: "kept",
+                    StartProject: false,
+                    CreateNewProject: false,
+                    ProjectName: active.Name,
+                    SelectedBucketName: bucket.Name,
+                    SelectedBucket: bucket,
+                    SelectedProject: active));
+
+            AssertEqual("kept", bucket.Notes.Single().Text, "The note should still be saved when deactivating.");
+            AssertTrue(store.GetActiveProject() is null, "Toggling Activate off on the active project should deactivate it.");
+        }
+
+        private static void RuntimeCreatesNewProjectFromCapture()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var origin = store.GetOrCreateDefaultProject();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("copied", changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+
+            var request = new ZetlNoteCaptureRequest(
+                Shifted: false,
+                origin,
+                store.GetScratchBucket(origin),
+                Text: "copied",
+                Source: "copy",
+                ShowStartProjectToggle: false,
+                StartProjectDefault: true,
+                ScratchOnlyUntilProjectStarted: false,
+                CreateNewProjectToggle: false,
+                ProjectToggleText: null,
+                ProjectNameDefault: null);
+
+            coordinator.CompleteNoteCapture(
+                request,
+                new ZetlNoteCaptureResult(
+                    Committed: true,
+                    NoteText: "fresh note",
+                    StartProject: true,
+                    CreateNewProject: true,
+                    ProjectName: "Fresh",
+                    SelectedBucketName: "Inbox",
+                    SelectedBucket: null!,
+                    SelectedProject: null));
+
+            var fresh = store.State.Projects.SingleOrDefault(project => project.Name == "Fresh");
+            AssertTrue(fresh is not null, "Choosing New project should create the named project.");
+            AssertEqual("fresh note", fresh!.Buckets.Single(bucket => bucket.Name == "Inbox").Notes.Single().Text, "The note should land in the chosen bucket of the new project.");
+            AssertEqual(fresh.Id, store.GetActiveProject()?.Id, "A new project created with Activate on should become active.");
         }
 
         private static void RuntimeCompletesCompileResult()

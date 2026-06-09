@@ -162,7 +162,16 @@ internal sealed class ZetlShortcutCoordinator
                 : ZetlNoteCaptureOutcome.None;
         }
 
-        var noteProject = request.Project;
+        // Default to the project the dialog chose (the quick-note project
+        // selector), falling back to the request's project when none was set.
+        // Held cut and held copy share one dialog and one save path. The only
+        // differences are operation-inherent: a cut keeps the clipboard per the
+        // quick-note setting and remembers its bucket; a copy always syncs the
+        // clipboard with the saved note.
+        var isCut = string.Equals(request.Source, "cut", StringComparison.OrdinalIgnoreCase);
+
+        // The note files into the project chosen in the dialog's selector.
+        var noteProject = result.SelectedProject ?? request.Project;
         if (result.CreateNewProject)
         {
             var bucketNames = store.Defaults.ResolvedProjectBuckets;
@@ -171,10 +180,6 @@ internal sealed class ZetlShortcutCoordinator
                 bucketNames,
                 result.SelectedBucketName,
                 request.Shifted);
-        }
-        else if (result.StartProject)
-        {
-            store.UpdateProjectName(noteProject, result.ProjectName, request.Shifted);
         }
 
         var bucket = result.CreateNewProject
@@ -185,15 +190,8 @@ internal sealed class ZetlShortcutCoordinator
                     StringComparison.OrdinalIgnoreCase))
                 ?? noteProject.Buckets.First()
             : result.SelectedBucket;
-        if (!result.CreateNewProject
-            && result.StartProject
-            && string.Equals(request.Source, "copy", StringComparison.OrdinalIgnoreCase))
-        {
-            store.SetActiveBucket(noteProject, bucket.Id);
-        }
 
-        var isQuickNote = string.Equals(request.Source, "cut", StringComparison.OrdinalIgnoreCase);
-        if (isQuickNote)
+        if (isCut)
         {
             store.SetQuickNoteBucket(noteProject, bucket.Id);
         }
@@ -203,14 +201,21 @@ internal sealed class ZetlShortcutCoordinator
             request.Shifted,
             $"Undid save to {bucket.Name}.",
             () => store.DeleteNote(bucket, note.Id));
-        if (!isQuickNote || quickNoteToClipboard())
+        if (!isCut || quickNoteToClipboard())
         {
             clipboard.SetText(result.NoteText);
         }
 
-        if (request.ShowStartProjectToggle
-            && !request.CreateNewProjectToggle
-            && !result.StartProject)
+        // The Activate toggle decides the lane's active project. When off, undo
+        // the dated default's auto-activation (nothing was active before) and
+        // deactivate the chosen project if it is the one currently active;
+        // otherwise leave the prior active project untouched.
+        if (result.StartProject)
+        {
+            store.SetActiveProject(noteProject.Id, request.Shifted);
+        }
+        else if (request.ShowStartProjectToggle
+            || store.GetActiveProject(request.Shifted)?.Id == noteProject.Id)
         {
             store.ClearActiveProject(request.Shifted);
         }
@@ -347,18 +352,25 @@ internal sealed class ZetlShortcutCoordinator
             return new ZetlBoardRequest(context.ShiftLane);
         }
 
+        // Held copy capture shares the quick-note dialog: same project selector,
+        // Activate toggle, and bucket access. It differs by preferring the active
+        // bucket as the default destination, activating the project by default
+        // (StartProjectDefault), and keeping the clipboard in sync with the saved
+        // note (handled in CompleteNoteCapture).
+        var preferredBucket = store.GetActiveBucket(context.ShiftLane)
+            ?? store.GetScratchBucket(project);
         return new ZetlNoteCaptureRequest(
             context.ShiftLane,
             project,
-            store.GetActiveBucket(context.ShiftLane),
+            preferredBucket,
             text,
             "copy",
-            ShowStartProjectToggle: true,
-            StartProjectDefault: !hadActiveProject,
-            ScratchOnlyUntilProjectStarted: !hadActiveProject,
-            CreateNewProjectToggle: hadActiveProject,
-            ProjectToggleText: hadActiveProject ? "New project" : "Start project",
-            ProjectNameDefault: hadActiveProject ? ZetlStateStore.DefaultProjectName(context.ShiftLane) : null);
+            ShowStartProjectToggle: !hadActiveProject,
+            StartProjectDefault: true,
+            ScratchOnlyUntilProjectStarted: false,
+            CreateNewProjectToggle: false,
+            ProjectToggleText: null,
+            ProjectNameDefault: null);
     }
 
     private ZetlShortcutRequest CreateCutHoldRequest(

@@ -345,7 +345,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             request.ScratchOnlyUntilProjectStarted,
             request.CreateNewProjectToggle,
             request.ProjectToggleText,
-            request.ProjectNameDefault)
+            request.ProjectNameDefault,
+            quickNote: true)
         {
             ShowInTaskbar = false,
             DismissOnDeactivate = target is not null
@@ -365,7 +366,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     window.CreateNewProject,
                     window.ProjectName,
                     window.SelectedBucketName,
-                    window.SelectedBucket));
+                    window.SelectedBucket,
+                    window.SelectedProject));
             if (!window.ClosedByDeactivate)
             {
                 ZetlForegroundService.RestoreTarget(target);

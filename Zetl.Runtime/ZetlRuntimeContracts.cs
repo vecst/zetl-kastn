@@ -59,7 +59,11 @@ internal sealed record ZetlNoteCaptureResult(
     bool CreateNewProject,
     string ProjectName,
     string SelectedBucketName,
-    ZetlBucket SelectedBucket);
+    ZetlBucket SelectedBucket,
+    // The project the note should be filed into. Null falls back to the
+    // request's project; the quick-note dialog sets it when the user redirects
+    // the note to a different existing project.
+    ZetlProject? SelectedProject = null);
 
 internal sealed record ZetlCompileRequest(
     bool Shifted,
