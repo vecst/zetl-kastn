@@ -5,17 +5,12 @@ using Avalonia.Threading;
 
 namespace ZETL;
 
-internal partial class BoardWindow : Window, IClickAwayDismissable
+internal partial class BoardWindow : ZetlPopupWindow
 {
     private readonly ZetlStateStore store = null!;
     private readonly bool shiftedLane;
     private bool refreshing;
     private bool childDialogOpen;
-    private bool autoHideArmed;
-    private readonly DispatcherTimer autoHideArmTimer = new()
-    {
-        Interval = TimeSpan.FromMilliseconds(300)
-    };
     private ZetlNote? editingNote;
 
     public BoardWindow()
@@ -101,32 +96,6 @@ internal partial class BoardWindow : Window, IClickAwayDismissable
             CloseBoard,
             CloseBoard,
             HandleAdditionalShortcut);
-        Closing += (_, _) =>
-        {
-            autoHideArmTimer.Stop();
-            SaveEditingNote();
-        };
-        Opened += (_, _) =>
-        {
-            // Arm after a settle delay rather than on Activated: forcing the
-            // window to the foreground via Win32 does not raise Avalonia's
-            // Activated, so IsActive can stay false even though the window is
-            // foreground. Opened always fires, so the delay alone distinguishes
-            // the spurious initial deactivation from a genuine click-away.
-            if (AutoHideOnDeactivate)
-            {
-                autoHideArmTimer.Start();
-            }
-        };
-        autoHideArmTimer.Tick += (_, _) =>
-        {
-            autoHideArmTimer.Stop();
-            if (!childDialogOpen)
-            {
-                autoHideArmed = true;
-            }
-        };
-        Deactivated += (_, _) => DismissFromClickAway();
         Closed += (_, _) => store.Changed -= OnStoreChanged;
         store.Changed += OnStoreChanged;
 
@@ -134,10 +103,6 @@ internal partial class BoardWindow : Window, IClickAwayDismissable
     }
 
     public bool ShiftedLane => shiftedLane;
-
-    public bool AutoHideOnDeactivate { get; set; }
-
-    public bool ClosedByDeactivate { get; private set; }
 
     private ZetlProject? ActiveProject => projectBox.SelectedItem as ZetlProject;
 
@@ -467,20 +432,18 @@ internal partial class BoardWindow : Window, IClickAwayDismissable
         }
     }
 
-    public void DismissFromClickAway()
+    // childDialogOpen suppresses the click-away while an owned dialog (confirm,
+    // bucket settings, project/bucket prompts) holds focus.
+    protected override bool IsDismissSuppressed => childDialogOpen;
+
+    protected override void OnClickAwayDismiss()
     {
-        // Close directly when armed, matching the note/compile popups. The arm
-        // timer filters the spurious initial deactivation and childDialogOpen
-        // guards owned dialogs; IsVisible guards against a double close when the
-        // Deactivated and click-away paths both fire.
-        if (AutoHideOnDeactivate
-            && autoHideArmed
-            && !childDialogOpen
-            && IsVisible)
-        {
-            ClosedByDeactivate = true;
-            CloseBoard();
-        }
+        CloseBoard();
+    }
+
+    protected override void OnPopupClosing()
+    {
+        SaveEditingNote();
     }
 
     private void CloseBoard()

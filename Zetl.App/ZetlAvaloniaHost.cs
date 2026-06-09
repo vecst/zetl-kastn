@@ -326,7 +326,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             boards[lane] = board;
         }
 
-        board.AutoHideOnDeactivate = target is not null;
+        board.DismissOnDeactivate = target is not null;
         board.ShowActiveProject();
         PositionAndActivate(board, target);
     }
@@ -348,7 +348,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             request.ProjectNameDefault)
         {
             ShowInTaskbar = false,
-            CommitOnDeactivate = target is not null
+            DismissOnDeactivate = target is not null
         };
         ConfigureAndShowPopup(window, target, "Note", () =>
         {
@@ -383,7 +383,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             request.BucketScope)
         {
             ShowInTaskbar = false,
-            CloseOnDeactivate = target is not null
+            DismissOnDeactivate = target is not null
         };
         ConfigureAndShowPopup(window, target, "Compile", () =>
         {

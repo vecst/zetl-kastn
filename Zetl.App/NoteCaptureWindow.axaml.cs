@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Threading;
 
 namespace ZETL;
 
@@ -8,7 +7,7 @@ namespace ZETL;
 // store-driven behavior (bucket list, inline bucket creation, project-mode
 // toggle) mirrors the WinForms version one-to-one. Internal because it consumes
 // Zetl.Core's internal types.
-internal partial class NoteCaptureWindow : Window, IClickAwayDismissable
+internal partial class NoteCaptureWindow : ZetlPopupWindow
 {
     private readonly ZetlStateStore store = null!;
     private readonly ZetlProject project = null!;
@@ -17,11 +16,6 @@ internal partial class NoteCaptureWindow : Window, IClickAwayDismissable
     private readonly bool createNewProjectMode;
     private ZetlBucket? lastFullProjectBucket;
     private bool completionDecided;
-    private bool deactivateCommitArmed;
-    private readonly DispatcherTimer deactivateArmTimer = new()
-    {
-        Interval = TimeSpan.FromMilliseconds(300)
-    };
 
     // Parameterless ctor for the Avalonia previewer / XAML tooling.
     public NoteCaptureWindow()
@@ -80,29 +74,6 @@ internal partial class NoteCaptureWindow : Window, IClickAwayDismissable
         {
             UpdateInlineBucketLabel();
             FocusNoteBox();
-            // Arm after a settle delay rather than on Activated: forcing the
-            // window to the foreground via Win32 does not raise Avalonia's
-            // Activated, so IsActive can stay false even though the window is
-            // foreground. Opened always fires, so the delay alone distinguishes
-            // the spurious initial deactivation from a genuine click-away.
-            if (CommitOnDeactivate)
-            {
-                deactivateArmTimer.Start();
-            }
-        };
-        deactivateArmTimer.Tick += (_, _) =>
-        {
-            deactivateArmTimer.Stop();
-            if (!completionDecided)
-            {
-                deactivateCommitArmed = true;
-            }
-        };
-        Deactivated += (_, _) => DismissFromClickAway();
-        Closing += (_, _) =>
-        {
-            deactivateArmTimer.Stop();
-            completionDecided = true;
         };
         ZetlWindowShortcuts.Enable(
             this,
@@ -117,10 +88,6 @@ internal partial class NoteCaptureWindow : Window, IClickAwayDismissable
     // Whether the user committed (Save / Ctrl+Enter) vs cancelled (Cancel / Esc).
     public bool Saved { get; private set; }
 
-    public bool CommitOnDeactivate { get; set; }
-
-    public bool ClosedByDeactivate { get; private set; }
-
     public ZetlBucket SelectedBucket => ((BucketDisplayItem)bucketBox.SelectedItem!).Bucket;
 
     public string SelectedBucketName => SelectedBucket.Name;
@@ -133,15 +100,16 @@ internal partial class NoteCaptureWindow : Window, IClickAwayDismissable
 
     public string ProjectName => projectNameBox.Text?.Trim() ?? "";
 
-    public void DismissFromClickAway()
+    protected override bool IsDismissSuppressed => completionDecided;
+
+    protected override void OnClickAwayDismiss()
     {
-        if (CommitOnDeactivate
-            && deactivateCommitArmed
-            && !completionDecided)
-        {
-            ClosedByDeactivate = true;
-            Commit(saved: true);
-        }
+        Commit(saved: true);
+    }
+
+    protected override void OnPopupClosing()
+    {
+        completionDecided = true;
     }
 
     private void Commit(bool saved)

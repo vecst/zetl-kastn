@@ -2,13 +2,12 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Threading;
 
 namespace ZETL;
 
 // Avalonia port of CompileForm. Completion properties intentionally mirror the
 // WinForms form so the runtime host can consume either implementation.
-internal partial class CompileWindow : Window, IClickAwayDismissable
+internal partial class CompileWindow : ZetlPopupWindow
 {
     private readonly ZetlStateStore store = null!;
     private readonly List<BucketSelection> selections = [];
@@ -16,11 +15,6 @@ internal partial class CompileWindow : Window, IClickAwayDismissable
     private IReadOnlyList<ZetlBucket>? sourceScope;
     private bool refreshing;
     private bool completionDecided;
-    private bool deactivateCloseArmed;
-    private readonly DispatcherTimer deactivateArmTimer = new()
-    {
-        Interval = TimeSpan.FromMilliseconds(300)
-    };
 
     public CompileWindow()
     {
@@ -67,42 +61,12 @@ internal partial class CompileWindow : Window, IClickAwayDismissable
             this,
             () => Complete(pasteNow: false, saveToBucket: false),
             Cancel);
-        Opened += (_, _) =>
-        {
-            // Arm after a settle delay rather than on Activated: forcing the
-            // window to the foreground via Win32 does not raise Avalonia's
-            // Activated, so IsActive can stay false even though the window is
-            // foreground. Opened always fires, so the delay alone distinguishes
-            // the spurious initial deactivation from a genuine click-away.
-            if (CloseOnDeactivate)
-            {
-                deactivateArmTimer.Start();
-            }
-        };
-        deactivateArmTimer.Tick += (_, _) =>
-        {
-            deactivateArmTimer.Stop();
-            if (!completionDecided)
-            {
-                deactivateCloseArmed = true;
-            }
-        };
-        Deactivated += (_, _) => DismissFromClickAway();
-        Closing += (_, _) =>
-        {
-            deactivateArmTimer.Stop();
-            completionDecided = true;
-        };
 
         UpdateCompileModeControls();
         RefreshPreview();
     }
 
     public bool Saved { get; private set; }
-
-    public bool CloseOnDeactivate { get; set; }
-
-    public bool ClosedByDeactivate { get; private set; }
 
     public string CompiledText { get; private set; } = "";
 
@@ -410,16 +374,17 @@ internal partial class CompileWindow : Window, IClickAwayDismissable
         Close();
     }
 
-    public void DismissFromClickAway()
+    protected override bool IsDismissSuppressed => completionDecided;
+
+    protected override void OnClickAwayDismiss()
     {
-        if (CloseOnDeactivate
-            && deactivateCloseArmed
-            && !completionDecided)
-        {
-            ClosedByDeactivate = true;
-            completionDecided = true;
-            Close();
-        }
+        completionDecided = true;
+        Close();
+    }
+
+    protected override void OnPopupClosing()
+    {
+        completionDecided = true;
     }
 
     private void ShowValidation(string message)

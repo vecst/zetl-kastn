@@ -236,7 +236,7 @@ public partial class App : Application
     {
         return new NoteCaptureWindow(store, project, bucket, text)
         {
-            CommitOnDeactivate = true
+            DismissOnDeactivate = true
         };
     }
 
