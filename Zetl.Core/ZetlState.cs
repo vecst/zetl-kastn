@@ -1367,7 +1367,7 @@ internal sealed class ZetlStateStore
         return reviewBucket;
     }
 
-    private static string PreviewText(string text)
+    public static string PreviewText(string text)
     {
         var preview = text.ReplaceLineEndings(" ").Trim();
         return preview.Length <= 80 ? preview : $"{preview[..77]}...";

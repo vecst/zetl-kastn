@@ -207,7 +207,7 @@ internal partial class CompileWindow : Window, IClickAwayDismissable
             {
                 var noteCheckBox = new CheckBox
                 {
-                    Content = NotePreview(item.Note.Text),
+                    Content = ZetlStateStore.PreviewText(item.Note.Text),
                     IsChecked = defaultChecked,
                     HorizontalContentAlignment = HorizontalAlignment.Stretch
                 };
@@ -426,14 +426,6 @@ internal partial class CompileWindow : Window, IClickAwayDismissable
     {
         validationText.Text = message;
         validationText.IsVisible = true;
-    }
-
-    private static string NotePreview(string text)
-    {
-        var preview = text.ReplaceLineEndings(" ").Trim();
-        return preview.Length <= 80
-            ? preview
-            : $"{preview[..77]}...";
     }
 
     private sealed record NoteSelection(
