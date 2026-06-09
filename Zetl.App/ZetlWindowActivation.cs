@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Threading;
 
@@ -48,7 +47,7 @@ internal static class ZetlWindowActivation
         var outgoing = ZetlForegroundService.GetWindowsHandle(activationTarget)
             is { } target && target != IntPtr.Zero
             ? target
-            : GetForegroundWindow();
+            : Win32Interop.GetForegroundWindow();
 
         // Force Z-order so the popup is visible even while the foreground steal
         // is contested. Topmost is an Avalonia property (SetWindowPos with
@@ -74,7 +73,7 @@ internal static class ZetlWindowActivation
                 return;
             }
 
-            var foreground = GetForegroundWindow();
+            var foreground = Win32Interop.GetForegroundWindow();
             if (foreground == handle || attempts >= 6)
             {
                 window.Topmost = false;
@@ -95,14 +94,14 @@ internal static class ZetlWindowActivation
     {
         var outgoingThreadId = outgoing == IntPtr.Zero
             ? 0
-            : GetWindowThreadProcessId(outgoing, out _);
-        var currentThreadId = GetCurrentThreadId();
+            : Win32Interop.GetWindowThreadProcessId(outgoing, out _);
+        var currentThreadId = Win32Interop.GetCurrentThreadId();
         // Attaching our input queue to the outgoing foreground thread lets a
         // background process win SetForegroundWindow. Avalonia's Activate drives
         // the actual activation so the focus manager engages.
         var attached = outgoingThreadId != 0
             && outgoingThreadId != currentThreadId
-            && AttachThreadInput(currentThreadId, outgoingThreadId, attach: true);
+            && Win32Interop.AttachThreadInput(currentThreadId, outgoingThreadId, attach: true);
         try
         {
             window.Activate();
@@ -111,25 +110,8 @@ internal static class ZetlWindowActivation
         {
             if (attached)
             {
-                AttachThreadInput(currentThreadId, outgoingThreadId, attach: false);
+                Win32Interop.AttachThreadInput(currentThreadId, outgoingThreadId, attach: false);
             }
         }
     }
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(
-        IntPtr window,
-        out uint processId);
-
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
-
-    [DllImport("user32.dll")]
-    private static extern bool AttachThreadInput(
-        uint currentThreadId,
-        uint targetThreadId,
-        bool attach);
 }

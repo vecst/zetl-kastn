@@ -21,7 +21,7 @@ internal sealed class ZetlClickAwayMonitor : IDisposable
 
     private readonly Action onClickOutside;
     private readonly uint ownProcessId;
-    private readonly LowLevelMouseProc proc;
+    private readonly Win32Interop.LowLevelHookProc proc;
     private IntPtr hookId = IntPtr.Zero;
 
     public ZetlClickAwayMonitor(Action onClickOutside)
@@ -31,7 +31,7 @@ internal sealed class ZetlClickAwayMonitor : IDisposable
         proc = HookCallback;
         if (OperatingSystem.IsWindows())
         {
-            hookId = SetWindowsHookEx(WH_MOUSE_LL, proc, GetModuleHandle(null), 0);
+            hookId = Win32Interop.SetWindowsHookEx(WH_MOUSE_LL, proc, Win32Interop.GetModuleHandle(null), 0);
         }
     }
 
@@ -48,7 +48,7 @@ internal sealed class ZetlClickAwayMonitor : IDisposable
                     : GetAncestor(under, GA_ROOT);
                 if (root != IntPtr.Zero)
                 {
-                    GetWindowThreadProcessId(root, out var pid);
+                    Win32Interop.GetWindowThreadProcessId(root, out var pid);
                     if (pid != ownProcessId)
                     {
                         onClickOutside();
@@ -61,19 +61,17 @@ internal sealed class ZetlClickAwayMonitor : IDisposable
             }
         }
 
-        return CallNextHookEx(hookId, code, wParam, lParam);
+        return Win32Interop.CallNextHookEx(hookId, code, wParam, lParam);
     }
 
     public void Dispose()
     {
         if (hookId != IntPtr.Zero)
         {
-            UnhookWindowsHookEx(hookId);
+            Win32Interop.UnhookWindowsHookEx(hookId);
             hookId = IntPtr.Zero;
         }
     }
-
-    private delegate IntPtr LowLevelMouseProc(int code, IntPtr wParam, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT
@@ -92,34 +90,9 @@ internal sealed class ZetlClickAwayMonitor : IDisposable
         public UIntPtr dwExtraInfo;
     }
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr SetWindowsHookEx(
-        int idHook,
-        LowLevelMouseProc lpfn,
-        IntPtr hMod,
-        uint dwThreadId);
-
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr CallNextHookEx(
-        IntPtr hhk,
-        int nCode,
-        IntPtr wParam,
-        IntPtr lParam);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr GetModuleHandle(string? lpModuleName);
-
     [DllImport("user32.dll")]
     private static extern IntPtr WindowFromPoint(POINT point);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(
-        IntPtr window,
-        out uint processId);
 }

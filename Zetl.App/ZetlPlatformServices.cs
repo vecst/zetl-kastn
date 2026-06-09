@@ -31,7 +31,7 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
     private const int WmSysKeyDown = 0x0104;
     private const int WmSysKeyUp = 0x0105;
     private readonly HashSet<int> downKeys = [];
-    private LowLevelKeyboardProc? hookProc;
+    private Win32Interop.LowLevelHookProc? hookProc;
     private IntPtr hookId;
     private Func<int, bool, bool, bool, bool>? handleKeyEvent;
 
@@ -41,10 +41,10 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
         hookProc = HookCallback;
         using var process = Process.GetCurrentProcess();
         using var module = process.MainModule;
-        hookId = SetWindowsHookEx(
+        hookId = Win32Interop.SetWindowsHookEx(
             WhKeyboardLl,
             hookProc,
-            GetModuleHandle(module?.ModuleName),
+            Win32Interop.GetModuleHandle(module?.ModuleName),
             0);
         return hookId != IntPtr.Zero;
     }
@@ -77,7 +77,7 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
     {
         if (hookId != IntPtr.Zero)
         {
-            UnhookWindowsHookEx(hookId);
+            Win32Interop.UnhookWindowsHookEx(hookId);
             hookId = IntPtr.Zero;
         }
     }
@@ -86,13 +86,13 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
     {
         if (code < 0)
         {
-            return CallNextHookEx(hookId, code, messagePointer, dataPointer);
+            return Win32Interop.CallNextHookEx(hookId, code, messagePointer, dataPointer);
         }
 
         var hook = Marshal.PtrToStructure<KeyboardHook>(dataPointer);
         if ((hook.Flags & LlkInjected) != 0)
         {
-            return CallNextHookEx(hookId, code, messagePointer, dataPointer);
+            return Win32Interop.CallNextHookEx(hookId, code, messagePointer, dataPointer);
         }
 
         var message = messagePointer.ToInt32();
@@ -116,13 +116,8 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
             return (IntPtr)1;
         }
 
-        return CallNextHookEx(hookId, code, messagePointer, dataPointer);
+        return Win32Interop.CallNextHookEx(hookId, code, messagePointer, dataPointer);
     }
-
-    private delegate IntPtr LowLevelKeyboardProc(
-        int code,
-        IntPtr messagePointer,
-        IntPtr dataPointer);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct KeyboardHook
@@ -133,26 +128,6 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
         public uint Time;
         public UIntPtr ExtraInfo;
     }
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr SetWindowsHookEx(
-        int hookId,
-        LowLevelKeyboardProc callback,
-        IntPtr module,
-        uint threadId);
-
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWindowsHookEx(IntPtr hook);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr CallNextHookEx(
-        IntPtr hook,
-        int code,
-        IntPtr messagePointer,
-        IntPtr dataPointer);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
-    private static extern IntPtr GetModuleHandle(string? moduleName);
 }
 
 internal static class AvaloniaWindowsInput
@@ -500,13 +475,13 @@ internal static class ZetlForegroundService
             return null;
         }
 
-        var handle = GetForegroundWindow();
+        var handle = Win32Interop.GetForegroundWindow();
         if (handle == IntPtr.Zero)
         {
             return null;
         }
 
-        var threadId = GetWindowThreadProcessId(handle, out var processId);
+        var threadId = Win32Interop.GetWindowThreadProcessId(handle, out var processId);
         return threadId == 0 || processId == 0
             ? null
             : new WindowsForegroundTarget(handle, processId);
@@ -517,7 +492,7 @@ internal static class ZetlForegroundService
         if (OperatingSystem.IsWindows()
             && target is WindowsForegroundTarget windowsTarget
             && windowsTarget.Handle != IntPtr.Zero
-            && IsWindow(windowsTarget.Handle)
+            && Win32Interop.IsWindow(windowsTarget.Handle)
             && TargetProcessStillMatches(windowsTarget))
         {
             RestoreWindowsTarget(windowsTarget.Handle);
@@ -543,7 +518,7 @@ internal static class ZetlForegroundService
 
     private static void RestoreWindowsTarget(IntPtr handle)
     {
-        var currentForeground = GetForegroundWindow();
+        var currentForeground = Win32Interop.GetForegroundWindow();
         if (currentForeground == handle)
         {
             return;
@@ -551,24 +526,24 @@ internal static class ZetlForegroundService
 
         var foregroundThreadId = currentForeground == IntPtr.Zero
             ? 0
-            : GetWindowThreadProcessId(currentForeground, out _);
-        var targetThreadId = GetWindowThreadProcessId(handle, out _);
+            : Win32Interop.GetWindowThreadProcessId(currentForeground, out _);
+        var targetThreadId = Win32Interop.GetWindowThreadProcessId(handle, out _);
         var attached = foregroundThreadId != 0
             && targetThreadId != 0
             && foregroundThreadId != targetThreadId
-            && AttachThreadInput(
+            && Win32Interop.AttachThreadInput(
                 targetThreadId,
                 foregroundThreadId,
                 attach: true);
         try
         {
-            SetForegroundWindow(handle);
+            Win32Interop.SetForegroundWindow(handle);
         }
         finally
         {
             if (attached)
             {
-                AttachThreadInput(
+                Win32Interop.AttachThreadInput(
                     targetThreadId,
                     foregroundThreadId,
                     attach: false);
@@ -579,31 +554,11 @@ internal static class ZetlForegroundService
     private static bool TargetProcessStillMatches(
         WindowsForegroundTarget target)
     {
-        GetWindowThreadProcessId(target.Handle, out var processId);
+        Win32Interop.GetWindowThreadProcessId(target.Handle, out var processId);
         return processId == target.ProcessId;
     }
 
     private readonly record struct WindowsForegroundTarget(
         IntPtr Handle,
         uint ProcessId);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr window);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsWindow(IntPtr window);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(
-        IntPtr window,
-        out uint processId);
-
-    [DllImport("user32.dll")]
-    private static extern bool AttachThreadInput(
-        uint currentThreadId,
-        uint targetThreadId,
-        bool attach);
 }
