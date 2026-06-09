@@ -115,28 +115,32 @@ internal sealed class ZetlShortcutCoordinator
         return false;
     }
 
-    public async Task<ZetlShortcutRequest?> HandleHoldAsync(ChordlEventContext context)
+    public Task<ZetlShortcutRequest?> HandleHoldAsync(ChordlEventContext context)
     {
-        return await HandleClaimedHoldAsync(
+        return HandleClaimedHoldAsync(
             context,
             ClaimPendingForHold(context));
     }
 
-    public async Task<ZetlShortcutRequest?> HandleClaimedHoldAsync(
+    // Hold handling is fully synchronous now that the clipboard is observed
+    // ahead of time into the pending shortcut; the Task return type is kept so
+    // the UI-thread callers can keep awaiting it.
+    public Task<ZetlShortcutRequest?> HandleClaimedHoldAsync(
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
-        return context.KeyCode switch
+        ZetlShortcutRequest? request = context.KeyCode switch
         {
             VK_B => new ZetlBoardRequest(context.ShiftLane),
-            VK_C => await CreateCopyHoldRequestAsync(context, pending),
+            VK_C => CreateCopyHoldRequest(context, pending),
             VK_P => HandlePopToggle(context.ShiftLane),
             VK_R => HandleReplayToggle(context.ShiftLane),
-            VK_X => await CreateCutHoldRequestAsync(context, pending),
+            VK_X => CreateCutHoldRequest(context, pending),
             VK_V => CreateCompileRequest(context.ShiftLane),
             VK_Z => HandleUndo(context.ShiftLane),
             _ => null
         };
+        return Task.FromResult(request);
     }
 
     public void CompleteNoteCapture(
@@ -305,17 +309,13 @@ internal sealed class ZetlShortcutCoordinator
         replayInjectedClipboard[index] = null;
     }
 
-    private async Task<ZetlShortcutRequest?> CreateCopyHoldRequestAsync(
+    private ZetlShortcutRequest? CreateCopyHoldRequest(
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
         var hadActiveProject = store.GetActiveProject(context.ShiftLane) is not null;
         var project = store.GetOrCreateDefaultProject(context.ShiftLane);
-        var text = pending?.ObservedClipboardText
-            ?? TryGetChangedClipboardText(
-                pending?.ClipboardSequenceNumber
-                    ?? context.ClipboardSequenceNumber)
-            ?? "";
+        var text = ResolveHoldClipboardText(context, pending);
         if (string.IsNullOrWhiteSpace(text))
         {
             return new ZetlBoardRequest(context.ShiftLane);
@@ -335,7 +335,7 @@ internal sealed class ZetlShortcutCoordinator
             ProjectNameDefault: hadActiveProject ? ZetlStateStore.DefaultProjectName(context.ShiftLane) : null);
     }
 
-    private async Task<ZetlShortcutRequest> CreateCutHoldRequestAsync(
+    private ZetlShortcutRequest CreateCutHoldRequest(
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
@@ -343,11 +343,7 @@ internal sealed class ZetlShortcutCoordinator
         var project = store.GetOrCreateDefaultProject(context.ShiftLane);
         var scratch = store.GetScratchBucket(project);
         var preferredBucket = hadActiveProject ? store.GetQuickNoteBucket(project) : scratch;
-        var text = pending?.ObservedClipboardText
-            ?? TryGetChangedClipboardText(
-                pending?.ClipboardSequenceNumber
-                    ?? context.ClipboardSequenceNumber)
-            ?? "";
+        var text = ResolveHoldClipboardText(context, pending);
         return new ZetlNoteCaptureRequest(
             context.ShiftLane,
             project,
@@ -360,6 +356,20 @@ internal sealed class ZetlShortcutCoordinator
             CreateNewProjectToggle: false,
             ProjectToggleText: null,
             ProjectNameDefault: null);
+    }
+
+    // The text a held copy/cut should capture: the clipboard value already
+    // observed for this pending shortcut, falling back to a fresh changed-text
+    // read, then to empty.
+    private string ResolveHoldClipboardText(
+        ChordlEventContext context,
+        ZetlPendingShortcut? pending)
+    {
+        return pending?.ObservedClipboardText
+            ?? TryGetChangedClipboardText(
+                pending?.ClipboardSequenceNumber
+                    ?? context.ClipboardSequenceNumber)
+            ?? "";
     }
 
     private string? TryGetChangedClipboardText(uint beforeSequence)
