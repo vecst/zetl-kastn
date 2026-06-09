@@ -854,6 +854,28 @@ internal sealed class ZetlStateStore
         return (!currentSessionOnly || IsCurrentSessionNote(note)) && !string.IsNullOrWhiteSpace(note.Text);
     }
 
+    // The project most recently written to (its latest note), ignoring the
+    // Zetl Logs infrastructure project, which is appended to constantly. Used to
+    // land the Board on the last project you actually touched when no project is
+    // active.
+    public ZetlProject? GetMostRecentlyWrittenProject()
+    {
+        return State.Projects
+            .Where(project => !string.Equals(project.Name, LogProjectName, StringComparison.OrdinalIgnoreCase))
+            .Select(project => new
+            {
+                project,
+                latest = project.Buckets
+                    .SelectMany(bucket => bucket.Notes)
+                    .Select(note => (DateTime?)note.CreatedAtUtc)
+                    .Max()
+            })
+            .Where(item => item.latest is not null)
+            .OrderByDescending(item => item.latest)
+            .Select(item => item.project)
+            .FirstOrDefault();
+    }
+
     public bool TryGetScratchCompileTarget(out ZetlProject? project, out ZetlBucket? scratchBucket, bool shifted = false)
     {
         var defaultName = DefaultProjectName(shifted);

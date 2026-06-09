@@ -62,6 +62,7 @@ internal static class PortableSelfTests
                 ("Zetl state detects compilable notes", StateDetectsCompilableNotes),
                 ("Zetl state finds inactive scratch notes for compile", StateFindsInactiveScratchCompileTarget),
                 ("Zetl state pop mode removes matching last note", StatePopModeRemovesLastMatchingNote),
+                ("Zetl state finds the most recently written project", StateFindsMostRecentlyWrittenProject),
                 ("Zetl state round-trips JSON", StateRoundTripsJson),
                 ("Zetl state stores each project in its own folder", StateStoresEachProjectInItsOwnFolder),
                 ("Zetl state migrates a legacy single state file", StateMigratesLegacySingleFile),
@@ -89,6 +90,7 @@ internal static class PortableSelfTests
                 ("Runtime cut hold defaults to Scratch", RuntimeCutHoldDefaultsToScratch),
                 ("Runtime hold toggles and undo stay portable", RuntimeHoldTogglesAndUndoStayPortable),
                 ("Runtime completes quick-note result", RuntimeCompletesQuickNoteResult),
+                ("Runtime pastes cut back when held cut is discarded", RuntimePastesCutBackOnDiscardedCut),
                 ("Runtime completes flattened compile result", RuntimeCompletesCompileResult),
                 ("Runtime preserves structured compile saves", RuntimePreservesStructuredCompileSaves),
                 ("Runtime returns copy and paste compile outcomes", RuntimeReturnsCopyAndPasteCompileOutcomes),
@@ -513,6 +515,25 @@ internal static class PortableSelfTests
             AssertEqual("alpha", poppedNote?.Text, "Pop should report the removed note.");
             store.RestoreNote(poppedBucket!, poppedNote!);
             AssertEqual("alpha", bucket.Notes.Single().Text, "Restore should put popped note back.");
+        }
+
+        private static void StateFindsMostRecentlyWrittenProject()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var older = store.CreateProject("Older", ["Inbox"], "Inbox");
+            var newer = store.CreateProject("Newer", ["Inbox"], "Inbox");
+            var olderNote = store.AddNote(older.Buckets.First(), "old", "copy");
+            var newerNote = store.AddNote(newer.Buckets.First(), "new", "copy");
+            olderNote.CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            newerNote.CreatedAtUtc = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+            AssertEqual("Newer", store.GetMostRecentlyWrittenProject()?.Name, "The project with the latest note should win.");
+
+            // The Zetl Logs infra project is appended to constantly but must
+            // never be chosen as the last-written project.
+            store.AppendLogNotes(["log line"], maxDayBuckets: 14, maxNotesPerBucket: 2000);
+            AssertEqual("Newer", store.GetMostRecentlyWrittenProject()?.Name, "Zetl Logs must be excluded from the last-written project.");
         }
 
         private static void StateCreatesDatedDefaultProject()
@@ -1854,6 +1875,59 @@ internal static class PortableSelfTests
             AssertEqual("quick note", scratch.Notes.Single().Text, "Quick-note result should save the note.");
             AssertEqual("keep me", clipboard.Text, "Quick note should preserve clipboard when disabled.");
             AssertTrue(store.GetActiveProject() is null, "Quick note should leave the project inactive.");
+        }
+
+        private static void RuntimePastesCutBackOnDiscardedCut()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.GetOrCreateDefaultProject();
+            var scratch = store.GetScratchBucket(project);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("cut text", changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+
+            ZetlNoteCaptureRequest CutRequest(string text) => new(
+                Shifted: false,
+                project,
+                scratch,
+                Text: text,
+                Source: "cut",
+                ShowStartProjectToggle: true,
+                StartProjectDefault: false,
+                ScratchOnlyUntilProjectStarted: true,
+                CreateNewProjectToggle: false,
+                ProjectToggleText: null,
+                ProjectNameDefault: null);
+
+            ZetlNoteCaptureResult Cancelled() => new(
+                Committed: false,
+                NoteText: "",
+                StartProject: false,
+                CreateNewProject: false,
+                ProjectName: project.Name,
+                SelectedBucketName: scratch.Name,
+                SelectedBucket: scratch);
+
+            AssertEqual(
+                ZetlNoteCaptureOutcome.PasteCutBack,
+                coordinator.CompleteNoteCapture(CutRequest("cut text"), Cancelled()),
+                "Discarding a held cut that captured text should request a paste-back.");
+            AssertEqual(
+                ZetlNoteCaptureOutcome.None,
+                coordinator.CompleteNoteCapture(CutRequest(""), Cancelled()),
+                "Discarding a held cut that captured nothing should not paste back.");
+            AssertEqual(
+                ZetlNoteCaptureOutcome.None,
+                coordinator.CompleteNoteCapture(
+                    CutRequest("cut text"),
+                    Cancelled() with { Committed = true, NoteText = "kept" }),
+                "Keeping the note should not paste the cut back.");
+            AssertEqual("kept", scratch.Notes.Single(note => note.Source == "cut").Text, "Only the kept cut note should be saved; discarded cuts should not.");
         }
 
         private static void RuntimeCompletesCompileResult()

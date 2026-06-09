@@ -83,4 +83,15 @@ internal enum ZetlCompileOutcome
     PasteNow
 }
 
+internal enum ZetlNoteCaptureOutcome
+{
+    None,
+
+    // A held cut was cancelled without keeping the note. Because Ctrl+X passes
+    // the physical cut through before the dialog opens, the source text is
+    // already gone; the host should paste the still-on-clipboard cut text back
+    // to restore it.
+    PasteCutBack
+}
+
 internal sealed record ZetlNotificationEntry(DateTime CreatedAt, string Message);

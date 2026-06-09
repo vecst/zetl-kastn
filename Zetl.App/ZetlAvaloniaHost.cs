@@ -356,7 +356,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 "Note popup closed: "
                 + $"saved={window.Saved}, "
                 + $"deactivate={window.ClosedByDeactivate}.");
-            coordinator.CompleteNoteCapture(
+            var outcome = coordinator.CompleteNoteCapture(
                 request,
                 new ZetlNoteCaptureResult(
                     window.Saved,
@@ -369,6 +369,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             if (!window.ClosedByDeactivate)
             {
                 ZetlForegroundService.RestoreTarget(target);
+                if (outcome == ZetlNoteCaptureOutcome.PasteCutBack)
+                {
+                    _ = coordinator.PasteCutBackAsync();
+                }
             }
         });
     }

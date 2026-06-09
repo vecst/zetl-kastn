@@ -143,7 +143,7 @@ internal sealed class ZetlShortcutCoordinator
         return Task.FromResult(request);
     }
 
-    public void CompleteNoteCapture(
+    public ZetlNoteCaptureOutcome CompleteNoteCapture(
         ZetlNoteCaptureRequest request,
         ZetlNoteCaptureResult result)
     {
@@ -154,7 +154,12 @@ internal sealed class ZetlShortcutCoordinator
                 store.ClearActiveProject(request.Shifted);
             }
 
-            return;
+            // A held Ctrl+X already performed the physical cut before the dialog
+            // opened, so discarding the note leaves the source missing its text.
+            // Signal the host to paste the still-on-clipboard cut text back.
+            return WasHeldCut(request)
+                ? ZetlNoteCaptureOutcome.PasteCutBack
+                : ZetlNoteCaptureOutcome.None;
         }
 
         var noteProject = request.Project;
@@ -211,6 +216,16 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         notifications.Show($"Saved to {ZetlRuntimeLabels.Destination(noteProject, bucket)}.");
+        return ZetlNoteCaptureOutcome.None;
+    }
+
+    // True when this capture came from a held cut that actually removed text
+    // (Ctrl+X / Ctrl+Shift+X with a non-empty selection). Held Ctrl+C copies are
+    // excluded: a copy leaves the source intact, so there is nothing to restore.
+    private static bool WasHeldCut(ZetlNoteCaptureRequest request)
+    {
+        return string.Equals(request.Source, "cut", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(request.Text);
     }
 
     public ZetlCompileOutcome CompleteCompile(
@@ -278,6 +293,17 @@ internal sealed class ZetlShortcutCoordinator
         dispatcher.Post(() => notifications.Show(pasted
             ? "Pasted compiled text."
             : "Paste failed; compiled text remains on the clipboard. If the target is elevated, run Zetl elevated too."));
+    }
+
+    // Re-paste the cut text into the restored foreground target after a held
+    // Ctrl+X note was discarded, undoing the physical cut.
+    public async Task PasteCutBackAsync()
+    {
+        await delay.WaitAsync(PopClipboardDelay);
+        var pasted = keyboard.SendPaste();
+        dispatcher.Post(() => notifications.Show(pasted
+            ? "Restored the cut text."
+            : "Couldn't restore the cut text; it remains on the clipboard."));
     }
 
     public async Task<string?> WaitForClipboardTextAsync(uint beforeSequence, TimeSpan timeout)

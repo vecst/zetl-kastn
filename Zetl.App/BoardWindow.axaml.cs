@@ -141,6 +141,7 @@ internal partial class BoardWindow : ZetlPopupWindow
             projectBox.SelectedItem = store.State.Projects.FirstOrDefault(
                     project => project.Id == firstChoiceId)
                 ?? store.State.Projects.FirstOrDefault(project => project.Id == secondChoiceId)
+                ?? store.GetMostRecentlyWrittenProject()
                 ?? store.State.Projects.FirstOrDefault();
             RefreshSelectedProject(selectedBucketId, selectedNoteId);
         }
