@@ -18,7 +18,7 @@ internal partial class ProjectSetupWindow : Window
         projectNameBox.Text = DateTime.Now.ToString("yyyy-MM-dd");
         bucketNamesBox.Text = string.Join(
             Environment.NewLine,
-            defaultBuckets is { Count: > 0 } ? defaultBuckets : new[] { "Inbox", "Scratch" });
+            ZetlBucketDefaults.ResolveProjectBuckets(defaultBuckets));
         bucketNamesBox.TextChanged += (_, _) => RefreshActiveBuckets();
         createButton.Click += (_, _) => Commit();
         cancelButton.Click += (_, _) => Close();

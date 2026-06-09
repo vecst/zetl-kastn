@@ -156,9 +156,7 @@ internal sealed class ZetlShortcutCoordinator
         var noteProject = request.Project;
         if (result.CreateNewProject)
         {
-            var bucketNames = store.Defaults.ProjectBuckets.Count > 0
-                ? store.Defaults.ProjectBuckets
-                : new List<string> { "Inbox", "Scratch" };
+            var bucketNames = store.Defaults.ResolvedProjectBuckets;
             noteProject = store.CreateProject(
                 result.ProjectName,
                 bucketNames,

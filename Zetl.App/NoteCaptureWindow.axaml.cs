@@ -239,17 +239,12 @@ internal partial class NoteCaptureWindow : Window, IClickAwayDismissable
 
     private IReadOnlyList<BucketDisplayItem> GetNewProjectBucketItems()
     {
-        var bucketNames = store.Defaults.ProjectBuckets
+        var bucketNames = store.Defaults.ResolvedProjectBuckets
             .Append("Scratch")
             .Select(name => name.Trim())
             .Where(name => name.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        if (bucketNames.Count == 0)
-        {
-            bucketNames.Add("Inbox");
-            bucketNames.Add("Scratch");
-        }
 
         return bucketNames
             .Select(name => new BucketDisplayItem(new ZetlBucket { Id = name, Name = name }, name))

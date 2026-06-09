@@ -469,9 +469,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.ToastDisplayMs = window.ToastDisplayMs;
         settings.AutoCaptureOnCopy = window.AutoCaptureOnCopy;
         settings.QuickNoteToClipboard = window.QuickNoteToClipboard;
-        settings.DefaultProjectBuckets = window.DefaultProjectBuckets.Count > 0
-            ? window.DefaultProjectBuckets
-            : ["Inbox", "Scratch"];
+        settings.DefaultProjectBuckets =
+            ZetlBucketDefaults.ResolveProjectBuckets(window.DefaultProjectBuckets).ToList();
         settings.DefaultCompileMode = window.DefaultCompileMode;
         settings.DefaultTsvRowLength = window.DefaultTsvRowLength;
         settingsStore.Save();

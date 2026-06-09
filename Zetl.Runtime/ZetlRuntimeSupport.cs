@@ -4,9 +4,7 @@ internal static class ZetlRuntimeSettings
 {
     public static void ApplyTo(ZetlStateStore store, ZetlAppSettings settings)
     {
-        var projectBuckets = settings.DefaultProjectBuckets.Count > 0
-            ? settings.DefaultProjectBuckets.ToList()
-            : new List<string> { "Inbox", "Scratch" };
+        var projectBuckets = ZetlBucketDefaults.ResolveProjectBuckets(settings.DefaultProjectBuckets).ToList();
         store.Defaults = new ZetlBucketDefaults(
             projectBuckets,
             settings.DefaultCompileMode,

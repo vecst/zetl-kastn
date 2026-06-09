@@ -60,6 +60,15 @@ internal sealed class ZetlNote
 internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, string CompileMode, int TsvRowLength)
 {
     public static ZetlBucketDefaults Standard { get; } = new(new[] { "Inbox", "Scratch" }, "Formatted", 5);
+
+    // The configured project buckets, or the built-in Inbox/Scratch fallback
+    // when none are set. Centralizes the fallback several call sites inlined.
+    public static IReadOnlyList<string> ResolveProjectBuckets(IReadOnlyList<string>? buckets)
+    {
+        return buckets is { Count: > 0 } ? buckets : Standard.ProjectBuckets;
+    }
+
+    public IReadOnlyList<string> ResolvedProjectBuckets => ResolveProjectBuckets(ProjectBuckets);
 }
 
 internal sealed class ZetlStateStore
@@ -192,7 +201,7 @@ internal sealed class ZetlStateStore
             return existingProject;
         }
 
-        var defaultBuckets = Defaults.ProjectBuckets.Count > 0 ? Defaults.ProjectBuckets : ["Inbox", "Scratch"];
+        var defaultBuckets = Defaults.ResolvedProjectBuckets;
         return CreateProject(defaultName, defaultBuckets, defaultBuckets[0], shifted);
     }
 
