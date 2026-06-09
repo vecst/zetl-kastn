@@ -2,61 +2,68 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="ZETL.ZetlSettingsWindow"
         Width="560" Height="430"
-        CanResize="False"
+        MinWidth="460" MinHeight="320"
+        CanResize="True"
         SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="Zetl Settings">
-  <Grid Margin="{DynamicResource ZetlWindowPadding}"
-        ColumnDefinitions="230,*"
-        RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
-    <TextBlock Grid.Row="0" Grid.Column="0"
-               Text="Toast display time (ms)"
-               VerticalAlignment="Center" />
-    <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="toastMsBox"
-                   Width="100" HorizontalAlignment="Left"
-                   Minimum="200" Maximum="5000" Increment="50" />
+  <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="*,Auto">
+    <ScrollViewer Grid.Row="0"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+      <Grid ColumnDefinitions="230,*"
+            RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+            Margin="0,0,8,0">
+        <TextBlock Grid.Row="0" Grid.Column="0"
+                   Text="Toast display time (ms)"
+                   VerticalAlignment="Center" />
+        <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="toastMsBox"
+                       Width="100" HorizontalAlignment="Left"
+                       Minimum="200" Maximum="5000" Increment="50" />
 
-    <TextBlock Grid.Row="1" Grid.Column="0"
-               Text="Auto-capture on copy"
-               VerticalAlignment="Center" />
-    <CheckBox Grid.Row="1" Grid.Column="1" x:Name="autoCaptureBox"
-              Margin="0,8,0,0"
-              Content="Capture plain Ctrl+C into the active bucket" />
+        <TextBlock Grid.Row="1" Grid.Column="0"
+                   Text="Auto-capture on copy"
+                   VerticalAlignment="Center" />
+        <CheckBox Grid.Row="1" Grid.Column="1" x:Name="autoCaptureBox"
+                  Margin="0,8,0,0"
+                  Content="Capture plain Ctrl+C into the active bucket" />
 
-    <TextBlock Grid.Row="2" Grid.Column="0"
-               Text="Quick note to clipboard"
-               VerticalAlignment="Center" />
-    <CheckBox Grid.Row="2" Grid.Column="1" x:Name="quickNoteClipboardBox"
-              Margin="0,8,0,0"
-              Content="Held Ctrl+X note also copies its text to the clipboard" />
+        <TextBlock Grid.Row="2" Grid.Column="0"
+                   Text="Quick note to clipboard"
+                   VerticalAlignment="Center" />
+        <CheckBox Grid.Row="2" Grid.Column="1" x:Name="quickNoteClipboardBox"
+                  Margin="0,8,0,0"
+                  Content="Held Ctrl+X note also copies its text to the clipboard" />
 
-    <TextBlock Grid.Row="3" Grid.Column="0"
-               Text="Default project buckets (one per line)"
-               Margin="0,14,10,0"
-               VerticalAlignment="Top"
-               TextWrapping="Wrap" />
-    <TextBox Grid.Row="3" Grid.Column="1" x:Name="defaultBucketsBox"
-             Margin="0,12,0,0"
-             AcceptsReturn="True"
-             MinHeight="110"
-             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+        <TextBlock Grid.Row="3" Grid.Column="0"
+                   Text="Default project buckets (one per line)"
+                   Margin="0,14,10,0"
+                   VerticalAlignment="Top"
+                   TextWrapping="Wrap" />
+        <TextBox Grid.Row="3" Grid.Column="1" x:Name="defaultBucketsBox"
+                 Margin="0,12,0,0"
+                 AcceptsReturn="True"
+                 MinHeight="110"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
 
-    <TextBlock Grid.Row="4" Grid.Column="0"
-               Text="Default compile mode"
-               Margin="0,12,0,0"
-               VerticalAlignment="Center" />
-    <ComboBox Grid.Row="4" Grid.Column="1" x:Name="compileModeBox"
-              Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
+        <TextBlock Grid.Row="4" Grid.Column="0"
+                   Text="Default compile mode"
+                   Margin="0,12,0,0"
+                   VerticalAlignment="Center" />
+        <ComboBox Grid.Row="4" Grid.Column="1" x:Name="compileModeBox"
+                  Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
 
-    <TextBlock Grid.Row="5" Grid.Column="0"
-               Text="Default TSV row length"
-               Margin="0,12,0,0"
-               VerticalAlignment="Center" />
-    <NumericUpDown Grid.Row="5" Grid.Column="1" x:Name="tsvRowLengthBox"
-                   Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
-                   Minimum="1" Maximum="50" Increment="1" />
+        <TextBlock Grid.Row="5" Grid.Column="0"
+                   Text="Default TSV row length"
+                   Margin="0,12,0,0"
+                   VerticalAlignment="Center" />
+        <NumericUpDown Grid.Row="5" Grid.Column="1" x:Name="tsvRowLengthBox"
+                       Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
+                       Minimum="1" Maximum="50" Increment="1" />
+      </Grid>
+    </ScrollViewer>
 
-    <Grid Grid.Row="6" Grid.ColumnSpan="2"
+    <Grid Grid.Row="1"
           ColumnDefinitions="Auto,*,Auto"
           Margin="0,16,0,0">
       <Button Grid.Column="0"

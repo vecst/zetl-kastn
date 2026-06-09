@@ -12,6 +12,7 @@ internal partial class NotificationHistoryWindow : Window
     internal NotificationHistoryWindow(IReadOnlyList<ZetlNotificationEntry> entries)
     {
         InitializeComponent();
+        ZetlWindowPlacement.Track(this);
 
         RefreshEntries(entries);
         closeButton.Click += (_, _) => Close();

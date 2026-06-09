@@ -34,6 +34,7 @@ internal partial class ThemeEditorWindow : Window
         baselineVariant = themeManager.CurrentVariant;
 
         InitializeComponent();
+        ZetlWindowPlacement.Track(this);
         variantBox.ItemsSource = new[] { "System", "Light", "Dark" };
         colorBoxes =
         [

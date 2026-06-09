@@ -437,7 +437,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     // foreground, taking over from the captured shortcut target when present.
     private void PositionAndActivate(Window window, object? target)
     {
-        PositionNearTopSixth(window);
+        ZetlWindowPlacement.FitToScreen(window);
         ZetlWindowActivation.Show(
             window,
             activationTarget: target,
@@ -514,7 +514,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         window.Closed += (_, _) => completion.TrySetResult();
-        PositionNearTopSixth(window);
+        ZetlWindowPlacement.FitToScreen(window);
         ZetlWindowActivation.Show(window);
         return completion.Task;
     }
@@ -628,55 +628,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 "Embedded default hotkeys.json is missing.");
         using var reader = new StreamReader(stream);
         return ChordlConfigLoader.LoadFromJson(reader.ReadToEnd());
-    }
-
-    // Place a window centered horizontally and about a sixth of the way down,
-    // but never larger than (or hanging off) the screen's working area. The
-    // working area is in physical pixels while a window's Width/Height are
-    // logical, so everything is converted through the screen scaling — without
-    // that, the fit check would silently fail on the 125–150% displays most
-    // laptops use.
-    private static void PositionNearTopSixth(Window window)
-    {
-        var screen = window.Screens.Primary;
-        if (screen is null)
-        {
-            return;
-        }
-
-        var area = screen.WorkingArea;
-        var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
-        var areaWidth = area.Width / scaling;
-        var areaHeight = area.Height / scaling;
-        const double margin = 16;
-
-        // Shrink to fit when the window is taller/wider than the screen, leaving
-        // a small margin; never go below the window's own minimum.
-        var maxWidth = Math.Max(window.MinWidth, areaWidth - margin);
-        var maxHeight = Math.Max(window.MinHeight, areaHeight - margin);
-        if (window.Width > maxWidth)
-        {
-            window.Width = maxWidth;
-        }
-
-        if (window.Height > maxHeight)
-        {
-            window.Height = maxHeight;
-        }
-
-        // Center horizontally; sit ~1/6 down, but pull up so the bottom (and its
-        // action buttons) stay on-screen.
-        var x = Math.Max(0, (areaWidth - window.Width) / 2);
-        var y = Math.Max(margin, areaHeight / 6);
-        if (y + window.Height > areaHeight)
-        {
-            y = Math.Max(0, areaHeight - window.Height);
-        }
-
-        window.WindowStartupLocation = WindowStartupLocation.Manual;
-        window.Position = new PixelPoint(
-            area.X + (int)(x * scaling),
-            area.Y + (int)(y * scaling));
     }
 
     private static WindowIcon CreateTrayWindowIcon()

@@ -44,7 +44,14 @@ internal abstract class ZetlPopupWindow : Window, IClickAwayDismissable
             armTimer.Stop();
             OnPopupClosing();
         };
+        ZetlWindowPlacement.Track(this, CompactWidthReduction, CompactHeightReduction);
     }
+
+    // Extra width/height a subclass sheds when the screen is too small for its
+    // authored size, so a large popup does not fill a small display.
+    protected virtual double CompactWidthReduction => 0;
+
+    protected virtual double CompactHeightReduction => 0;
 
     // Set by the host: whether a click-away/deactivation dismisses this popup.
     public bool DismissOnDeactivate { get; set; }

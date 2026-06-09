@@ -13,6 +13,12 @@ internal partial class BoardWindow : ZetlPopupWindow
     private bool childDialogOpen;
     private ZetlNote? editingNote;
 
+    // The Board is large, so on a small display shed extra space rather than
+    // filling the whole screen.
+    protected override double CompactWidthReduction => 175;
+
+    protected override double CompactHeightReduction => 150;
+
     public BoardWindow()
     {
         InitializeComponent();

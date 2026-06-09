@@ -12,6 +12,7 @@ internal partial class TextPromptWindow : Window
     internal TextPromptWindow(string title, string label)
     {
         InitializeComponent();
+        ZetlWindowPlacement.Track(this);
 
         Title = title;
         promptLabel.Text = label;

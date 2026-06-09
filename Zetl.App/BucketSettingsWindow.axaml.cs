@@ -12,6 +12,7 @@ internal partial class BucketSettingsWindow : Window
     internal BucketSettingsWindow(ZetlBucket bucket, ZetlStateStore store)
     {
         InitializeComponent();
+        ZetlWindowPlacement.Track(this);
 
         bucketNameBox.Text = bucket.Name;
         bucketNameBox.IsEnabled = !ZetlStateStore.IsScratchBucket(bucket);

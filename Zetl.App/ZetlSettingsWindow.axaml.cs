@@ -18,6 +18,7 @@ internal partial class ZetlSettingsWindow : Window
         ZetlAppSettingsStore? settingsStore = null)
     {
         InitializeComponent();
+        ZetlWindowPlacement.Track(this);
 
         toastMsBox.Value = Clamp(settings.ToastDisplayMs, 200, 5000);
         autoCaptureBox.IsChecked = settings.AutoCaptureOnCopy;

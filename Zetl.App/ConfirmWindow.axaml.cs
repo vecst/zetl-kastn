@@ -12,6 +12,7 @@ internal partial class ConfirmWindow : Window
     internal ConfirmWindow(string message, string confirmText = "Delete")
     {
         InitializeComponent();
+        ZetlWindowPlacement.Track(this);
 
         messageText.Text = message;
         confirmButton.Content = confirmText;

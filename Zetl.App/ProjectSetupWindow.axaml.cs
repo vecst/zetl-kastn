@@ -14,6 +14,7 @@ internal partial class ProjectSetupWindow : Window
     internal ProjectSetupWindow(IReadOnlyList<string>? defaultBuckets)
     {
         InitializeComponent();
+        ZetlWindowPlacement.Track(this);
 
         projectNameBox.Text = DateTime.Now.ToString("yyyy-MM-dd");
         bucketNamesBox.Text = string.Join(

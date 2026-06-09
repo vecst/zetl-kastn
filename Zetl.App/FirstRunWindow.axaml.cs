@@ -7,6 +7,9 @@ internal partial class FirstRunWindow : Window
     public FirstRunWindow()
     {
         InitializeComponent();
+        // How Zetl Works is large; on a small display leave a margin instead of
+        // filling the screen.
+        ZetlWindowPlacement.Track(this, compactWidth: 175, compactHeight: 150);
 
         gotItButton.Click += (_, _) => Close();
         openBoardButton.Click += (_, _) =>
