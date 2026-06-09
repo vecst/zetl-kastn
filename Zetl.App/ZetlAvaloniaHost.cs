@@ -328,11 +328,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
         board.AutoHideOnDeactivate = target is not null;
         board.ShowActiveProject();
-        PositionNearTopSixth(board);
-        ZetlWindowActivation.Show(
-            board,
-            activationTarget: target,
-            log: Log);
+        PositionAndActivate(board, target);
     }
 
     private void ShowNoteCapture(
@@ -354,11 +350,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ShowInTaskbar = false,
             CommitOnDeactivate = target is not null
         };
-        RegisterClickAwayPopup(window);
-        window.Opened += (_, _) => Log("Note popup opened.");
-        window.Activated += (_, _) => Log("Note popup activated.");
-        window.Deactivated += (_, _) => Log("Note popup deactivated.");
-        window.Closed += (_, _) =>
+        ConfigureAndShowPopup(window, target, "Note", () =>
         {
             Log(
                 "Note popup closed: "
@@ -378,12 +370,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             {
                 ZetlForegroundService.RestoreTarget(target);
             }
-        };
-        PositionNearTopSixth(window);
-        ZetlWindowActivation.Show(
-            window,
-            activationTarget: target,
-            log: Log);
+        });
     }
 
     private void ShowCompile(
@@ -398,11 +385,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ShowInTaskbar = false,
             CloseOnDeactivate = target is not null
         };
-        RegisterClickAwayPopup(window);
-        window.Opened += (_, _) => Log("Compile popup opened.");
-        window.Activated += (_, _) => Log("Compile popup activated.");
-        window.Deactivated += (_, _) => Log("Compile popup deactivated.");
-        window.Closed += (_, _) =>
+        ConfigureAndShowPopup(window, target, "Compile", () =>
         {
             Log(
                 "Compile popup closed: "
@@ -428,7 +411,31 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             {
                 ZetlForegroundService.RestoreTarget(target);
             }
-        };
+        });
+    }
+
+    // Shared transient-popup wiring: register click-away dismissal, log the
+    // activation lifecycle, then position and steal the foreground. The
+    // caller's onClosed runs on Closed and owns completion, foreground
+    // restore, and the type-specific close log.
+    private void ConfigureAndShowPopup(
+        Window window,
+        object? target,
+        string logName,
+        Action onClosed)
+    {
+        RegisterClickAwayPopup(window);
+        window.Opened += (_, _) => Log($"{logName} popup opened.");
+        window.Activated += (_, _) => Log($"{logName} popup activated.");
+        window.Deactivated += (_, _) => Log($"{logName} popup deactivated.");
+        window.Closed += (_, _) => onClosed();
+        PositionAndActivate(window, target);
+    }
+
+    // Place a window near the top sixth of the working area and bring it to the
+    // foreground, taking over from the captured shortcut target when present.
+    private void PositionAndActivate(Window window, object? target)
+    {
         PositionNearTopSixth(window);
         ZetlWindowActivation.Show(
             window,
