@@ -58,7 +58,24 @@ public partial class App : Application
             }
 
             // DEV HARNESS: preview ported windows against throwaway data.
-            var stateDir = Path.Combine(Path.GetTempPath(), "ZetlAvaloniaPreview");
+            // Each instance gets its own state directory so concurrent
+            // previews never contend on the same files.
+            var stateDir = Path.Combine(
+                Path.GetTempPath(),
+                "ZetlAvaloniaPreview",
+                $"instance-{Environment.ProcessId}");
+            desktop.Exit += (_, _) =>
+            {
+                try
+                {
+                    Directory.Delete(stateDir, recursive: true);
+                }
+                catch (Exception ex) when (
+                    ex is IOException or UnauthorizedAccessException)
+                {
+                    // Leftover throwaway data in the temp directory is fine.
+                }
+            };
             var settingsStore = new ZetlAppSettingsStore(
                 Path.Combine(stateDir, "settings.json"));
             var themeStore = new ZetlThemeStore(

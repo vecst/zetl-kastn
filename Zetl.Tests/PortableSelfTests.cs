@@ -66,6 +66,8 @@ internal static class PortableSelfTests
                 ("Zetl state round-trips JSON", StateRoundTripsJson),
                 ("Zetl state stores each project in its own folder", StateStoresEachProjectInItsOwnFolder),
                 ("Zetl state migrates a legacy single state file", StateMigratesLegacySingleFile),
+                ("Zetl json writes do not collide under concurrent writers", JsonFileConcurrentWritesDoNotCollide),
+                ("Zetl json parse errors name the damaged file", JsonFileReadNamesDamagedFile),
                 ("Zetl state appends activity-log notes without activating", StateAppendsLogNotesWithoutActivating),
                 ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
@@ -1282,6 +1284,44 @@ internal static class PortableSelfTests
 
             var reloaded = new ZetlStateStore(temp.Path);
             AssertEqual("Legacy", reloaded.State.Projects.Single().Name, "Migrated project should reload from the new layout.");
+        }
+
+        private static void JsonFileConcurrentWritesDoNotCollide()
+        {
+            using var temp = new TempStateFile();
+            // Another writer mid-write used to hold this exact temp name,
+            // which made WriteAtomic throw a sharing violation.
+            using var heldTemp = new FileStream(
+                temp.Path + ".tmp",
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None);
+
+            JsonFile.WriteAtomic(temp.Path, new[] { "first" });
+            AssertTrue(File.Exists(temp.Path), "Write should land while another writer holds the shared temp name.");
+
+            JsonFile.WriteAtomic(temp.Path, new[] { "second" });
+            AssertEqual(
+                "second",
+                JsonFile.Read<string[]>(temp.Path)?.Single(),
+                "Replacing an existing file should also ignore the held temp name.");
+        }
+
+        private static void JsonFileReadNamesDamagedFile()
+        {
+            using var temp = new TempStateFile();
+            File.WriteAllText(temp.Path, "{ this is not json");
+            try
+            {
+                JsonFile.Read<string[]>(temp.Path);
+                AssertTrue(false, "Reading a damaged file should throw.");
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                AssertTrue(
+                    ex.Message.Contains(temp.Path),
+                    $"Parse errors should name the damaged file. Got: {ex.Message}");
+            }
         }
 
         private static void StateAppendsLogNotesWithoutActivating()

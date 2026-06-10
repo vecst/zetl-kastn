@@ -17,15 +17,30 @@ internal static class JsonFile
 
     public static T? Read<T>(string path)
     {
-        return File.Exists(path)
-            ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options)
-            : default;
+        if (!File.Exists(path))
+        {
+            return default;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(File.ReadAllText(path), Options);
+        }
+        catch (JsonException ex)
+        {
+            // Rethrown as JsonException so callers that fall back on invalid
+            // files (user themes) still match, while surfaced errors name the
+            // file that is damaged.
+            throw new JsonException($"Failed to parse '{path}': {ex.Message}", ex);
+        }
     }
 
     public static void WriteAtomic<T>(string path, T value)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var tempPath = path + ".tmp";
+        // Unique per write so concurrent writers (two preview instances, or a
+        // timer flush racing a UI-thread save) never contend on one temp file.
+        var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
         File.WriteAllText(tempPath, JsonSerializer.Serialize(value, Options));
         if (File.Exists(path))
         {
