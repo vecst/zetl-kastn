@@ -64,4 +64,47 @@ internal static class Win32Interop
         uint param,
         IntPtr pvParam,
         uint winIni);
+
+    // Message pump for the dedicated keyboard-hook thread.
+    internal const uint WmQuit = 0x0012;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MSG
+    {
+        public IntPtr Hwnd;
+        public uint Message;
+        public UIntPtr WParam;
+        public IntPtr LParam;
+        public uint Time;
+        public int PointX;
+        public int PointY;
+    }
+
+    [DllImport("user32.dll")]
+    internal static extern int GetMessage(
+        out MSG message,
+        IntPtr hwnd,
+        uint filterMin,
+        uint filterMax);
+
+    [DllImport("user32.dll")]
+    internal static extern bool PeekMessage(
+        out MSG message,
+        IntPtr hwnd,
+        uint filterMin,
+        uint filterMax,
+        uint remove);
+
+    [DllImport("user32.dll")]
+    internal static extern bool TranslateMessage(ref MSG message);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr DispatchMessage(ref MSG message);
+
+    [DllImport("user32.dll")]
+    internal static extern bool PostThreadMessage(
+        uint threadId,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam);
 }

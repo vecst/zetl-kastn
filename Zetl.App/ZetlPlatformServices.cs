@@ -34,18 +34,63 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
     private Win32Interop.LowLevelHookProc? hookProc;
     private IntPtr hookId;
     private Func<int, bool, bool, bool, bool>? handleKeyEvent;
+    private Thread? hookThread;
+    private uint hookThreadId;
 
+    // The hook runs on its own message-pump thread rather than the UI thread.
+    // Low-level hook callbacks are delivered through the installing thread's
+    // message loop, so a UI-thread hook stalls every keystroke system-wide
+    // whenever the UI is busy — and Windows silently removes hooks that exceed
+    // its LowLevelHooksTimeout. A dedicated thread keeps chord handling
+    // responsive no matter what the windows are doing.
     public bool Start(Func<int, bool, bool, bool, bool> handler)
     {
         handleKeyEvent = handler;
-        hookProc = HookCallback;
-        using var process = Process.GetCurrentProcess();
-        using var module = process.MainModule;
-        hookId = Win32Interop.SetWindowsHookEx(
-            WhKeyboardLl,
-            hookProc,
-            Win32Interop.GetModuleHandle(module?.ModuleName),
-            0);
+        using var hookInstalled = new ManualResetEventSlim();
+        hookThread = new Thread(() =>
+        {
+            hookProc = HookCallback;
+            using (var process = Process.GetCurrentProcess())
+            using (var module = process.MainModule)
+            {
+                hookId = Win32Interop.SetWindowsHookEx(
+                    WhKeyboardLl,
+                    hookProc,
+                    Win32Interop.GetModuleHandle(module?.ModuleName),
+                    0);
+            }
+
+            hookThreadId = Win32Interop.GetCurrentThreadId();
+            // Touch the message queue so it exists before Dispose can post
+            // WM_QUIT, then let Start observe the install result.
+            Win32Interop.PeekMessage(out _, IntPtr.Zero, 0, 0, 0);
+            hookInstalled.Set();
+            if (hookId == IntPtr.Zero)
+            {
+                return;
+            }
+
+            while (Win32Interop.GetMessage(out var message, IntPtr.Zero, 0, 0) > 0)
+            {
+                Win32Interop.TranslateMessage(ref message);
+                Win32Interop.DispatchMessage(ref message);
+            }
+
+            Win32Interop.UnhookWindowsHookEx(hookId);
+            hookId = IntPtr.Zero;
+        })
+        {
+            IsBackground = true,
+            Name = "Zetl keyboard hook"
+        };
+        // Clipboard and shell interop behave best from an STA pump thread.
+        if (OperatingSystem.IsWindows())
+        {
+            hookThread.SetApartmentState(ApartmentState.STA);
+        }
+
+        hookThread.Start();
+        hookInstalled.Wait();
         return hookId != IntPtr.Zero;
     }
 
@@ -75,8 +120,21 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
 
     public void Dispose()
     {
+        if (hookThread is { IsAlive: true })
+        {
+            Win32Interop.PostThreadMessage(
+                hookThreadId,
+                Win32Interop.WmQuit,
+                UIntPtr.Zero,
+                IntPtr.Zero);
+            hookThread.Join(TimeSpan.FromSeconds(1));
+        }
+
+        hookThread = null;
         if (hookId != IntPtr.Zero)
         {
+            // The loop normally unhooks on its way out; this is the fallback
+            // when the thread never started its loop or failed to exit in time.
             Win32Interop.UnhookWindowsHookEx(hookId);
             hookId = IntPtr.Zero;
         }

@@ -22,7 +22,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly ZetlActivityLogBuffer activityLog = new();
     private readonly AvaloniaNotificationService notifications;
     private readonly ZetlUndoStack undoStack = new(MaxUndoActions);
-    private readonly List<string> logLines = [];
     private readonly DispatcherTimer logFlushTimer;
     private readonly IKeyboardBackend keyboard;
     private readonly IClipboard clipboard;
@@ -37,7 +36,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly BlockingCollection<string> diagnosticLines = [];
     private readonly Thread diagnosticThread;
     private readonly List<IClickAwayDismissable> clickAwayPopups = [];
-    private ZetlClickAwayMonitor? clickAwayMonitor;
+    private readonly ZetlClickAwayWatcher clickAwayWatcher;
     private bool disposed;
 
     public ZetlAvaloniaHost(
@@ -69,7 +68,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             Name = "Zetl diagnostics"
         };
         diagnosticThread.Start();
-        clickAwayMonitor = new ZetlClickAwayMonitor(OnClickOutsideApp);
+        clickAwayWatcher = new ZetlClickAwayWatcher(OnClickOutsideApp);
 
         themeManager = new ZetlThemeManager(application, settingsStore);
         themeManager.Apply(
@@ -148,14 +147,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     public void Log(string message)
     {
-        var line = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
-        logLines.Add(line);
-        if (logLines.Count > 200)
-        {
-            logLines.RemoveAt(0);
-        }
-
-        WriteDiagnosticLine(line);
+        WriteDiagnosticLine($"[{DateTime.Now:HH:mm:ss.fff}] {message}");
     }
 
     public void OpenBoard()
@@ -171,8 +163,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         }
 
         disposed = true;
-        clickAwayMonitor?.Dispose();
-        clickAwayMonitor = null;
+        clickAwayWatcher.Stop();
         logFlushTimer.Stop();
         FlushLogNotes();
         foreach (var board in boards.Values.ToList())
@@ -189,24 +180,16 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         diagnosticThread.Join(TimeSpan.FromSeconds(1));
     }
 
-    // Fired off the global mouse hook (non-UI thread) when a click lands
-    // outside Zetl's windows. Marshal to the UI thread and dismiss any
-    // click-away popups, covering cases the OS Deactivated event misses (e.g.
-    // clicking the bare desktop, which does not move the foreground).
+    // Fired by the click-away watcher (UI thread) when the user clicks or
+    // moves the foreground outside Zetl's windows. Dismisses any click-away
+    // popups, covering cases the OS Deactivated event misses (e.g. clicking
+    // the bare desktop, which does not move the foreground).
     private void OnClickOutsideApp()
     {
-        if (clickAwayPopups.Count == 0)
+        foreach (var popup in clickAwayPopups.ToList())
         {
-            return;
+            popup.DismissFromClickAway();
         }
-
-        Dispatcher.UIThread.Post(() =>
-        {
-            foreach (var popup in clickAwayPopups.ToList())
-            {
-                popup.DismissFromClickAway();
-            }
-        });
     }
 
     private void RegisterClickAwayPopup(Window window)
@@ -219,9 +202,17 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         if (!clickAwayPopups.Contains(dismissable))
         {
             clickAwayPopups.Add(dismissable);
+            clickAwayWatcher.Start();
         }
 
-        window.Closed += (_, _) => clickAwayPopups.Remove(dismissable);
+        window.Closed += (_, _) =>
+        {
+            clickAwayPopups.Remove(dismissable);
+            if (clickAwayPopups.Count == 0)
+            {
+                clickAwayWatcher.Stop();
+            }
+        };
     }
 
     private TrayIcon CreateTrayIcon()
@@ -612,6 +603,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             Directory.CreateDirectory(Path.GetDirectoryName(
                 Path.GetFullPath(diagnosticLogPath))!);
+            TrimDiagnosticLog();
             using var writer = new StreamWriter(
                 diagnosticLogPath,
                 append: true)
@@ -627,6 +619,29 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             // Diagnostics must never interfere with keyboard handling.
         }
+    }
+
+    // The log appends across every run, so cap it at startup: when it
+    // outgrows 1 MB, keep only the most recent quarter so there is always
+    // recent history to debug with but the file cannot grow without bound.
+    private void TrimDiagnosticLog()
+    {
+        const long maxLogBytes = 1_000_000;
+        var info = new FileInfo(diagnosticLogPath);
+        if (!info.Exists || info.Length <= maxLogBytes)
+        {
+            return;
+        }
+
+        var bytes = File.ReadAllBytes(diagnosticLogPath);
+        var keepFrom = bytes.Length - (int)(maxLogBytes / 4);
+        // Start at the first whole line inside the kept window.
+        while (keepFrom < bytes.Length && bytes[keepFrom - 1] != (byte)'\n')
+        {
+            keepFrom++;
+        }
+
+        File.WriteAllBytes(diagnosticLogPath, bytes[keepFrom..]);
     }
 
     private static ChordlConfiguration LoadChordlConfiguration(

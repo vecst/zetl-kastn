@@ -17,22 +17,63 @@ internal sealed class WindowsKeyboardBackend : IKeyboardBackend
     private const int WM_SYSKEYDOWN = 0x0104;
     private const int WM_SYSKEYUP = 0x0105;
 
+    private const int WM_QUIT = 0x0012;
+
     private readonly Action<string> log;
     private readonly HashSet<int> downKeys = [];
     private LowLevelKeyboardProc? hookProc; // kept referenced so it isn't collected
     private IntPtr hookId = IntPtr.Zero;
     private Func<int, bool, bool, bool, bool>? handleKeyEvent;
+    private Thread? hookThread;
+    private uint hookThreadId;
 
     public WindowsKeyboardBackend(Action<string> log)
     {
         this.log = log;
     }
 
+    // The hook runs on its own message-pump thread rather than the UI thread.
+    // Low-level hook callbacks are delivered through the installing thread's
+    // message loop, so a UI-thread hook stalls every keystroke system-wide
+    // whenever the UI is busy — and Windows silently removes hooks that exceed
+    // its LowLevelHooksTimeout. A dedicated thread keeps chord handling
+    // responsive no matter what the windows are doing.
     public bool Start(Func<int, bool, bool, bool, bool> handleKeyEvent)
     {
         this.handleKeyEvent = handleKeyEvent;
-        hookProc = HookCallback;
-        hookId = SetHook(hookProc);
+        using var hookInstalled = new ManualResetEventSlim();
+        hookThread = new Thread(() =>
+        {
+            hookProc = HookCallback;
+            hookId = SetHook(hookProc);
+            hookThreadId = GetCurrentThreadId();
+            // Touch the message queue so it exists before Dispose can post
+            // WM_QUIT, then let Start observe the install result.
+            PeekMessage(out _, IntPtr.Zero, 0, 0, 0);
+            hookInstalled.Set();
+            if (hookId == IntPtr.Zero)
+            {
+                return;
+            }
+
+            while (GetMessage(out var message, IntPtr.Zero, 0, 0) > 0)
+            {
+                TranslateMessage(ref message);
+                DispatchMessage(ref message);
+            }
+
+            UnhookWindowsHookEx(hookId);
+            hookId = IntPtr.Zero;
+        })
+        {
+            IsBackground = true,
+            Name = "Zetl keyboard hook"
+        };
+        // STA so the WinForms clipboard used by the legacy head keeps working
+        // when coordinator callbacks run inline on this thread.
+        hookThread.SetApartmentState(ApartmentState.STA);
+        hookThread.Start();
+        hookInstalled.Wait();
         return hookId != IntPtr.Zero;
     }
 
@@ -48,8 +89,17 @@ internal sealed class WindowsKeyboardBackend : IKeyboardBackend
 
     public void Dispose()
     {
+        if (hookThread is { IsAlive: true })
+        {
+            PostThreadMessage(hookThreadId, WM_QUIT, UIntPtr.Zero, IntPtr.Zero);
+            hookThread.Join(TimeSpan.FromSeconds(1));
+        }
+
+        hookThread = null;
         if (hookId != IntPtr.Zero)
         {
+            // The loop normally unhooks on its way out; this is the fallback
+            // when the thread never started its loop or failed to exit in time.
             UnhookWindowsHookEx(hookId);
             hookId = IntPtr.Zero;
         }
@@ -111,8 +161,38 @@ internal sealed class WindowsKeyboardBackend : IKeyboardBackend
         public UIntPtr dwExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public UIntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public int ptX;
+        public int ptY;
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll")]
+    private static extern int GetMessage(out MSG message, IntPtr hwnd, uint filterMin, uint filterMax);
+
+    [DllImport("user32.dll")]
+    private static extern bool PeekMessage(out MSG message, IntPtr hwnd, uint filterMin, uint filterMax, uint remove);
+
+    [DllImport("user32.dll")]
+    private static extern bool TranslateMessage(ref MSG message);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr DispatchMessage(ref MSG message);
+
+    [DllImport("user32.dll")]
+    private static extern bool PostThreadMessage(uint threadId, uint message, UIntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
