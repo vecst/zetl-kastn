@@ -506,16 +506,23 @@ internal static class ZetlForegroundService
             : new WindowsForegroundTarget(handle, processId);
     }
 
-    public static void RestoreTarget(object? target)
+    public static void RestoreTarget(object? target, Action<string>? log = null)
     {
-        if (OperatingSystem.IsWindows()
-            && target is WindowsForegroundTarget windowsTarget
-            && windowsTarget.Handle != IntPtr.Zero
-            && Win32Interop.IsWindow(windowsTarget.Handle)
-            && TargetProcessStillMatches(windowsTarget))
+        if (!OperatingSystem.IsWindows())
         {
-            RestoreWindowsTarget(windowsTarget.Handle);
+            return;
         }
+
+        if (target is not WindowsForegroundTarget windowsTarget
+            || windowsTarget.Handle == IntPtr.Zero
+            || !Win32Interop.IsWindow(windowsTarget.Handle)
+            || !TargetProcessStillMatches(windowsTarget))
+        {
+            log?.Invoke($"Restore skipped for target {DescribeTarget(target)}.");
+            return;
+        }
+
+        RestoreWindowsTarget(windowsTarget.Handle, log);
     }
 
     public static IntPtr? GetWindowsHandle(object? target)
@@ -535,39 +542,51 @@ internal static class ZetlForegroundService
         return $"hwnd=0x{windowsTarget.Handle.ToInt64():X}, pid={windowsTarget.ProcessId}";
     }
 
-    private static void RestoreWindowsTarget(IntPtr handle)
+    private static void RestoreWindowsTarget(IntPtr handle, Action<string>? log = null)
     {
         var currentForeground = Win32Interop.GetForegroundWindow();
         if (currentForeground == handle)
         {
+            log?.Invoke($"Restore: target 0x{handle.ToInt64():X} already foreground.");
             return;
         }
 
+        // Attach our own (calling) thread to the thread that currently owns the
+        // foreground, mirroring the window-open activation path. Without this,
+        // SetForegroundWindow is issued from an unattached thread and Windows
+        // returns true but ignores it once the popup is no longer foreground —
+        // dropping focus onto whatever Windows picked instead.
         var foregroundThreadId = currentForeground == IntPtr.Zero
             ? 0
             : Win32Interop.GetWindowThreadProcessId(currentForeground, out _);
-        var targetThreadId = Win32Interop.GetWindowThreadProcessId(handle, out _);
+        var currentThreadId = Win32Interop.GetCurrentThreadId();
         var attached = foregroundThreadId != 0
-            && targetThreadId != 0
-            && foregroundThreadId != targetThreadId
+            && foregroundThreadId != currentThreadId
             && Win32Interop.AttachThreadInput(
-                targetThreadId,
+                currentThreadId,
                 foregroundThreadId,
                 attach: true);
+        bool set;
         try
         {
-            Win32Interop.SetForegroundWindow(handle);
+            set = Win32Interop.SetForegroundWindow(handle);
         }
         finally
         {
             if (attached)
             {
                 Win32Interop.AttachThreadInput(
-                    targetThreadId,
+                    currentThreadId,
                     foregroundThreadId,
                     attach: false);
             }
         }
+
+        log?.Invoke(
+            $"Restore: target=0x{handle.ToInt64():X}, "
+            + $"before=0x{currentForeground.ToInt64():X}, "
+            + $"set={set}, "
+            + $"after=0x{Win32Interop.GetForegroundWindow().ToInt64():X}.");
     }
 
     private static bool TargetProcessStillMatches(

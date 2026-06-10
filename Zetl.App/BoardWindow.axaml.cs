@@ -19,6 +19,10 @@ internal partial class BoardWindow : ZetlPopupWindow
 
     protected override double CompactHeightReduction => 150;
 
+    // The foreground window to restore when a gesture-opened Board closes (null
+    // for a tray-opened Board, which should not steal focus back).
+    public object? ForegroundTarget { get; set; }
+
     public BoardWindow()
     {
         InitializeComponent();

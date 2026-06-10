@@ -326,11 +326,21 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 ShowInTaskbar = false
             };
             var lane = shifted;
+            // Restore on Closing (before the window vanishes) so focus hands off
+            // directly, without Windows flashing whatever it picks first.
+            board.Closing += (_, _) =>
+            {
+                if (!board.ClosedByDeactivate)
+                {
+                    ZetlForegroundService.RestoreTarget(board.ForegroundTarget, Log);
+                }
+            };
             board.Closed += (_, _) => boards.Remove(lane);
             RegisterClickAwayPopup(board);
             boards[lane] = board;
         }
 
+        board.ForegroundTarget = target;
         board.DismissOnDeactivate = target is not null;
         board.ShowActiveProject();
         PositionAndActivate(board, target);
@@ -370,7 +380,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     window.SelectedProject));
             if (!window.ClosedByDeactivate)
             {
-                ZetlForegroundService.RestoreTarget(target);
+                ZetlForegroundService.RestoreTarget(target, Log);
                 if (outcome == ZetlNoteCaptureOutcome.PasteCutBack)
                 {
                     _ = coordinator.PasteCutBackAsync();
@@ -410,20 +420,22 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     window.PasteNow));
             if (outcome == ZetlCompileOutcome.PasteNow)
             {
-                ZetlForegroundService.RestoreTarget(target);
+                ZetlForegroundService.RestoreTarget(target, Log);
                 _ = coordinator.PasteCompiledTextAsync();
             }
             else if (!window.ClosedByDeactivate)
             {
-                ZetlForegroundService.RestoreTarget(target);
+                ZetlForegroundService.RestoreTarget(target, Log);
             }
         });
     }
 
     // Shared transient-popup wiring: register click-away dismissal, log the
-    // activation lifecycle, then position and steal the foreground. The
-    // caller's onClosed runs on Closed and owns completion, foreground
-    // restore, and the type-specific close log.
+    // activation lifecycle, then position and steal the foreground. The caller's
+    // onClosed owns completion, foreground restore, and the close log. It runs on
+    // Closing (not Closed) so the foreground restore happens while the popup
+    // still owns the foreground — otherwise the window vanishes first and Windows
+    // briefly flashes whatever it picks before the restore lands.
     private void ConfigureAndShowPopup(
         Window window,
         object? target,
@@ -434,7 +446,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         window.Opened += (_, _) => Log($"{logName} popup opened.");
         window.Activated += (_, _) => Log($"{logName} popup activated.");
         window.Deactivated += (_, _) => Log($"{logName} popup deactivated.");
-        window.Closed += (_, _) => onClosed();
+        window.Closing += (_, _) => onClosed();
         PositionAndActivate(window, target);
     }
 

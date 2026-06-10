@@ -64,6 +64,15 @@ internal static class ZetlWindowActivation
         {
             Interval = TimeSpan.FromMilliseconds(60)
         };
+        // Stop re-asserting the foreground the instant the popup starts closing.
+        // Otherwise a late tick can re-grab the foreground for the closing popup
+        // right after its Closed handler restored the caller's window, leaving
+        // focus on whatever Windows picks under the popup.
+        window.Closing += (_, _) =>
+        {
+            window.Topmost = false;
+            timer.Stop();
+        };
         timer.Tick += (_, _) =>
         {
             attempts++;
