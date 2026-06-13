@@ -66,6 +66,17 @@ internal sealed class ZetlClickAwayWatcher
 
     private void Tick()
     {
+        // A drag that began in one of our windows (e.g. highlighting note text)
+        // holds the mouse capture on this UI thread. While the button is held,
+        // WindowFromPoint reports whatever is physically under the pointer as it
+        // wanders past the popup's edge, which used to look like a click-away and
+        // commit/close the note mid-selection. Capture is thread-local, so a
+        // non-zero result here means a Zetl window owns the drag: never dismiss.
+        if (GetCapture() != IntPtr.Zero)
+        {
+            return;
+        }
+
         if (ForegroundMovedToOtherProcess() || ClickedOutsideZetl())
         {
             onClickOutside();
@@ -120,6 +131,9 @@ internal sealed class ZetlClickAwayWatcher
         public int X;
         public int Y;
     }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetCapture();
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int virtualKey);
