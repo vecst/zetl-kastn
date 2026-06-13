@@ -93,6 +93,7 @@ internal static class PortableSelfTests
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
                 ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
+                ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
@@ -1921,6 +1922,40 @@ internal static class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
+        private static void RuntimeReplayTapDefersClipboardWorkOffHook()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var dispatcher = new QueuingDispatcher();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _,
+                dispatcher: dispatcher);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            // The decision returns synchronously, but none of the replay
+            // clipboard/paste work runs inline -- it is queued on the dispatcher,
+            // standing in for the move off the keyboard hook thread.
+            AssertTrue(handled, "Replay tap should be handled synchronously.");
+            AssertTrue(dispatcher.PendingCount > 0, "Replay work should be enqueued, not run on the hook thread.");
+            AssertEqual(0, keyboard.PasteCount, "No paste should be sent before the queued work runs.");
+            AssertEqual(1, queue.Notes.Count, "The queued note should not be consumed inline.");
+
+            dispatcher.RunAll();
+
+            AssertEqual(1, keyboard.PasteCount, "Running the queued work should send the replay paste.");
+            AssertEqual(0, queue.Notes.Count, "Running the queued work should consume the queued note.");
+        }
+
         private static void RuntimePopTapRemovesMatchingNote()
         {
             using var temp = new TempStateFile();
@@ -2528,7 +2563,8 @@ internal static class PortableSelfTests
             out FakeKeyboardBackend keyboard,
             out ZetlUndoStack undo,
             IZetlDelay? delay = null,
-            bool quickNoteToClipboard = false)
+            bool quickNoteToClipboard = false,
+            IZetlDispatcher? dispatcher = null)
         {
             keyboard = new FakeKeyboardBackend();
             undo = new ZetlUndoStack(100);
@@ -2536,7 +2572,7 @@ internal static class PortableSelfTests
                 store,
                 keyboard,
                 clipboard,
-                new ImmediateDispatcher(),
+                dispatcher ?? new ImmediateDispatcher(),
                 delay ?? new ImmediateDelay(),
                 notifications,
                 undo,
@@ -2656,6 +2692,28 @@ internal static class PortableSelfTests
             public void Post(Action action)
             {
                 action();
+            }
+        }
+
+        // Captures posted actions instead of running them, so a test can assert
+        // work was enqueued (deferred off the calling thread) and then run it.
+        private sealed class QueuingDispatcher : IZetlDispatcher
+        {
+            private readonly Queue<Action> pending = new();
+
+            public int PendingCount => pending.Count;
+
+            public void Post(Action action)
+            {
+                pending.Enqueue(action);
+            }
+
+            public void RunAll()
+            {
+                while (pending.Count > 0)
+                {
+                    pending.Dequeue()();
+                }
             }
         }
 

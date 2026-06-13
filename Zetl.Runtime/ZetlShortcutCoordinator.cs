@@ -107,7 +107,13 @@ internal sealed class ZetlShortcutCoordinator
         var activeBucket = store.GetActiveBucket(context.ShiftLane);
         if (activeBucket is not null && ZetlStateStore.IsFifoBucket(activeBucket))
         {
-            HandleReplayTap(context.ShiftLane, activeBucket);
+            // The hook callback needs the handled decision synchronously, but the
+            // replay clipboard read/write and synthetic paste must not run on the
+            // low-level keyboard hook thread: blocking it stalls system-wide input
+            // and can make Windows silently remove the hook. Enqueue that work
+            // onto the dispatcher and return the decision immediately.
+            var shiftLane = context.ShiftLane;
+            dispatcher.Post(() => HandleReplayTap(shiftLane, activeBucket));
             return true;
         }
 
@@ -562,16 +568,18 @@ internal sealed class ZetlShortcutCoordinator
         });
     }
 
+    // Runs on the dispatcher thread (enqueued from OnTapDispatched), never on the
+    // low-level keyboard hook thread, so the clipboard reads/writes and paste
+    // here cannot stall system input. Running entirely on one thread also keeps
+    // the replay-clipboard tracking arrays free of the hook-vs-dispatcher race
+    // the inline version had.
     private void HandleReplayTap(bool shifted, ZetlBucket activeBucket)
     {
         if (!store.TryPeekNextFifoNote(activeBucket, out var fifoNote) || fifoNote is null)
         {
-            dispatcher.Post(() =>
-            {
-                store.SetBucketKind(activeBucket, "Standard");
-                keyboard.SendPaste();
-                notifications.Show($"{activeBucket.Name} replay complete.");
-            });
+            store.SetBucketKind(activeBucket, "Standard");
+            keyboard.SendPaste();
+            notifications.Show($"{activeBucket.Name} replay complete.");
             return;
         }
 
@@ -583,54 +591,51 @@ internal sealed class ZetlShortcutCoordinator
         SetReplayClipboard(shifted, noteText);
         if (!keyboard.SendPaste())
         {
-            dispatcher.Post(() => notifications.Show($"Paste failed; {bucketName} item kept."));
+            notifications.Show($"Paste failed; {bucketName} item kept.");
             return;
         }
 
-        dispatcher.Post(() =>
+        ZetlBucket? reviewBucket = null;
+        ZetlNote? consumedNote = null;
+        ZetlNote? reviewNote = null;
+        var consumed = project is not null
+            ? store.TryConsumeFifoNoteToReview(
+                project,
+                activeBucket,
+                noteId,
+                out reviewBucket,
+                out consumedNote,
+                out reviewNote)
+            : store.TryConsumeFifoNote(activeBucket, noteId, out consumedNote);
+        if (consumed && reviewBucket is not null)
         {
-            ZetlBucket? reviewBucket = null;
-            ZetlNote? consumedNote = null;
-            ZetlNote? reviewNote = null;
-            var consumed = project is not null
-                ? store.TryConsumeFifoNoteToReview(
-                    project,
+            log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
+        }
+
+        if (consumed && consumedNote is not null)
+        {
+            var undoReviewBucket = reviewBucket;
+            var undoReviewNoteId = reviewNote?.Id;
+            undoStack.Push(
+                shifted,
+                $"Restored replay item to {bucketName}.",
+                () => store.RestoreFifoConsumedNote(
                     activeBucket,
-                    noteId,
-                    out reviewBucket,
-                    out consumedNote,
-                    out reviewNote)
-                : store.TryConsumeFifoNote(activeBucket, noteId, out consumedNote);
-            if (consumed && reviewBucket is not null)
-            {
-                log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
-            }
+                    consumedNote,
+                    undoReviewBucket,
+                    undoReviewNoteId));
+        }
 
-            if (consumed && consumedNote is not null)
-            {
-                var undoReviewBucket = reviewBucket;
-                var undoReviewNoteId = reviewNote?.Id;
-                undoStack.Push(
-                    shifted,
-                    $"Restored replay item to {bucketName}.",
-                    () => store.RestoreFifoConsumedNote(
-                        activeBucket,
-                        consumedNote,
-                        undoReviewBucket,
-                        undoReviewNoteId));
-            }
+        var replayComplete = !store.TryPeekNextFifoNote(activeBucket, out _);
+        if (replayComplete)
+        {
+            store.SetBucketKind(activeBucket, "Standard");
+        }
 
-            var replayComplete = !store.TryPeekNextFifoNote(activeBucket, out _);
-            if (replayComplete)
-            {
-                store.SetBucketKind(activeBucket, "Standard");
-            }
-
-            _ = RestoreUserClipboardAfterReplayAsync(shifted, noteText);
-            notifications.Show(replayComplete
-                ? $"{bucketName} replay complete."
-                : $"Pasted next item from {bucketName}.");
-        });
+        _ = RestoreUserClipboardAfterReplayAsync(shifted, noteText);
+        notifications.Show(replayComplete
+            ? $"{bucketName} replay complete."
+            : $"Pasted next item from {bucketName}.");
     }
 
     private async Task HandlePopTapAsync(bool shifted)
