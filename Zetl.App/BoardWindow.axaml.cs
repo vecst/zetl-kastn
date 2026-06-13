@@ -13,6 +13,11 @@ internal partial class BoardWindow : ZetlPopupWindow
     private bool childDialogOpen;
     private ZetlNote? editingNote;
 
+    // Non-null while a new note is being composed: an in-memory draft that lives
+    // only in the editor and is not added to the store until it has non-blank
+    // text. This is what keeps the Board from persisting empty notes.
+    private ZetlBucket? composingBucket;
+
     // The Board is large, so on a small display shed extra space rather than
     // filling the whole screen.
     protected override double CompactWidthReduction => 175;
@@ -242,8 +247,13 @@ internal partial class BoardWindow : ZetlPopupWindow
             createNoteButton.IsEnabled = true;
 
             noteList.ItemsSource = bucket.Notes.ToList();
-            noteList.SelectedItem = bucket.Notes.FirstOrDefault(note => note.Id == selectedNoteId)
-                ?? bucket.Notes.LastOrDefault();
+            // While composing a new note the draft isn't in the list yet; keep
+            // the list unselected so a background refresh doesn't yank focus onto
+            // an existing note mid-typing.
+            noteList.SelectedItem = composingBucket is not null
+                ? null
+                : bucket.Notes.FirstOrDefault(note => note.Id == selectedNoteId)
+                    ?? bucket.Notes.LastOrDefault();
             RefreshSelectedNote();
         }
         finally
@@ -266,6 +276,7 @@ internal partial class BoardWindow : ZetlPopupWindow
         createNoteButton.IsEnabled = false;
         deleteNoteButton.IsEnabled = false;
         noteList.ItemsSource = Array.Empty<ZetlNote>();
+        composingBucket = null;
         editingNote = null;
         noteEditor.Text = "";
         noteEditor.IsEnabled = false;
@@ -273,22 +284,60 @@ internal partial class BoardWindow : ZetlPopupWindow
 
     private void RefreshSelectedNote()
     {
+        // A new-note draft lives only in the editor and isn't in the list, so a
+        // refresh (including the background store-changed refresh) must leave the
+        // editor untouched; otherwise the in-progress draft would be wiped.
+        if (composingBucket is not null)
+        {
+            return;
+        }
+
+        // Preserve unsaved edits across a background refresh (e.g. the activity
+        // log flushing while you type): if the same note is still selected and the
+        // editor holds changes not yet written, keep them rather than resetting to
+        // the stored text. Raw, untrimmed comparison so a trailing space being
+        // typed still counts as a pending edit and survives.
+        if (editingNote is not null
+            && ActiveNote?.Id == editingNote.Id
+            && !string.Equals(noteEditor.Text ?? "", editingNote.Text, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         editingNote = ActiveNote;
         noteEditor.Text = editingNote?.Text ?? "";
         noteEditor.IsEnabled = editingNote is not null;
         deleteNoteButton.IsEnabled = editingNote is not null;
     }
 
+    // Commits the editor's contents: a new-note draft is added to the store only
+    // when it has non-blank text (so the Board never persists empty notes), and
+    // an existing note is updated only when its text actually changed.
     private void SaveEditingNote()
     {
-        if (refreshing
-            || editingNote is null
-            || string.IsNullOrWhiteSpace(noteEditor.Text))
+        if (refreshing)
         {
             return;
         }
 
-        var text = noteEditor.Text.Trim();
+        var text = noteEditor.Text?.Trim() ?? "";
+
+        if (composingBucket is { } draftBucket)
+        {
+            composingBucket = null;
+            if (text.Length > 0)
+            {
+                store.AddNote(draftBucket, text, "manual");
+            }
+
+            return;
+        }
+
+        if (editingNote is null || text.Length == 0)
+        {
+            return;
+        }
+
         if (!string.Equals(editingNote.Text, text, StringComparison.Ordinal))
         {
             store.UpdateNote(editingNote, text);
@@ -399,12 +448,27 @@ internal partial class BoardWindow : ZetlPopupWindow
             return;
         }
 
-        var note = store.AddNote(bucket, "", "manual");
-        Dispatcher.UIThread.Post(() =>
+        // Commit whatever is in the editor first: an existing-note edit, or a
+        // previous new-note draft. A blank draft commits to nothing, so pressing
+        // New Note repeatedly never piles up empty notes.
+        SaveEditingNote();
+
+        refreshing = true;
+        try
         {
-            noteList.SelectedItem = note;
-            noteEditor.Focus();
-        });
+            composingBucket = bucket;
+            editingNote = null;
+            noteList.SelectedItem = null;
+            noteEditor.Text = "";
+            noteEditor.IsEnabled = true;
+            deleteNoteButton.IsEnabled = false;
+        }
+        finally
+        {
+            refreshing = false;
+        }
+
+        Dispatcher.UIThread.Post(() => noteEditor.Focus());
     }
 
     private void DeleteNote()
