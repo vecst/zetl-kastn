@@ -178,6 +178,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         notifications.Dispose();
         processor?.Dispose();
         keyboard.Dispose();
+        (clipboard as IDisposable)?.Dispose();
         diagnosticLines.CompleteAdding();
         diagnosticThread.Join(TimeSpan.FromSeconds(1));
     }

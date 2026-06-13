@@ -515,7 +515,12 @@ Run portable and Windows-specific tests:
 ```powershell
 dotnet run --project Zetl.Tests
 dotnet run --project ZetlHotkeys.csproj -- --self-test
+dotnet run --project Zetl.App -- --self-test
 ```
+
+The `Zetl.App --self-test` run exercises the real Windows clipboard
+(write/read round-trips, including Unicode) that the portable suite can't cover.
+It captures and restores the caller's clipboard.
 
 The code is split around the product distinction:
 

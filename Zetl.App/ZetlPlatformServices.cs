@@ -343,11 +343,21 @@ internal static class AvaloniaWindowsInput
     }
 }
 
-internal sealed class AvaloniaWindowsClipboard(Action<string> log) : IClipboard
+internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 {
     private const uint UnicodeText = 13;
     private const uint Moveable = 0x0002;
     private const int ClipboardAttempts = 5;
+    private const int HwndMessage = -3;
+
+    private readonly Action<string> log;
+    private IntPtr ownerWindow;
+
+    public AvaloniaWindowsClipboard(Action<string> log)
+    {
+        this.log = log;
+        ownerWindow = CreateOwnerWindow(log);
+    }
 
     public string? TryGetText()
     {
@@ -385,32 +395,34 @@ internal sealed class AvaloniaWindowsClipboard(Action<string> log) : IClipboard
         }
     }
 
-    public void SetText(string text)
+    public bool SetText(string text)
     {
         if (!TryOpen())
         {
-            return;
+            return false;
         }
 
-        IntPtr handle = IntPtr.Zero;
+        var handle = IntPtr.Zero;
+        var ownsHandle = false;
         try
         {
-            if (!EmptyClipboard())
-            {
-                return;
-            }
-
+            // Allocate and populate the global memory BEFORE emptying the
+            // clipboard. The previous order emptied first, so a later allocation
+            // failure left the clipboard cleared with nothing put back.
             var bytes = checked((text.Length + 1) * sizeof(char));
             handle = GlobalAlloc(Moveable, (UIntPtr)bytes);
             if (handle == IntPtr.Zero)
             {
-                return;
+                log($"Clipboard write failed: could not allocate {bytes} bytes.");
+                return false;
             }
 
+            ownsHandle = true;
             var pointer = GlobalLock(handle);
             if (pointer == IntPtr.Zero)
             {
-                return;
+                log("Clipboard write failed: could not lock global memory.");
+                return false;
             }
 
             try
@@ -423,14 +435,25 @@ internal sealed class AvaloniaWindowsClipboard(Action<string> log) : IClipboard
                 GlobalUnlock(handle);
             }
 
-            if (SetClipboardData(UnicodeText, handle) != IntPtr.Zero)
+            if (!EmptyClipboard())
             {
-                handle = IntPtr.Zero;
+                log($"Clipboard write failed: EmptyClipboard error {Marshal.GetLastWin32Error()}.");
+                return false;
             }
+
+            if (SetClipboardData(UnicodeText, handle) == IntPtr.Zero)
+            {
+                log($"Clipboard write failed: SetClipboardData error {Marshal.GetLastWin32Error()}.");
+                return false;
+            }
+
+            // Ownership of the memory transferred to the clipboard; don't free it.
+            ownsHandle = false;
+            return true;
         }
         finally
         {
-            if (handle != IntPtr.Zero)
+            if (ownsHandle && handle != IntPtr.Zero)
             {
                 GlobalFree(handle);
             }
@@ -444,11 +467,22 @@ internal sealed class AvaloniaWindowsClipboard(Action<string> log) : IClipboard
         return GetClipboardSequenceNumber();
     }
 
+    public void Dispose()
+    {
+        if (ownerWindow != IntPtr.Zero)
+        {
+            DestroyWindow(ownerWindow);
+            ownerWindow = IntPtr.Zero;
+        }
+    }
+
     private bool TryOpen()
     {
         for (var attempt = 0; attempt < ClipboardAttempts; attempt++)
         {
-            if (OpenClipboard(IntPtr.Zero))
+            // Open with our own owner window rather than a NULL association, so
+            // EmptyClipboard/SetClipboardData behave like a normal clipboard app.
+            if (OpenClipboard(ownerWindow))
             {
                 return true;
             }
@@ -456,27 +490,71 @@ internal sealed class AvaloniaWindowsClipboard(Action<string> log) : IClipboard
             Thread.Sleep(5);
         }
 
-        log("Windows clipboard was temporarily unavailable.");
+        log($"Windows clipboard was temporarily unavailable (error {Marshal.GetLastWin32Error()}).");
         return false;
     }
 
-    [DllImport("user32.dll")]
+    // A message-only window to own the clipboard. "STATIC" is a system-registered
+    // class, so no class registration is needed; HWND_MESSAGE makes it invisible
+    // and pump-light. Falls back to a NULL owner if creation fails.
+    private static IntPtr CreateOwnerWindow(Action<string> log)
+    {
+        var window = CreateWindowEx(
+            0,
+            "STATIC",
+            "ZetlClipboardOwner",
+            0,
+            0,
+            0,
+            0,
+            0,
+            new IntPtr(HwndMessage),
+            IntPtr.Zero,
+            IntPtr.Zero,
+            IntPtr.Zero);
+        if (window == IntPtr.Zero)
+        {
+            log($"Clipboard owner window unavailable (error {Marshal.GetLastWin32Error()}); using the default association.");
+        }
+
+        return window;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool OpenClipboard(IntPtr owner);
 
     [DllImport("user32.dll")]
     private static extern bool CloseClipboard();
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EmptyClipboard();
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetClipboardData(uint format);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetClipboardData(uint format, IntPtr memory);
 
     [DllImport("user32.dll")]
     private static extern uint GetClipboardSequenceNumber();
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CreateWindowExW")]
+    private static extern IntPtr CreateWindowEx(
+        uint exStyle,
+        string className,
+        string windowName,
+        uint style,
+        int x,
+        int y,
+        int width,
+        int height,
+        IntPtr parent,
+        IntPtr menu,
+        IntPtr instance,
+        IntPtr param);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyWindow(IntPtr window);
 
     [DllImport("kernel32.dll")]
     private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
@@ -516,9 +594,10 @@ internal sealed class UnsupportedClipboard(Action<string> log) : IClipboard
 {
     public string? TryGetText() => null;
 
-    public void SetText(string text)
+    public bool SetText(string text)
     {
         log("Clipboard write ignored: no platform clipboard backend is installed.");
+        return false;
     }
 
     public uint GetChangeToken() => 0;

@@ -25,6 +25,11 @@ internal static class Program
             return 0;
         }
 
+        if (args.Any(arg => arg.Equals("--self-test", StringComparison.OrdinalIgnoreCase)))
+        {
+            return ZetlWindowsSelfTests.Run();
+        }
+
         var preview = args.Any(arg =>
             arg.StartsWith("--preview=", StringComparison.OrdinalIgnoreCase));
         var ownsMutex = false;

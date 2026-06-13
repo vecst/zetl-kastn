@@ -25,17 +25,20 @@ internal sealed class WindowsClipboard : IClipboard
         }
     }
 
-    public void SetText(string text)
+    public bool SetText(string text)
     {
         try
         {
             Clipboard.SetText(text);
+            return true;
         }
         catch (ExternalException)
         {
+            return false;
         }
         catch (ThreadStateException)
         {
+            return false;
         }
     }
 

@@ -2799,10 +2799,11 @@ internal static class PortableSelfTests
                 return Text;
             }
 
-            public void SetText(string text)
+            public bool SetText(string text)
             {
                 Text = text;
                 ChangeToken++;
+                return true;
             }
 
             public uint GetChangeToken()

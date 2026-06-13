@@ -588,8 +588,9 @@ internal sealed class ZetlShortcutCoordinator
         var noteText = fifoNote.Text;
         var bucketName = activeBucket.Name;
         RememberUserClipboardBeforeReplay(shifted);
-        SetReplayClipboard(shifted, noteText);
-        if (!keyboard.SendPaste())
+        // If the clipboard write itself fails, don't paste -- the foreground app
+        // would receive whatever stale text was there instead of the replay item.
+        if (!SetReplayClipboard(shifted, noteText) || !keyboard.SendPaste())
         {
             notifications.Show($"Paste failed; {bucketName} item kept.");
             return;
@@ -679,17 +680,19 @@ internal sealed class ZetlShortcutCoordinator
         }
     }
 
-    private void SetReplayClipboard(bool shifted, string text)
+    private bool SetReplayClipboard(bool shifted, string text)
     {
         if (!string.Equals(
                 clipboard.TryGetText()?.Trim(),
                 text.Trim(),
-                StringComparison.Ordinal))
+                StringComparison.Ordinal)
+            && !clipboard.SetText(text))
         {
-            clipboard.SetText(text);
+            return false;
         }
 
         replayInjectedClipboard[shifted ? 1 : 0] = text;
+        return true;
     }
 
     private async Task RestoreUserClipboardAfterReplayAsync(bool shifted, string injectedText)
