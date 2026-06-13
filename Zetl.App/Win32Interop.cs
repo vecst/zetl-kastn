@@ -39,6 +39,26 @@ internal static class Win32Interop
     [DllImport("user32.dll")]
     internal static extern bool SetForegroundWindow(IntPtr window);
 
+    // Re-asserting a window to the top of the topmost band. Avalonia's Topmost
+    // property only issues SetWindowPos when the property changes, so a reused
+    // topmost window (the toast) needs this to climb back above another app that
+    // has since claimed topmost. SWP_NOACTIVATE keeps it from stealing focus.
+    internal static readonly IntPtr HWND_TOPMOST = new(-1);
+    internal const uint SWP_NOSIZE = 0x0001;
+    internal const uint SWP_NOMOVE = 0x0002;
+    internal const uint SWP_NOACTIVATE = 0x0010;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetWindowPos(
+        IntPtr window,
+        IntPtr insertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint flags);
+
     [DllImport("user32.dll")]
     internal static extern bool IsWindow(IntPtr window);
 
