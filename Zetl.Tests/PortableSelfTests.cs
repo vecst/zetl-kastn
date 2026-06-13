@@ -73,6 +73,7 @@ internal static class PortableSelfTests
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
                 ("Zetl built-in theme validates", ThemeDefaultsValidate),
                 ("Zetl Dusk built-in theme validates", ThemeDuskValidates),
+                ("Zetl built-in presets all validate", ThemeBuiltInPresetsValidate),
                 ("Zetl themes round-trip custom values", ThemeRoundTripsCustomValues),
                 ("Zetl themes preserve unknown JSON fields", ThemePreservesUnknownJsonFields),
                 ("Zetl theme store ignores invalid files", ThemeStoreIgnoresInvalidFiles),
@@ -1417,6 +1418,28 @@ internal static class PortableSelfTests
                 "#8290FF",
                 theme.Dark.Accent,
                 "Dusk should retain the First Build periwinkle accent.");
+        }
+
+        private static void ThemeBuiltInPresetsValidate()
+        {
+            var presets = ZetlThemeDefaults.CreateAll();
+
+            AssertTrue(presets.Count >= 2, "There should be at least the two original presets.");
+
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var theme in presets)
+            {
+                AssertEqual(
+                    0,
+                    ZetlThemeValidator.Validate(theme).Count,
+                    $"Built-in preset '{theme.Name}' ({theme.Id}) should validate.");
+                AssertTrue(
+                    ZetlThemeDefaults.IsBuiltIn(theme.Id),
+                    $"Preset '{theme.Id}' should be reported as built-in.");
+                AssertTrue(
+                    seenIds.Add(theme.Id),
+                    $"Built-in preset id '{theme.Id}' should be unique.");
+            }
         }
 
         private static void ThemeRoundTripsCustomValues()

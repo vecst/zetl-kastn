@@ -475,10 +475,16 @@ imported, and exported as versioned JSON files. The active theme is recorded in
 `settings.json`; custom files live under `%AppData%\Zetl\themes`. Invalid or
 missing files fall back to the built-in theme.
 
-Zetl ships with two protected presets: `Zetl Default` and `Zetl Dusk`. Dusk was
-developed from the first A7 dogfood theme and pairs warm aubergine dark surfaces,
-ivory text, and a periwinkle accent with a soft paper-and-lilac light palette.
-Editing a built-in saves a custom copy rather than overwriting the preset.
+Zetl ships with a set of protected presets, each with a full light and dark
+palette. `Zetl Default` and `Zetl Dusk` lead; Dusk was developed from the first
+A7 dogfood theme and pairs warm aubergine dark surfaces, ivory text, and a
+periwinkle accent with a soft paper-and-lilac light palette. The rest span warm,
+cool, neutral, and playful looks — `Z-Olive`, `Z-Ember`, `Z-Tide`, `Z-Rose`,
+`Z-Nord`, `Z-Sepia`, `Z-Carbon`, `Z-Mono`, `Z-Synthwave`, `Z-Matrix`, and
+`Z-Bubblegum` — plus two accessibility presets: `Z-Contrast` (maximum contrast,
+border-defined regions) and `Z-Colorsafe` (a colorblind-safe blue/orange pairing
+that avoids red–green reliance). Editing a built-in saves a custom copy rather
+than overwriting the preset.
 
 Older `settings.json` files without these fields load with the built-in defaults. Chordl timing (`holdDelayMs`, `repeatSuppressionDelayMs`) stays in `hotkeys.json`.
 
