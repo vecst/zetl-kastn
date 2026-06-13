@@ -76,27 +76,6 @@ internal static class Win32Interop
         uint targetThreadId,
         bool attach);
 
-    internal const uint SPI_GETFOREGROUNDLOCKTIMEOUT = 0x2000;
-    internal const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
-
-    // For SPI_SETFOREGROUNDLOCKTIMEOUT, pvParam IS the new timeout value cast to a
-    // pointer (not a pointer to it); IntPtr.Zero therefore sets the timeout to 0.
-    [DllImport("user32.dll", SetLastError = true)]
-    internal static extern bool SystemParametersInfo(
-        uint action,
-        uint param,
-        IntPtr pvParam,
-        uint winIni);
-
-    // For SPI_GETFOREGROUNDLOCKTIMEOUT, pvParam points to a DWORD that receives
-    // the current timeout, so this overload passes it by reference.
-    [DllImport("user32.dll", SetLastError = true)]
-    internal static extern bool SystemParametersInfo(
-        uint action,
-        uint param,
-        ref uint pvParam,
-        uint winIni);
-
     // Message pump for the dedicated keyboard-hook thread.
     internal const uint WmQuit = 0x0012;
 

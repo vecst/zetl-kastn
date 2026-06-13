@@ -81,11 +81,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         notifications = new AvaloniaNotificationService(activityLog);
         keyboard = ZetlPlatformServices.CreateKeyboard(Log);
         clipboard = ZetlPlatformServices.CreateClipboard(Log);
-        // Allow Zetl to take and restore the foreground from the first popup,
-        // rather than only after a real click has reset Windows' foreground lock.
-        // The original system value is captured and restored on exit.
-        ZetlForegroundService.AllowForegroundActivation(Log);
-
         var config = LoadChordlConfiguration(out var configMessage);
         coordinator = new ZetlShortcutCoordinator(
             store,
@@ -178,7 +173,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         processor?.Dispose();
         keyboard.Dispose();
         (clipboard as IDisposable)?.Dispose();
-        ZetlForegroundService.RestoreForegroundActivation(Log);
         diagnosticLines.CompleteAdding();
         diagnosticThread.Join(TimeSpan.FromSeconds(1));
     }

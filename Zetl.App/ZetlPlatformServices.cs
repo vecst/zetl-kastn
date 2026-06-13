@@ -605,72 +605,10 @@ internal sealed class UnsupportedClipboard(Action<string> log) : IClipboard
 
 internal static class ZetlForegroundService
 {
-    // Tracks the system foreground-lock timeout we overwrote at startup, so it
-    // can be restored on exit. null = we never changed it (non-Windows, capture
-    // failed, or it was already 0).
-    private static uint? originalForegroundLockTimeout;
-
-    // A background process is denied SetForegroundWindow until it has received
-    // genuine user input, so the first popup steals focus only partially and
-    // restores it to the wrong window — until a real click resets the lock for
-    // the session. Targeted activation (AttachThreadInput in ZetlWindowActivation
-    // / RestoreTarget) is the primary mechanism; clearing the foreground-lock
-    // timeout is a fallback for the very first popup. Rather than leave this
-    // system-wide setting at 0 for the rest of the session, capture the original
-    // and restore it on exit via RestoreForegroundActivation.
-    public static bool AllowForegroundActivation(Action<string>? log = null)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return false;
-        }
-
-        uint current = 0;
-        var captured = Win32Interop.SystemParametersInfo(
-            Win32Interop.SPI_GETFOREGROUNDLOCKTIMEOUT,
-            0,
-            ref current,
-            0);
-        if (captured && current == 0)
-        {
-            // Already unlocked; nothing to change, nothing to restore.
-            log?.Invoke("Foreground-lock timeout already 0; left unchanged.");
-            return true;
-        }
-
-        originalForegroundLockTimeout = captured ? current : null;
-        var set = Win32Interop.SystemParametersInfo(
-            Win32Interop.SPI_SETFOREGROUNDLOCKTIMEOUT,
-            0,
-            IntPtr.Zero,
-            0);
-        log?.Invoke(set
-            ? $"Foreground-lock timeout set to 0 (was {(captured ? current.ToString() : "unknown")}); restores on exit."
-            : "Foreground-lock timeout could not be changed.");
-        return set;
-    }
-
-    // Restore the foreground-lock timeout captured by AllowForegroundActivation,
-    // so Zetl does not leave the system-wide setting altered after it exits.
-    public static bool RestoreForegroundActivation(Action<string>? log = null)
-    {
-        if (!OperatingSystem.IsWindows()
-            || originalForegroundLockTimeout is not { } original)
-        {
-            return false;
-        }
-
-        originalForegroundLockTimeout = null;
-        var restored = Win32Interop.SystemParametersInfo(
-            Win32Interop.SPI_SETFOREGROUNDLOCKTIMEOUT,
-            0,
-            (IntPtr)original,
-            0);
-        log?.Invoke(restored
-            ? $"Foreground-lock timeout restored to {original}."
-            : $"Foreground-lock timeout could not be restored to {original}.");
-        return restored;
-    }
+    // Zetl no longer touches the system-wide foreground-lock timeout. Focus is
+    // taken with targeted AttachThreadInput activation (ZetlWindowActivation and
+    // RestoreTarget), which works for a background process without altering a
+    // global Windows setting.
 
     public static object? CaptureTarget()
     {
