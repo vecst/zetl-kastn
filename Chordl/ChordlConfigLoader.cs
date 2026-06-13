@@ -57,6 +57,7 @@ public static class ChordlConfigLoader
         var config = JsonSerializer.Deserialize<ChordlConfigDto>(json, JsonOpts)
             ?? throw new InvalidOperationException("Failed to parse hotkeys.json.");
 
+        Normalize(config);
         ValidateConfig(config);
 
         var actions = BuildActionMap(config);
@@ -65,6 +66,32 @@ public static class ChordlConfigLoader
             actions.Keys.Select(chord => chord.KeyCode).ToHashSet(),
             TimeSpan.FromMilliseconds(config.RepeatSuppressionDelayMs),
             TimeSpan.FromMilliseconds(config.HoldDelayMs));
+    }
+
+    // Replace any null fields left by explicit JSON nulls (e.g.
+    // "replayModifiers": null) with the same safe defaults the DTO uses when a
+    // field is absent. Validation and BuildActionMap then work only against
+    // normalized, non-null values; previously a literal null passed validation
+    // (which coalesced locally) and then threw an NRE in BuildActionMap, which
+    // read the raw DTO.
+    private static void Normalize(ChordlConfigDto config)
+    {
+        config.Hotkeys ??= new();
+        foreach (var dto in config.Hotkeys)
+        {
+            if (dto is null)
+            {
+                continue;
+            }
+
+            dto.Name ??= "";
+            dto.Key ??= "";
+            dto.Dispatch ??= "None";
+            dto.Modifiers ??= new();
+            dto.ReplayModifiers ??= new() { "Ctrl" };
+            dto.Modifiers.RemoveAll(modifier => modifier is null);
+            dto.ReplayModifiers.RemoveAll(modifier => modifier is null);
+        }
     }
 
     private static void ValidateConfig(ChordlConfigDto config)
@@ -97,11 +124,19 @@ public static class ChordlConfigLoader
         for (var i = 0; i < definitions.Count; i++)
         {
             var dto = definitions[i];
+            if (dto is null)
+            {
+                errors.Add($"hotkeys[{i}] must be an object, not null.");
+                continue;
+            }
+
             var label = string.IsNullOrWhiteSpace(dto.Name)
                 ? $"hotkeys[{i}]"
                 : $"hotkey '{dto.Name}'";
-            var modifiers = dto.Modifiers ?? [];
-            var replayModifiers = dto.ReplayModifiers ?? [];
+            // Normalize has already replaced any null collections, so these are
+            // safe to read directly.
+            var modifiers = dto.Modifiers;
+            var replayModifiers = dto.ReplayModifiers;
 
             if (string.IsNullOrWhiteSpace(dto.Name))
             {

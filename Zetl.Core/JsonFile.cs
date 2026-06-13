@@ -35,6 +35,41 @@ internal static class JsonFile
         }
     }
 
+    /// <summary>
+    /// Reads JSON like <see cref="Read{T}"/>, but when the file is corrupt it
+    /// moves the damaged file aside (a timestamped <c>.corrupt-*</c> copy) and
+    /// returns <c>default</c> instead of throwing. Startup paths use this so a
+    /// single bad file degrades to defaults — or is skipped — rather than
+    /// aborting the whole load. The damaged content is preserved for recovery.
+    /// </summary>
+    public static T? ReadOrQuarantine<T>(string path, Action<string>? log = null)
+    {
+        try
+        {
+            return Read<T>(path);
+        }
+        catch (JsonException ex)
+        {
+            Quarantine(path, ex, log);
+            return default;
+        }
+    }
+
+    private static void Quarantine(string path, Exception reason, Action<string>? log)
+    {
+        var quarantinePath = $"{path}.corrupt-{DateTime.Now:yyyyMMdd-HHmmss}";
+        try
+        {
+            File.Move(path, quarantinePath, overwrite: true);
+            log?.Invoke(
+                $"Quarantined corrupt JSON '{path}' to '{Path.GetFileName(quarantinePath)}': {reason.Message}");
+        }
+        catch (Exception moveError) when (moveError is IOException or UnauthorizedAccessException)
+        {
+            log?.Invoke($"Could not quarantine corrupt JSON '{path}': {moveError.Message}");
+        }
+    }
+
     public static void WriteAtomic<T>(string path, T value)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);

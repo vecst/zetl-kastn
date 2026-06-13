@@ -17,23 +17,25 @@ internal sealed class ZetlStateStorage
     private readonly string workspacePath;
     private readonly string projectsDirectory;
     private readonly string? legacyStatePath;
+    private readonly Action<string>? log;
 
     // project id -> folder name under projectsDirectory. Rebuilt on load and
     // extended as new projects are written.
     private readonly Dictionary<string, string> projectFolders = new(StringComparer.Ordinal);
 
-    public ZetlStateStorage(string rootDirectory, string? legacyStatePath)
+    public ZetlStateStorage(string rootDirectory, string? legacyStatePath, Action<string>? log = null)
     {
         workspacePath = Path.Combine(rootDirectory, "workspace.json");
         projectsDirectory = Path.Combine(rootDirectory, "projects");
         this.legacyStatePath = legacyStatePath;
+        this.log = log;
     }
 
     public ZetlState Load()
     {
         MigrateLegacyStateIfNeeded();
 
-        var workspace = JsonFile.Read<ZetlWorkspaceFile>(workspacePath) ?? new ZetlWorkspaceFile();
+        var workspace = JsonFile.ReadOrQuarantine<ZetlWorkspaceFile>(workspacePath, log) ?? new ZetlWorkspaceFile();
         var state = new ZetlState
         {
             Version = workspace.Version,
@@ -81,7 +83,10 @@ internal sealed class ZetlStateStorage
 
         foreach (var directory in Directory.EnumerateDirectories(projectsDirectory))
         {
-            var project = JsonFile.Read<ZetlProject>(Path.Combine(directory, "project.json"));
+            // ReadOrQuarantine moves a corrupt project.json aside and returns
+            // null, so one damaged project is skipped while every valid project
+            // still loads -- a single bad file no longer aborts the whole store.
+            var project = JsonFile.ReadOrQuarantine<ZetlProject>(Path.Combine(directory, "project.json"), log);
             if (project is null || string.IsNullOrWhiteSpace(project.Id))
             {
                 continue;
@@ -136,7 +141,7 @@ internal sealed class ZetlStateStorage
             return;
         }
 
-        var legacy = JsonFile.Read<ZetlState>(legacyStatePath);
+        var legacy = JsonFile.ReadOrQuarantine<ZetlState>(legacyStatePath, log);
         if (legacy is null)
         {
             return;

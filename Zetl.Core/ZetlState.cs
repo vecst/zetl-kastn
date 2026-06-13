@@ -79,7 +79,7 @@ internal sealed class ZetlStateStore
     private readonly ZetlStateStorage storage;
     private readonly string sessionId;
 
-    public ZetlStateStore(string? statePath = null, string? sessionId = null)
+    public ZetlStateStore(string? statePath = null, string? sessionId = null, Action<string>? log = null)
     {
         // Historically callers passed a single state.json path. Storage is now a
         // directory layout, so treat that path's directory as the workspace root
@@ -94,7 +94,7 @@ internal sealed class ZetlStateStore
             rootDirectory = Directory.GetCurrentDirectory();
         }
 
-        storage = new ZetlStateStorage(rootDirectory, legacyStatePath);
+        storage = new ZetlStateStorage(rootDirectory, legacyStatePath, log);
         this.sessionId = string.IsNullOrWhiteSpace(sessionId) ? NewId() : sessionId;
         State = storage.Load();
         NormalizeLoadedState();

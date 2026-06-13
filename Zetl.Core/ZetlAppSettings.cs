@@ -16,13 +16,15 @@ internal sealed class ZetlAppSettings
 internal sealed class ZetlAppSettingsStore
 {
     private readonly string settingsPath;
+    private readonly Action<string>? log;
 
-    public ZetlAppSettingsStore(string? settingsPath = null)
+    public ZetlAppSettingsStore(string? settingsPath = null, Action<string>? log = null)
     {
         this.settingsPath = settingsPath ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Zetl",
             "settings.json");
+        this.log = log;
         Settings = Load();
     }
 
@@ -43,6 +45,6 @@ internal sealed class ZetlAppSettingsStore
 
     private ZetlAppSettings Load()
     {
-        return JsonFile.Read<ZetlAppSettings>(settingsPath) ?? new ZetlAppSettings();
+        return JsonFile.ReadOrQuarantine<ZetlAppSettings>(settingsPath, log) ?? new ZetlAppSettings();
     }
 }

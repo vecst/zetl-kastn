@@ -68,9 +68,13 @@ internal static class PortableSelfTests
                 ("Zetl state migrates a legacy single state file", StateMigratesLegacySingleFile),
                 ("Zetl json writes do not collide under concurrent writers", JsonFileConcurrentWritesDoNotCollide),
                 ("Zetl json parse errors name the damaged file", JsonFileReadNamesDamagedFile),
+                ("Zetl json read-or-quarantine moves corrupt files aside", JsonFileQuarantinesCorruptFile),
+                ("Zetl state skips a corrupt project and keeps the rest", StateSkipsCorruptProjectFile),
+                ("Zetl state recovers from a corrupt workspace file", StateRecoversFromCorruptWorkspace),
                 ("Zetl state appends activity-log notes without activating", StateAppendsLogNotesWithoutActivating),
                 ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
+                ("Zetl app settings recover from a corrupt file", AppSettingsRecoverFromCorruptFile),
                 ("Zetl built-in theme validates", ThemeDefaultsValidate),
                 ("Zetl Dusk built-in theme validates", ThemeDuskValidates),
                 ("Zetl built-in presets all validate", ThemeBuiltInPresetsValidate),
@@ -79,6 +83,8 @@ internal static class PortableSelfTests
                 ("Zetl theme store ignores invalid files", ThemeStoreIgnoresInvalidFiles),
                 ("Zetl state applies bucket defaults", StateAppliesBucketDefaults),
                 ("Zetl default hotkeys config parses", DefaultConfigParses),
+                ("Zetl config tolerates null replay modifiers", ConfigNullReplayModifiersDoesNotThrow),
+                ("Zetl config reports clean errors for null fields", ConfigNullFieldsReportCleanErrors),
                 ("Runtime applies app settings defaults", RuntimeAppliesAppSettingsDefaults),
                 ("Runtime undo stack keeps lanes separate", RuntimeUndoStackKeepsLanesSeparate),
                 ("Runtime activity log buffer drains safely", RuntimeActivityLogBufferDrainsSafely),
@@ -753,6 +759,49 @@ internal static class PortableSelfTests
             AssertTrue(config.HoldDelay > TimeSpan.Zero, "Default config should define a positive hold delay.");
         }
 
+        private static void ConfigNullReplayModifiersDoesNotThrow()
+        {
+            var json =
+                """
+                { "repeatSuppressionDelayMs": 33, "holdDelayMs": 353, "hotkeys": [ { "name": "Copy", "key": "C", "modifiers": ["Ctrl"], "dispatch": "None", "replayModifiers": null } ] }
+                """;
+
+            var config = ChordlConfigLoader.LoadFromJson(json);
+
+            AssertEqual(1, config.Actions.Count, "A null replayModifiers should normalize to the default rather than crash.");
+            AssertFalse(config.Actions.Values.Single().ReplayShift, "Normalized replay modifiers should not request Shift.");
+        }
+
+        private static void ConfigNullFieldsReportCleanErrors()
+        {
+            var nullModifiers =
+                """
+                { "repeatSuppressionDelayMs": 33, "holdDelayMs": 353, "hotkeys": [ { "name": "Copy", "key": "C", "modifiers": null, "dispatch": "None" } ] }
+                """;
+            AssertConfigRejected(nullModifiers, "Ctrl", "Null modifiers should produce a clean validation error, not a crash.");
+
+            var nullEntry =
+                """
+                { "repeatSuppressionDelayMs": 33, "holdDelayMs": 353, "hotkeys": [ null ] }
+                """;
+            AssertConfigRejected(nullEntry, "must be an object", "A null hotkey entry should produce a clean validation error, not a crash.");
+        }
+
+        private static void AssertConfigRejected(string json, string expectedFragment, string because)
+        {
+            try
+            {
+                ChordlConfigLoader.LoadFromJson(json);
+                AssertTrue(false, $"{because} (expected InvalidOperationException, but none was thrown)");
+            }
+            catch (InvalidOperationException ex)
+            {
+                AssertTrue(
+                    ex.Message.Contains(expectedFragment, StringComparison.OrdinalIgnoreCase),
+                    $"{because} Got: {ex.Message}");
+            }
+        }
+
         private static void StateDetectsCompilableNotes()
         {
             using var temp = new TempStateFile();
@@ -1325,6 +1374,68 @@ internal static class PortableSelfTests
             }
         }
 
+        private static void JsonFileQuarantinesCorruptFile()
+        {
+            using var temp = new TempStateFile();
+            var directory = System.IO.Path.GetDirectoryName(temp.Path)!;
+            File.WriteAllText(temp.Path, "{ not json");
+
+            var result = JsonFile.ReadOrQuarantine<string[]>(temp.Path);
+
+            AssertTrue(result is null, "Reading a corrupt file should return default instead of throwing.");
+            AssertFalse(File.Exists(temp.Path), "The corrupt file should be moved aside.");
+            AssertEqual(
+                1,
+                Directory.GetFiles(directory, "state.json.corrupt-*").Length,
+                "ReadOrQuarantine should leave one quarantined copy.");
+        }
+
+        private static void StateSkipsCorruptProjectFile()
+        {
+            using var temp = new TempStateFile();
+            var projectsDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "projects");
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("KeepMe", ["Inbox"], "Inbox");
+            store.CreateProject("BreakMe", ["Inbox"], "Inbox");
+
+            var corruptFile = Directory
+                .GetFiles(projectsDir, "project.json", SearchOption.AllDirectories)
+                .Single(path => System.IO.Path
+                    .GetFileName(System.IO.Path.GetDirectoryName(path)!)
+                    .StartsWith("BreakMe", StringComparison.OrdinalIgnoreCase));
+            File.WriteAllText(corruptFile, "{ not valid json");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+
+            AssertEqual(1, reloaded.State.Projects.Count, "Only the valid project should load; the corrupt one is skipped.");
+            AssertEqual("KeepMe", reloaded.State.Projects.Single().Name, "A valid project should survive a sibling's corruption.");
+            AssertFalse(File.Exists(corruptFile), "The corrupt project.json should be moved aside.");
+            AssertEqual(
+                1,
+                Directory.GetFiles(System.IO.Path.GetDirectoryName(corruptFile)!, "project.json.corrupt-*").Length,
+                "The corrupt project.json should be quarantined in place.");
+        }
+
+        private static void StateRecoversFromCorruptWorkspace()
+        {
+            using var temp = new TempStateFile();
+            var root = System.IO.Path.GetDirectoryName(temp.Path)!;
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Survivor", ["Inbox"], "Inbox");
+
+            var workspacePath = System.IO.Path.Combine(root, "workspace.json");
+            File.WriteAllText(workspacePath, "{ broken");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+
+            AssertEqual("Survivor", reloaded.State.Projects.Single().Name, "Projects should still load when workspace.json is corrupt.");
+            AssertFalse(File.Exists(workspacePath), "The corrupt workspace.json should be moved aside.");
+            AssertEqual(
+                1,
+                Directory.GetFiles(root, "workspace.json.corrupt-*").Length,
+                "The corrupt workspace.json should be quarantined.");
+        }
+
         private static void StateAppendsLogNotesWithoutActivating()
         {
             using var temp = new TempStateFile();
@@ -1392,6 +1503,23 @@ internal static class PortableSelfTests
             AssertEqual(4, loaded.Settings.DefaultTsvRowLength, "Default TSV row length should round-trip.");
             AssertEqual("custom-theme", loaded.Settings.ThemeId, "Theme id should round-trip.");
             AssertEqual("Dark", loaded.Settings.ThemeVariant, "Theme variant should round-trip.");
+        }
+
+        private static void AppSettingsRecoverFromCorruptFile()
+        {
+            using var temp = new TempStateFile();
+            var directory = System.IO.Path.GetDirectoryName(temp.Path)!;
+            var settingsPath = System.IO.Path.Combine(directory, "settings.json");
+            File.WriteAllText(settingsPath, "{ not settings");
+
+            var store = new ZetlAppSettingsStore(settingsPath);
+
+            AssertTrue(store.Settings.AutoCaptureOnCopy, "Corrupt settings should fall back to defaults, not abort.");
+            AssertFalse(File.Exists(settingsPath), "The corrupt settings.json should be moved aside.");
+            AssertEqual(
+                1,
+                Directory.GetFiles(directory, "settings.json.corrupt-*").Length,
+                "The corrupt settings.json should be quarantined.");
         }
 
         private static void ThemeDefaultsValidate()

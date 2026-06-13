@@ -47,11 +47,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         this.desktop = desktop;
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         store = dataDirectory is null
-            ? new ZetlStateStore()
-            : new ZetlStateStore(Path.Combine(dataDirectory, "state.json"));
-        settingsStore = new ZetlAppSettingsStore(dataDirectory is null
-            ? null
-            : Path.Combine(dataDirectory, "settings.json"));
+            ? new ZetlStateStore(log: Log)
+            : new ZetlStateStore(Path.Combine(dataDirectory, "state.json"), log: Log);
+        settingsStore = new ZetlAppSettingsStore(
+            dataDirectory is null
+                ? null
+                : Path.Combine(dataDirectory, "settings.json"),
+            Log);
         themeStore = new ZetlThemeStore(dataDirectory is null
             ? null
             : Path.Combine(dataDirectory, "themes"));
