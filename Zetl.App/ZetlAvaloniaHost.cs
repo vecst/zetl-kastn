@@ -115,6 +115,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             clipboard.GetChangeToken);
 
         trayIcon = CreateTrayIcon();
+        // Reflect Zetl's state in the tray icon. store.Changed covers active
+        // project, bucket kind, and pop toggles; UpdateTrayIcon no-ops when the
+        // effective state is unchanged, so this stays cheap despite firing often.
+        store.Changed += (_, _) => Dispatcher.UIThread.Post(UpdateTrayIcon);
         logFlushTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(LogFlushIntervalMs)
@@ -227,15 +231,110 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(Item("Quit", () => desktop.Shutdown()));
 
+        currentTrayState = ComputeTrayState();
         var icon = new TrayIcon
         {
-            Icon = CreateTrayWindowIcon(),
-            ToolTipText = "Zetl",
+            Icon = TrayIconForState(currentTrayState),
+            ToolTipText = TrayTooltip(currentTrayState),
             Menu = menu,
             IsVisible = true
         };
         icon.Clicked += (_, _) => OnTrayIconClicked();
         return icon;
+    }
+
+    // Tray icon state, ordered so the most attention-worthy mode wins when the
+    // two lanes differ (Replay > Pop > Active > Idle).
+    private enum TrayIconState
+    {
+        Idle = 0,
+        Active = 1,
+        Pop = 2,
+        Replay = 3
+    }
+
+    // White Z on these backgrounds; Idle keeps the original periwinkle. Active
+    // turns green; Replay/Pop stay green with a colored bottom stripe.
+    private const uint TrayIdleColor = 0x6E5CD6;
+    private const uint TrayActiveColor = 0x2FA565;
+    private const uint TrayReplayStripe = 0x36C2D6;
+    private const uint TrayPopStripe = 0xEE8A2D;
+
+    private readonly Dictionary<TrayIconState, WindowIcon> trayIcons = [];
+    private TrayIconState currentTrayState;
+
+    private TrayIconState ComputeTrayState()
+    {
+        var normal = (int)LaneTrayState(shifted: false);
+        var shift = (int)LaneTrayState(shifted: true);
+        return (TrayIconState)Math.Max(normal, shift);
+    }
+
+    private TrayIconState LaneTrayState(bool shifted)
+    {
+        if (store.GetActiveProject(shifted) is null)
+        {
+            return TrayIconState.Idle;
+        }
+
+        var bucket = store.GetActiveBucket(shifted);
+        if (bucket is null)
+        {
+            return TrayIconState.Active;
+        }
+
+        if (ZetlStateStore.IsFifoBucket(bucket))
+        {
+            return TrayIconState.Replay;
+        }
+
+        return bucket.PopMode ? TrayIconState.Pop : TrayIconState.Active;
+    }
+
+    private void UpdateTrayIcon()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        var state = ComputeTrayState();
+        if (state == currentTrayState)
+        {
+            return;
+        }
+
+        currentTrayState = state;
+        trayIcon.Icon = TrayIconForState(state);
+        trayIcon.ToolTipText = TrayTooltip(state);
+    }
+
+    private WindowIcon TrayIconForState(TrayIconState state)
+    {
+        if (!trayIcons.TryGetValue(state, out var icon))
+        {
+            icon = state switch
+            {
+                TrayIconState.Active => CreateTrayWindowIcon(TrayActiveColor),
+                TrayIconState.Replay => CreateTrayWindowIcon(TrayActiveColor, TrayReplayStripe),
+                TrayIconState.Pop => CreateTrayWindowIcon(TrayActiveColor, TrayPopStripe),
+                _ => CreateTrayWindowIcon(TrayIdleColor)
+            };
+            trayIcons[state] = icon;
+        }
+
+        return icon;
+    }
+
+    private static string TrayTooltip(TrayIconState state)
+    {
+        return state switch
+        {
+            TrayIconState.Active => "Zetl — project active",
+            TrayIconState.Replay => "Zetl — replay mode",
+            TrayIconState.Pop => "Zetl — pop mode",
+            _ => "Zetl"
+        };
     }
 
     // Avalonia's TrayIcon exposes only a single Clicked event, so we time two
@@ -681,7 +780,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         return ChordlConfigLoader.LoadFromJson(reader.ReadToEnd());
     }
 
-    private static WindowIcon CreateTrayWindowIcon()
+    // Builds the 16x16 tray icon: a white "Z" on the given background (0xRRGGBB),
+    // with an optional colored stripe across the bottom rows for the mode badge.
+    private static WindowIcon CreateTrayWindowIcon(uint background, uint? bottomStripe = null)
     {
         const int size = 16;
         using var stream = new MemoryStream();
@@ -717,9 +818,16 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     var zStroke = y is 3 or 12
                         ? x is >= 3 and <= 12
                         : x + y is >= 14 and <= 16 && y is > 3 and < 12;
-                    writer.Write((byte)(zStroke ? 255 : 214));
-                    writer.Write((byte)(zStroke ? 255 : 92));
-                    writer.Write((byte)(zStroke ? 255 : 110));
+                    // y is top-down here (y=0 top), so the stripe sits on the
+                    // bottom three rows, clear of the Z's lower bar at y=12.
+                    var color = zStroke
+                        ? 0xFFFFFFu
+                        : bottomStripe is { } stripe && y >= 13
+                            ? stripe
+                            : background;
+                    writer.Write((byte)(color & 0xFF));
+                    writer.Write((byte)((color >> 8) & 0xFF));
+                    writer.Write((byte)((color >> 16) & 0xFF));
                     writer.Write((byte)255);
                 }
             }
