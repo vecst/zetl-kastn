@@ -37,6 +37,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly Thread diagnosticThread;
     private readonly List<IClickAwayDismissable> clickAwayPopups = [];
     private readonly ZetlClickAwayWatcher clickAwayWatcher;
+    private DateTime lastTrayClickUtc = DateTime.MinValue;
     private bool disposed;
 
     public ZetlAvaloniaHost(
@@ -233,8 +234,29 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             Menu = menu,
             IsVisible = true
         };
-        icon.Clicked += (_, _) => ShowBoard(shifted: false);
+        icon.Clicked += (_, _) => OnTrayIconClicked();
         return icon;
+    }
+
+    // Avalonia's TrayIcon exposes only a single Clicked event, so we time two
+    // clicks ourselves: a lone click does nothing (the icon is easy to hit by
+    // accident), and a double-click opens the Board. Right-click still shows the
+    // menu, which has its own Open Board item.
+    private void OnTrayIconClicked()
+    {
+        var now = DateTime.UtcNow;
+        var doubleClickMs = OperatingSystem.IsWindows()
+            ? (int)Win32Interop.GetDoubleClickTime()
+            : 500;
+        if ((now - lastTrayClickUtc).TotalMilliseconds <= doubleClickMs)
+        {
+            // Consume the pair so a triple-click isn't read as two double-clicks.
+            lastTrayClickUtc = DateTime.MinValue;
+            ShowBoard(shifted: false);
+            return;
+        }
+
+        lastTrayClickUtc = now;
     }
 
     private static NativeMenuItem Item(string label, Action action)

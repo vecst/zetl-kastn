@@ -37,6 +37,9 @@ internal static class Win32Interop
     internal static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
+    internal static extern uint GetDoubleClickTime();
+
+    [DllImport("user32.dll")]
     internal static extern bool SetForegroundWindow(IntPtr window);
 
     // Re-asserting a window to the top of the topmost band. Avalonia's Topmost
