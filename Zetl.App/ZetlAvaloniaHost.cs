@@ -253,12 +253,14 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         Replay = 3
     }
 
-    // White Z on these backgrounds; Idle keeps the original periwinkle. Active
-    // turns green; Replay/Pop stay green with a colored bottom stripe.
-    private const uint TrayIdleColor = 0x6E5CD6;
+    // White Z over a left-to-right gradient. Idle is a muted grey-periwinkle
+    // (solid). Active is solid green. Replay/Pop fade green into the status hue
+    // (purple for replay, orange for pop), so "active" reads on the left while
+    // the mode shows on the right.
+    private const uint TrayIdleColor = 0x7B779C;
     private const uint TrayActiveColor = 0x2FA565;
-    private const uint TrayReplayStripe = 0x36C2D6;
-    private const uint TrayPopStripe = 0xEE8A2D;
+    private const uint TrayReplayColor = 0x9B4FD6;
+    private const uint TrayPopColor = 0xEE8A2D;
 
     private readonly Dictionary<TrayIconState, WindowIcon> trayIcons = [];
     private TrayIconState currentTrayState;
@@ -315,10 +317,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             icon = state switch
             {
-                TrayIconState.Active => CreateTrayWindowIcon(TrayActiveColor),
-                TrayIconState.Replay => CreateTrayWindowIcon(TrayActiveColor, TrayReplayStripe),
-                TrayIconState.Pop => CreateTrayWindowIcon(TrayActiveColor, TrayPopStripe),
-                _ => CreateTrayWindowIcon(TrayIdleColor)
+                TrayIconState.Active => CreateTrayWindowIcon(TrayActiveColor, TrayActiveColor),
+                TrayIconState.Replay => CreateTrayWindowIcon(TrayActiveColor, TrayReplayColor),
+                TrayIconState.Pop => CreateTrayWindowIcon(TrayActiveColor, TrayPopColor),
+                _ => CreateTrayWindowIcon(TrayIdleColor, TrayIdleColor)
             };
             trayIcons[state] = icon;
         }
@@ -780,9 +782,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         return ChordlConfigLoader.LoadFromJson(reader.ReadToEnd());
     }
 
-    // Builds the 16x16 tray icon: a white "Z" on the given background (0xRRGGBB),
-    // with an optional colored stripe across the bottom rows for the mode badge.
-    private static WindowIcon CreateTrayWindowIcon(uint background, uint? bottomStripe = null)
+    // Builds the 16x16 tray icon: a white "Z" over a left-to-right gradient from
+    // leftColor to rightColor (both 0xRRGGBB). Solid states pass the same color
+    // for both ends; mode states fade green into the status hue.
+    private static WindowIcon CreateTrayWindowIcon(uint leftColor, uint rightColor)
     {
         const int size = 16;
         using var stream = new MemoryStream();
@@ -818,13 +821,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     var zStroke = y is 3 or 12
                         ? x is >= 3 and <= 12
                         : x + y is >= 14 and <= 16 && y is > 3 and < 12;
-                    // y is top-down here (y=0 top), so the stripe sits on the
-                    // bottom three rows, clear of the Z's lower bar at y=12.
                     var color = zStroke
                         ? 0xFFFFFFu
-                        : bottomStripe is { } stripe && y >= 13
-                            ? stripe
-                            : background;
+                        : GradientColor(leftColor, rightColor, x, size);
                     writer.Write((byte)(color & 0xFF));
                     writer.Write((byte)((color >> 8) & 0xFF));
                     writer.Write((byte)((color >> 16) & 0xFF));
@@ -840,5 +839,21 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
         stream.Position = 0;
         return new WindowIcon(stream);
+    }
+
+    // Interpolates a 0xRRGGBB color across the icon width: x=0 is leftColor,
+    // x=size-1 is rightColor. Equal endpoints yield a solid fill.
+    private static uint GradientColor(uint left, uint right, int x, int size)
+    {
+        var t = size <= 1 ? 0d : x / (double)(size - 1);
+        var r = Lerp((left >> 16) & 0xFF, (right >> 16) & 0xFF, t);
+        var g = Lerp((left >> 8) & 0xFF, (right >> 8) & 0xFF, t);
+        var b = Lerp(left & 0xFF, right & 0xFF, t);
+        return (r << 16) | (g << 8) | b;
+    }
+
+    private static uint Lerp(uint a, uint b, double t)
+    {
+        return (uint)Math.Round(a + ((double)b - a) * t);
     }
 }
