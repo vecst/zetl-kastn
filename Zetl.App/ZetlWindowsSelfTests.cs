@@ -32,6 +32,17 @@ internal static class ZetlWindowsSelfTests
             failures += Check(
                 "clipboard round-trips unicode and emoji",
                 clipboard.SetText("café — naïve — 日本語 🎉") && clipboard.TryGetText() == "café — naïve — 日本語 🎉");
+
+            // Changing the system foreground-lock timeout and restoring it must
+            // leave the setting exactly as it was, so Zetl doesn't alter a
+            // system-wide value past its own lifetime.
+            uint before = 0;
+            Win32Interop.SystemParametersInfo(Win32Interop.SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref before, 0);
+            ZetlForegroundService.AllowForegroundActivation();
+            ZetlForegroundService.RestoreForegroundActivation();
+            uint after = 0;
+            Win32Interop.SystemParametersInfo(Win32Interop.SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref after, 0);
+            failures += Check("foreground-lock timeout restored to its original value", after == before);
         }
         finally
         {
