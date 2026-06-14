@@ -404,6 +404,16 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
     public bool SetText(string text)
     {
+        // Never open+empty the clipboard with a NULL owner -- that is the
+        // documented destructive failure mode (EmptyClipboard sets the owner to
+        // NULL and SetClipboardData then fails, leaving the clipboard cleared).
+        // Refuse the write instead, so a missing owner can't wipe the clipboard.
+        if (!EnsureOwnerWindow())
+        {
+            log("Clipboard write skipped: no owner window available; clipboard left intact.");
+            return false;
+        }
+
         if (!TryOpen())
         {
             return false;
@@ -481,6 +491,19 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             DestroyWindow(ownerWindow);
             ownerWindow = IntPtr.Zero;
         }
+    }
+
+    // True once a clipboard owner window exists. Retries creation in case the
+    // constructor's attempt failed transiently, so writes can recover rather than
+    // being refused for the whole session.
+    private bool EnsureOwnerWindow()
+    {
+        if (ownerWindow == IntPtr.Zero)
+        {
+            ownerWindow = CreateOwnerWindow(log);
+        }
+
+        return ownerWindow != IntPtr.Zero;
     }
 
     private bool TryOpen()
