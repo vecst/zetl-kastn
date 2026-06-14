@@ -790,6 +790,18 @@ internal static class PortableSelfTests
                 { "repeatSuppressionDelayMs": 33, "holdDelayMs": 353, "hotkeys": [ null ] }
                 """;
             AssertConfigRejected(nullEntry, "must be an object", "A null hotkey entry should produce a clean validation error, not a crash.");
+
+            var nullModifierEntry =
+                """
+                { "repeatSuppressionDelayMs": 33, "holdDelayMs": 353, "hotkeys": [ { "name": "Copy", "key": "C", "modifiers": ["Ctrl", null], "dispatch": "None" } ] }
+                """;
+            AssertConfigRejected(nullModifierEntry, "modifiers[1]", "A null entry inside modifiers should be reported by index, not silently dropped.");
+
+            var nullReplayModifierEntry =
+                """
+                { "repeatSuppressionDelayMs": 33, "holdDelayMs": 353, "hotkeys": [ { "name": "Copy", "key": "C", "modifiers": ["Ctrl"], "dispatch": "None", "replayModifiers": ["Ctrl", null] } ] }
+                """;
+            AssertConfigRejected(nullReplayModifierEntry, "replayModifiers[1]", "A null entry inside replayModifiers should be reported by index.");
         }
 
         private static void AssertConfigRejected(string json, string expectedFragment, string because)

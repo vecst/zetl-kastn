@@ -87,10 +87,10 @@ public static class ChordlConfigLoader
             dto.Name ??= "";
             dto.Key ??= "";
             dto.Dispatch ??= "None";
+            // Coalesce a null array, but keep any null *entries* so validation can
+            // report them by index rather than silently dropping them.
             dto.Modifiers ??= new();
             dto.ReplayModifiers ??= new() { "Ctrl" };
-            dto.Modifiers.RemoveAll(modifier => modifier is null);
-            dto.ReplayModifiers.RemoveAll(modifier => modifier is null);
         }
     }
 
@@ -153,14 +153,20 @@ public static class ChordlConfigLoader
                 errors.Add($"{label} must include Ctrl in modifiers.");
             }
 
-            foreach (var modifier in modifiers.Where(modifier => !IsKnownModifier(modifier)))
+            for (var m = 0; m < modifiers.Count; m++)
             {
-                errors.Add($"{label} has unsupported modifier '{modifier}'. Supported modifiers: Ctrl, Shift.");
+                if (!IsKnownModifier(modifiers[m]))
+                {
+                    errors.Add($"{label} modifiers[{m}] must be Ctrl or Shift, not '{modifiers[m] ?? "null"}'.");
+                }
             }
 
-            foreach (var modifier in replayModifiers.Where(modifier => !IsKnownModifier(modifier)))
+            for (var m = 0; m < replayModifiers.Count; m++)
             {
-                errors.Add($"{label} has unsupported replay modifier '{modifier}'. Supported replay modifiers: Ctrl, Shift.");
+                if (!IsKnownModifier(replayModifiers[m]))
+                {
+                    errors.Add($"{label} replayModifiers[{m}] must be Ctrl or Shift, not '{replayModifiers[m] ?? "null"}'.");
+                }
             }
 
             if (!Enum.TryParse<ChordlDispatchMode>(dto.Dispatch, ignoreCase: true, out _))
@@ -213,7 +219,7 @@ public static class ChordlConfigLoader
         return map;
     }
 
-    private static bool IsKnownModifier(string modifier)
+    private static bool IsKnownModifier(string? modifier)
     {
         return ModifierComparer.Equals(modifier, "Ctrl")
             || ModifierComparer.Equals(modifier, "Shift");
