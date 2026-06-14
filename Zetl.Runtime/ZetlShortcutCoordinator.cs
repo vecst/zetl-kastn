@@ -207,9 +207,11 @@ internal sealed class ZetlShortcutCoordinator
             request.Shifted,
             $"Undid save to {bucket.Name}.",
             () => store.DeleteNote(bucket, note.Id));
-        if (!isCut || quickNoteToClipboard())
+        if ((!isCut || quickNoteToClipboard()) && !clipboard.SetText(result.NoteText))
         {
-            clipboard.SetText(result.NoteText);
+            // The note is already saved; don't roll it back, just record that the
+            // clipboard didn't pick up the saved text.
+            log($"Saved note to {bucket.Name}, but copying it to the clipboard failed.");
         }
 
         // The Activate toggle decides the lane's active project. When off, undo
@@ -287,7 +289,15 @@ internal sealed class ZetlShortcutCoordinator
             return ZetlCompileOutcome.RestoreTarget;
         }
 
-        clipboard.SetText(result.CompiledText);
+        if (!clipboard.SetText(result.CompiledText))
+        {
+            // Staging failed, so don't paste stale clipboard content or claim a
+            // copy succeeded. The compiled text can be re-produced by compiling
+            // again.
+            notifications.Show("Couldn't copy the compiled text to the clipboard.");
+            return ZetlCompileOutcome.RestoreTarget;
+        }
+
         if (result.PasteNow)
         {
             return ZetlCompileOutcome.PasteNow;
@@ -728,8 +738,16 @@ internal sealed class ZetlShortcutCoordinator
                     injectedText.Trim(),
                     StringComparison.Ordinal))
             {
-                clipboard.SetText(restoreTo);
-                replayInjectedClipboard[index] = restoreTo;
+                // Only mark the clipboard as restored if the write actually took;
+                // otherwise the tracking would lie about what's on the clipboard.
+                if (clipboard.SetText(restoreTo))
+                {
+                    replayInjectedClipboard[index] = restoreTo;
+                }
+                else
+                {
+                    log("Replay finished but restoring your previous clipboard failed.");
+                }
             }
         });
     }

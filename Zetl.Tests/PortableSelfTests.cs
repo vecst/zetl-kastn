@@ -110,6 +110,7 @@ internal static class PortableSelfTests
                 ("Runtime completes flattened compile result", RuntimeCompletesCompileResult),
                 ("Runtime preserves structured compile saves", RuntimePreservesStructuredCompileSaves),
                 ("Runtime returns copy and paste compile outcomes", RuntimeReturnsCopyAndPasteCompileOutcomes),
+                ("Runtime compile does not paste when the clipboard write fails", RuntimeCompileDoesNotPasteWhenClipboardWriteFails),
                 ("Runtime reports rejected compiled paste", RuntimeReportsRejectedCompiledPaste),
                 ("Runtime parity scenario writes a reloadable snapshot", RuntimeParityScenarioWritesSnapshot)
         };
@@ -2541,6 +2542,36 @@ internal static class PortableSelfTests
             AssertEqual("pasted compile", clipboard.Text, "Paste Now should stage compiled text on the clipboard.");
         }
 
+        private static void RuntimeCompileDoesNotPasteWhenClipboardWriteFails()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var source = store.CreateProject("Source", ["Inbox"], "Inbox");
+            var clipboard = new FakeClipboard("before", changeToken: 1) { SetTextSucceeds = false };
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _);
+            var request = new ZetlCompileRequest(false, source, null);
+
+            var outcome = coordinator.CompleteCompile(
+                request,
+                new ZetlCompileResult(
+                    Committed: true,
+                    CompiledText: "pasted compile",
+                    SaveToBucket: false,
+                    DestinationProject: source,
+                    DestinationBucketName: "Inbox",
+                    Flatten: false,
+                    SelectedNoteTexts: ["pasted compile"],
+                    PasteNow: true));
+
+            AssertEqual(ZetlCompileOutcome.RestoreTarget, outcome, "A failed clipboard write must not request the paste path.");
+            AssertEqual("before", clipboard.Text, "A failed clipboard write should leave the clipboard untouched.");
+        }
+
         private static void RuntimeReportsRejectedCompiledPaste()
         {
             using var temp = new TempStateFile();
@@ -2822,6 +2853,8 @@ internal static class PortableSelfTests
 
             public uint ChangeToken { get; private set; }
 
+            public bool SetTextSucceeds { get; set; } = true;
+
             public string? TryGetText()
             {
                 return Text;
@@ -2829,6 +2862,11 @@ internal static class PortableSelfTests
 
             public bool SetText(string text)
             {
+                if (!SetTextSucceeds)
+                {
+                    return false;
+                }
+
                 Text = text;
                 ChangeToken++;
                 return true;
