@@ -22,10 +22,17 @@ internal interface IKeyboardBackend : IDisposable
 
     /// <summary>
     /// Replay a Ctrl[+Shift]+&lt;key&gt; chord into the foreground app -- used to
-    /// pass a tapped shortcut through and by Zetl to send paste.
+    /// pass a tapped shortcut through and by Zetl to send paste. The returned
+    /// task completes with the actual injection result (true only once the
+    /// platform accepted the synthetic input), so callers that must not act on a
+    /// paste that never landed -- e.g. consuming a replay note -- can await it.
+    /// Backends may queue the work; the task completes when it actually runs.
     /// </summary>
-    bool SendChord(int vkCode, bool includeShift, bool restoreCtrl, bool restoreShift);
+    Task<bool> SendChord(int vkCode, bool includeShift, bool restoreCtrl, bool restoreShift);
 
-    /// <summary>Replay a plain Ctrl+V paste into the foreground app.</summary>
-    bool SendPaste();
+    /// <summary>
+    /// Replay a plain Ctrl+V paste into the foreground app. The returned task
+    /// completes with the real injection result; see <see cref="SendChord"/>.
+    /// </summary>
+    Task<bool> SendPaste();
 }

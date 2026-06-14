@@ -94,7 +94,7 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
         return hookId != IntPtr.Zero;
     }
 
-    public bool SendChord(
+    public Task<bool> SendChord(
         int vkCode,
         bool includeShift,
         bool restoreCtrl,
@@ -108,7 +108,7 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
             log);
     }
 
-    public bool SendPaste()
+    public Task<bool> SendPaste()
     {
         return AvaloniaWindowsInput.SendCtrlChord(
             ChordlKeys.VK_V,
@@ -204,36 +204,43 @@ internal static class AvaloniaWindowsInput
         thread.Start();
     }
 
-    public static bool SendCtrlChord(
+    // Returns a task that completes with the real SendInput result once the
+    // queued work runs on the replay thread -- not when it is merely queued -- so
+    // callers can await actual injection success before consuming replay notes.
+    public static Task<bool> SendCtrlChord(
         int virtualKey,
         bool includeShift,
         bool restoreCtrl,
         bool restoreShift,
         Action<string> log)
     {
+        var completion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             ReplayQueue.Add(() =>
             {
+                bool sent;
                 try
                 {
-                    SendCtrlChordNow(
-                        virtualKey,
-                        includeShift,
-                        log);
+                    sent = SendCtrlChordNow(virtualKey, includeShift, log);
                 }
                 catch (Exception ex)
                 {
                     log($"Synthetic input failed: {ex.Message}.");
+                    sent = false;
                 }
+
+                completion.TrySetResult(sent);
             });
-            return true;
         }
         catch (InvalidOperationException ex)
         {
             log($"Synthetic input could not be queued: {ex.Message}.");
-            return false;
+            completion.TrySetResult(false);
         }
+
+        return completion.Task;
     }
 
     private static void ProcessReplayQueue()
@@ -577,13 +584,13 @@ internal sealed class UnsupportedKeyboardBackend(Action<string> log) : IKeyboard
         return false;
     }
 
-    public bool SendChord(
+    public Task<bool> SendChord(
         int vkCode,
         bool includeShift,
         bool restoreCtrl,
-        bool restoreShift) => false;
+        bool restoreShift) => Task.FromResult(false);
 
-    public bool SendPaste() => false;
+    public Task<bool> SendPaste() => Task.FromResult(false);
 
     public void Dispose()
     {

@@ -695,14 +695,15 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         bool restoreCtrl,
         bool restoreShift)
     {
-        var sent = keyboard.SendChord(
-            virtualKey,
-            includeShift,
-            restoreCtrl,
-            restoreShift);
-        Log(sent
-            ? $"Sent synthetic {ChordlKeys.FormatComboName(virtualKey, includeShift)}."
-            : $"Failed to send synthetic {ChordlKeys.FormatComboName(virtualKey, includeShift)}.");
+        // This runs on the keyboard hook thread, so don't await: queue the chord
+        // and log the real injection result via a continuation off the hook.
+        var combo = ChordlKeys.FormatComboName(virtualKey, includeShift);
+        _ = keyboard.SendChord(virtualKey, includeShift, restoreCtrl, restoreShift)
+            .ContinueWith(
+                task => Log(task.Status == TaskStatus.RanToCompletion && task.Result
+                    ? $"Sent synthetic {combo}."
+                    : $"Failed to send synthetic {combo}."),
+                TaskScheduler.Default);
     }
 
     private void WriteDiagnosticLine(string line)

@@ -23,31 +23,40 @@ internal static class ChordlInput
         thread.Start();
     }
 
-    public static bool SendCtrlChord(int vkCode, bool includeShift, bool restoreCtrl, bool restoreShift, Action<string>? log = null)
+    // Returns a task that completes with the real SendInput result once the queued
+    // work runs, so callers can await actual injection success rather than mere
+    // enqueueing.
+    public static Task<bool> SendCtrlChord(int vkCode, bool includeShift, bool restoreCtrl, bool restoreShift, Action<string>? log = null)
     {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             ReplayQueue.Add(() =>
             {
+                bool sent;
                 try
                 {
-                    SendCtrlChordNow(vkCode, includeShift, log);
+                    sent = SendCtrlChordNow(vkCode, includeShift, log);
                 }
                 catch (Exception ex)
                 {
                     log?.Invoke($"Warning: synthetic Chordl input failed: {ex.Message}.");
+                    sent = false;
                 }
+
+                completion.TrySetResult(sent);
             });
-            return true;
         }
         catch (InvalidOperationException ex)
         {
             log?.Invoke($"Warning: synthetic Chordl input could not be queued: {ex.Message}.");
-            return false;
+            completion.TrySetResult(false);
         }
+
+        return completion.Task;
     }
 
-    public static bool SendPaste(Action<string>? log = null)
+    public static Task<bool> SendPaste(Action<string>? log = null)
     {
         return SendCtrlChord(ChordlKeys.VK_V, includeShift: false, restoreCtrl: false, restoreShift: false, log);
     }

@@ -113,7 +113,7 @@ internal sealed class ZetlShortcutCoordinator
             // and can make Windows silently remove the hook. Enqueue that work
             // onto the dispatcher and return the decision immediately.
             var shiftLane = context.ShiftLane;
-            dispatcher.Post(() => HandleReplayTap(shiftLane, activeBucket));
+            dispatcher.Post(() => _ = HandleReplayTapAsync(shiftLane, activeBucket));
             return true;
         }
 
@@ -300,7 +300,7 @@ internal sealed class ZetlShortcutCoordinator
     public async Task PasteCompiledTextAsync()
     {
         await delay.WaitAsync(PopClipboardDelay);
-        var pasted = keyboard.SendPaste();
+        var pasted = await keyboard.SendPaste();
         dispatcher.Post(() => notifications.Show(pasted
             ? "Pasted compiled text."
             : "Paste failed; compiled text remains on the clipboard. If the target is elevated, run Zetl elevated too."));
@@ -311,7 +311,7 @@ internal sealed class ZetlShortcutCoordinator
     public async Task PasteCutBackAsync()
     {
         await delay.WaitAsync(PopClipboardDelay);
-        var pasted = keyboard.SendPaste();
+        var pasted = await keyboard.SendPaste();
         dispatcher.Post(() => notifications.Show(pasted
             ? "Restored the cut text."
             : "Couldn't restore the cut text; it remains on the clipboard."));
@@ -569,16 +569,18 @@ internal sealed class ZetlShortcutCoordinator
     }
 
     // Runs on the dispatcher thread (enqueued from OnTapDispatched), never on the
-    // low-level keyboard hook thread, so the clipboard reads/writes and paste
-    // here cannot stall system input. Running entirely on one thread also keeps
-    // the replay-clipboard tracking arrays free of the hook-vs-dispatcher race
-    // the inline version had.
-    private void HandleReplayTap(bool shifted, ZetlBucket activeBucket)
+    // low-level keyboard hook thread, so the clipboard reads/writes and paste here
+    // cannot stall system input. Awaits the *real* synthetic-paste result before
+    // consuming the note, so a paste Windows never accepted (e.g. blocked by an
+    // elevated target) keeps the item instead of dropping it. Running on one
+    // thread also keeps the replay-clipboard tracking arrays free of the
+    // hook-vs-dispatcher race the inline version had.
+    private async Task HandleReplayTapAsync(bool shifted, ZetlBucket activeBucket)
     {
         if (!store.TryPeekNextFifoNote(activeBucket, out var fifoNote) || fifoNote is null)
         {
             store.SetBucketKind(activeBucket, "Standard");
-            keyboard.SendPaste();
+            _ = keyboard.SendPaste();
             notifications.Show($"{activeBucket.Name} replay complete.");
             return;
         }
@@ -590,53 +592,67 @@ internal sealed class ZetlShortcutCoordinator
         RememberUserClipboardBeforeReplay(shifted);
         // If the clipboard write itself fails, don't paste -- the foreground app
         // would receive whatever stale text was there instead of the replay item.
-        if (!SetReplayClipboard(shifted, noteText) || !keyboard.SendPaste())
+        if (!SetReplayClipboard(shifted, noteText))
         {
             notifications.Show($"Paste failed; {bucketName} item kept.");
             return;
         }
 
-        ZetlBucket? reviewBucket = null;
-        ZetlNote? consumedNote = null;
-        ZetlNote? reviewNote = null;
-        var consumed = project is not null
-            ? store.TryConsumeFifoNoteToReview(
-                project,
-                activeBucket,
-                noteId,
-                out reviewBucket,
-                out consumedNote,
-                out reviewNote)
-            : store.TryConsumeFifoNote(activeBucket, noteId, out consumedNote);
-        if (consumed && reviewBucket is not null)
-        {
-            log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
-        }
+        // Await the actual injection result, not just that the paste was queued.
+        var pasted = await keyboard.SendPaste();
 
-        if (consumed && consumedNote is not null)
+        // The await may resume off the dispatcher thread, so marshal the store
+        // mutations back through the dispatcher.
+        dispatcher.Post(() =>
         {
-            var undoReviewBucket = reviewBucket;
-            var undoReviewNoteId = reviewNote?.Id;
-            undoStack.Push(
-                shifted,
-                $"Restored replay item to {bucketName}.",
-                () => store.RestoreFifoConsumedNote(
+            if (!pasted)
+            {
+                notifications.Show($"Paste failed; {bucketName} item kept.");
+                return;
+            }
+
+            ZetlBucket? reviewBucket = null;
+            ZetlNote? consumedNote = null;
+            ZetlNote? reviewNote = null;
+            var consumed = project is not null
+                ? store.TryConsumeFifoNoteToReview(
+                    project,
                     activeBucket,
-                    consumedNote,
-                    undoReviewBucket,
-                    undoReviewNoteId));
-        }
+                    noteId,
+                    out reviewBucket,
+                    out consumedNote,
+                    out reviewNote)
+                : store.TryConsumeFifoNote(activeBucket, noteId, out consumedNote);
+            if (consumed && reviewBucket is not null)
+            {
+                log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
+            }
 
-        var replayComplete = !store.TryPeekNextFifoNote(activeBucket, out _);
-        if (replayComplete)
-        {
-            store.SetBucketKind(activeBucket, "Standard");
-        }
+            if (consumed && consumedNote is not null)
+            {
+                var undoReviewBucket = reviewBucket;
+                var undoReviewNoteId = reviewNote?.Id;
+                undoStack.Push(
+                    shifted,
+                    $"Restored replay item to {bucketName}.",
+                    () => store.RestoreFifoConsumedNote(
+                        activeBucket,
+                        consumedNote,
+                        undoReviewBucket,
+                        undoReviewNoteId));
+            }
 
-        _ = RestoreUserClipboardAfterReplayAsync(shifted, noteText);
-        notifications.Show(replayComplete
-            ? $"{bucketName} replay complete."
-            : $"Pasted next item from {bucketName}.");
+            var replayComplete = !store.TryPeekNextFifoNote(activeBucket, out _);
+            if (replayComplete)
+            {
+                store.SetBucketKind(activeBucket, "Standard");
+            }
+
+            _ = RestoreUserClipboardAfterReplayAsync(shifted, noteText);
+            notifications.Show(replayComplete
+                ? $"{bucketName} replay complete."
+                : $"Pasted next item from {bucketName}.");
+        });
     }
 
     private async Task HandlePopTapAsync(bool shifted)

@@ -77,12 +77,12 @@ internal sealed class WindowsKeyboardBackend : IKeyboardBackend
         return hookId != IntPtr.Zero;
     }
 
-    public bool SendChord(int vkCode, bool includeShift, bool restoreCtrl, bool restoreShift)
+    public Task<bool> SendChord(int vkCode, bool includeShift, bool restoreCtrl, bool restoreShift)
     {
         return ChordlInput.SendCtrlChord(vkCode, includeShift, restoreCtrl, restoreShift, log);
     }
 
-    public bool SendPaste()
+    public Task<bool> SendPaste()
     {
         return ChordlInput.SendPaste(log);
     }

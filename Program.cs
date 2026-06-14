@@ -126,10 +126,21 @@ internal static partial class Program
 
     private static void DispatchOriginalAction(int vkCode, bool includeShift, bool restoreCtrl, bool restoreShift)
     {
-        var sent = keyboardBackend?.SendChord(vkCode, includeShift, restoreCtrl, restoreShift) ?? false;
-        LogEvent(sent
-            ? $"Sent synthetic {ChordlKeys.FormatComboName(vkCode, includeShift)}."
-            : $"Failed to send synthetic {ChordlKeys.FormatComboName(vkCode, includeShift)}.");
+        // Runs on the keyboard hook thread, so don't await: queue the chord and
+        // log the real injection result via a continuation off the hook.
+        var combo = ChordlKeys.FormatComboName(vkCode, includeShift);
+        var task = keyboardBackend?.SendChord(vkCode, includeShift, restoreCtrl, restoreShift);
+        if (task is null)
+        {
+            LogEvent($"Failed to send synthetic {combo}.");
+            return;
+        }
+
+        _ = task.ContinueWith(
+            completed => LogEvent(completed.Status == TaskStatus.RanToCompletion && completed.Result
+                ? $"Sent synthetic {combo}."
+                : $"Failed to send synthetic {combo}."),
+            TaskScheduler.Default);
     }
 
     private static string? ReadValueArgument(string[] args, string prefix)

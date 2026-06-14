@@ -94,6 +94,7 @@ internal static class PortableSelfTests
                 ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
                 ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
+                ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
@@ -1922,6 +1923,33 @@ internal static class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
+        private static void RuntimeReplayTapKeepsNoteWhenPasteFails()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out var undo);
+            // Queueing succeeds but the worker reports the synthetic paste failed
+            // (e.g. SendInput blocked by an elevated target).
+            keyboard.PasteSucceeds = false;
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Replay tap should still be handled even when the paste fails.");
+            AssertEqual(1, keyboard.PasteCount, "A paste should have been attempted.");
+            AssertEqual(1, queue.Notes.Count, "The note must be kept when the synthetic paste was not accepted.");
+            AssertFalse(undo.TryPop(false, out _), "A failed paste should not push an undo entry.");
+        }
+
         private static void RuntimeReplayTapDefersClipboardWorkOffHook()
         {
             using var temp = new TempStateFile();
@@ -2762,19 +2790,19 @@ internal static class PortableSelfTests
                 return true;
             }
 
-            public bool SendChord(
+            public Task<bool> SendChord(
                 int vkCode,
                 bool includeShift,
                 bool restoreCtrl,
                 bool restoreShift)
             {
-                return true;
+                return Task.FromResult(true);
             }
 
-            public bool SendPaste()
+            public Task<bool> SendPaste()
             {
                 PasteCount++;
-                return PasteSucceeds;
+                return Task.FromResult(PasteSucceeds);
             }
 
             public void Dispose()
