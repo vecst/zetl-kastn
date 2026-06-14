@@ -358,12 +358,17 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     private const int HwndMessage = -3;
 
     private readonly Action<string> log;
+    private readonly Func<IntPtr> createOwnerWindow;
     private IntPtr ownerWindow;
 
-    public AvaloniaWindowsClipboard(Action<string> log)
+    // ownerWindowFactory is a test seam: pass `() => IntPtr.Zero` to simulate a
+    // failed owner-window creation and verify writes refuse without wiping the
+    // clipboard. Production uses the real message-only window.
+    public AvaloniaWindowsClipboard(Action<string> log, Func<IntPtr>? ownerWindowFactory = null)
     {
         this.log = log;
-        ownerWindow = CreateOwnerWindow(log);
+        createOwnerWindow = ownerWindowFactory ?? (() => CreateOwnerWindow(log));
+        ownerWindow = createOwnerWindow();
     }
 
     public string? TryGetText()
@@ -500,7 +505,7 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     {
         if (ownerWindow == IntPtr.Zero)
         {
-            ownerWindow = CreateOwnerWindow(log);
+            ownerWindow = createOwnerWindow();
         }
 
         return ownerWindow != IntPtr.Zero;

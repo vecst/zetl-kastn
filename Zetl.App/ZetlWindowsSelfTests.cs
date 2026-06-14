@@ -32,6 +32,21 @@ internal static class ZetlWindowsSelfTests
             failures += Check(
                 "clipboard round-trips unicode and emoji",
                 clipboard.SetText("café — naïve — 日本語 🎉") && clipboard.TryGetText() == "café — naïve — 日本語 🎉");
+
+            // Simulate owner-window creation failing: the write must refuse and
+            // leave whatever is on the clipboard intact, never empty it.
+            var canary = $"zetl-owner-canary-{Guid.NewGuid():N}";
+            clipboard.SetText(canary);
+            var noOwner = new AvaloniaWindowsClipboard(_ => { }, ownerWindowFactory: () => IntPtr.Zero);
+            try
+            {
+                failures += Check("no-owner clipboard write returns false", !noOwner.SetText("should not be written"));
+                failures += Check("no-owner write leaves the clipboard intact", clipboard.TryGetText() == canary);
+            }
+            finally
+            {
+                noOwner.Dispose();
+            }
         }
         finally
         {
