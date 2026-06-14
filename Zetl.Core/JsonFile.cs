@@ -50,7 +50,16 @@ internal static class JsonFile
         }
         catch (JsonException ex)
         {
+            // Corrupt content: move it aside so it can't keep breaking startup.
             Quarantine(path, ex, log);
+            return default;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Unreadable/locked/denied: don't move a file we couldn't even read --
+            // it may just be temporarily in use. Skip it for this load and keep
+            // any valid sibling files loading.
+            log?.Invoke($"Could not read '{path}' ({ex.GetType().Name}): {ex.Message}; using defaults for it.");
             return default;
         }
     }

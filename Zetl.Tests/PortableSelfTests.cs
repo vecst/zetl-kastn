@@ -71,10 +71,12 @@ internal static class PortableSelfTests
                 ("Zetl json read-or-quarantine moves corrupt files aside", JsonFileQuarantinesCorruptFile),
                 ("Zetl state skips a corrupt project and keeps the rest", StateSkipsCorruptProjectFile),
                 ("Zetl state recovers from a corrupt workspace file", StateRecoversFromCorruptWorkspace),
+                ("Zetl state skips an unreadable project and keeps the rest", StateSkipsUnreadableProjectFile),
                 ("Zetl state appends activity-log notes without activating", StateAppendsLogNotesWithoutActivating),
                 ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
                 ("Zetl app settings recover from a corrupt file", AppSettingsRecoverFromCorruptFile),
+                ("Zetl app settings recover from an unreadable file", AppSettingsRecoverFromUnreadableFile),
                 ("Zetl built-in theme validates", ThemeDefaultsValidate),
                 ("Zetl Dusk built-in theme validates", ThemeDuskValidates),
                 ("Zetl built-in presets all validate", ThemeBuiltInPresetsValidate),
@@ -1437,6 +1439,48 @@ internal static class PortableSelfTests
                 1,
                 Directory.GetFiles(root, "workspace.json.corrupt-*").Length,
                 "The corrupt workspace.json should be quarantined.");
+        }
+
+        private static void StateSkipsUnreadableProjectFile()
+        {
+            using var temp = new TempStateFile();
+            var projectsDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "projects");
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("KeepMe", ["Inbox"], "Inbox");
+            store.CreateProject("LockMe", ["Inbox"], "Inbox");
+
+            var lockedFile = Directory
+                .GetFiles(projectsDir, "project.json", SearchOption.AllDirectories)
+                .Single(path => System.IO.Path
+                    .GetFileName(System.IO.Path.GetDirectoryName(path)!)
+                    .StartsWith("LockMe", StringComparison.OrdinalIgnoreCase));
+
+            // Hold the file open with no sharing so the next read fails with an
+            // IOException rather than parsing as corrupt.
+            using (new FileStream(lockedFile, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                var reloaded = new ZetlStateStore(temp.Path);
+
+                AssertEqual(1, reloaded.State.Projects.Count, "An unreadable project should be skipped, not abort the load.");
+                AssertEqual("KeepMe", reloaded.State.Projects.Single().Name, "Valid projects should still load past an unreadable sibling.");
+            }
+
+            AssertTrue(File.Exists(lockedFile), "An unreadable (not corrupt) file must be left in place, not quarantined.");
+        }
+
+        private static void AppSettingsRecoverFromUnreadableFile()
+        {
+            using var temp = new TempStateFile();
+            var settingsPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "settings.json");
+            File.WriteAllText(settingsPath, "{ \"toastDisplayMs\": 1234 }");
+
+            using (new FileStream(settingsPath, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                var store = new ZetlAppSettingsStore(settingsPath);
+                AssertEqual(950, store.Settings.ToastDisplayMs, "Unreadable settings should fall back to defaults, not abort startup.");
+            }
+
+            AssertTrue(File.Exists(settingsPath), "Unreadable settings must be left in place, not quarantined.");
         }
 
         private static void StateAppendsLogNotesWithoutActivating()
