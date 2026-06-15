@@ -113,11 +113,12 @@ internal sealed class ZetlShortcutCoordinator
             // and can make Windows silently remove the hook. Enqueue that work
             // onto the dispatcher and return the decision immediately.
             var shiftLane = context.ShiftLane;
-            dispatcher.Post(() => _ = HandleReplayTapAsync(shiftLane, activeBucket));
+            dispatcher.Post(() => ZetlAsync.RunLogged(
+                () => HandleReplayTapAsync(shiftLane, activeBucket), "replay tap", log));
             return true;
         }
 
-        _ = HandlePopTapAsync(context.ShiftLane);
+        ZetlAsync.RunLogged(() => HandlePopTapAsync(context.ShiftLane), "pop tap", log);
         return false;
     }
 
@@ -665,7 +666,8 @@ internal sealed class ZetlShortcutCoordinator
                 store.SetBucketKind(activeBucket, "Standard");
             }
 
-            _ = RestoreUserClipboardAfterReplayAsync(shifted, noteText);
+            ZetlAsync.RunLogged(
+                () => RestoreUserClipboardAfterReplayAsync(shifted, noteText), "replay clipboard restore", log);
             notifications.Show(replayComplete
                 ? $"{bucketName} replay complete."
                 : $"Pasted next item from {bucketName}.");

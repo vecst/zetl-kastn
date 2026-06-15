@@ -274,7 +274,7 @@ internal sealed class ZetlApplicationContext :
                     SetForegroundWindow(targetWindow);
                 }
 
-                _ = shortcutCoordinator.PasteCompiledTextAsync();
+                ZetlAsync.RunLogged(shortcutCoordinator.PasteCompiledTextAsync, "paste compiled text", Log);
             },
             owner: ZetlDialogPlacement.OwnerFromHandle(targetWindow),
             activationWindow: targetWindow);

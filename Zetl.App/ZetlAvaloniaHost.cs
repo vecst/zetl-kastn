@@ -494,7 +494,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 ZetlForegroundService.RestoreTarget(target, Log);
                 if (outcome == ZetlNoteCaptureOutcome.PasteCutBack)
                 {
-                    _ = coordinator.PasteCutBackAsync();
+                    ZetlAsync.RunLogged(coordinator.PasteCutBackAsync, "paste cut back", Log);
                 }
             }
         });
@@ -532,7 +532,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             if (outcome == ZetlCompileOutcome.PasteNow)
             {
                 ZetlForegroundService.RestoreTarget(target, Log);
-                _ = coordinator.PasteCompiledTextAsync();
+                ZetlAsync.RunLogged(coordinator.PasteCompiledTextAsync, "paste compiled text", Log);
             }
             else if (!window.ClosedByDeactivate)
             {

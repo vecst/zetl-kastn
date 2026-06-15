@@ -99,6 +99,7 @@ internal static class PortableSelfTests
                 ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
                 ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
                 ("Runtime empty Replay reports a failed final paste", RuntimeEmptyReplayReportsFinalPasteFailure),
+                ("Runtime logged fire-and-forget records async failures", RuntimeRunLoggedRecordsAsyncFailure),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
@@ -2010,6 +2011,22 @@ internal static class PortableSelfTests
             AssertEqual("queued value", review.Notes.Single().Text, "Replay should archive the consumed note.");
             AssertEqual("Standard", queue.Kind, "An empty Replay bucket should return to Standard.");
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
+        }
+
+        private static void RuntimeRunLoggedRecordsAsyncFailure()
+        {
+            var messages = new List<string>();
+
+            // A synchronously-faulting operation completes RunLogged inline, so the
+            // diagnostic is recorded by the time the call returns.
+            ZetlAsync.RunLogged(
+                () => throw new InvalidOperationException("boom"),
+                "test operation",
+                messages.Add);
+
+            AssertTrue(
+                messages.Exists(message => message.Contains("test operation") && message.Contains("boom")),
+                "A faulted fire-and-forget task should be logged with its operation label and exception.");
         }
 
         private static void RuntimeEmptyReplayReportsFinalPasteFailure()

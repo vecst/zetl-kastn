@@ -90,6 +90,26 @@ internal sealed class ZetlActivityLogBuffer
     }
 }
 
+internal static class ZetlAsync
+{
+    // Fire-and-forget a task while still surfacing failures: await it and log any
+    // exception under the given label, so a faulted background task (replay, pop,
+    // clipboard restore, paste) can't vanish without a diagnostic. This is the
+    // fire-and-forget root, so it deliberately catches everything rather than
+    // letting an exception reach the synchronization context unobserved.
+    public static async void RunLogged(Func<Task> operation, string operationName, Action<string> log)
+    {
+        try
+        {
+            await operation();
+        }
+        catch (Exception ex)
+        {
+            log($"{operationName} failed: {ex}");
+        }
+    }
+}
+
 internal static class ZetlRuntimeLabels
 {
     public static string Destination(ZetlProject? project, ZetlBucket bucket)
