@@ -97,6 +97,7 @@ internal static class PortableSelfTests
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
                 ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
                 ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
+                ("Runtime empty Replay reports a failed final paste", RuntimeEmptyReplayReportsFinalPasteFailure),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
@@ -1978,6 +1979,34 @@ internal static class PortableSelfTests
             AssertEqual("queued value", review.Notes.Single().Text, "Replay should archive the consumed note.");
             AssertEqual("Standard", queue.Kind, "An empty Replay bucket should return to Standard.");
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
+        }
+
+        private static void RuntimeEmptyReplayReportsFinalPasteFailure()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            // No notes: the empty-Replay tap does a final pass-through paste.
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var sink = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                sink,
+                out var keyboard,
+                out _);
+            keyboard.PasteSucceeds = false;
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "An empty Replay tap is handled; it suppresses the physical paste.");
+            AssertEqual(1, keyboard.PasteCount, "The final pass-through paste should be attempted.");
+            AssertEqual("Standard", queue.Kind, "An empty Replay bucket returns to Standard.");
+            AssertTrue(
+                sink.Messages.Exists(message => message.Contains("didn't land", StringComparison.OrdinalIgnoreCase)),
+                "A failed final paste should be reported, not silently called complete.");
         }
 
         private static void RuntimeReplayTapKeepsNoteWhenPasteFails()

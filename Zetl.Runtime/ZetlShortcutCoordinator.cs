@@ -589,9 +589,16 @@ internal sealed class ZetlShortcutCoordinator
     {
         if (!store.TryPeekNextFifoNote(activeBucket, out var fifoNote) || fifoNote is null)
         {
+            // The bucket is empty, so replay is genuinely done -- return to
+            // Standard regardless. But this tap suppressed the physical Ctrl+V, so
+            // send the user's own clipboard through as the final pass-through and
+            // report if even that paste didn't land (e.g. an elevated target).
+            var emptyBucketName = activeBucket.Name;
             store.SetBucketKind(activeBucket, "Standard");
-            _ = keyboard.SendPaste();
-            notifications.Show($"{activeBucket.Name} replay complete.");
+            var finalPasted = await keyboard.SendPaste();
+            dispatcher.Post(() => notifications.Show(finalPasted
+                ? $"{emptyBucketName} replay complete."
+                : $"{emptyBucketName} replay complete, but the final paste didn't land."));
             return;
         }
 
