@@ -54,6 +54,14 @@ internal static class ZetlWindowsSelfTests
             {
                 clipboard.SetText(original);
             }
+            else
+            {
+                // The clipboard started with no text (empty, or non-text data we
+                // can't capture here). Clear our test text instead of leaving it
+                // behind. Non-text formats are not preserved.
+                clipboard.Clear();
+                Console.WriteLine("  note: clipboard started with no text; cleared test text (non-text formats not preserved).");
+            }
 
             clipboard.Dispose();
         }

@@ -489,6 +489,25 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         return GetClipboardSequenceNumber();
     }
 
+    // Empties the clipboard. Used by the self-test to restore a no-text starting
+    // state; not part of IClipboard. Returns false if it could not be emptied.
+    public bool Clear()
+    {
+        if (!EnsureOwnerWindow() || !TryOpen())
+        {
+            return false;
+        }
+
+        try
+        {
+            return EmptyClipboard();
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
     public void Dispose()
     {
         if (ownerWindow != IntPtr.Zero)
@@ -531,7 +550,8 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
     // A message-only window to own the clipboard. "STATIC" is a system-registered
     // class, so no class registration is needed; HWND_MESSAGE makes it invisible
-    // and pump-light. Falls back to a NULL owner if creation fails.
+    // and pump-light. If creation fails we return Zero and SetText refuses to
+    // write rather than opening the clipboard with a NULL owner.
     private static IntPtr CreateOwnerWindow(Action<string> log)
     {
         var window = CreateWindowEx(
@@ -549,7 +569,7 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             IntPtr.Zero);
         if (window == IntPtr.Zero)
         {
-            log($"Clipboard owner window unavailable (error {Marshal.GetLastWin32Error()}); using the default association.");
+            log($"Clipboard owner window unavailable (error {Marshal.GetLastWin32Error()}); writes will be refused until one can be created.");
         }
 
         return window;
