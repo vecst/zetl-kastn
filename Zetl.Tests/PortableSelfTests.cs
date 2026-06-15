@@ -66,6 +66,7 @@ internal static class PortableSelfTests
                 ("Zetl state round-trips JSON", StateRoundTripsJson),
                 ("Zetl state stores each project in its own folder", StateStoresEachProjectInItsOwnFolder),
                 ("Zetl state migrates a legacy single state file", StateMigratesLegacySingleFile),
+                ("Zetl state migration tolerates a backup rename failure", StateMigrationToleratesBackupRenameFailure),
                 ("Zetl json writes do not collide under concurrent writers", JsonFileConcurrentWritesDoNotCollide),
                 ("Zetl json parse errors name the damaged file", JsonFileReadNamesDamagedFile),
                 ("Zetl json read-or-quarantine moves corrupt files aside", JsonFileQuarantinesCorruptFile),
@@ -1494,6 +1495,30 @@ internal static class PortableSelfTests
             }
 
             AssertTrue(File.Exists(settingsPath), "Unreadable settings must be left in place, not quarantined.");
+        }
+
+        private static void StateMigrationToleratesBackupRenameFailure()
+        {
+            using var temp = new TempStateFile();
+            var legacyJson =
+                """
+                { "version": 1, "activeProjectId": "p1", "projects": [ { "id": "p1", "name": "Legacy", "activeBucketId": "b1", "buckets": [ { "id": "b1", "name": "Inbox", "kind": "Standard", "notes": [] } ] } ] }
+                """;
+            File.WriteAllText(temp.Path, legacyJson);
+            var root = System.IO.Path.GetDirectoryName(temp.Path)!;
+
+            // Hold the legacy file readable but not renamable: migration can read
+            // it, but the .bak rename fails with a sharing violation.
+            using (new FileStream(temp.Path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var store = new ZetlStateStore(temp.Path);
+
+                AssertEqual("Legacy", store.ActiveProject?.Name, "Migration should still produce the project when the backup rename fails.");
+                AssertEqual(
+                    1,
+                    Directory.GetFiles(System.IO.Path.Combine(root, "projects"), "project.json", SearchOption.AllDirectories).Length,
+                    "Migration should write the split project file even if the backup rename fails.");
+            }
         }
 
         private static void StateAppendsLogNotesWithoutActivating()

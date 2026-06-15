@@ -164,8 +164,17 @@ internal sealed class ZetlStateStorage
         });
 
         // Keep the original file as a backup rather than deleting it outright.
+        // The migrated project/workspace files are already written, so don't let
+        // a locked or access-denied rename abort startup -- just log and move on.
         var backupPath = legacyStatePath + ".bak";
-        File.Move(legacyStatePath, backupPath, overwrite: true);
+        try
+        {
+            File.Move(legacyStatePath, backupPath, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log?.Invoke($"Migrated legacy state, but renaming '{legacyStatePath}' to its backup failed: {ex.Message}");
+        }
     }
 
     private static string ShortId(string id)
