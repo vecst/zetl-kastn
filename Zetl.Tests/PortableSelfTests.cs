@@ -804,6 +804,12 @@ internal static class PortableSelfTests
                 { "repeatSuppressionDelayMs": 33, "holdDelayMs": 353, "hotkeys": [ { "name": "Copy", "key": "C", "modifiers": ["Ctrl"], "dispatch": "None", "replayModifiers": ["Ctrl", null] } ] }
                 """;
             AssertConfigRejected(nullReplayModifierEntry, "replayModifiers[1]", "A null entry inside replayModifiers should be reported by index.");
+
+            var nullDispatch =
+                """
+                { "repeatSuppressionDelayMs": 33, "holdDelayMs": 353, "hotkeys": [ { "name": "Copy", "key": "C", "modifiers": ["Ctrl"], "dispatch": null } ] }
+                """;
+            AssertConfigRejected(nullDispatch, "dispatch", "An explicit null dispatch should be reported as malformed, not silently treated as None.");
         }
 
         private static void AssertConfigRejected(string json, string expectedFragment, string because)

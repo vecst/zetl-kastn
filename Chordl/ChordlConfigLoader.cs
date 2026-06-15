@@ -86,7 +86,10 @@ public static class ChordlConfigLoader
 
             dto.Name ??= "";
             dto.Key ??= "";
-            dto.Dispatch ??= "None";
+            // An absent dispatch keeps the DTO's "None" default; an explicit JSON
+            // null becomes "" so validation rejects it as malformed, matching how
+            // null modifier entries are reported rather than silently accepted.
+            dto.Dispatch ??= "";
             // Coalesce a null array, but keep any null *entries* so validation can
             // report them by index rather than silently dropping them.
             dto.Modifiers ??= new();
