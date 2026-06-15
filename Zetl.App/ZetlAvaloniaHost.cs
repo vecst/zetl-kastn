@@ -390,7 +390,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             Log($"{context.Name} keydown target: {ZetlForegroundService.DescribeTarget(target)}.");
         }
 
-        _ = coordinator.OnPhysicalShortcutPassedThroughAsync(context);
+        ZetlAsync.RunLogged(
+            () => coordinator.OnPhysicalShortcutPassedThroughAsync(context),
+            "physical shortcut pass-through",
+            Log);
     }
 
     private object? TakeShortcutTarget(int keyCode)

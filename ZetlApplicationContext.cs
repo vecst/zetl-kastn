@@ -90,7 +90,10 @@ internal sealed class ZetlApplicationContext :
 
     public void OnPhysicalShortcutPassedThrough(ChordlEventContext context)
     {
-        _ = shortcutCoordinator.OnPhysicalShortcutPassedThroughAsync(context);
+        ZetlAsync.RunLogged(
+            () => shortcutCoordinator.OnPhysicalShortcutPassedThroughAsync(context),
+            "physical shortcut pass-through",
+            Log);
     }
 
     private void ApplyAppSettings()

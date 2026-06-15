@@ -105,7 +105,15 @@ internal static class ZetlAsync
         }
         catch (Exception ex)
         {
-            log($"{operationName} failed: {ex}");
+            try
+            {
+                log($"{operationName} failed: {ex}");
+            }
+            catch
+            {
+                // Last-chance diagnostic path: never let a logging failure escape
+                // the async-void root and surface as an unhandled exception.
+            }
         }
     }
 }

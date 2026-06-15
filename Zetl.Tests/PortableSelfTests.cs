@@ -100,6 +100,7 @@ internal static class PortableSelfTests
                 ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
                 ("Runtime empty Replay reports a failed final paste", RuntimeEmptyReplayReportsFinalPasteFailure),
                 ("Runtime logged fire-and-forget records async failures", RuntimeRunLoggedRecordsAsyncFailure),
+                ("Runtime logged fire-and-forget records delayed async failures", RuntimeRunLoggedRecordsDelayedAsyncFailure),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
@@ -2027,6 +2028,32 @@ internal static class PortableSelfTests
             AssertTrue(
                 messages.Exists(message => message.Contains("test operation") && message.Contains("boom")),
                 "A faulted fire-and-forget task should be logged with its operation label and exception.");
+        }
+
+        private static void RuntimeRunLoggedRecordsDelayedAsyncFailure()
+        {
+            var messages = new List<string>();
+            using var logged = new ManualResetEventSlim();
+
+            // Faults after an await (not synchronously), proving RunLogged catches
+            // post-continuation failures too.
+            ZetlAsync.RunLogged(
+                async () =>
+                {
+                    await Task.Yield();
+                    throw new InvalidOperationException("delayed boom");
+                },
+                "delayed operation",
+                message =>
+                {
+                    messages.Add(message);
+                    logged.Set();
+                });
+
+            AssertTrue(logged.Wait(TimeSpan.FromSeconds(5)), "A delayed async fault should be logged within the timeout.");
+            AssertTrue(
+                messages.Exists(message => message.Contains("delayed operation") && message.Contains("delayed boom")),
+                "A fault after an await should be logged with the operation label and exception.");
         }
 
         private static void RuntimeEmptyReplayReportsFinalPasteFailure()
