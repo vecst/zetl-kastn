@@ -533,3 +533,7 @@ The code is split around the product distinction:
 
 The A7 hands-on pass is documented in
 [`docs/windows-parity-checklist.md`](docs/windows-parity-checklist.md).
+
+The longer-term direction — splitting the deliberate workbench into a separate
+application, `kastn` — is sketched in [`docs/kastn.md`](docs/kastn.md). It is
+forward-looking and not scheduled against A7.
