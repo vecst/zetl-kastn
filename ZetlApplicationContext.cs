@@ -112,8 +112,10 @@ internal sealed class ZetlApplicationContext :
     {
         var pending = shortcutCoordinator.ClaimPendingForHold(context);
         var targetWindow = GetForegroundWindow();
-        BeginInvoke(async () =>
-            await HandleHoldAsync(context, targetWindow, pending));
+        BeginInvoke(() => ZetlAsync.RunLogged(
+            () => HandleHoldAsync(context, targetWindow, pending),
+            "hold action",
+            Log));
     }
 
     protected override void Dispose(bool disposing)

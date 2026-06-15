@@ -373,8 +373,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         var target = TakeShortcutTarget(context.KeyCode)
             ?? ZetlForegroundService.CaptureTarget();
         Log($"{context.Name} hold target: {ZetlForegroundService.DescribeTarget(target)}.");
-        Dispatcher.UIThread.Post(async () =>
-            await HandleHoldAsync(context, target, pending));
+        Dispatcher.UIThread.Post(() => ZetlAsync.RunLogged(
+            () => HandleHoldAsync(context, target, pending),
+            "hold action",
+            Log));
     }
 
     private void OnPhysicalShortcutPassedThrough(ChordlEventContext context)
