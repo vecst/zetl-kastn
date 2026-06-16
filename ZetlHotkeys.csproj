@@ -11,8 +11,10 @@
     <Description>Legacy WinForms Zetl fallback</Description>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Kastn.App\**\*.cs" />
     <Compile Remove="Chordl\**\*.cs" />
     <Compile Remove="Zetl.App\**\*.cs" />
+    <Compile Remove="Zetl.Contracts\**\*.cs" />
     <Compile Remove="Zetl.Core\**\*.cs" />
     <Compile Remove="Zetl.Linux.Spike\**\*.cs" />
     <Compile Remove="Zetl.Runtime\**\*.cs" />

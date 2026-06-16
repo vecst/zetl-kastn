@@ -16,6 +16,14 @@ internal static class Program
     public static int Main(string[] args)
     {
         StartupArgs = args;
+        var ipcSmokeDirectory = args.FirstOrDefault(arg =>
+                arg.StartsWith("--ipc-smoke-server=", StringComparison.OrdinalIgnoreCase))
+            ?["--ipc-smoke-server=".Length..];
+        if (ipcSmokeDirectory is not null)
+        {
+            return ZetlIpcSmokeServer.Run(args, ipcSmokeDirectory);
+        }
+
         var parityDirectory = args.FirstOrDefault(arg =>
                 arg.StartsWith("--parity-smoke=", StringComparison.OrdinalIgnoreCase))
             ?["--parity-smoke=".Length..];

@@ -9,6 +9,7 @@ internal partial class BoardWindow : ZetlPopupWindow
 {
     private readonly ZetlStateStore store = null!;
     private readonly bool shiftedLane;
+    private readonly Action<string>? openInKastn;
     private bool refreshing;
     private bool childDialogOpen;
     private ZetlNote? editingNote;
@@ -33,10 +34,14 @@ internal partial class BoardWindow : ZetlPopupWindow
         InitializeComponent();
     }
 
-    internal BoardWindow(ZetlStateStore store, bool shiftedLane = false)
+    internal BoardWindow(
+        ZetlStateStore store,
+        bool shiftedLane = false,
+        Action<string>? openInKastn = null)
     {
         this.store = store;
         this.shiftedLane = shiftedLane;
+        this.openInKastn = openInKastn;
         InitializeComponent();
 
         Title = shiftedLane ? "Zetl Board - Shift" : "Zetl Board";
@@ -89,6 +94,13 @@ internal partial class BoardWindow : ZetlPopupWindow
 
         newProjectButton.Click += async (_, _) => await AddProjectAsync();
         deleteProjectButton.Click += async (_, _) => await DeleteProjectAsync();
+        openKastnButton.Click += (_, _) =>
+        {
+            if (ActiveProject is { } project)
+            {
+                this.openInKastn?.Invoke(project.Id);
+            }
+        };
         saveProjectButton.Click += (_, _) => SaveProjectName();
         addBucketButton.Click += async (_, _) => await AddBucketAsync();
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
@@ -192,6 +204,7 @@ internal partial class BoardWindow : ZetlPopupWindow
             projectNameBox.IsEnabled = hasProject;
             saveProjectButton.IsEnabled = hasProject;
             deleteProjectButton.IsEnabled = hasProject;
+            openKastnButton.IsEnabled = hasProject && openInKastn is not null;
             activeProjectBox.IsEnabled = hasProject;
             addBucketButton.IsEnabled = hasProject;
             projectNameBox.Text = project?.Name ?? "";

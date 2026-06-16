@@ -1,0 +1,292 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="KASTN.MainWindow"
+        Width="1380" Height="820"
+        MinWidth="1020" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        Title="Kastn">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Menu Grid.Row="0">
+      <MenuItem Header="_File">
+        <MenuItem x:Name="refreshMenuItem" Header="_Refresh" InputGesture="F5" />
+        <Separator />
+        <MenuItem x:Name="exitMenuItem" Header="E_xit" />
+      </MenuItem>
+      <MenuItem Header="_Edit">
+        <MenuItem x:Name="saveSlipMenuItem" Header="_Save Slip" InputGesture="Ctrl+S" />
+        <MenuItem x:Name="deleteSlipMenuItem" Header="_Delete Slip" />
+        <Separator />
+        <MenuItem x:Name="focusSearchMenuItem" Header="_Find" InputGesture="Ctrl+F" />
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem x:Name="focusProjectsMenuItem" Header="Focus _Projects" />
+        <MenuItem x:Name="focusBucketsMenuItem" Header="Focus _Buckets" />
+        <MenuItem x:Name="focusSlipsMenuItem" Header="Focus _Slips" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem x:Name="aboutMenuItem" Header="_About Kastn" />
+      </MenuItem>
+    </Menu>
+
+    <Border Grid.Row="1"
+            x:Name="offlineBanner"
+            Background="{DynamicResource KastnOfflineBrush}"
+            Padding="12,8"
+            IsVisible="False">
+      <TextBlock Foreground="#22180C"
+                 FontWeight="SemiBold"
+                 Text="Zetl is offline. Your last snapshot remains readable; editing resumes after reconnect." />
+    </Border>
+
+    <Grid Grid.Row="2" Margin="16" ColumnDefinitions="250,12,*">
+      <Border Grid.Column="0" Classes="surface" Padding="12">
+        <Grid RowDefinitions="Auto,Auto,*">
+          <TextBlock Grid.Row="0" Text="Projects" Classes="heading" />
+          <TextBlock Grid.Row="1"
+                     x:Name="projectCountText"
+                     Text="Waiting for Zetl..."
+                     Classes="muted"
+                     Margin="0,2,0,10" />
+          <ListBox Grid.Row="2" x:Name="projectList">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="4,6" RowDefinitions="Auto,Auto">
+                  <TextBlock Grid.Row="0"
+                             Text="{Binding Name}"
+                             FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Row="1"
+                             Text="{Binding Detail}"
+                             Classes="muted"
+                             FontSize="12" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="2" Classes="surface" Padding="18">
+        <Grid>
+          <StackPanel x:Name="emptyState"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Spacing="8">
+            <TextBlock Text="Kastn" Classes="title" HorizontalAlignment="Center" />
+            <TextBlock x:Name="emptyStateText"
+                       Text="Connecting to Zetl..."
+                       Classes="muted"
+                       TextAlignment="Center"
+                       MaxWidth="440" />
+          </StackPanel>
+
+          <Grid x:Name="projectView"
+                IsVisible="False"
+                RowDefinitions="Auto,Auto,14,Auto,14,*">
+            <TextBlock Grid.Row="0"
+                       x:Name="projectTitle"
+                       Classes="title"
+                       TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Row="1"
+                       x:Name="projectSummary"
+                       Classes="muted"
+                       Margin="0,4,0,0" />
+
+            <Grid Grid.Row="3" ColumnDefinitions="2*,12,*,12,*,12,*">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Search" Classes="muted" FontSize="12" />
+                <TextBox x:Name="searchBox" Watermark="Search slip text" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="4">
+                <TextBlock Text="Source" Classes="muted" FontSize="12" />
+                <ComboBox x:Name="sourceFilterBox">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+              <StackPanel Grid.Column="4" Spacing="4">
+                <TextBlock Text="Session" Classes="muted" FontSize="12" />
+                <ComboBox x:Name="sessionFilterBox">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+              <StackPanel Grid.Column="6" Spacing="4">
+                <TextBlock Text="Captured" Classes="muted" FontSize="12" />
+                <ComboBox x:Name="dateFilterBox">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="5" ColumnDefinitions="235,8,350,8,*">
+              <Border Grid.Column="0"
+                      Background="{DynamicResource ZetlSurfaceAltBrush}"
+                      CornerRadius="5"
+                      Padding="12">
+                <Grid RowDefinitions="Auto,*,Auto,Auto,Auto">
+                  <TextBlock Grid.Row="0" Text="Buckets" Classes="heading" Margin="0,0,0,8" />
+                  <ListBox Grid.Row="1" x:Name="bucketList">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Label}"
+                                   Margin="4,5"
+                                   TextTrimming="CharacterEllipsis" />
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <TextBox Grid.Row="2"
+                           x:Name="bucketNameBox"
+                           Watermark="Bucket name"
+                           Margin="0,10,0,0" />
+                  <ComboBox Grid.Row="3"
+                            x:Name="parentBucketBox"
+                            Margin="0,8,0,0">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Grid Grid.Row="4"
+                        ColumnDefinitions="*,*,*"
+                        ColumnSpacing="6"
+                        Margin="0,8,0,0">
+                    <Button Grid.Column="0" x:Name="addBucketButton" Content="Add" />
+                    <Button Grid.Column="1" x:Name="saveBucketButton" Content="Save" />
+                    <Button Grid.Column="2" x:Name="deleteBucketButton" Content="Delete" />
+                  </Grid>
+                </Grid>
+              </Border>
+
+              <GridSplitter Grid.Column="1" Width="8" ResizeDirection="Columns" />
+
+              <Border Grid.Column="2"
+                      Background="{DynamicResource ZetlSurfaceAltBrush}"
+                      CornerRadius="5"
+                      Padding="12">
+                <Grid RowDefinitions="Auto,Auto,*">
+                  <TextBlock Grid.Row="0" Text="Slips" Classes="heading" />
+                  <TextBlock Grid.Row="1"
+                             x:Name="slipCountText"
+                             Classes="muted"
+                             FontSize="12"
+                             Margin="0,2,0,8" />
+                  <ListBox Grid.Row="2" x:Name="slipList">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Margin="4,6" Spacing="2">
+                          <TextBlock Text="{Binding Text}"
+                                     TextWrapping="Wrap"
+                                     MaxLines="3"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Detail}"
+                                     Classes="muted"
+                                     FontSize="12" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                </Grid>
+              </Border>
+
+              <GridSplitter Grid.Column="3" Width="8" ResizeDirection="Columns" />
+
+              <Border Grid.Column="4"
+                      Background="{DynamicResource ZetlSurfaceAltBrush}"
+                      CornerRadius="5"
+                      Padding="12">
+                <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+                  <TextBlock Grid.Row="0" Text="Editor" Classes="heading" />
+                  <TextBlock Grid.Row="1"
+                             x:Name="slipMetadataText"
+                             Classes="muted"
+                             FontSize="12"
+                             Margin="0,2,0,8" />
+                  <TextBox Grid.Row="2"
+                           x:Name="slipEditor"
+                           AcceptsReturn="True"
+                           TextWrapping="Wrap"
+                           ScrollViewer.VerticalScrollBarVisibility="Auto"
+                           IsEnabled="False" />
+                  <Border Grid.Row="3"
+                          x:Name="conflictPanel"
+                          IsVisible="False"
+                          BorderBrush="{DynamicResource KastnOfflineBrush}"
+                          BorderThickness="1"
+                          CornerRadius="5"
+                          Padding="10"
+                          Margin="0,10,0,0">
+                    <Grid RowDefinitions="Auto,Auto,90,Auto,90,Auto">
+                      <TextBlock Grid.Row="0"
+                                 Text="This slip changed in Zetl while you were editing."
+                                 FontWeight="SemiBold" />
+                      <TextBlock Grid.Row="1" Text="Your version" Classes="muted" Margin="0,8,0,3" />
+                      <TextBox Grid.Row="2"
+                               x:Name="localConflictText"
+                               IsReadOnly="True"
+                               AcceptsReturn="True"
+                               TextWrapping="Wrap" />
+                      <TextBlock Grid.Row="3" Text="Current Zetl version" Classes="muted" Margin="0,8,0,3" />
+                      <TextBox Grid.Row="4"
+                               x:Name="remoteConflictText"
+                               IsReadOnly="True"
+                               AcceptsReturn="True"
+                               TextWrapping="Wrap" />
+                      <StackPanel Grid.Row="5"
+                                  Orientation="Horizontal"
+                                  HorizontalAlignment="Right"
+                                  Spacing="8"
+                                  Margin="0,8,0,0">
+                        <Button x:Name="useZetlButton" Content="Use Zetl Version" />
+                        <Button x:Name="keepMineButton" Content="Keep Mine" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                  <Grid Grid.Row="4"
+                        ColumnDefinitions="*,Auto,Auto,Auto"
+                        ColumnSpacing="8"
+                        Margin="0,10,0,0">
+                    <ComboBox Grid.Column="0" x:Name="moveBucketBox">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Grid.Column="1" x:Name="moveSlipButton" Content="Move" />
+                    <Button Grid.Column="2" x:Name="deleteSlipButton" Content="Delete" />
+                    <Button Grid.Column="3" x:Name="saveSlipButton" Content="Save" />
+                  </Grid>
+                </Grid>
+              </Border>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="3"
+            BorderBrush="{DynamicResource ZetlBorderBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="16,9">
+      <Grid ColumnDefinitions="Auto,8,*,Auto">
+        <Ellipse Grid.Column="0"
+                 x:Name="connectionIndicator"
+                 Width="9" Height="9"
+                 Fill="{DynamicResource KastnOfflineBrush}"
+                 VerticalAlignment="Center" />
+        <TextBlock Grid.Column="2"
+                   x:Name="statusText"
+                   Text="Connecting to Zetl..."
+                   Classes="muted"
+                   VerticalAlignment="Center" />
+        <ProgressBar Grid.Column="3"
+                     x:Name="connectionProgress"
+                     Width="90"
+                     IsIndeterminate="True"
+                     ShowProgressText="False" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

@@ -1,0 +1,481 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
+using ZETL.Contracts;
+
+namespace ZETL.Tests;
+
+internal static class ZetlProjectServiceTests
+{
+    public static void RetriedAddDoesNotDuplicate()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var service = new ZetlProjectService(store);
+        var command = AddSlipCommand(
+            "add-once",
+            project.Id,
+            bucket.Id,
+            "one captured slip");
+
+        var first = service.Execute(command);
+        var retry = service.Execute(command);
+
+        AssertEqual(ZetlResponseStatus.Success, first.Status, "Initial add should succeed.");
+        AssertTrue(ReferenceEquals(first, retry), "A duplicate command ID should return the cached response.");
+        AssertEqual(1, bucket.Notes.Count, "Retrying an add must not duplicate the slip.");
+    }
+
+    public static void StaleEditReturnsCurrentSlip()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "original", "copy");
+        var service = new ZetlProjectService(store);
+
+        var firstEdit = ZetlCommandEnvelope.Create(
+            "edit-current",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = "newer" },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: 1);
+        var firstResponse = service.Execute(firstEdit);
+        var staleEdit = ZetlCommandEnvelope.Create(
+            "edit-stale",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = "older overwrite" },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: 1);
+        var staleResponse = service.Execute(staleEdit);
+        var current = staleResponse.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
+            ZetlProtocolJson.Options);
+
+        AssertEqual(ZetlResponseStatus.Success, firstResponse.Status, "The current edit should succeed.");
+        AssertEqual(ZetlResponseStatus.Conflict, staleResponse.Status, "The stale edit should conflict.");
+        AssertEqual(2L, staleResponse.Conflict?.ActualRevision, "Conflict should report the latest revision.");
+        AssertEqual("newer", current?.Text, "Conflict should return the current slip.");
+        AssertEqual("newer", note.Text, "A stale edit must not overwrite the slip.");
+    }
+
+    public static void UnrelatedCaptureDoesNotConflictWithRename()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var service = new ZetlProjectService(store);
+        var metadataRevision = project.MetadataRevision;
+
+        var addResponse = service.Execute(AddSlipCommand(
+            "add-before-rename",
+            project.Id,
+            bucket.Id,
+            "unrelated capture"));
+        var renameResponse = service.Execute(ZetlCommandEnvelope.Create(
+            "rename-after-capture",
+            ZetlCommandKind.RenameProject,
+            new RenameProjectCommand { Name = "Renamed" },
+            project.Id,
+            expectedTargetRevision: metadataRevision));
+
+        AssertEqual(ZetlResponseStatus.Success, addResponse.Status, "Capture should succeed.");
+        AssertEqual(ZetlResponseStatus.Success, renameResponse.Status, "Unrelated capture should not conflict with rename.");
+        AssertEqual("Renamed", project.Name, "Rename should update the project.");
+        AssertEqual(metadataRevision + 1, project.MetadataRevision, "Rename should advance only metadata revision.");
+    }
+
+    public static void ConcurrentAddsAreSerialized()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var service = new ZetlProjectService(store);
+        var responses = new ConcurrentBag<ZetlResponseEnvelope>();
+
+        Parallel.For(
+            0,
+            40,
+            index =>
+            {
+                responses.Add(service.Execute(AddSlipCommand(
+                    $"parallel-{index:D2}",
+                    project.Id,
+                    bucket.Id,
+                    $"note {index:D2}")));
+            });
+
+        AssertEqual(40, responses.Count, "Every concurrent command should return.");
+        AssertTrue(
+            responses.All(response => response.Status == ZetlResponseStatus.Success),
+            "Every concurrent add should succeed.");
+        AssertEqual(40, bucket.Notes.Count, "Serialized adds should preserve every slip.");
+        AssertEqual(
+            40,
+            bucket.Notes.Select(note => note.Id).Distinct(StringComparer.Ordinal).Count(),
+            "Every added slip should have a unique ID.");
+
+        var reloaded = new ZetlStateStore(temp.StatePath);
+        AssertEqual(
+            40,
+            reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Notes.Count,
+            "Every acknowledged add should be durable.");
+    }
+
+    public static void DirectAndServiceMutationsShareOneWriter()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var service = new ZetlProjectService(store);
+
+        Parallel.Invoke(
+            () =>
+            {
+                for (var index = 0; index < 20; index++)
+                {
+                    store.AddNote(bucket, $"direct {index:D2}", "copy");
+                }
+            },
+            () =>
+            {
+                for (var index = 0; index < 20; index++)
+                {
+                    var response = service.Execute(AddSlipCommand(
+                        $"mixed-{index:D2}",
+                        project.Id,
+                        bucket.Id,
+                        $"service {index:D2}"));
+                    AssertEqual(
+                        ZetlResponseStatus.Success,
+                        response.Status,
+                        "Service mutation should succeed beside direct mutations.");
+                }
+            });
+
+        AssertEqual(40, bucket.Notes.Count, "Direct and service mutations should preserve every slip.");
+        var reloaded = new ZetlStateStore(temp.StatePath);
+        AssertEqual(
+            40,
+            reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Notes.Count,
+            "The shared writer monitor should make every mixed mutation durable.");
+    }
+
+    public static void BucketAndSlipCommandsRoundTrip()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var inbox);
+        var service = new ZetlProjectService(store);
+
+        var addBucket = service.Execute(ZetlCommandEnvelope.Create(
+            "bucket-add",
+            ZetlCommandKind.AddBucket,
+            new AddBucketCommand
+            {
+                Name = "Drafts",
+                Settings = new ZetlBucketSettings
+                {
+                    Kind = "Standard",
+                    DefaultKind = "Replay",
+                    DefaultCompileMode = "TSV",
+                    DefaultTsvRowLength = 3,
+                    DefaultStartingText = "A\nB\nC",
+                    PopMode = true
+                }
+            },
+            project.Id));
+        var drafts = addBucket.Payload?.Deserialize<ZetlBucketSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Add bucket did not return a bucket.");
+
+        var addSlip = service.Execute(AddSlipCommand(
+            "slip-add-roundtrip",
+            project.Id,
+            inbox.Id,
+            "move me"));
+        var slip = addSlip.Payload?.Deserialize<ZetlSlipSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Add slip did not return a slip.");
+        var move = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-move",
+            ZetlCommandKind.MoveSlip,
+            new MoveSlipCommand { DestinationBucketId = drafts.Id },
+            project.Id,
+            slip.Id,
+            slip.Revision));
+        var moved = move.Payload?.Deserialize<ZetlSlipSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Move slip did not return a slip.");
+        var delete = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-delete",
+            ZetlCommandKind.DeleteSlip,
+            new DeleteSlipCommand(),
+            project.Id,
+            moved.Id,
+            moved.Revision));
+        var snapshotResponse = service.Execute(new ZetlCommandEnvelope
+        {
+            CommandId = "project-snapshot",
+            Kind = ZetlCommandKind.GetProject,
+            ProjectId = project.Id
+        });
+        var snapshot = snapshotResponse.Payload?.Deserialize<ZetlProjectSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Get project did not return a snapshot.");
+
+        AssertEqual(ZetlResponseStatus.Success, addBucket.Status, "Bucket add should succeed.");
+        AssertEqual("TSV", drafts.Settings.DefaultCompileMode, "Bucket settings should round-trip.");
+        AssertEqual(ZetlResponseStatus.Success, move.Status, "Slip move should succeed.");
+        AssertEqual(drafts.Id, moved.BucketId, "Moved slip should identify its destination.");
+        AssertEqual(ZetlResponseStatus.Success, delete.Status, "Slip delete should succeed.");
+        AssertTrue(snapshot.Slips.All(item => item.Id != moved.Id), "Deleted slip should be absent from a fresh snapshot.");
+    }
+
+    public static void ProjectAndBucketCommandsHonorRevisions()
+    {
+        using var temp = new TempStateDirectory();
+        var store = new ZetlStateStore(temp.StatePath, "service-session");
+        var service = new ZetlProjectService(store);
+
+        var create = service.Execute(ZetlCommandEnvelope.Create(
+            "project-create",
+            ZetlCommandKind.CreateProject,
+            new CreateProjectCommand
+            {
+                Name = "Created Through Service",
+                Buckets =
+                [
+                    new CreateBucketDefinition { Name = "Inbox" }
+                ]
+            }));
+        var created = create.Payload?.Deserialize<ZetlProjectSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Create project did not return a snapshot.");
+        var inbox = created.Buckets.Single(item => item.Name == "Inbox");
+
+        var update = service.Execute(ZetlCommandEnvelope.Create(
+            "bucket-update",
+            ZetlCommandKind.UpdateBucket,
+            new UpdateBucketCommand
+            {
+                Name = "Research",
+                Settings = new ZetlBucketSettings
+                {
+                    Kind = "Replay",
+                    DefaultKind = "Replay",
+                    DefaultCompileMode = "Plain",
+                    DefaultTsvRowLength = 7
+                }
+            },
+            created.Id,
+            inbox.Id,
+            inbox.Revision));
+        var updated = update.Payload?.Deserialize<ZetlBucketSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Update bucket did not return a snapshot.");
+        var staleDelete = service.Execute(ZetlCommandEnvelope.Create(
+            "bucket-delete-stale",
+            ZetlCommandKind.DeleteBucket,
+            new DeleteBucketCommand(),
+            created.Id,
+            updated.Id,
+            inbox.Revision));
+        var deleteBucket = service.Execute(ZetlCommandEnvelope.Create(
+            "bucket-delete-current",
+            ZetlCommandKind.DeleteBucket,
+            new DeleteBucketCommand(),
+            created.Id,
+            updated.Id,
+            updated.Revision));
+        var deleteProject = service.Execute(ZetlCommandEnvelope.Create(
+            "project-delete",
+            ZetlCommandKind.DeleteProject,
+            new DeleteProjectCommand(),
+            created.Id,
+            expectedTargetRevision: created.MetadataRevision));
+
+        AssertEqual(ZetlResponseStatus.Success, create.Status, "Project create should succeed.");
+        AssertEqual("Replay", updated.Settings.Kind, "Bucket update should preserve current kind.");
+        AssertEqual("Plain", updated.Settings.DefaultCompileMode, "Bucket update should preserve compile settings.");
+        AssertEqual(ZetlResponseStatus.Conflict, staleDelete.Status, "Stale bucket delete should conflict.");
+        AssertEqual(ZetlResponseStatus.Success, deleteBucket.Status, "Current bucket delete should succeed.");
+        AssertEqual(ZetlResponseStatus.Success, deleteProject.Status, "Project delete should succeed.");
+        AssertEqual(0, store.State.Projects.Count, "Deleted project should leave the store.");
+    }
+
+    public static void RevisionsPersistAcrossReload()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "first", "copy");
+        store.UpdateNote(note, "second");
+        store.UpdateBucketName(bucket, "Renamed Bucket");
+        store.UpdateProjectName(project, "Renamed Project");
+
+        var reloaded = new ZetlStateStore(temp.StatePath);
+        var loadedProject = reloaded.State.Projects.Single();
+        var loadedBucket = loadedProject.Buckets.Single(item => item.Name == "Renamed Bucket");
+        var loadedNote = loadedBucket.Notes.Single();
+
+        AssertEqual(2L, loadedProject.MetadataRevision, "Project metadata revision should persist.");
+        AssertTrue(loadedProject.ChangeSequence >= 4, "Project change sequence should persist all writes.");
+        AssertEqual(2L, loadedBucket.Revision, "Bucket revision should persist.");
+        AssertEqual(2L, loadedNote.Revision, "Slip revision should persist.");
+    }
+
+    public static void SuccessfulMutationPublishesOneDetailedEvent()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var service = new ZetlProjectService(store);
+        var events = new List<ZetlProjectChangedEvent>();
+        service.ProjectChanged += (_, change) => events.Add(change);
+
+        var response = service.Execute(AddSlipCommand(
+            "event-add",
+            project.Id,
+            bucket.Id,
+            "event text"));
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Mutation should succeed.");
+        AssertEqual(1, events.Count, "One command should publish one detailed event.");
+        AssertEqual(ZetlEntityKind.Slip, events[0].EntityKind, "Event should identify the changed slip.");
+        AssertEqual(
+            response.ProjectChangeSequence,
+            events[0].ProjectChangeSequence,
+            "Response and event should report the same durable sequence.");
+    }
+
+    public static void FailedMutationPublishesNoEvent()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "original", "copy");
+        var service = new ZetlProjectService(store);
+        var events = new List<ZetlProjectChangedEvent>();
+        service.ProjectChanged += (_, change) => events.Add(change);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "stale-no-event",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = "bad" },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: note.Revision + 1));
+
+        AssertEqual(ZetlResponseStatus.Conflict, response.Status, "Stale mutation should conflict.");
+        AssertEqual(0, events.Count, "A rejected mutation must not publish a change.");
+    }
+
+    public static void SubscriberFailureDoesNotChangeAcknowledgement()
+    {
+        using var temp = new TempStateDirectory();
+        var logs = new List<string>();
+        var store = new ZetlStateStore(temp.StatePath, "service-session", logs.Add);
+        var project = store.CreateProject("Service Project", ["Inbox"], "Inbox");
+        var bucket = project.Buckets.Single(item => item.Name == "Inbox");
+        var service = new ZetlProjectService(store, log: logs.Add);
+        store.ProjectPersisted += (_, _) => throw new InvalidOperationException("store listener failed");
+        service.ProjectChanged += (_, _) => throw new InvalidOperationException("service listener failed");
+
+        var response = service.Execute(AddSlipCommand(
+            "subscriber-failure",
+            project.Id,
+            bucket.Id,
+            "still durable"));
+        var reloaded = new ZetlStateStore(temp.StatePath);
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Subscriber failures must not change a durable success.");
+        AssertEqual(
+            "still durable",
+            reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Notes.Single().Text,
+            "Acknowledged mutation should remain durable.");
+        AssertTrue(logs.Count >= 2, "Subscriber failures should be logged.");
+    }
+
+    public static void DirectCapturePublishesProjectChange()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var service = new ZetlProjectService(store);
+        var changes = new List<ZetlProjectChangedEvent>();
+        service.ProjectChanged += (_, change) => changes.Add(change);
+
+        store.AddNote(bucket, "direct capture", "copy");
+
+        AssertEqual(1, changes.Count, "Direct store capture should publish one project change.");
+        AssertEqual(
+            project.Id,
+            changes[0].ProjectId,
+            "Direct capture notification should identify its project.");
+        AssertEqual(
+            project.ChangeSequence,
+            changes[0].ProjectChangeSequence,
+            "Direct capture notification should carry the durable sequence.");
+    }
+
+    private static ZetlStateStore CreateStoreWithProject(
+        TempStateDirectory temp,
+        out ZetlProject project,
+        out ZetlBucket bucket)
+    {
+        var store = new ZetlStateStore(temp.StatePath, "service-session");
+        project = store.CreateProject("Service Project", ["Inbox"], "Inbox");
+        bucket = project.Buckets.Single(item => item.Name == "Inbox");
+        return store;
+    }
+
+    private static ZetlCommandEnvelope AddSlipCommand(
+        string commandId,
+        string projectId,
+        string bucketId,
+        string text)
+    {
+        return ZetlCommandEnvelope.Create(
+            commandId,
+            ZetlCommandKind.AddSlip,
+            new AddSlipCommand
+            {
+                BucketId = bucketId,
+                Text = text,
+                Source = "copy"
+            },
+            projectId);
+    }
+
+    private static void AssertTrue(bool condition, string message)
+    {
+        if (!condition)
+        {
+            throw new InvalidOperationException(message);
+        }
+    }
+
+    private static void AssertEqual<T>(T expected, T actual, string message)
+    {
+        if (!EqualityComparer<T>.Default.Equals(expected, actual))
+        {
+            throw new InvalidOperationException($"{message} Expected '{expected}', got '{actual}'.");
+        }
+    }
+
+    private sealed class TempStateDirectory : IDisposable
+    {
+        private readonly string directory = Path.Combine(
+            Path.GetTempPath(),
+            "ZetlProjectServiceTests",
+            Guid.NewGuid().ToString("N"));
+
+        public TempStateDirectory()
+        {
+            Directory.CreateDirectory(directory);
+            StatePath = Path.Combine(directory, "state.json");
+        }
+
+        public string StatePath { get; }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+}

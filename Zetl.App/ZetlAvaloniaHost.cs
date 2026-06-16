@@ -17,6 +17,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     private readonly IClassicDesktopStyleApplicationLifetime desktop;
     private readonly ZetlStateStore store;
+    private readonly ZetlProjectService projectService;
+    private readonly ZetlIpcServer ipcServer;
     private readonly ZetlAppSettingsStore settingsStore;
     private readonly ZetlThemeStore themeStore;
     private readonly ZetlActivityLogBuffer activityLog = new();
@@ -33,6 +35,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly object shortcutTargetsGate = new();
     private readonly Dictionary<int, object?> shortcutTargets = [];
     private readonly string diagnosticLogPath;
+    private readonly string? kastnPath;
+    private readonly string? ipcPipeName;
     private readonly BlockingCollection<string> diagnosticLines = [];
     private readonly Thread diagnosticThread;
     private readonly List<IClickAwayDismissable> clickAwayPopups = [];
@@ -50,6 +54,19 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         store = dataDirectory is null
             ? new ZetlStateStore(log: Log)
             : new ZetlStateStore(Path.Combine(dataDirectory, "state.json"), log: Log);
+        projectService = new ZetlProjectService(store, log: Log);
+        var pipeName = Program.StartupArgs
+            .FirstOrDefault(arg => arg.StartsWith(
+                "--ipc-pipe=",
+                StringComparison.OrdinalIgnoreCase))
+            ?["--ipc-pipe=".Length..];
+        ipcPipeName = pipeName;
+        ipcServer = new ZetlIpcServer(projectService, pipeName, Log);
+        kastnPath = Program.StartupArgs
+            .FirstOrDefault(arg => arg.StartsWith(
+                "--kastn-path=",
+                StringComparison.OrdinalIgnoreCase))
+            ?["--kastn-path=".Length..];
         settingsStore = new ZetlAppSettingsStore(
             dataDirectory is null
                 ? null
@@ -125,6 +142,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         };
         logFlushTimer.Tick += (_, _) => FlushLogNotes();
         logFlushTimer.Start();
+        ipcServer.Start();
 
         Log(configMessage);
         if (!keyboard.Start(processor.HandleKeyEvent))
@@ -164,6 +182,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         }
 
         disposed = true;
+        ipcServer.Dispose();
         clickAwayWatcher.Stop();
         logFlushTimer.Stop();
         FlushLogNotes();
@@ -437,7 +456,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     {
         if (!boards.TryGetValue(shifted, out var board))
         {
-            board = new BoardWindow(store, shifted)
+            board = new BoardWindow(store, shifted, OpenInKastn)
             {
                 ShowInTaskbar = false
             };
@@ -460,6 +479,20 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         board.DismissOnDeactivate = target is not null;
         board.ShowActiveProject();
         PositionAndActivate(board, target);
+    }
+
+    private void OpenInKastn(string projectId)
+    {
+        try
+        {
+            ZetlKastnLauncher.Launch(projectId, kastnPath, ipcPipeName);
+            Log($"Opened project {projectId} in Kastn.");
+        }
+        catch (Exception ex)
+        {
+            Log($"Open in Kastn failed ({ex.GetType().Name}): {ex.Message}");
+            notifications.Show($"Could not open Kastn: {ex.Message}");
+        }
     }
 
     private void ShowNoteCapture(

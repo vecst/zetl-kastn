@@ -8,7 +8,7 @@
         Title="Zetl Board">
   <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="Auto,*">
     <Grid Grid.Row="0"
-          ColumnDefinitions="Auto,180,180,Auto,Auto,Auto,Auto,*"
+          ColumnDefinitions="Auto,180,180,Auto,Auto,Auto,Auto,Auto,*"
           ColumnSpacing="8"
           Margin="0,0,0,10">
       <TextBlock Grid.Column="0" Text="Project" VerticalAlignment="Center" />
@@ -26,6 +26,7 @@
                 VerticalAlignment="Center" />
       <Button Grid.Column="5" x:Name="newProjectButton" Content="New Project" />
       <Button Grid.Column="6" x:Name="deleteProjectButton" Content="Delete Project" />
+      <Button Grid.Column="7" x:Name="openKastnButton" Content="Open in Kastn" />
     </Grid>
 
     <Grid Grid.Row="1" ColumnDefinitions="320,8,*">

@@ -4,10 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>Zetl</AssemblyName>
-    <RootNamespace>ZETL</RootNamespace>
-    <Product>Zetl</Product>
-    <Description>Cross-platform Zetl tray application</Description>
+    <AssemblyName>Kastn</AssemblyName>
+    <RootNamespace>KASTN</RootNamespace>
+    <Product>Kastn</Product>
+    <Description>Kastn project workbench for Zetl</Description>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
@@ -18,17 +18,10 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.17" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Chordl\Chordl.csproj" />
     <ProjectReference Include="..\Zetl.Contracts\Zetl.Contracts.csproj" />
     <ProjectReference Include="..\Zetl.Core\Zetl.Core.csproj" />
-    <ProjectReference Include="..\Zetl.Runtime\Zetl.Runtime.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Remove="..\hotkeys.json" />
-    <EmbeddedResource Include="..\hotkeys.json">
-      <LogicalName>hotkeys.json</LogicalName>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>hotkeys.json</Link>
-    </EmbeddedResource>
+    <InternalsVisibleTo Include="Zetl.Tests" />
   </ItemGroup>
 </Project>

@@ -13,7 +13,9 @@
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Kastn.App\Kastn.App.csproj" />
     <ProjectReference Include="..\Chordl\Chordl.csproj" />
+    <ProjectReference Include="..\Zetl.Contracts\Zetl.Contracts.csproj" />
     <ProjectReference Include="..\Zetl.Core\Zetl.Core.csproj" />
     <ProjectReference Include="..\Zetl.Runtime\Zetl.Runtime.csproj" />
   </ItemGroup>

@@ -2,7 +2,8 @@
 
 > Status: forward-looking direction, not built and not scheduled against A7. This
 > document records the shared design intent so it has a home in the repo. Nothing
-> here describes current behavior.
+> here describes current behavior. The staged implementation checklist lives in
+> [`kastn-roadmap.md`](kastn-roadmap.md).
 
 ## Premise
 
@@ -46,14 +47,35 @@ A project may be **active in Zetl and open in kastn at the same time**, both
 editing — e.g. capturing into a project in Zetl while arranging it in kastn.
 This is a hard requirement, not read-mostly.
 
-Architectural consequence: the current "one `project.json` per project" model
-cannot co-edit safely — concurrent whole-file writes clobber each other (atomic
-writes prevent corruption, not lost updates). Co-editing therefore depends on a
-data-model refactor (below) plus a change-notification layer in `Zetl.Core`
-(head-agnostic file watch + reload) so each app reflects the other's writes live.
+The concurrency strategy is **one writer, two applications**:
 
-The concrete concurrency strategy is deliberately **deferred** until this work is
-actually scheduled.
+- Zetl remains the resident process and is the only process allowed to mutate
+  workspace or project files.
+- kastn checks whether Zetl is running and starts it when necessary. Zetl then
+  remains independently resident if kastn closes.
+- kastn sends versioned domain commands to Zetl over local IPC and subscribes to
+  project snapshots and change notifications.
+- Editable records carry revisions. A stale same-record edit is rejected and
+  resolved explicitly rather than silently overwriting newer content.
+
+This keeps capture active while kastn is open without requiring two processes to
+coordinate direct JSON writes.
+
+## Storage direction
+
+Human-readable JSON remains the canonical live store. It is not a secondary
+export generated from a database. The project folder should always be current,
+inspectable, and ready to share without a conversion step.
+
+The existing JSON model has been exercised with approximately 20,000 notes in a
+project without an observed usability problem. Storage work should therefore
+start by consolidating writes in Zetl and measuring real behavior rather than
+introducing SQLite preemptively.
+
+IPC commands describe domain operations rather than JSON operations, so a future
+SQLite implementation can live behind Zetl without changing kastn. SQLite is
+reconsidered only if measured project sizes or future transaction requirements
+show that JSON is the limiting factor.
 
 ## Planned data model: typed capture log
 
@@ -62,9 +84,10 @@ Evolve the store from bucket-owns-notes containment to a **typed capture log**:
 - One JSON per clipboard type (text, url, picture, file) per project.
 - Each captured item is stamped with its bucket and capture time. A **bucket
   becomes a time-ordered query** over the typed files, not a container.
-- Payoff: instant faceted queries ("all URLs in this project", "all pictures"),
-  and — critically — co-editing safety: Zetl appends new items while kastn edits
-  existing ones, so the two processes rarely touch the same file.
+- Payoff: direct faceted queries ("all URLs in this project", "all pictures")
+  and smaller type-scoped reads and writes. Co-editing safety comes from Zetl's
+  sole-writer role, not from relying on the applications to touch different
+  files.
 - Buckets keep their settings in a small per-project metadata file. Binary
   captures (pictures, files) are copied into the project folder and
   path-referenced, keeping each project directory a self-contained export.

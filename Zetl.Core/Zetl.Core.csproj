@@ -14,5 +14,9 @@
     <InternalsVisibleTo Include="Zetl.App" />
     <InternalsVisibleTo Include="Zetl.Runtime" />
     <InternalsVisibleTo Include="Zetl.Tests" />
+    <InternalsVisibleTo Include="Kastn" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Zetl.Contracts\Zetl.Contracts.csproj" />
   </ItemGroup>
 </Project>

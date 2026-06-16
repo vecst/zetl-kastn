@@ -1,8 +1,10 @@
 <Solution>
   <Project Path="Chordl/Chordl.csproj" />
+  <Project Path="Zetl.Contracts/Zetl.Contracts.csproj" />
   <Project Path="Zetl.Core/Zetl.Core.csproj" />
   <Project Path="Zetl.Runtime/Zetl.Runtime.csproj" />
   <Project Path="Zetl.App/Zetl.App.csproj" />
+  <Project Path="Kastn.App/Kastn.App.csproj" />
   <Project Path="Zetl.Linux.Spike/Zetl.Linux.Spike.csproj" />
   <Project Path="Zetl.Tests/Zetl.Tests.csproj" />
   <Project Path="ZetlHotkeys.csproj" />
