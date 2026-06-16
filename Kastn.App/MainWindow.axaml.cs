@@ -103,7 +103,6 @@ internal partial class MainWindow : Window
         saveBucketButton.Click += async (_, _) => await SaveBucketAsync();
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
         viewerModeButton.Click += async (_, _) => await ToggleViewerModeAsync();
-        closeViewerButton.Click += async (_, _) => await SetViewerModeAsync(false);
         newSlipButton.Click += async (_, _) => await AddSlipAsync();
         saveSlipButton.Click += async (_, _) => await SaveEditorAsync();
         deleteSlipButton.Click += async (_, _) => await DeleteSlipAsync();
@@ -1120,7 +1119,7 @@ internal partial class MainWindow : Window
         }
         else if (args.KeyModifiers.HasFlag(KeyModifiers.Control)
             && args.KeyModifiers.HasFlag(KeyModifiers.Shift)
-            && args.Key == Key.V)
+            && args.Key == Key.E)
         {
             args.Handled = true;
             await ToggleViewerModeAsync();

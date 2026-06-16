@@ -22,7 +22,7 @@
         <MenuItem x:Name="focusSearchMenuItem" Header="_Find" InputGesture="Ctrl+F" />
       </MenuItem>
       <MenuItem Header="_View">
-        <MenuItem x:Name="viewerModeMenuItem" Header="_Viewer Mode" InputGesture="Ctrl+Shift+V" />
+        <MenuItem x:Name="viewerModeMenuItem" Header="_Viewer Mode" InputGesture="Ctrl+Shift+E" />
         <Separator />
         <MenuItem x:Name="focusProjectsMenuItem" Header="Focus _Projects" />
         <MenuItem x:Name="focusBucketsMenuItem" Header="Focus _Buckets" />
@@ -287,13 +287,7 @@
                   <Grid x:Name="viewerPanel"
                         IsVisible="False"
                         RowDefinitions="Auto,Auto,*">
-                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-                      <TextBlock Grid.Column="0" Text="Viewer" Classes="heading" />
-                      <Button Grid.Column="1"
-                              x:Name="closeViewerButton"
-                              Content="Editor"
-                              Padding="12,3" />
-                    </Grid>
+                    <TextBlock Grid.Row="0" Text="Viewer" Classes="heading" />
                     <TextBlock Grid.Row="1"
                                x:Name="viewerSummaryText"
                                Classes="muted"
