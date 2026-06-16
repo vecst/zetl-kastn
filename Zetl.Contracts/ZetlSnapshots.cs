@@ -30,6 +30,7 @@ public sealed record ZetlProjectSnapshot
     // Advances after every durable project mutation and orders notifications.
     public required long ChangeSequence { get; init; }
 
+    public string? ActiveBucketId { get; init; }
     public IReadOnlyList<ZetlBucketSnapshot> Buckets { get; init; } = [];
     public IReadOnlyList<ZetlSlipSnapshot> Slips { get; init; } = [];
 }
@@ -64,4 +65,6 @@ public sealed record ZetlSlipSnapshot
     public required string Source { get; init; }
     public string? SessionId { get; init; }
     public required DateTimeOffset CapturedAtUtc { get; init; }
+    public string? DeletedFromBucketId { get; init; }
+    public DateTimeOffset? DeletedAtUtc { get; init; }
 }

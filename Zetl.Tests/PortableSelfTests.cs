@@ -45,6 +45,7 @@ internal static class PortableSelfTests
                 ("Zetl adds notes preserving structure", StateAddsNotesPreservingStructure),
                 ("Zetl state preserves bucket settings", StatePreservesBucketSettings),
                 ("Zetl state protects the Scratch bucket", StateProtectsScratchBucket),
+                ("Zetl state protects the Deleted bucket", StateProtectsDeletedBucket),
                 ("Zetl state deletes projects and repairs active lanes", StateDeletesProjectsAndRepairsActiveLanes),
                 ("Zetl state deletes bucket trees and repairs pointers", StateDeletesBucketTreesAndRepairsPointers),
                 ("Zetl state deletes notes", StateDeletesNotes),
@@ -152,6 +153,7 @@ internal static class PortableSelfTests
                 ("Kastn filters preserve order and hierarchy", KastnWorkbenchTests.FiltersPreserveSnapshotOrderAndHierarchy),
                 ("Kastn dirty editor survives unrelated changes", KastnWorkbenchTests.DirtyEditorSurvivesUnrelatedChanges),
                 ("Kastn same-slip changes require resolution", KastnWorkbenchTests.SameSlipChangesRequireExplicitResolution),
+                ("Kastn viewer formats visible slips", KastnWorkbenchTests.ViewerFormatsVisibleSlipsAsReadableOutline),
                 ("Kastn organizes through Zetl commands", KastnWorkbenchTests.CommandsOrganizeThroughZetl)
         };
 
@@ -997,6 +999,45 @@ internal static class PortableSelfTests
 
             store.DeleteBucket(project, scratch.Id);
             AssertTrue(project.Buckets.Any(bucket => bucket.Id == scratch.Id), "Scratch should not be deletable.");
+        }
+
+        private static void StateProtectsDeletedBucket()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var inbox = store.ActiveBucket!;
+            var deleted = store.GetDeletedBucket(project);
+            store.AddNote(deleted, "removed", "kastn-delete");
+
+            AssertEqual("Deleted", deleted.Name, "Deleted bucket should have a readable name.");
+            AssertEqual("Deleted", deleted.Kind, "Deleted bucket should use a protected kind.");
+            AssertTrue(project.Buckets.Any(bucket => bucket.Id == deleted.Id), "Deleted bucket should remain human-readable in project JSON.");
+            AssertFalse(store.GetBucketDisplayItems(project).Any(item => item.Bucket.Id == deleted.Id), "Normal bucket lists should hide Deleted.");
+            AssertTrue(store.GetBucketDisplayItems(project, includeDeleted: true).Any(item => item.Bucket.Id == deleted.Id), "Explicit bucket lists may show Deleted.");
+            AssertFalse(store.HasCompilableNotes(project), "Deleted notes should not make a project compilable.");
+            AssertFalse(store.CompilePlainText(project, [deleted]).Contains("removed"), "Bucket-based compile should skip Deleted.");
+
+            store.SetActiveBucket(project, deleted.Id);
+            AssertEqual(inbox.Id, store.ActiveBucket?.Id, "Deleted should not become the active capture bucket.");
+            store.SetQuickNoteBucket(project, deleted.Id);
+            AssertEqual("Scratch", store.GetQuickNoteBucket(project).Name, "Deleted should not become the quick-note bucket.");
+
+            store.UpdateBucketName(deleted, "Trash");
+            store.SetBucketKind(deleted, "Replay");
+            store.SetBucketPopMode(deleted, true);
+            store.DeleteBucket(project, deleted.Id);
+            AssertEqual("Deleted", deleted.Name, "Deleted should not be renamable.");
+            AssertEqual("Deleted", deleted.Kind, "Deleted should not change kind.");
+            AssertFalse(deleted.PopMode, "Deleted should not enable Pop.");
+            AssertTrue(project.Buckets.Any(bucket => bucket.Id == deleted.Id), "Deleted should not be deletable.");
+
+            var loaded = new ZetlStateStore(temp.Path);
+            var loadedProject = loaded.State.Projects.Single(project => project.Name == "Demo");
+            var loadedDeleted = loadedProject.Buckets.Single(bucket => bucket.Id == deleted.Id);
+            AssertEqual("Deleted", loadedDeleted.Name, "Deleted name should persist.");
+            AssertEqual("Deleted", loadedDeleted.Kind, "Deleted kind should persist.");
+            AssertFalse(loaded.GetBucketDisplayItems(loadedProject).Any(item => item.Bucket.Id == loadedDeleted.Id), "Reloaded normal bucket lists should hide Deleted.");
         }
 
         private static void StateDeletesProjectsAndRepairsActiveLanes()

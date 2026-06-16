@@ -30,6 +30,9 @@ internal partial class MainWindow : Window
     private bool saving;
     private string? pendingSaveText;
     private string? pendingBucketSelectionId;
+    private string? pendingSlipSelectionId;
+    private bool pendingSlipFocus;
+    private bool viewerMode;
 
     public MainWindow()
     {
@@ -87,8 +90,10 @@ internal partial class MainWindow : Window
         refreshMenuItem.Click += async (_, _) => await RefreshAsync();
         deleteProjectMenuItem.Click += async (_, _) => await DeleteProjectAsync();
         exitMenuItem.Click += (_, _) => Close();
+        newSlipMenuItem.Click += async (_, _) => await AddSlipAsync();
         saveSlipMenuItem.Click += async (_, _) => await SaveEditorAsync();
         deleteSlipMenuItem.Click += async (_, _) => await DeleteSlipAsync();
+        viewerModeMenuItem.Click += async (_, _) => await ToggleViewerModeAsync();
         focusSearchMenuItem.Click += (_, _) => searchBox.Focus();
         focusProjectsMenuItem.Click += (_, _) => projectList.Focus();
         focusBucketsMenuItem.Click += (_, _) => bucketList.Focus();
@@ -97,9 +102,13 @@ internal partial class MainWindow : Window
         addBucketButton.Click += async (_, _) => await AddBucketAsync();
         saveBucketButton.Click += async (_, _) => await SaveBucketAsync();
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
+        viewerModeButton.Click += async (_, _) => await ToggleViewerModeAsync();
+        closeViewerButton.Click += async (_, _) => await SetViewerModeAsync(false);
+        newSlipButton.Click += async (_, _) => await AddSlipAsync();
         saveSlipButton.Click += async (_, _) => await SaveEditorAsync();
         deleteSlipButton.Click += async (_, _) => await DeleteSlipAsync();
         moveSlipButton.Click += async (_, _) => await MoveSlipAsync();
+        restoreSlipButton.Click += async (_, _) => await RestoreSlipAsync();
         useZetlButton.Click += (_, _) => UseZetlVersion();
         keepMineButton.Click += async (_, _) => await KeepMineAsync();
         KeyDown += OnKeyDown;
@@ -134,7 +143,7 @@ internal partial class MainWindow : Window
         var priorProjectId = currentProject?.Id;
         var selectedProjectId = snapshot.Project?.Id;
         var selectedBucketId = SelectedBucketId;
-        var selectedSlipId = editorState.SlipId;
+        var selectedSlipId = pendingSlipSelectionId ?? editorState.SlipId;
 
         refreshing = true;
         try
@@ -260,18 +269,21 @@ internal partial class MainWindow : Window
     private void RefreshBucketEditor()
     {
         var selected = SelectedBucket;
+        var isDeleted = KastnWorkbench.IsDeletedBucket(selected);
         bucketNameBox.Text = selected?.Name ?? "";
-        bucketNameBox.IsEnabled = selected is not null && IsOnline;
-        saveBucketButton.IsEnabled = selected is not null && IsOnline;
-        deleteBucketButton.IsEnabled = selected is not null && IsOnline;
+        bucketNameBox.IsEnabled = selected is not null && !isDeleted && IsOnline;
+        saveBucketButton.IsEnabled = selected is not null && !isDeleted && IsOnline;
+        deleteBucketButton.IsEnabled = selected is not null && !isDeleted && IsOnline;
 
         parentBuckets.Clear();
-        parentBuckets.Add(new KastnBucketItem(null, "No parent", null));
+        parentBuckets.Add(new KastnBucketItem(null, "No parent (top level)", null));
         if (currentProject is { } project)
         {
-            foreach (var item in KastnWorkbench.BuildBucketHierarchy(project)
+            foreach (var item in KastnWorkbench.BuildBucketPickerChoices(project)
                 .Where(item => selected is null
-                    || (item.Id != selected.Id && !IsDescendant(project, item.Id!, selected.Id))))
+                    || (item.Id != selected.Id
+                        && !KastnWorkbench.IsDeletedBucket(item.Bucket)
+                        && !IsDescendant(project, item.Id!, selected.Id))))
             {
                 parentBuckets.Add(item);
             }
@@ -280,23 +292,34 @@ internal partial class MainWindow : Window
         parentBucketBox.SelectedItem = parentBuckets.FirstOrDefault(
                 item => item.Id == selected?.ParentBucketId)
             ?? parentBuckets[0];
-        parentBucketBox.IsEnabled = selected is not null && IsOnline;
+        parentBucketBox.IsEnabled = selected is not null && !isDeleted && IsOnline;
+        RefreshParentBucketHint(selected);
     }
 
     private void RefreshDestinationBuckets()
     {
-        var selectedSlip = SelectedSlip;
+        var selectedSlips = SelectedSlips();
+        var selectedSlip = selectedSlips.Count == 1 ? selectedSlips[0] : null;
+        var selectedSlipIsDeleted = selectedSlip is not null && IsSlipInDeleted(selectedSlip);
         moveBuckets.Clear();
         if (currentProject is { } project)
         {
-            foreach (var item in KastnWorkbench.BuildBucketHierarchy(project)
-                .Where(item => item.Id != selectedSlip?.BucketId))
+            foreach (var item in KastnWorkbench.BuildBucketPickerChoices(project)
+                .Where(item => (selectedSlips.Count != 1 || item.Id != selectedSlip?.BucketId)
+                    && !KastnWorkbench.IsDeletedBucket(item.Bucket)))
             {
                 moveBuckets.Add(item);
             }
         }
 
-        moveBucketBox.SelectedIndex = moveBuckets.Count > 0 ? 0 : -1;
+        moveBucketBox.SelectedItem = selectedSlipIsDeleted
+            ? moveBuckets.FirstOrDefault(item => item.Id == selectedSlip?.DeletedFromBucketId)
+                ?? moveBuckets.FirstOrDefault(item => string.Equals(
+                    item.Bucket?.Name,
+                    "Scratch",
+                    StringComparison.OrdinalIgnoreCase))
+                ?? moveBuckets.FirstOrDefault()
+            : moveBuckets.FirstOrDefault();
         SetEditingEnabled();
     }
 
@@ -308,14 +331,10 @@ internal partial class MainWindow : Window
         }
 
         var selectedId = editorState.SlipId;
-        var filtered = KastnWorkbench.FilterSlips(
-            currentProject,
-            SelectedBucketId,
-            (sourceFilterBox.SelectedItem as FilterItem)?.Value,
-            (sessionFilterBox.SelectedItem as FilterItem)?.Value,
-            (dateFilterBox.SelectedItem as DateFilterItem)?.Value ?? KastnDateFilter.All,
-            searchBox.Text,
-            DateTimeOffset.Now);
+        var selectedIds = SelectedSlipItems()
+            .Select(item => item.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var filtered = CurrentFilteredSlips();
 
         var wasRefreshing = refreshing;
         refreshing = true;
@@ -333,11 +352,33 @@ internal partial class MainWindow : Window
                     slip));
             }
 
-            slipCountText.Text = $"{slips.Count} of {currentProject.Slips.Count} slips";
             var selected = slips.FirstOrDefault(item => item.Id == selectedId);
-            if (selected is not null)
+            if (pendingSlipSelectionId is null && selectedIds.Count > 1)
+            {
+                slipList.SelectedItems?.Clear();
+                foreach (var item in slips.Where(item => selectedIds.Contains(item.Id)))
+                {
+                    slipList.SelectedItems?.Add(item);
+                }
+
+                editorState.Select(null);
+                UpdateEditorFromState();
+            }
+            else if (selected is not null)
             {
                 slipList.SelectedItem = selected;
+                if (pendingSlipSelectionId == selected.Id)
+                {
+                    pendingSlipSelectionId = null;
+                    editorState.Select(selected.Slip);
+                    UpdateEditorFromState();
+                    if (pendingSlipFocus)
+                    {
+                        pendingSlipFocus = false;
+                        slipEditor.Focus();
+                        slipEditor.CaretIndex = slipEditor.Text?.Length ?? 0;
+                    }
+                }
             }
             else if (!editorState.IsDirty && editorState.ConflictCurrent is null)
             {
@@ -350,6 +391,8 @@ internal partial class MainWindow : Window
                 slipList.SelectedItem = null;
             }
 
+            UpdateSlipCountText();
+            RefreshViewer();
             RefreshDestinationBuckets();
         }
         finally
@@ -377,12 +420,31 @@ internal partial class MainWindow : Window
 
     private async void OnSlipSelectionChanged(object? sender, SelectionChangedEventArgs args)
     {
-        if (refreshing || slipList.SelectedItem is not SlipListItem selected)
+        if (refreshing)
         {
             return;
         }
 
         var oldId = editorState.SlipId;
+        var selectedItems = SelectedSlipItems();
+        if (selectedItems.Count != 1)
+        {
+            if (!await SaveEditorAsync())
+            {
+                refreshing = true;
+                slipList.SelectedItem = slips.FirstOrDefault(item => item.Id == oldId);
+                refreshing = false;
+                return;
+            }
+
+            editorState.Select(null);
+            UpdateEditorFromState();
+            RefreshDestinationBuckets();
+            UpdateSlipCountText();
+            return;
+        }
+
+        var selected = selectedItems[0];
         if (oldId != selected.Id && !await SaveEditorAsync())
         {
             refreshing = true;
@@ -394,6 +456,7 @@ internal partial class MainWindow : Window
         editorState.Select(selected.Slip);
         UpdateEditorFromState();
         RefreshDestinationBuckets();
+        UpdateSlipCountText();
     }
 
     private void OnEditorTextChanged()
@@ -504,13 +567,16 @@ internal partial class MainWindow : Window
             return;
         }
 
+        var parentId = SelectedBucketId is not null && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
+            ? SelectedBucketId
+            : null;
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.AddBucket,
             new AddBucketCommand
             {
                 Name = name,
-                ParentBucketId = SelectedBucketId
+                ParentBucketId = parentId
             },
             currentProject.Id));
         if (response.Status == ZetlResponseStatus.Success)
@@ -524,6 +590,67 @@ internal partial class MainWindow : Window
         {
             statusText.Text = response.Error?.Message ?? $"Bucket creation failed: {response.Status}.";
         }
+    }
+
+    private async Task AddSlipAsync()
+    {
+        if (!IsOnline || currentProject is null)
+        {
+            return;
+        }
+
+        if (!await SaveEditorAsync())
+        {
+            statusText.Text = "Save or resolve the current slip before creating a new one.";
+            return;
+        }
+
+        var destinationBucketId = SelectedBucketId
+            is { } selectedBucketId && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
+                ? selectedBucketId
+                : null;
+        destinationBucketId ??= currentProject.ActiveBucketId
+            ?? currentProject.Buckets.FirstOrDefault(
+                bucket => !KastnWorkbench.IsDeletedBucket(bucket))?.Id;
+        if (destinationBucketId is null)
+        {
+            statusText.Text = "Create a bucket before adding a slip.";
+            return;
+        }
+
+        var text = await KastnDialogs.PromptAsync(this, "New Slip", "Initial slip text", "New slip");
+        if (text is null)
+        {
+            return;
+        }
+
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.AddSlip,
+            new AddSlipCommand
+            {
+                BucketId = destinationBucketId,
+                Text = text,
+                Source = "kastn"
+            },
+            currentProject.Id));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            var created = response.Payload?.Deserialize<ZetlSlipSnapshot>(
+                ZetlProtocolJson.Options);
+            if (created is not null)
+            {
+                pendingBucketSelectionId = created.BucketId;
+                pendingSlipSelectionId = created.Id;
+                pendingSlipFocus = true;
+                ResetSlipFilters();
+                await connection.RefreshAsync();
+                statusText.Text = "Slip created.";
+                return;
+            }
+        }
+
+        HandleSimpleResponse(response, "Slip created.");
     }
 
     private async Task SaveBucketAsync()
@@ -541,6 +668,7 @@ internal partial class MainWindow : Window
         }
 
         var parentId = (parentBucketBox.SelectedItem as KastnBucketItem)?.Id;
+        pendingBucketSelectionId = bucket.Id;
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.UpdateBucket,
@@ -553,6 +681,11 @@ internal partial class MainWindow : Window
             currentProject.Id,
             bucket.Id,
             bucket.Revision));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            await connection.RefreshAsync();
+        }
+
         HandleSimpleResponse(response, "Bucket saved.");
     }
 
@@ -571,6 +704,7 @@ internal partial class MainWindow : Window
             return;
         }
 
+        pendingBucketSelectionId = bucket.ParentBucketId;
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.DeleteBucket,
@@ -578,6 +712,13 @@ internal partial class MainWindow : Window
             currentProject.Id,
             bucket.Id,
             bucket.Revision));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            editorState.Select(null);
+            UpdateEditorFromState();
+            await connection.RefreshAsync();
+        }
+
         HandleSimpleResponse(response, "Bucket deleted.");
     }
 
@@ -620,18 +761,112 @@ internal partial class MainWindow : Window
         HandleSimpleResponse(response, "Project deleted.");
     }
 
+    private async Task ToggleViewerModeAsync()
+    {
+        await SetViewerModeAsync(!viewerMode);
+    }
+
+    private async Task SetViewerModeAsync(bool enabled)
+    {
+        if (enabled && !await SaveEditorAsync())
+        {
+            statusText.Text = "Save or resolve the current slip before opening viewer mode.";
+            return;
+        }
+
+        viewerMode = enabled;
+        editorPanel.IsVisible = !viewerMode;
+        viewerPanel.IsVisible = viewerMode;
+        viewerModeButton.Content = viewerMode ? "Editor" : "Viewer";
+        viewerModeMenuItem.Header = viewerMode ? "_Editor Mode" : "_Viewer Mode";
+        RefreshViewer();
+        SetEditingEnabled();
+        if (viewerMode)
+        {
+            viewerTextBox.Focus();
+        }
+    }
+
     private async Task MoveSlipAsync()
     {
         if (!await SaveEditorAsync()
             || !IsOnline
             || currentProject is null
-            || SelectedSlip is not { } slip
             || moveBucketBox.SelectedItem is not KastnBucketItem destination
             || destination.Id is null)
         {
             return;
         }
 
+        var selected = SelectedSlips()
+            .Where(slip => !IsSlipInDeleted(slip))
+            .ToList();
+        if (selected.Count == 0)
+        {
+            return;
+        }
+
+        var moved = 0;
+        var skipped = 0;
+        var failed = 0;
+        var projectId = currentProject.Id;
+        pendingBucketSelectionId = destination.Id;
+        foreach (var slip in selected)
+        {
+            if (slip.BucketId == destination.Id)
+            {
+                skipped++;
+                continue;
+            }
+
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.MoveSlip,
+                new MoveSlipCommand { DestinationBucketId = destination.Id },
+                projectId,
+                slip.Id,
+                slip.Revision));
+            if (response.Status == ZetlResponseStatus.Success)
+            {
+                moved++;
+            }
+            else
+            {
+                failed++;
+            }
+        }
+
+        editorState.Select(null);
+        UpdateEditorFromState();
+        await connection.RefreshAsync();
+        statusText.Text = BatchStatus(
+            moved > 0 ? $"{moved} slip{Plural(moved)} moved to {destination.Bucket?.Name}" : null,
+            skipped > 0 ? $"{skipped} already there" : null,
+            failed > 0 ? $"{failed} failed" : null);
+    }
+
+    private async Task RestoreSlipAsync()
+    {
+        if (!await SaveEditorAsync()
+            || !IsOnline
+            || currentProject is null
+            || SelectedSlip is not { } slip
+            || !IsSlipInDeleted(slip))
+        {
+            return;
+        }
+
+        var destination = moveBucketBox.SelectedItem as KastnBucketItem
+            ?? moveBuckets.FirstOrDefault();
+        if (destination?.Id is null)
+        {
+            statusText.Text = "Create a regular bucket before restoring this slip.";
+            return;
+        }
+
+        pendingBucketSelectionId = destination.Id;
+        pendingSlipSelectionId = slip.Id;
+        pendingSlipFocus = false;
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.MoveSlip,
@@ -639,38 +874,69 @@ internal partial class MainWindow : Window
             currentProject.Id,
             slip.Id,
             editorState.Revision));
-        HandleSimpleResponse(response, $"Slip moved to {destination.Bucket?.Name}.");
+        HandleSimpleResponse(response, $"Slip restored to {destination.Bucket?.Name}.");
     }
 
     private async Task DeleteSlipAsync()
     {
-        if (!IsOnline || currentProject is null || SelectedSlip is not { } slip)
+        if (!await SaveEditorAsync()
+            || !IsOnline
+            || currentProject is null
+            || SelectedSlips().Count == 0)
+        {
+            return;
+        }
+
+        var selected = SelectedSlips()
+            .Where(slip => !IsSlipInDeleted(slip))
+            .ToList();
+        if (selected.Count == 0)
         {
             return;
         }
 
         if (!await KastnDialogs.ConfirmAsync(
                 this,
-                "Delete the selected slip?",
+                selected.Count == 1
+                    ? "Move the selected slip to Deleted?"
+                    : $"Move {selected.Count} selected slips to Deleted?",
                 "Delete Slip"))
         {
             return;
         }
 
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
-            Guid.NewGuid().ToString("N"),
-            ZetlCommandKind.DeleteSlip,
-            new DeleteSlipCommand(),
-            currentProject.Id,
-            slip.Id,
-            editorState.Revision));
-        if (response.Status == ZetlResponseStatus.Success)
+        var moved = 0;
+        var failed = 0;
+        var projectId = currentProject.Id;
+        foreach (var slip in selected)
         {
-            editorState.Select(null);
-            UpdateEditorFromState();
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.DeleteSlip,
+                new DeleteSlipCommand(),
+                projectId,
+                slip.Id,
+                slip.Revision));
+            if (response.Status == ZetlResponseStatus.Success)
+            {
+                moved++;
+                var deleted = response.Payload?.Deserialize<ZetlSlipSnapshot>(
+                    ZetlProtocolJson.Options);
+                pendingBucketSelectionId ??= deleted?.BucketId;
+            }
+            else
+            {
+                failed++;
+            }
         }
 
-        HandleSimpleResponse(response, "Slip deleted.");
+        editorState.Select(null);
+        ResetSlipFilters();
+        UpdateEditorFromState();
+        await connection.RefreshAsync();
+        statusText.Text = failed == 0
+            ? $"{moved} slip{Plural(moved)} moved to Deleted."
+            : $"{moved} slip{Plural(moved)} moved to Deleted; {failed} failed.";
     }
 
     private void UseZetlVersion()
@@ -702,6 +968,19 @@ internal partial class MainWindow : Window
 
     private void UpdateEditorFromState()
     {
+        var selectedSlips = SelectedSlips();
+        if (selectedSlips.Count > 1)
+        {
+            editorUpdating = true;
+            slipEditor.Text = "";
+            editorUpdating = false;
+            conflictPanel.IsVisible = false;
+            slipMetadataText.Text = $"{selectedSlips.Count} slips selected. "
+                + "Choose a destination, then move or delete them together.";
+            SetEditingEnabled();
+            return;
+        }
+
         editorUpdating = true;
         slipEditor.Text = editorState.DraftText;
         editorUpdating = false;
@@ -716,22 +995,42 @@ internal partial class MainWindow : Window
             ?? currentProject?.Slips.FirstOrDefault(item => item.Id == editorState.SlipId);
         slipMetadataText.Text = slip is null
             ? "Select a slip to read or edit it."
-            : $"{slip.Source} | {ShortSession(slip.SessionId)} | "
-                + $"{slip.CapturedAtUtc.LocalDateTime:F} | revision {editorState.Revision}";
+            : SlipMetadata(slip);
         SetEditingEnabled();
     }
 
     private void SetEditingEnabled()
     {
-        var canEdit = IsOnline && editorState.SlipId is not null && !saving;
-        slipEditor.IsEnabled = canEdit && editorState.ConflictCurrent is null;
-        saveSlipButton.IsEnabled = canEdit && editorState.ConflictCurrent is null;
+        var selectedSlips = SelectedSlips();
+        var hasSelectedSlips = selectedSlips.Count > 0;
+        var hasMultipleSelectedSlips = selectedSlips.Count > 1;
+        var allSelectedSlipsAreActive = hasSelectedSlips
+            && selectedSlips.All(slip => !IsSlipInDeleted(slip));
+        var selectedSlipIsDeleted = selectedSlips.Count == 1 && IsSlipInDeleted(selectedSlips[0]);
+        var canEdit = IsOnline
+            && editorState.SlipId is not null
+            && !hasMultipleSelectedSlips
+            && !saving;
+        var canBatch = IsOnline
+            && hasSelectedSlips
+            && !saving
+            && editorState.ConflictCurrent is null;
+        var canCreateSlip = IsOnline
+            && currentProject is not null
+            && !KastnWorkbench.IsDeletedBucket(SelectedBucket);
+        slipEditor.IsEnabled = !viewerMode && canEdit && editorState.ConflictCurrent is null;
+        saveSlipButton.IsEnabled = !viewerMode && canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = saveSlipButton.IsEnabled;
-        deleteSlipButton.IsEnabled = canEdit;
-        deleteSlipMenuItem.IsEnabled = canEdit;
-        moveSlipButton.IsEnabled = canEdit && moveBuckets.Count > 0;
-        moveBucketBox.IsEnabled = moveSlipButton.IsEnabled;
+        deleteSlipButton.IsEnabled = !viewerMode && canBatch && allSelectedSlipsAreActive;
+        deleteSlipMenuItem.IsEnabled = deleteSlipButton.IsEnabled;
+        restoreSlipButton.IsEnabled = !viewerMode && canEdit && selectedSlipIsDeleted && moveBuckets.Count > 0;
+        moveSlipButton.IsEnabled = !viewerMode && canBatch && allSelectedSlipsAreActive && moveBuckets.Count > 0;
+        moveBucketBox.IsEnabled = moveSlipButton.IsEnabled || restoreSlipButton.IsEnabled;
         addBucketButton.IsEnabled = IsOnline && currentProject is not null;
+        newSlipButton.IsEnabled = !viewerMode && canCreateSlip;
+        newSlipMenuItem.IsEnabled = newSlipButton.IsEnabled;
+        viewerModeButton.IsEnabled = currentProject is not null;
+        viewerModeMenuItem.IsEnabled = currentProject is not null;
     }
 
     private void SetConnectionState(KastnSessionSnapshot snapshot)
@@ -748,6 +1047,9 @@ internal partial class MainWindow : Window
             : new SolidColorBrush(Color.Parse("#FFB86B"));
         refreshMenuItem.IsEnabled = online;
         deleteProjectMenuItem.IsEnabled = online && currentProject is not null;
+        newSlipMenuItem.IsEnabled = online
+            && currentProject is not null
+            && !KastnWorkbench.IsDeletedBucket(SelectedBucket);
         SetEditingEnabled();
         RefreshBucketEditor();
     }
@@ -790,6 +1092,14 @@ internal partial class MainWindow : Window
             : response.Error?.Message ?? $"Operation failed: {response.Status}.";
     }
 
+    private void ResetSlipFilters()
+    {
+        searchBox.Text = "";
+        sourceFilterBox.SelectedItem = sources.FirstOrDefault();
+        sessionFilterBox.SelectedItem = sessions.FirstOrDefault();
+        dateFilterBox.SelectedItem = dates.FirstOrDefault();
+    }
+
     private async void OnKeyDown(object? sender, KeyEventArgs args)
     {
         if (args.Key == Key.F5)
@@ -807,6 +1117,13 @@ internal partial class MainWindow : Window
         {
             args.Handled = true;
             await SaveEditorAsync();
+        }
+        else if (args.KeyModifiers.HasFlag(KeyModifiers.Control)
+            && args.KeyModifiers.HasFlag(KeyModifiers.Shift)
+            && args.Key == Key.V)
+        {
+            args.Handled = true;
+            await ToggleViewerModeAsync();
         }
         else if (args.Key == Key.F2 && SelectedBucket is not null)
         {
@@ -846,9 +1163,152 @@ internal partial class MainWindow : Window
     private ZetlBucketSnapshot? SelectedBucket =>
         (bucketList.SelectedItem as KastnBucketItem)?.Bucket;
 
-    private ZetlSlipSnapshot? SelectedSlip =>
-        (slipList.SelectedItem as SlipListItem)?.Slip
-        ?? currentProject?.Slips.FirstOrDefault(slip => slip.Id == editorState.SlipId);
+    private IReadOnlyList<ZetlSlipSnapshot> CurrentFilteredSlips()
+    {
+        return currentProject is null
+            ? []
+            : KastnWorkbench.FilterSlips(
+                currentProject,
+                SelectedBucketId,
+                (sourceFilterBox.SelectedItem as FilterItem)?.Value,
+                (sessionFilterBox.SelectedItem as FilterItem)?.Value,
+                (dateFilterBox.SelectedItem as DateFilterItem)?.Value ?? KastnDateFilter.All,
+                searchBox.Text,
+                DateTimeOffset.Now);
+    }
+
+    private void RefreshViewer()
+    {
+        if (currentProject is null)
+        {
+            viewerSummaryText.Text = "No project selected.";
+            viewerTextBox.Text = "";
+            return;
+        }
+
+        var visible = CurrentFilteredSlips();
+        viewerSummaryText.Text = visible.Count == 0
+            ? "No slips match the current filters."
+            : $"{visible.Count} of {currentProject.Slips.Count} slips in the current view.";
+        viewerTextBox.Text = visible.Count == 0
+            ? ""
+            : KastnWorkbench.BuildViewerText(currentProject, visible);
+    }
+
+    private ZetlSlipSnapshot? SelectedSlip
+    {
+        get
+        {
+            var selected = SelectedSlips();
+            return selected.Count switch
+            {
+                0 => currentProject?.Slips.FirstOrDefault(slip => slip.Id == editorState.SlipId),
+                1 => selected[0],
+                _ => null
+            };
+        }
+    }
+
+    private IReadOnlyList<ZetlSlipSnapshot> SelectedSlips()
+    {
+        return SelectedSlipItems()
+            .Select(item => item.Slip)
+            .ToList();
+    }
+
+    private IReadOnlyList<SlipListItem> SelectedSlipItems()
+    {
+        if (slipList.SelectedItems is { Count: > 0 } selectedItems)
+        {
+            return selectedItems
+                .OfType<SlipListItem>()
+                .ToList();
+        }
+
+        return slipList.SelectedItem is SlipListItem selected
+            ? [selected]
+            : [];
+    }
+
+    private bool IsSlipInDeleted(ZetlSlipSnapshot? slip)
+    {
+        if (currentProject is null || slip is null)
+        {
+            return false;
+        }
+
+        return KastnWorkbench.IsDeletedBucket(currentProject.Buckets.FirstOrDefault(
+            bucket => bucket.Id == slip.BucketId));
+    }
+
+    private string SlipMetadata(ZetlSlipSnapshot slip)
+    {
+        var metadata = $"{slip.Source} | {ShortSession(slip.SessionId)} | "
+            + $"{slip.CapturedAtUtc.LocalDateTime:F} | revision {editorState.Revision}";
+        if (!IsSlipInDeleted(slip))
+        {
+            return metadata;
+        }
+
+        var origin = currentProject?.Buckets.FirstOrDefault(
+            bucket => bucket.Id == slip.DeletedFromBucketId)?.Name ?? "Unknown bucket";
+        var deletedAt = slip.DeletedAtUtc is null
+            ? "unknown time"
+            : slip.DeletedAtUtc.Value.LocalDateTime.ToString("g");
+        return $"{metadata} | Deleted from {origin} at {deletedAt}";
+    }
+
+    private void RefreshParentBucketHint(ZetlBucketSnapshot? selected)
+    {
+        if (selected is null || currentProject is null)
+        {
+            parentBucketHintText.Text = "Choose a bucket to edit its placement.";
+            return;
+        }
+
+        if (KastnWorkbench.IsDeletedBucket(selected))
+        {
+            parentBucketHintText.Text = "Deleted is protected and always top level.";
+            return;
+        }
+
+        if (selected.ParentBucketId is null)
+        {
+            parentBucketHintText.Text = "Current parent: top level";
+            return;
+        }
+
+        var parent = currentProject.Buckets.FirstOrDefault(
+            bucket => bucket.Id == selected.ParentBucketId);
+        parentBucketHintText.Text = parent is null
+            ? "Current parent: missing"
+            : $"Current parent: {KastnWorkbench.BucketPathLabel(currentProject, parent)}";
+    }
+
+    private void UpdateSlipCountText()
+    {
+        if (currentProject is null)
+        {
+            slipCountText.Text = "No slips";
+            return;
+        }
+
+        var selectedCount = SelectedSlipItems().Count;
+        slipCountText.Text = selectedCount > 1
+            ? $"{slips.Count} of {currentProject.Slips.Count} slips | {selectedCount} selected"
+            : $"{slips.Count} of {currentProject.Slips.Count} slips";
+    }
+
+    private static string BatchStatus(params string?[] parts)
+    {
+        var message = string.Join("; ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+        return message.Length == 0 ? "No slips changed." : $"{message}.";
+    }
+
+    private static string Plural(int count)
+    {
+        return count == 1 ? "" : "s";
+    }
 
     private static bool IsDescendant(
         ZetlProjectSnapshot project,

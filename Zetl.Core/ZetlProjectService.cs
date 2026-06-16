@@ -355,6 +355,11 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "scratch_protected", "The Scratch bucket cannot be deleted.");
         }
 
+        if (ZetlStateStore.IsDeletedBucket(bucket))
+        {
+            return ValidationError(command, "deleted_bucket_protected", "The Deleted bucket cannot be deleted.");
+        }
+
         store.DeleteBucket(project, bucket.Id);
         Publish(project, ZetlChangeKind.Deleted, ZetlEntityKind.Bucket, bucket.Id, bucket.Revision);
         return Success(command, project);
@@ -376,6 +381,11 @@ internal sealed class ZetlProjectService
         if (string.IsNullOrWhiteSpace(payload.Text))
         {
             return ValidationError(command, "slip_text_required", "Slip text is required.");
+        }
+
+        if (ZetlStateStore.IsDeletedBucket(bucket))
+        {
+            return ValidationError(command, "deleted_bucket_protected", "Deleted is not a capture target.");
         }
 
         if (string.IsNullOrWhiteSpace(payload.Source))
@@ -487,9 +497,26 @@ internal sealed class ZetlProjectService
             return conflict;
         }
 
-        store.DeleteNote(bucket, note.Id);
-        Publish(project, ZetlChangeKind.Deleted, ZetlEntityKind.Slip, note.Id, note.Revision);
-        return Success(command, project);
+        if (ZetlStateStore.IsDeletedBucket(bucket))
+        {
+            return ValidationError(
+                command,
+                "slip_already_deleted",
+                "The slip is already in Deleted.");
+        }
+
+        var deleted = store.GetDeletedBucket(project);
+        if (!store.MoveNote(project, note, deleted))
+        {
+            return ValidationError(
+                command,
+                "slip_delete_invalid",
+                "The slip could not be moved to Deleted.");
+        }
+
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(deleted, note);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
+        return Success(command, project, snapshot);
     }
 
     private void ApplyBucketDefinition(

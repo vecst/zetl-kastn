@@ -25,6 +25,7 @@ internal static class ZetlProjectSnapshotMapper
             Name = project.Name,
             MetadataRevision = project.MetadataRevision,
             ChangeSequence = project.ChangeSequence,
+            ActiveBucketId = project.ActiveBucketId,
             Buckets = project.Buckets.Select(ToSnapshot).ToList(),
             Slips = project.Buckets
                 .SelectMany(bucket => bucket.Notes.Select(note => ToSnapshot(bucket, note)))
@@ -65,7 +66,12 @@ internal static class ZetlProjectSnapshotMapper
             Source = note.Source,
             SessionId = note.SessionId,
             CapturedAtUtc = new DateTimeOffset(
-                DateTime.SpecifyKind(note.CreatedAtUtc, DateTimeKind.Utc))
+                DateTime.SpecifyKind(note.CreatedAtUtc, DateTimeKind.Utc)),
+            DeletedFromBucketId = note.DeletedFromBucketId,
+            DeletedAtUtc = note.DeletedAtUtc is null
+                ? null
+                : new DateTimeOffset(
+                    DateTime.SpecifyKind(note.DeletedAtUtc.Value, DateTimeKind.Utc))
         };
     }
 }

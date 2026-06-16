@@ -61,6 +61,8 @@ internal sealed class ZetlNote
     public string Source { get; set; } = "";
     public string? SessionId { get; set; }
     public DateTime CreatedAtUtc { get; set; }
+    public string? DeletedFromBucketId { get; set; }
+    public DateTime? DeletedAtUtc { get; set; }
 }
 
 internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, string CompileMode, int TsvRowLength)
@@ -81,6 +83,8 @@ internal sealed class ZetlStateStore
 {
     // Name of the dedicated activity-log project. It is never made active.
     public const string LogProjectName = "Zetl Logs";
+    public const string DeletedBucketName = "Deleted";
+    public const string DeletedBucketKind = "Deleted";
 
     private readonly ZetlStateStorage storage;
     private readonly string sessionId;
@@ -147,7 +151,8 @@ internal sealed class ZetlStateStore
     public ZetlBucket? GetActiveBucket(bool shifted = false)
     {
         var project = GetActiveProject(shifted);
-        return project?.Buckets.FirstOrDefault(bucket => bucket.Id == project.ActiveBucketId);
+        return project?.Buckets.FirstOrDefault(bucket =>
+            bucket.Id == project.ActiveBucketId && !IsDeletedBucket(bucket));
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -275,9 +280,15 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlBucket AddBucket(ZetlProject project, string name, string? parentBucketId = null, bool setActive = true)
     {
-        var bucket = CreateBucket(NormalizeName(name, "New Bucket"));
+        var normalizedName = NormalizeName(name, "New Bucket");
+        if (IsDeletedBucketName(normalizedName))
+        {
+            return GetDeletedBucket(project);
+        }
+
+        var bucket = CreateBucket(normalizedName);
         ApplyBucketDefaults(bucket);
-        bucket.ParentBucketId = project.Buckets.Any(item => item.Id == parentBucketId)
+        bucket.ParentBucketId = project.Buckets.Any(item => item.Id == parentBucketId && !IsDeletedBucket(item))
             ? parentBucketId
             : null;
         project.Buckets.Add(bucket);
@@ -294,8 +305,14 @@ internal sealed class ZetlStateStore
     public ZetlBucket GetOrCreateBucket(ZetlProject project, string name, bool setActive = true)
     {
         var normalizedName = NormalizeName(name, "New Bucket");
+        if (IsDeletedBucketName(normalizedName))
+        {
+            return GetDeletedBucket(project);
+        }
+
         var bucket = project.Buckets.FirstOrDefault(item =>
-            string.Equals(item.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+            !IsDeletedBucket(item)
+            && string.Equals(item.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
         if (bucket is not null)
         {
             if (setActive)
@@ -313,7 +330,7 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void UpdateBucketName(ZetlBucket bucket, string name)
     {
-        if (IsScratchBucket(bucket))
+        if (IsScratchBucket(bucket) || IsDeletedBucket(bucket))
         {
             return;
         }
@@ -327,7 +344,7 @@ internal sealed class ZetlStateStore
     public void DeleteBucket(ZetlProject project, string bucketId)
     {
         var bucket = project.Buckets.FirstOrDefault(item => item.Id == bucketId);
-        if (bucket is null || IsScratchBucket(bucket))
+        if (bucket is null || IsScratchBucket(bucket) || IsDeletedBucket(bucket))
         {
             return;
         }
@@ -337,14 +354,14 @@ internal sealed class ZetlStateStore
         EnsureScratchBucket(project.Buckets);
         if (project.ActiveBucketId is null
             || idsToRemove.Contains(project.ActiveBucketId)
-            || project.Buckets.All(item => item.Id != project.ActiveBucketId))
+            || project.Buckets.All(item => item.Id != project.ActiveBucketId || IsDeletedBucket(item)))
         {
-            project.ActiveBucketId = project.Buckets.First().Id;
+            project.ActiveBucketId = FirstActiveWorkflowBucket(project)?.Id;
         }
 
         if (project.QuickNoteBucketId is not null
             && (idsToRemove.Contains(project.QuickNoteBucketId)
-                || project.Buckets.All(item => item.Id != project.QuickNoteBucketId)))
+                || project.Buckets.All(item => item.Id != project.QuickNoteBucketId || IsDeletedBucket(item))))
         {
             project.QuickNoteBucketId = null;
         }
@@ -511,7 +528,7 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetActiveBucket(ZetlProject project, string bucketId)
     {
-        if (project.Buckets.Any(bucket => bucket.Id == bucketId))
+        if (project.Buckets.Any(bucket => bucket.Id == bucketId && !IsDeletedBucket(bucket)))
         {
             project.ActiveBucketId = bucketId;
             PersistProject(project);
@@ -520,14 +537,15 @@ internal sealed class ZetlStateStore
 
     public ZetlBucket GetQuickNoteBucket(ZetlProject project)
     {
-        var bucket = project.Buckets.FirstOrDefault(bucket => bucket.Id == project.QuickNoteBucketId);
+        var bucket = project.Buckets.FirstOrDefault(bucket =>
+            bucket.Id == project.QuickNoteBucketId && !IsDeletedBucket(bucket));
         return bucket ?? GetScratchBucket(project);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetQuickNoteBucket(ZetlProject project, string bucketId)
     {
-        if (project.Buckets.Any(bucket => bucket.Id == bucketId))
+        if (project.Buckets.Any(bucket => bucket.Id == bucketId && !IsDeletedBucket(bucket)))
         {
             project.QuickNoteBucketId = bucketId;
             PersistProject(project);
@@ -537,6 +555,14 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetBucketPopMode(ZetlBucket bucket, bool popMode)
     {
+        if (IsDeletedBucket(bucket))
+        {
+            bucket.PopMode = false;
+            bucket.Revision++;
+            PersistBucket(bucket);
+            return;
+        }
+
         if (IsFifoBucket(bucket))
         {
             bucket.PopMode = false;
@@ -553,6 +579,14 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetBucketKind(ZetlBucket bucket, string kind)
     {
+        if (IsDeletedBucket(bucket))
+        {
+            EnsureDeletedBucketShape(bucket);
+            bucket.Revision++;
+            PersistBucket(bucket);
+            return;
+        }
+
         bucket.Kind = NormalizeBucketKind(kind);
         if (IsFifoBucket(bucket))
         {
@@ -572,20 +606,35 @@ internal sealed class ZetlStateStore
         string defaultStartingText,
         int defaultTsvRowLength)
     {
+        if (IsDeletedBucket(bucket))
+        {
+            EnsureDeletedBucketShape(bucket);
+        }
         // Scratch keeps its name; everything else about it stays editable.
-        if (!IsScratchBucket(bucket))
+        else if (!IsScratchBucket(bucket))
         {
             bucket.Name = NormalizeName(name, "Bucket");
+            bucket.DefaultKind = NormalizeBucketKind(defaultKind);
+            bucket.Kind = bucket.DefaultKind;
+            bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
+            bucket.DefaultStartingText = (defaultStartingText ?? "").Trim();
+            bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
+            if (IsFifoBucket(bucket))
+            {
+                bucket.PopMode = false;
+            }
         }
-
-        bucket.DefaultKind = NormalizeBucketKind(defaultKind);
-        bucket.Kind = bucket.DefaultKind;
-        bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
-        bucket.DefaultStartingText = (defaultStartingText ?? "").Trim();
-        bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
-        if (IsFifoBucket(bucket))
+        else
         {
-            bucket.PopMode = false;
+            bucket.DefaultKind = NormalizeBucketKind(defaultKind);
+            bucket.Kind = bucket.DefaultKind;
+            bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
+            bucket.DefaultStartingText = (defaultStartingText ?? "").Trim();
+            bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
+            if (IsFifoBucket(bucket))
+            {
+                bucket.PopMode = false;
+            }
         }
 
         bucket.Revision++;
@@ -611,13 +660,21 @@ internal sealed class ZetlStateStore
             return;
         }
 
+        if (IsDeletedBucket(bucket))
+        {
+            EnsureDeletedBucketShape(bucket);
+            bucket.Revision++;
+            PersistProject(project);
+            return;
+        }
+
         if (!IsScratchBucket(bucket))
         {
             bucket.Name = NormalizeName(name, "Bucket");
         }
 
         bucket.ParentBucketId = parentBucketId != bucket.Id
-            && project.Buckets.Any(item => item.Id == parentBucketId)
+            && project.Buckets.Any(item => item.Id == parentBucketId && !IsDeletedBucket(item))
                 ? parentBucketId
                 : null;
         bucket.Kind = NormalizeBucketKind(kind);
@@ -627,7 +684,7 @@ internal sealed class ZetlStateStore
         bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
         bucket.PopMode = !IsFifoBucket(bucket) && popMode;
         bucket.FifoReviewBucketId = replayReviewBucketId != bucket.Id
-            && project.Buckets.Any(item => item.Id == replayReviewBucketId)
+            && project.Buckets.Any(item => item.Id == replayReviewBucketId && !IsDeletedBucket(item))
                 ? replayReviewBucketId
                 : null;
         bucket.Revision++;
@@ -648,6 +705,17 @@ internal sealed class ZetlStateStore
 
         source.Notes.RemoveAll(item => item.Id == note.Id);
         destination.Notes.Add(note);
+        if (IsDeletedBucket(destination))
+        {
+            note.DeletedFromBucketId = source.Id;
+            note.DeletedAtUtc = DateTime.UtcNow;
+        }
+        else if (IsDeletedBucket(source))
+        {
+            note.DeletedFromBucketId = null;
+            note.DeletedAtUtc = null;
+        }
+
         note.Revision++;
         PersistProject(project);
         return true;
@@ -672,12 +740,38 @@ internal sealed class ZetlStateStore
     {
         EnsureScratchBucket(project.Buckets);
         var scratch = project.Buckets.First(bucket => string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase));
-        if (project.ActiveBucketId is null)
+        if (project.ActiveBucketId is null || project.Buckets.Any(bucket => bucket.Id == project.ActiveBucketId && IsDeletedBucket(bucket)))
         {
             project.ActiveBucketId = scratch.Id;
         }
 
         return scratch;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlBucket GetDeletedBucket(ZetlProject project)
+    {
+        var bucket = project.Buckets.FirstOrDefault(IsDeletedBucket)
+            ?? project.Buckets.FirstOrDefault(bucket => IsDeletedBucketName(bucket.Name));
+        if (bucket is null)
+        {
+            bucket = CreateBucket(DeletedBucketName);
+            project.Buckets.Add(bucket);
+        }
+
+        EnsureDeletedBucketShape(bucket);
+        if (project.ActiveBucketId == bucket.Id)
+        {
+            project.ActiveBucketId = FirstActiveWorkflowBucket(project)?.Id;
+        }
+
+        if (project.QuickNoteBucketId == bucket.Id)
+        {
+            project.QuickNoteBucketId = null;
+        }
+
+        PersistProject(project);
+        return bucket;
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -847,7 +941,7 @@ internal sealed class ZetlStateStore
     public string CompilePlainText(ZetlProject project, IEnumerable<ZetlBucket> selectedBuckets)
     {
         var parts = new List<string> { project.Name.Trim(), "" };
-        foreach (var bucket in selectedBuckets)
+        foreach (var bucket in selectedBuckets.Where(bucket => !IsDeletedBucket(bucket)))
         {
             var depth = BucketDepth(bucket, project.Buckets);
             parts.Add(IndentedLine(bucket.Name.Trim(), depth));
@@ -915,12 +1009,16 @@ internal sealed class ZetlStateStore
         return headerLength > 0 ? headerLength : Math.Max(1, bucket.DefaultTsvRowLength);
     }
 
-    public IReadOnlyList<BucketDisplayItem> GetBucketDisplayItems(ZetlProject project)
+    public IReadOnlyList<BucketDisplayItem> GetBucketDisplayItems(
+        ZetlProject project,
+        bool includeDeleted = false)
     {
         var result = new List<BucketDisplayItem>();
         AddChildren(parentId: null, depth: 0);
 
-        foreach (var bucket in project.Buckets.OrderBy(bucket => bucket.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var bucket in project.Buckets
+            .Where(bucket => includeDeleted || !IsDeletedBucket(bucket))
+            .OrderBy(bucket => bucket.Name, StringComparer.OrdinalIgnoreCase))
         {
             if (result.All(item => item.Bucket.Id != bucket.Id))
             {
@@ -933,7 +1031,8 @@ internal sealed class ZetlStateStore
         void AddChildren(string? parentId, int depth)
         {
             foreach (var child in project.Buckets
-                .Where(bucket => bucket.ParentBucketId == parentId)
+                .Where(bucket => bucket.ParentBucketId == parentId
+                    && (includeDeleted || !IsDeletedBucket(bucket)))
                 .OrderBy(bucket => bucket.Name, StringComparer.OrdinalIgnoreCase))
             {
                 result.Add(new BucketDisplayItem(child, $"{new string(' ', depth * 2)}{child.Name}"));
@@ -971,7 +1070,9 @@ internal sealed class ZetlStateStore
 
     public bool HasCompilableNotes(ZetlProject project, bool currentSessionOnly = false)
     {
-        return project.Buckets.Any(bucket => bucket.Notes.Any(note => IsCompilableNote(note, currentSessionOnly)));
+        return project.Buckets.Any(bucket =>
+            !IsDeletedBucket(bucket)
+            && bucket.Notes.Any(note => IsCompilableNote(note, currentSessionOnly)));
     }
 
     private bool IsCompilableNote(ZetlNote note, bool currentSessionOnly)
@@ -991,6 +1092,7 @@ internal sealed class ZetlStateStore
             {
                 project,
                 latest = project.Buckets
+                    .Where(bucket => !IsDeletedBucket(bucket))
                     .SelectMany(bucket => bucket.Notes)
                     .Select(note => (DateTime?)note.CreatedAtUtc)
                     .Max()
@@ -1191,13 +1293,13 @@ internal sealed class ZetlStateStore
             bucket.Revision = Math.Max(bucket.Revision, 1);
             bucket.Name = NormalizeName(bucket.Name, "Bucket");
             if (bucket.ParentBucketId == bucket.Id
-                || project.Buckets.All(candidate => candidate.Id != bucket.ParentBucketId))
+                || project.Buckets.All(candidate => candidate.Id != bucket.ParentBucketId || IsDeletedBucket(candidate)))
             {
                 bucket.ParentBucketId = null;
             }
 
             if (bucket.FifoReviewBucketId == bucket.Id
-                || project.Buckets.All(candidate => candidate.Id != bucket.FifoReviewBucketId))
+                || project.Buckets.All(candidate => candidate.Id != bucket.FifoReviewBucketId || IsDeletedBucket(candidate)))
             {
                 bucket.FifoReviewBucketId = null;
             }
@@ -1207,6 +1309,11 @@ internal sealed class ZetlStateStore
             bucket.DefaultCompileMode = NormalizeCompileMode(bucket.DefaultCompileMode);
             bucket.DefaultStartingText ??= "";
             bucket.DefaultTsvRowLength = bucket.DefaultTsvRowLength <= 0 ? 5 : bucket.DefaultTsvRowLength;
+            if (IsDeletedBucket(bucket) || IsDeletedBucketName(bucket.Name))
+            {
+                EnsureDeletedBucketShape(bucket);
+            }
+
             if (IsFifoBucket(bucket))
             {
                 bucket.PopMode = false;
@@ -1225,13 +1332,13 @@ internal sealed class ZetlStateStore
             }
         }
 
-        if (project.Buckets.All(bucket => bucket.Id != project.ActiveBucketId))
+        if (project.Buckets.All(bucket => bucket.Id != project.ActiveBucketId || IsDeletedBucket(bucket)))
         {
-            project.ActiveBucketId = project.Buckets.First().Id;
+            project.ActiveBucketId = FirstActiveWorkflowBucket(project)?.Id;
         }
 
         if (project.QuickNoteBucketId is not null
-            && project.Buckets.All(bucket => bucket.Id != project.QuickNoteBucketId))
+            && project.Buckets.All(bucket => bucket.Id != project.QuickNoteBucketId || IsDeletedBucket(bucket)))
         {
             project.QuickNoteBucketId = null;
         }
@@ -1264,6 +1371,22 @@ internal sealed class ZetlStateStore
             DefaultCompileMode = "Formatted",
             DefaultTsvRowLength = 5
         };
+    }
+
+    private static ZetlBucket? FirstActiveWorkflowBucket(ZetlProject project)
+    {
+        EnsureScratchBucket(project.Buckets);
+        return project.Buckets.FirstOrDefault(bucket => !IsDeletedBucket(bucket));
+    }
+
+    private static void EnsureDeletedBucketShape(ZetlBucket bucket)
+    {
+        bucket.Name = DeletedBucketName;
+        bucket.ParentBucketId = null;
+        bucket.Kind = DeletedBucketKind;
+        bucket.DefaultKind = DeletedBucketKind;
+        bucket.PopMode = false;
+        bucket.FifoReviewBucketId = null;
     }
 
     // Stamp a freshly created bucket with the user's default compile mode and
@@ -1398,13 +1521,13 @@ internal sealed class ZetlStateStore
         }
 
         EnsureScratchBucket(project.Buckets);
-        if (project.Buckets.All(bucket => bucket.Id != project.ActiveBucketId))
+        if (project.Buckets.All(bucket => bucket.Id != project.ActiveBucketId || IsDeletedBucket(bucket)))
         {
-            project.ActiveBucketId = project.Buckets.First().Id;
+            project.ActiveBucketId = FirstActiveWorkflowBucket(project)?.Id;
         }
 
         if (project.QuickNoteBucketId is not null
-            && project.Buckets.All(bucket => bucket.Id != project.QuickNoteBucketId))
+            && project.Buckets.All(bucket => bucket.Id != project.QuickNoteBucketId || IsDeletedBucket(bucket)))
         {
             project.QuickNoteBucketId = null;
         }
@@ -1477,6 +1600,7 @@ internal sealed class ZetlStateStore
         var names = bucketNames
             .Select(name => NormalizeName(name, ""))
             .Where(name => name.Length > 0)
+            .Where(name => !IsDeletedBucketName(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         return names.Count == 0 ? ["Inbox"] : names;
@@ -1517,6 +1641,16 @@ internal sealed class ZetlStateStore
         return string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase);
     }
 
+    public static bool IsDeletedBucket(ZetlBucket bucket)
+    {
+        return string.Equals(bucket.Kind, DeletedBucketKind, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDeletedBucketName(string? name)
+    {
+        return string.Equals(name?.Trim(), DeletedBucketName, StringComparison.OrdinalIgnoreCase);
+    }
+
     // Whether a raw kind string represents Replay Mode (accepts the legacy
     // "Fifo" value as well).
     public static bool IsReplayKind(string? kind)
@@ -1534,6 +1668,11 @@ internal sealed class ZetlStateStore
 
     private static string NormalizeBucketKind(string? kind)
     {
+        if (string.Equals(kind, DeletedBucketKind, StringComparison.OrdinalIgnoreCase))
+        {
+            return DeletedBucketKind;
+        }
+
         return IsFifoKind(kind) ? "Replay" : "Standard";
     }
 

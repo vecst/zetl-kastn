@@ -76,6 +76,7 @@ internal static class KastnContractTests
             Name = "Demo",
             MetadataRevision = 3,
             ChangeSequence = 42,
+            ActiveBucketId = "bucket-1",
             Buckets =
             [
                 new ZetlBucketSnapshot
@@ -95,7 +96,9 @@ internal static class KastnContractTests
                     BucketId = "bucket-1",
                     Text = "Captured",
                     Source = "copy",
-                    CapturedAtUtc = DateTimeOffset.Parse("2026-06-15T12:00:00Z")
+                    CapturedAtUtc = DateTimeOffset.Parse("2026-06-15T12:00:00Z"),
+                    DeletedFromBucketId = "bucket-old",
+                    DeletedAtUtc = DateTimeOffset.Parse("2026-06-15T12:05:00Z")
                 }
             ]
         };
@@ -108,8 +111,14 @@ internal static class KastnContractTests
 
         AssertEqual(3L, roundTripped.MetadataRevision, "Project metadata revision should round-trip.");
         AssertEqual(42L, roundTripped.ChangeSequence, "Project change sequence should round-trip independently.");
+        AssertEqual("bucket-1", roundTripped.ActiveBucketId, "Project snapshots should identify the active bucket.");
         AssertEqual(5L, roundTripped.Buckets.Single().Revision, "Bucket revision should remain independent.");
         AssertEqual(2L, roundTripped.Slips.Single().Revision, "Slip revision should remain independent.");
+        AssertEqual("bucket-old", roundTripped.Slips.Single().DeletedFromBucketId, "Slip deleted origin should round-trip.");
+        AssertEqual(
+            DateTimeOffset.Parse("2026-06-15T12:05:00Z"),
+            roundTripped.Slips.Single().DeletedAtUtc,
+            "Slip deleted timestamp should round-trip.");
     }
 
     public static void ConflictCarriesCurrentRecord()

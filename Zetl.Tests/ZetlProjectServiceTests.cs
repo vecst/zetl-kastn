@@ -209,6 +209,32 @@ internal static class ZetlProjectServiceTests
             project.Id,
             moved.Id,
             moved.Revision));
+        var deleted = delete.Payload?.Deserialize<ZetlSlipSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Delete slip did not return a slip.");
+        var deletedBucket = store.GetDeletedBucket(project);
+        var restore = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-restore",
+            ZetlCommandKind.MoveSlip,
+            new MoveSlipCommand { DestinationBucketId = drafts.Id },
+            project.Id,
+            deleted.Id,
+            deleted.Revision));
+        var restored = restore.Payload?.Deserialize<ZetlSlipSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Restore slip did not return a slip.");
+        var addToDeleted = service.Execute(AddSlipCommand(
+            "slip-add-deleted",
+            project.Id,
+            deletedBucket.Id,
+            "do not capture here"));
+        var deleteDeletedBucket = service.Execute(ZetlCommandEnvelope.Create(
+            "bucket-delete-deleted",
+            ZetlCommandKind.DeleteBucket,
+            new DeleteBucketCommand(),
+            project.Id,
+            deletedBucket.Id,
+            deletedBucket.Revision));
         var snapshotResponse = service.Execute(new ZetlCommandEnvelope
         {
             CommandId = "project-snapshot",
@@ -221,10 +247,21 @@ internal static class ZetlProjectServiceTests
 
         AssertEqual(ZetlResponseStatus.Success, addBucket.Status, "Bucket add should succeed.");
         AssertEqual("TSV", drafts.Settings.DefaultCompileMode, "Bucket settings should round-trip.");
+        AssertEqual(project.ActiveBucketId, snapshot.ActiveBucketId, "Project snapshots should expose the active bucket for clients.");
         AssertEqual(ZetlResponseStatus.Success, move.Status, "Slip move should succeed.");
         AssertEqual(drafts.Id, moved.BucketId, "Moved slip should identify its destination.");
         AssertEqual(ZetlResponseStatus.Success, delete.Status, "Slip delete should succeed.");
-        AssertTrue(snapshot.Slips.All(item => item.Id != moved.Id), "Deleted slip should be absent from a fresh snapshot.");
+        AssertEqual(deletedBucket.Id, deleted.BucketId, "Deleted slip should move to the protected bucket.");
+        AssertEqual(drafts.Id, deleted.DeletedFromBucketId, "Deleted slip should remember its previous bucket.");
+        AssertTrue(deleted.DeletedAtUtc is not null, "Deleted slip should record when it was deleted.");
+        AssertEqual(ZetlResponseStatus.Success, restore.Status, "Slip restore should succeed.");
+        AssertEqual(drafts.Id, restored.BucketId, "Restored slip should return to the requested bucket.");
+        AssertTrue(restored.DeletedFromBucketId is null, "Restored slip should clear its original bucket marker.");
+        AssertTrue(restored.DeletedAtUtc is null, "Restored slip should clear its deleted timestamp.");
+        AssertEqual(ZetlResponseStatus.ValidationError, addToDeleted.Status, "Deleted should reject new capture commands.");
+        AssertEqual(ZetlResponseStatus.ValidationError, deleteDeletedBucket.Status, "Deleted bucket should be protected from delete commands.");
+        AssertTrue(snapshot.Slips.Any(item => item.Id == moved.Id), "Soft-deleted slips should remain in project snapshots.");
+        AssertTrue(snapshot.Buckets.Any(item => item.Id == deletedBucket.Id), "Deleted bucket should remain visible in project snapshots.");
     }
 
     public static void ProjectAndBucketCommandsHonorRevisions()

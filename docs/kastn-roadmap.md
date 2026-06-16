@@ -224,6 +224,59 @@ Done when:
 separate workbench that can safely browse and organize existing text projects
 while Zetl continues capturing.
 
+## Next Docket: Active Organizing
+
+This docket deliberately stays on the current project JSON model. The goal is
+to make Kastn better for daily organization before taking on typed capture
+storage, templates, or full artifact rendering.
+
+1. **K6.1 Create slips in Kastn** - Done
+   - Add a `New Slip` command in Kastn.
+   - Create slips through Zetl's existing `AddSlip` IPC command.
+   - Default the destination to the selected bucket, or the first active bucket
+     when `All buckets` is selected.
+   - Select the new slip and focus the editor after creation.
+
+2. **K6.2 Protected Deleted bucket** - Done
+   - Add a readable protected bucket kind/name for deleted slips.
+   - Ensure Zetl Board, capture targets, compile, Replay, and Pop ignore the
+     Deleted bucket in normal workflows.
+   - Keep the bucket visible in JSON and intentionally visible in Kastn.
+
+3. **K6.3 Soft-delete and restore** - Done
+   - Change Kastn slip delete to move slips into Deleted instead of hard
+     deleting them.
+   - Preserve original bucket information enough to restore.
+   - Add restore from Deleted back to the original bucket, falling back to
+     Scratch or a chosen bucket if the original bucket no longer exists.
+   - Leave permanent hard-delete / empty-trash as a separate later action.
+
+4. **K6.4 Multi-select slip actions** - Done
+   - Add multi-select in Kastn's slip list.
+   - Batch move selected slips.
+   - Batch soft-delete selected slips.
+   - Keep single-slip edit behavior clear when multiple slips are selected.
+
+5. **K6.5 Bucket movement polish** - Done
+   - Improve parent/child bucket movement in Kastn.
+   - Keep selection, editor state, and visible hierarchy stable after bucket
+     moves and renames.
+   - Make nested placement obvious in bucket pickers.
+
+6. **K7.1 Read-only viewer mode** - Done
+   - Add a Kastn viewer mode over the current filtered slip set.
+   - Reuse compile-style grouping and indentation for an easy reading layout.
+   - Keep this as a view over slips, not a second editable document.
+
+Defer for now:
+
+- Typed capture storage and migration.
+- Picture/file/URL inspectors.
+- Templates and project lifecycle.
+- Markdown/PDF artifact production.
+- Drag/drop, unless the button/menu-based movement feels too slow after the
+  batch actions land.
+
 ## K5. Typed Capture Log
 
 Goal: evolve containment-based notes into typed slips without changing the
@@ -257,7 +310,7 @@ Done when:
 Goal: build the richer organizing surface that justifies Kastn as a separate
 application.
 
-- [ ] Add slip creation in Kastn through the Zetl mutation service.
+- [x] Add slip creation in Kastn through the Zetl mutation service.
 - [ ] Add saved filters and faceted views over type, bucket, date, source, and
       session.
 - [ ] Add multi-select, batch move, batch tagging/metadata, and batch delete
@@ -265,7 +318,7 @@ application.
 - [ ] Make Kastn slip deletion a soft-delete workflow: batch delete moves slips
       into a protected project trash/deleted view instead of immediately
       removing them from project history.
-- [ ] Hide the project trash/deleted view from Zetl's quick Board and capture
+- [x] Hide the project trash/deleted view from Zetl's quick Board and capture
       flows while keeping it visible and restorable in Kastn.
 - [ ] Add click-drag movement for slips and buckets, including clear drop
       affordances for parent/child bucket placement.

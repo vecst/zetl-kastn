@@ -17,6 +17,11 @@ internal sealed record KastnBucketItem(
 
 internal static class KastnWorkbench
 {
+    public static bool IsDeletedBucket(ZetlBucketSnapshot? bucket)
+    {
+        return string.Equals(bucket?.Settings.Kind, "Deleted", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static IReadOnlyList<KastnBucketItem> BuildBucketHierarchy(
         ZetlProjectSnapshot project,
         bool includeAll = false)
@@ -57,6 +62,47 @@ internal static class KastnWorkbench
         }
     }
 
+    public static IReadOnlyList<KastnBucketItem> BuildBucketPickerChoices(
+        ZetlProjectSnapshot project,
+        bool includeAll = false)
+    {
+        var result = new List<KastnBucketItem>();
+        if (includeAll)
+        {
+            result.Add(new KastnBucketItem(null, "All buckets", null));
+        }
+
+        foreach (var item in BuildBucketHierarchy(project))
+        {
+            if (item.Bucket is null)
+            {
+                continue;
+            }
+
+            result.Add(item with { Label = BucketPathLabel(project, item.Bucket) });
+        }
+
+        return result;
+    }
+
+    public static string BucketPathLabel(
+        ZetlProjectSnapshot project,
+        ZetlBucketSnapshot bucket)
+    {
+        var names = new Stack<string>();
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        ZetlBucketSnapshot? current = bucket;
+        while (current is not null && visited.Add(current.Id))
+        {
+            names.Push(current.Name);
+            current = current.ParentBucketId is null
+                ? null
+                : project.Buckets.FirstOrDefault(item => item.Id == current.ParentBucketId);
+        }
+
+        return string.Join(" > ", names);
+    }
+
     public static IReadOnlyList<ZetlSlipSnapshot> FilterSlips(
         ZetlProjectSnapshot project,
         string? bucketId,
@@ -93,6 +139,33 @@ internal static class KastnWorkbench
             && (string.IsNullOrWhiteSpace(search)
                 || slip.Text.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)));
         return query.ToList();
+    }
+
+    public static string BuildViewerText(
+        ZetlProjectSnapshot project,
+        IReadOnlyList<ZetlSlipSnapshot> visibleSlips)
+    {
+        var parts = new List<string> { project.Name.Trim(), "" };
+        var slipLookup = visibleSlips
+            .GroupBy(slip => slip.BucketId)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+
+        foreach (var item in BuildBucketHierarchy(project))
+        {
+            if (item.Bucket is null || !slipLookup.TryGetValue(item.Id!, out var bucketSlips))
+            {
+                continue;
+            }
+
+            var depth = Depth(item.Bucket, project.Buckets);
+            parts.Add(IndentedText(item.Bucket.Name.Trim(), depth));
+            parts.AddRange(bucketSlips
+                .Select(slip => IndentedText(slip.Text.Trim(), depth + 1))
+                .Where(text => text.Trim().Length > 0));
+            parts.Add("");
+        }
+
+        return string.Join(Environment.NewLine, parts).TrimEnd();
     }
 
     private static HashSet<string> DescendantBucketIds(
@@ -132,6 +205,16 @@ internal static class KastnWorkbench
         }
 
         return depth;
+    }
+
+    private static string IndentedText(string text, int depth)
+    {
+        var indent = new string('\t', Math.Max(0, depth));
+        return string.Join(
+            Environment.NewLine,
+            text.ReplaceLineEndings("\n")
+                .Split('\n')
+                .Select(line => $"{indent}{line.TrimEnd()}"));
     }
 }
 

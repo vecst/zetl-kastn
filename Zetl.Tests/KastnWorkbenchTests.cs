@@ -14,7 +14,8 @@ internal static class KastnWorkbenchTests
             [
                 Bucket("child", "Child", "root"),
                 Bucket("root", "Root"),
-                Bucket("other", "Other")
+                Bucket("other", "Other"),
+                Bucket("deleted", "Deleted", kind: "Deleted")
             ],
             slips:
             [
@@ -24,6 +25,7 @@ internal static class KastnWorkbenchTests
             ]);
 
         var hierarchy = KastnWorkbench.BuildBucketHierarchy(project, includeAll: true);
+        var pickerChoices = KastnWorkbench.BuildBucketPickerChoices(project, includeAll: true);
         var filtered = KastnWorkbench.FilterSlips(
             project,
             "root",
@@ -45,11 +47,18 @@ internal static class KastnWorkbenchTests
         AssertTrue(
             hierarchy.Single(item => item.Id == "child").Label.StartsWith("   "),
             "Child buckets should be indented.");
+        AssertTrue(
+            hierarchy.Any(item => item.Id == "deleted"),
+            "Kastn should intentionally show the protected Deleted bucket.");
         var childIndex = hierarchy.ToList().FindIndex(item => item.Id == "child");
         AssertEqual(
             "root",
             hierarchy[childIndex - 1].Id,
             "Child buckets should appear directly under their parent even if snapshots arrive out of order.");
+        AssertEqual(
+            "Root > Child",
+            pickerChoices.Single(item => item.Id == "child").Label,
+            "Bucket pickers should use full paths so nested placement is obvious.");
         AssertSequence(
             ["one", "two"],
             filtered.Select(slip => slip.Id),
@@ -120,6 +129,41 @@ internal static class KastnWorkbenchTests
         AssertTrue(!localSave.IsDirty, "An acknowledged local save event should clean the editor.");
     }
 
+    public static void ViewerFormatsVisibleSlipsAsReadableOutline()
+    {
+        var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
+        var project = Project(
+            buckets:
+            [
+                Bucket("child", "Child", "root"),
+                Bucket("root", "Root"),
+                Bucket("other", "Other")
+            ],
+            slips:
+            [
+                Slip("one", "root", "root note", "copy", "a", now),
+                Slip("two", "child", $"child note{Environment.NewLine}continued", "copy", "a", now),
+                Slip("three", "other", "hidden", "copy", "a", now)
+            ]);
+
+        var text = KastnWorkbench.BuildViewerText(
+            project,
+            project.Slips.Where(slip => slip.BucketId != "other").ToList());
+        var expected = string.Join(Environment.NewLine,
+        [
+            "Project",
+            "",
+            "Root",
+            "\troot note",
+            "",
+            "\tChild",
+            "\t\tchild note",
+            "\t\tcontinued"
+        ]);
+
+        AssertEqual(expected, text, "Viewer text should outline visible slips by nested bucket.");
+    }
+
     public static void CommandsOrganizeThroughZetl()
     {
         RunAsync(async () =>
@@ -183,6 +227,7 @@ internal static class KastnWorkbenchTests
                 fixture.Project.Id,
                 moved.Id,
                 moved.Revision));
+            var deletedSlip = Payload<ZetlSlipSnapshot>(deleteSlip);
             var deleteBucket = await controller.ExecuteAsync(ZetlCommandEnvelope.Create(
                 "k4-delete-bucket",
                 ZetlCommandKind.DeleteBucket,
@@ -218,6 +263,7 @@ internal static class KastnWorkbenchTests
             AssertEqual("edited", edited.Text, "Slip edit should pass through IPC.");
             AssertEqual(sources.Id, moved.BucketId, "Slip move should pass through IPC.");
             AssertEqual(ZetlResponseStatus.Success, deleteSlip.Status, "Slip delete should succeed.");
+            AssertEqual(sources.Id, deletedSlip.DeletedFromBucketId, "Slip delete should remember its source bucket.");
             AssertEqual(ZetlResponseStatus.Success, deleteBucket.Status, "Bucket delete should succeed.");
             AssertEqual(ZetlResponseStatus.Success, deleteProject.Status, "Project delete should succeed.");
             AssertFalse(
@@ -244,14 +290,16 @@ internal static class KastnWorkbenchTests
     private static ZetlBucketSnapshot Bucket(
         string id,
         string name,
-        string? parentId = null)
+        string? parentId = null,
+        string kind = "Standard")
     {
         return new ZetlBucketSnapshot
         {
             Id = id,
             Revision = 1,
             Name = name,
-            ParentBucketId = parentId
+            ParentBucketId = parentId,
+            Settings = new ZetlBucketSettings { Kind = kind, DefaultKind = kind }
         };
     }
 
