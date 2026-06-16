@@ -190,7 +190,7 @@ internal partial class MainWindow : Window
                     : projectSnapshot.Slips.FirstOrDefault(slip => slip.Id == selectedSlipId);
                 editorState.Reconcile(currentSlip, pendingSaveText);
                 UpdateEditorFromState();
-                RefreshSlipView();
+                RefreshSlipView(force: true);
                 projectView.IsVisible = true;
                 emptyState.IsVisible = false;
             }
@@ -201,6 +201,7 @@ internal partial class MainWindow : Window
                 slips.Clear();
                 editorState.Select(null);
                 UpdateEditorFromState();
+                RefreshViewer();
                 projectView.IsVisible = false;
                 emptyState.IsVisible = true;
                 emptyStateText.Text = snapshot.ConnectionState == KastnConnectionState.Online
