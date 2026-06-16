@@ -85,6 +85,7 @@ internal partial class MainWindow : Window
         slipEditor.TextChanged += (_, _) => OnEditorTextChanged();
 
         refreshMenuItem.Click += async (_, _) => await RefreshAsync();
+        deleteProjectMenuItem.Click += async (_, _) => await DeleteProjectAsync();
         exitMenuItem.Click += (_, _) => Close();
         saveSlipMenuItem.Click += async (_, _) => await SaveEditorAsync();
         deleteSlipMenuItem.Click += async (_, _) => await DeleteSlipAsync();
@@ -580,6 +581,45 @@ internal partial class MainWindow : Window
         HandleSimpleResponse(response, "Bucket deleted.");
     }
 
+    private async Task DeleteProjectAsync()
+    {
+        if (!IsOnline || currentProject is null)
+        {
+            return;
+        }
+
+        if (!await SaveEditorAsync())
+        {
+            statusText.Text = "Save or resolve the current slip before deleting the project.";
+            return;
+        }
+
+        var project = currentProject;
+        if (!await KastnDialogs.ConfirmAsync(
+                this,
+                $"Delete project '{project.Name}' and all of its buckets and slips? This cannot be undone.",
+                "Delete Project"))
+        {
+            return;
+        }
+
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.DeleteProject,
+            new DeleteProjectCommand(),
+            project.Id,
+            project.Id,
+            project.MetadataRevision));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            editorState.Select(null);
+            UpdateEditorFromState();
+            await connection.RefreshAsync();
+        }
+
+        HandleSimpleResponse(response, "Project deleted.");
+    }
+
     private async Task MoveSlipAsync()
     {
         if (!await SaveEditorAsync()
@@ -707,6 +747,7 @@ internal partial class MainWindow : Window
             ? new SolidColorBrush(Color.Parse("#71D49B"))
             : new SolidColorBrush(Color.Parse("#FFB86B"));
         refreshMenuItem.IsEnabled = online;
+        deleteProjectMenuItem.IsEnabled = online && currentProject is not null;
         SetEditingEnabled();
         RefreshBucketEditor();
     }

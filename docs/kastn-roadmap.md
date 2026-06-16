@@ -257,14 +257,27 @@ Done when:
 Goal: build the richer organizing surface that justifies Kastn as a separate
 application.
 
+- [ ] Add slip creation in Kastn through the Zetl mutation service.
 - [ ] Add saved filters and faceted views over type, bucket, date, source, and
       session.
 - [ ] Add multi-select, batch move, batch tagging/metadata, and batch delete
       with undo or confirmation appropriate to the action.
+- [ ] Make Kastn slip deletion a soft-delete workflow: batch delete moves slips
+      into a protected project trash/deleted view instead of immediately
+      removing them from project history.
+- [ ] Hide the project trash/deleted view from Zetl's quick Board and capture
+      flows while keeping it visible and restorable in Kastn.
+- [ ] Add click-drag movement for slips and buckets, including clear drop
+      affordances for parent/child bucket placement.
+- [ ] Keep the editor selection/viewer synchronized after bucket moves,
+      renames, and hierarchy changes.
+- [ ] Make nested bucket placement obvious in every bucket picker and tree.
 - [ ] Add picture, URL, and file inspectors.
 - [ ] Add cross-bucket arranging without changing the underlying capture truth.
 - [ ] Add project-level history and recent activity.
 - [ ] Define archival behavior so Replay and Pop cleanup never destroys history.
+- [ ] Define the hard-delete/empty-trash boundary separately from ordinary
+      delete so permanent removal is explicit and rare.
 - [ ] Keep the Zetl Board intentionally quick-view rather than duplicating this
       workspace.
 
@@ -279,6 +292,8 @@ Done when:
 Goal: render project slips into useful documents without making rendered output
 the source of truth.
 
+- [ ] Add a Kastn viewer mode that behaves like an expanded compile preview for
+      reading all selected notes in layout.
 - [ ] Extract current Formatted, Plain, and TSV compile behavior into view
       definitions or shared renderer contracts.
 - [ ] Add a versioned view document format.
@@ -322,6 +337,10 @@ Done when:
 
 Goal: make the two-process system trustworthy for daily use.
 
+- [ ] Fix Zetl popup/dropdown focus behavior where choosing an item beyond the
+      note dialog bounds can dismiss the note on mouse-up.
+- [ ] Improve Zetl bucket management so nesting buckets is discoverable and
+      quick.
 - [ ] Exercise startup races where Kastn and Zetl launch simultaneously.
 - [ ] Test Zetl restart, Kastn restart, forced termination, and machine reboot.
 - [ ] Test command retries, duplicate delivery, stale revisions, and partial

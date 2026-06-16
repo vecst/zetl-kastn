@@ -9,6 +9,7 @@
     <Menu Grid.Row="0">
       <MenuItem Header="_File">
         <MenuItem x:Name="refreshMenuItem" Header="_Refresh" InputGesture="F5" />
+        <MenuItem x:Name="deleteProjectMenuItem" Header="_Delete Project" />
         <Separator />
         <MenuItem x:Name="exitMenuItem" Header="E_xit" />
       </MenuItem>

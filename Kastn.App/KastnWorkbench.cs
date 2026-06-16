@@ -27,15 +27,34 @@ internal static class KastnWorkbench
             result.Add(new KastnBucketItem(null, "All buckets", null));
         }
 
+        AddChildren(parentId: null, depth: 0);
+
         foreach (var bucket in project.Buckets)
         {
-            result.Add(new KastnBucketItem(
-                bucket.Id,
-                $"{new string(' ', Depth(bucket, project.Buckets) * 3)}{bucket.Name}",
-                bucket));
+            if (result.All(item => item.Id != bucket.Id))
+            {
+                result.Add(new KastnBucketItem(
+                    bucket.Id,
+                    $"{new string(' ', Depth(bucket, project.Buckets) * 3)}{bucket.Name}",
+                    bucket));
+            }
         }
 
         return result;
+
+        void AddChildren(string? parentId, int depth)
+        {
+            foreach (var child in project.Buckets
+                .Where(bucket => bucket.ParentBucketId == parentId)
+                .OrderBy(bucket => bucket.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                result.Add(new KastnBucketItem(
+                    child.Id,
+                    $"{new string(' ', depth * 3)}{child.Name}",
+                    child));
+                AddChildren(child.Id, depth + 1);
+            }
+        }
     }
 
     public static IReadOnlyList<ZetlSlipSnapshot> FilterSlips(

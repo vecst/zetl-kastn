@@ -976,10 +976,10 @@ internal static class PortableSelfTests
             ]);
 
             AssertTrue(compiled.Contains("Inbox"), "Selected inbox note should include its bucket heading.");
-            AssertTrue(compiled.Contains("first"), "First selected note should compile.");
+            AssertTrue(compiled.Contains($"{Environment.NewLine}\tfirst"), "First selected note should compile indented under its bucket.");
             AssertFalse(compiled.Contains("second"), "Unselected note should not compile.");
             AssertTrue(compiled.Contains("Ideas"), "Selected ideas note should include its bucket heading.");
-            AssertTrue(compiled.Contains("third"), "Second selected note should compile.");
+            AssertTrue(compiled.Contains($"{Environment.NewLine}\tthird"), "Second selected note should compile indented under its bucket.");
         }
 
         private static void StateProtectsScratchBucket()

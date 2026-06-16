@@ -12,8 +12,8 @@ internal static class KastnWorkbenchTests
         var project = Project(
             buckets:
             [
-                Bucket("root", "Root"),
                 Bucket("child", "Child", "root"),
+                Bucket("root", "Root"),
                 Bucket("other", "Other")
             ],
             slips:
@@ -45,6 +45,11 @@ internal static class KastnWorkbenchTests
         AssertTrue(
             hierarchy.Single(item => item.Id == "child").Label.StartsWith("   "),
             "Child buckets should be indented.");
+        var childIndex = hierarchy.ToList().FindIndex(item => item.Id == "child");
+        AssertEqual(
+            "root",
+            hierarchy[childIndex - 1].Id,
+            "Child buckets should appear directly under their parent even if snapshots arrive out of order.");
         AssertSequence(
             ["one", "two"],
             filtered.Select(slip => slip.Id),
@@ -185,6 +190,28 @@ internal static class KastnWorkbenchTests
                 fixture.Project.Id,
                 sources.Id,
                 sources.Revision));
+            var createProject = await controller.ExecuteAsync(ZetlCommandEnvelope.Create(
+                "k4-create-project",
+                ZetlCommandKind.CreateProject,
+                new CreateProjectCommand
+                {
+                    Name = "Delete Me",
+                    Buckets = [new CreateBucketDefinition { Name = "Inbox" }]
+                }));
+            var disposableProject = Payload<ZetlProjectSnapshot>(createProject);
+            var deleteProject = await controller.ExecuteAsync(ZetlCommandEnvelope.Create(
+                "k4-delete-project",
+                ZetlCommandKind.DeleteProject,
+                new DeleteProjectCommand(),
+                disposableProject.Id,
+                disposableProject.Id,
+                disposableProject.MetadataRevision));
+            var listProjects = await controller.ExecuteAsync(new ZetlCommandEnvelope
+            {
+                CommandId = "k4-list-after-project-delete",
+                Kind = ZetlCommandKind.ListProjects
+            });
+            var summaries = Payload<List<ZetlProjectSummary>>(listProjects);
 
             AssertEqual("Sources", sources.Name, "Bucket rename should pass through IPC.");
             AssertEqual(fixture.Inbox.Id, sources.ParentBucketId, "Bucket move should pass through IPC.");
@@ -192,6 +219,10 @@ internal static class KastnWorkbenchTests
             AssertEqual(sources.Id, moved.BucketId, "Slip move should pass through IPC.");
             AssertEqual(ZetlResponseStatus.Success, deleteSlip.Status, "Slip delete should succeed.");
             AssertEqual(ZetlResponseStatus.Success, deleteBucket.Status, "Bucket delete should succeed.");
+            AssertEqual(ZetlResponseStatus.Success, deleteProject.Status, "Project delete should succeed.");
+            AssertFalse(
+                summaries.Any(project => project.Id == disposableProject.Id),
+                "Deleted project should disappear from Kastn's project list.");
         });
     }
 
@@ -296,6 +327,11 @@ internal static class KastnWorkbenchTests
         {
             throw new InvalidOperationException(message);
         }
+    }
+
+    private static void AssertFalse(bool condition, string message)
+    {
+        AssertTrue(!condition, message);
     }
 
     private static void AssertEqual<T>(T expected, T actual, string message)

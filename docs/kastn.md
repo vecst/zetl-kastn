@@ -127,6 +127,12 @@ This also serves the archival philosophy: nothing captured is junk, slips are
 living documents enrichable years later, and cleanup mechanics (pop, replay
 consumption) are workspace hygiene only — they never destroy history.
 
+The same principle applies to deletion. Ordinary Kastn delete should be a
+soft-delete operation: selected slips move into a protected project
+trash/deleted view that Kastn can browse and restore, while Zetl's fast capture
+and quick Board stay focused on active buckets. Permanent removal is a separate
+empty-trash style action, not the default meaning of delete.
+
 ## Handoff: "Open in kastn"
 
 So you don't have to navigate away to launch the app, Zetl's compile dialog
