@@ -151,6 +151,7 @@ internal static class PortableSelfTests
                 ("Kastn launches to project selection without handoff", KastnLifecycleTests.ControllerLaunchesToProjectSelectionWithoutHandoff),
                 ("Kastn refreshes after project changes", KastnLifecycleTests.ControllerRefreshesAfterProjectChange),
                 ("Kastn reconnects after Zetl restarts", KastnLifecycleTests.ControllerReconnectsAfterZetlRestart),
+                ("Kastn relaunches Zetl after it exits", KastnLifecycleTests.ControllerRelaunchesZetlAfterItExits),
                 ("Closing Kastn leaves Zetl available", KastnLifecycleTests.ClosingControllerLeavesZetlAvailable),
                 ("Kastn filters preserve order and hierarchy", KastnWorkbenchTests.FiltersPreserveSnapshotOrderAndHierarchy),
                 ("Kastn dirty editor survives unrelated changes", KastnWorkbenchTests.DirtyEditorSurvivesUnrelatedChanges),

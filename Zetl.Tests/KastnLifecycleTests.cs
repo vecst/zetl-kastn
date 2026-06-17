@@ -156,6 +156,45 @@ internal static class KastnLifecycleTests
         });
     }
 
+    public static void ControllerRelaunchesZetlAfterItExits()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new LifecycleFixture();
+            var launches = 0;
+            await using var controller = new KastnConnectionController(
+                _ =>
+                {
+                    Interlocked.Increment(ref launches);
+                    fixture.StartServer();
+                    return Task.CompletedTask;
+                },
+                fixture.PipeName,
+                TimeSpan.FromMilliseconds(75),
+                TimeSpan.FromMilliseconds(25));
+            controller.Start(fixture.Project.Id);
+
+            await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Online);
+
+            fixture.StopServer();
+            await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Offline);
+            var relaunched = await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Online
+                    && Volatile.Read(ref launches) == 1);
+
+            AssertEqual(1, launches, "Kastn should launch Zetl again after a later outage.");
+            AssertEqual(
+                fixture.Project.Id,
+                relaunched.Project?.Id,
+                "Kastn should reopen the desired project after relaunching Zetl.");
+        });
+    }
+
     public static void ClosingControllerLeavesZetlAvailable()
     {
         RunAsync(async () =>

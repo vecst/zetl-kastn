@@ -17,7 +17,8 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     private Task? runTask;
     private string? desiredProjectId;
     private bool projectSelectionRequested = true;
-    private bool launchAttempted;
+    private bool hasEverConnected;
+    private bool launchAttemptedForOutage;
 
     public KastnConnectionController(
         Func<CancellationToken, Task> launchZetl,
@@ -126,7 +127,9 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         {
             Publish(
                 KastnConnectionState.Connecting,
-                launchAttempted ? "Reconnecting to Zetl..." : "Connecting to Zetl...");
+                hasEverConnected || launchAttemptedForOutage
+                    ? "Reconnecting to Zetl..."
+                    : "Connecting to Zetl...");
 
             var nextClient = new ZetlIpcClient("Kastn", pipeName);
             try
@@ -139,9 +142,9 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                 await nextClient.DisposeAsync().ConfigureAwait(false);
                 var serverAbsent =
                     ex is IOException or TimeoutException or OperationCanceledException;
-                if (!launchAttempted && serverAbsent)
+                if (!launchAttemptedForOutage && serverAbsent)
                 {
-                    launchAttempted = true;
+                    launchAttemptedForOutage = true;
                     try
                     {
                         await launchZetl(cancellationToken).ConfigureAwait(false);
@@ -167,7 +170,8 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             }
 
             client = nextClient;
-            launchAttempted = true;
+            hasEverConnected = true;
+            launchAttemptedForOutage = false;
             var disconnected = new TaskCompletionSource(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             nextClient.Disconnected += (_, _) => disconnected.TrySetResult();
