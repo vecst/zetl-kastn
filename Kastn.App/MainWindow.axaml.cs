@@ -48,6 +48,7 @@ internal partial class MainWindow : Window
         this.connection = connection;
         InitializeComponent();
         projectList.ItemsSource = projects;
+        landingProjectList.ItemsSource = projects;
         bucketList.ItemsSource = buckets;
         slipList.ItemsSource = slips;
         sourceFilterBox.ItemsSource = sources;
@@ -74,6 +75,7 @@ internal partial class MainWindow : Window
 
         connection.SnapshotChanged += OnSnapshotChanged;
         projectList.SelectionChanged += OnProjectSelectionChanged;
+        landingProjectList.SelectionChanged += OnProjectSelectionChanged;
         bucketList.SelectionChanged += (_, _) =>
         {
             if (!refreshing)
@@ -90,6 +92,7 @@ internal partial class MainWindow : Window
         slipEditor.TextChanged += (_, _) => OnEditorTextChanged();
 
         refreshMenuItem.Click += async (_, _) => await RefreshAsync();
+        closeProjectMenuItem.Click += async (_, _) => await CloseProjectAsync();
         deleteProjectMenuItem.Click += async (_, _) => await DeleteProjectAsync();
         exitMenuItem.Click += (_, _) => Close();
         newSlipMenuItem.Click += async (_, _) => await AddSlipAsync();
@@ -104,6 +107,7 @@ internal partial class MainWindow : Window
         addBucketButton.Click += async (_, _) => await AddBucketAsync();
         saveBucketButton.Click += async (_, _) => await SaveBucketAsync();
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
+        closeProjectButton.Click += async (_, _) => await CloseProjectAsync();
         viewerModeButton.Click += async (_, _) => await ToggleViewerModeAsync();
         newSlipButton.Click += async (_, _) => await AddSlipAsync();
         saveSlipButton.Click += async (_, _) => await SaveEditorAsync();
@@ -160,6 +164,7 @@ internal partial class MainWindow : Window
 
             projectList.SelectedItem = projects.FirstOrDefault(
                 project => project.Id == selectedProjectId);
+            landingProjectList.SelectedItem = null;
             projectCountText.Text = snapshot.Projects.Count switch
             {
                 0 => "No projects",
@@ -206,8 +211,12 @@ internal partial class MainWindow : Window
                 RefreshViewer();
                 projectView.IsVisible = false;
                 emptyState.IsVisible = true;
+                landingProjectList.IsVisible = snapshot.ConnectionState == KastnConnectionState.Online
+                    && snapshot.Projects.Count > 0;
                 emptyStateText.Text = snapshot.ConnectionState == KastnConnectionState.Online
-                    ? "No projects yet. Create one in Zetl, then it will appear here."
+                    ? snapshot.Projects.Count == 0
+                        ? "No projects yet. Create one in Zetl, then it will appear here."
+                        : "Select a project from the list to begin."
                     : snapshot.Status;
             }
 
@@ -412,19 +421,43 @@ internal partial class MainWindow : Window
 
     private async void OnProjectSelectionChanged(object? sender, SelectionChangedEventArgs args)
     {
-        if (!refreshing && projectList.SelectedItem is ProjectListItem project)
+        if (!refreshing
+            && sender is ListBox listBox
+            && listBox.SelectedItem is ProjectListItem project)
         {
             if (!await SaveEditorAsync())
             {
                 refreshing = true;
                 projectList.SelectedItem = projects.FirstOrDefault(
                     item => item.Id == currentProject?.Id);
+                landingProjectList.SelectedItem = null;
                 refreshing = false;
                 return;
             }
 
             await connection.NavigateToProjectAsync(project.Id);
         }
+    }
+
+    private async Task CloseProjectAsync()
+    {
+        if (currentProject is null)
+        {
+            return;
+        }
+
+        if (!await SaveEditorAsync())
+        {
+            statusText.Text = "Save or resolve the current slip before closing the project.";
+            return;
+        }
+
+        await SetViewerModeAsync(false);
+        editorState.Select(null);
+        UpdateEditorFromState();
+        pendingBucketSelectionId = null;
+        pendingSlipSelectionId = null;
+        await connection.NavigateToProjectAsync(null);
     }
 
     private async void OnSlipSelectionChanged(object? sender, SelectionChangedEventArgs args)
@@ -1041,6 +1074,7 @@ internal partial class MainWindow : Window
         moveSlipButton.IsEnabled = !viewerMode && canBatch && allSelectedSlipsAreActive && moveBuckets.Count > 0;
         moveBucketBox.IsEnabled = moveSlipButton.IsEnabled || restoreSlipButton.IsEnabled;
         addBucketButton.IsEnabled = IsOnline && currentProject is not null;
+        closeProjectButton.IsEnabled = currentProject is not null;
         newSlipButton.IsEnabled = !viewerMode && canCreateSlip;
         newSlipMenuItem.IsEnabled = newSlipButton.IsEnabled;
         viewerModeButton.IsEnabled = currentProject is not null;
@@ -1060,6 +1094,7 @@ internal partial class MainWindow : Window
             ? new SolidColorBrush(Color.Parse("#71D49B"))
             : new SolidColorBrush(Color.Parse("#FFB86B"));
         refreshMenuItem.IsEnabled = online;
+        closeProjectMenuItem.IsEnabled = currentProject is not null;
         deleteProjectMenuItem.IsEnabled = online && currentProject is not null;
         newSlipMenuItem.IsEnabled = online
             && currentProject is not null
@@ -1131,6 +1166,11 @@ internal partial class MainWindow : Window
         {
             args.Handled = true;
             await SaveEditorAsync();
+        }
+        else if (args.KeyModifiers.HasFlag(KeyModifiers.Control) && args.Key == Key.W)
+        {
+            args.Handled = true;
+            await CloseProjectAsync();
         }
         else if (args.KeyModifiers.HasFlag(KeyModifiers.Control)
             && args.KeyModifiers.HasFlag(KeyModifiers.Shift)

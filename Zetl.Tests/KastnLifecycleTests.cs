@@ -61,6 +61,41 @@ internal static class KastnLifecycleTests
         });
     }
 
+    public static void ControllerLaunchesToProjectSelectionWithoutHandoff()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new LifecycleFixture();
+            await using var controller = new KastnConnectionController(
+                _ => throw new InvalidOperationException("Zetl was already running."),
+                fixture.PipeName,
+                TimeSpan.FromMilliseconds(250),
+                TimeSpan.FromMilliseconds(25));
+            controller.Start();
+
+            var landing = await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Online
+                    && snapshot.Project is null
+                    && snapshot.Projects.Any(project => project.Id == fixture.Project.Id));
+
+            AssertEqual(
+                null,
+                landing.Project,
+                "Kastn should not auto-open the first project without a direct handoff.");
+
+            await controller.NavigateToProjectAsync(fixture.Project.Id);
+            var opened = await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.Project?.Id == fixture.Project.Id);
+
+            AssertEqual(
+                fixture.Project.Id,
+                opened.Project?.Id,
+                "Selecting a project should open it from the landing state.");
+        });
+    }
+
     public static void ControllerRefreshesAfterProjectChange()
     {
         RunAsync(async () =>

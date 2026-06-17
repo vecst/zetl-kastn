@@ -147,6 +147,7 @@ internal static class PortableSelfTests
                 ("IPC real Zetl process hosts and persists commands", ZetlIpcTests.RealZetlProcessHostsIpc),
                 ("Kastn activation handoff carries project ID", KastnLifecycleTests.ActivationHandoffCarriesProjectId),
                 ("Kastn launches Zetl and loads requested project", KastnLifecycleTests.ControllerLaunchesZetlAndLoadsProject),
+                ("Kastn launches to project selection without handoff", KastnLifecycleTests.ControllerLaunchesToProjectSelectionWithoutHandoff),
                 ("Kastn refreshes after project changes", KastnLifecycleTests.ControllerRefreshesAfterProjectChange),
                 ("Kastn reconnects after Zetl restarts", KastnLifecycleTests.ControllerReconnectsAfterZetlRestart),
                 ("Closing Kastn leaves Zetl available", KastnLifecycleTests.ClosingControllerLeavesZetlAvailable),

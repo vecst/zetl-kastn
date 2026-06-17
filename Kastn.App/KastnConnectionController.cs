@@ -16,6 +16,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     private ZetlIpcClient? client;
     private Task? runTask;
     private string? desiredProjectId;
+    private bool projectSelectionRequested = true;
     private bool launchAttempted;
 
     public KastnConnectionController(
@@ -44,6 +45,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(projectId))
         {
             desiredProjectId = projectId;
+            projectSelectionRequested = false;
         }
 
         runTask ??= Task.Run(() => RunAsync(cancellation.Token));
@@ -53,7 +55,17 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         string? projectId,
         CancellationToken cancellationToken = default)
     {
-        desiredProjectId = string.IsNullOrWhiteSpace(projectId) ? null : projectId;
+        if (string.IsNullOrWhiteSpace(projectId))
+        {
+            desiredProjectId = null;
+            projectSelectionRequested = true;
+        }
+        else
+        {
+            desiredProjectId = projectId;
+            projectSelectionRequested = false;
+        }
+
         var connected = client;
         if (connected is not null && connected.IsConnected)
         {
@@ -242,13 +254,17 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                     ZetlProtocolJson.Options)
                 ?? [];
 
-            var projectId = desiredProjectId;
-            if (projectId is null || projects.All(project => project.Id != projectId))
+            var projectId = projectSelectionRequested ? null : desiredProjectId;
+            if (projectId is not null && projects.All(project => project.Id != projectId))
             {
                 projectId = Current.Project is { } current
                     && projects.Any(project => project.Id == current.Id)
                         ? current.Id
-                        : projects.FirstOrDefault()?.Id;
+                        : null;
+                if (projectId is null)
+                {
+                    projectSelectionRequested = true;
+                }
             }
 
             ZetlProjectSnapshot? projectSnapshot = null;
@@ -266,12 +282,15 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                 projectSnapshot = projectResponse.Payload?.Deserialize<ZetlProjectSnapshot>(
                     ZetlProtocolJson.Options);
                 desiredProjectId = projectSnapshot?.Id;
+                projectSelectionRequested = projectSnapshot is null;
             }
 
             Publish(new KastnSessionSnapshot(
                 KastnConnectionState.Online,
                 projectSnapshot is null
-                    ? "Connected to Zetl. No projects yet."
+                    ? projects.Count == 0
+                        ? "Connected to Zetl. No projects yet."
+                        : "Connected to Zetl. Select a project."
                     : $"Connected to Zetl. Viewing {projectSnapshot.Name}.",
                 projects,
                 projectSnapshot));

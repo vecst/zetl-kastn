@@ -305,6 +305,36 @@ Defer for now:
 - Drag/drop, unless the button/menu-based movement feels too slow after the
   batch actions land.
 
+## Highest-Win Path
+
+This is the short dogfood path for making Kastn feel like its own product
+quickly. It favors changes that reshape daily use before deeper storage or
+artifact work.
+
+1. **Navigation foundation**
+   - Let Kastn launch with no project open.
+   - Add `Close Project` so the user can return to project selection without
+     closing Kastn or Zetl.
+   - Keep direct Zetl handoff opening the requested project immediately.
+
+2. **Landing page and cheap project cards**
+   - Replace the permanent project sidebar with a landing page.
+   - Render cheap cards from project summaries and lightweight preview snippets.
+   - Move project-level actions toward the cards.
+
+3. **Unified theme and settings**
+   - Make Kastn load the same selected theme as Zetl.
+   - Add a Kastn section to Zetl Settings.
+
+4. **Editable view sessions**
+   - Turn the viewer into a deliberate multi-slip edit surface.
+   - Save dirty blocks back to their original slips through revision-checked
+     Zetl commands.
+
+5. **Richer summaries and activity**
+   - Add the Zetl-side summary fields needed for cards, recent activity,
+     lifecycle states, and later project history.
+
 ## K5. Typed Capture Log
 
 Goal: evolve containment-based notes into typed slips without changing the
