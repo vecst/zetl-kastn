@@ -15,8 +15,8 @@ namespace KASTN;
 internal partial class MainWindow : Window
 {
     private const string UntitledSlipText = "Untitled";
-    private const double LandingCardWidth = 300;
-    private const double LandingCardHeight = 220;
+    private const double LandingCardWidth = 450;
+    private const double LandingCardHeight = 330;
     private const double LandingCardMargin = 8;
     private const int LandingMaxColumns = 6;
     private const int LandingMaxRows = 5;
@@ -233,11 +233,6 @@ internal partial class MainWindow : Window
                 emptyState.IsVisible = true;
                 var showLandingChoices = snapshot.ConnectionState == KastnConnectionState.Online
                     && (snapshot.Projects.Count > 0 || templates.Count > 0);
-                if (snapshot.Projects.Count == 0 && templates.Count > 0)
-                {
-                    landingShowingTemplates = true;
-                }
-
                 landingModeToggle.IsVisible = showLandingChoices;
                 emptyStateText.Text = snapshot.ConnectionState == KastnConnectionState.Online
                     ? "Select a project or template to begin."
