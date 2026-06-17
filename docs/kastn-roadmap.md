@@ -354,6 +354,8 @@ artifact work.
      Templates landing tab from placeholders into a real project creation flow.
    - Define the template document format, default built-in templates, and
      template picker behavior before wiring creation into Zetl.
+   - Follow the phased template plan in
+     [`kastn-templates-roadmap.md`](kastn-templates-roadmap.md).
 
 ## K5. Typed Capture Log
 
@@ -482,10 +484,20 @@ Done when:
 
 Goal: connect project creation, fast capture, finishing, and later work.
 
+Detailed template sequencing lives in
+[`kastn-templates-roadmap.md`](kastn-templates-roadmap.md). The short version:
+start with built-in template cards that create projects through the existing
+Zetl command service, then add versioned user template JSON, authoring, Zetl's
+New Project picker, and finally creation types that pair templates with views.
+
 - [ ] Use the Kastn landing page Templates tab as the primary template entry
       point.
 - [ ] Start with non-mutating template cards, then graduate them into project
       creation once the template schema is finalized.
+- [ ] Move the current hardcoded template cards into a reusable built-in
+      template catalog.
+- [ ] Add `Use Template` on Kastn template cards and create projects through
+      the existing `CreateProjectCommand`.
 - [ ] Add a versioned template document format for buckets and behaviors.
 - [ ] Ship a small set of built-in templates before adding user-authored
       templates.
