@@ -332,7 +332,7 @@ internal partial class MainWindow : Window
             return;
         }
 
-        var selectedId = editorState.SlipId;
+        var selectedId = pendingSlipSelectionId ?? editorState.SlipId;
         var selectedIds = SelectedSlipItems()
             .Select(item => item.Id)
             .ToHashSet(StringComparer.Ordinal);
