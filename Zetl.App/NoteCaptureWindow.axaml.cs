@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Threading;
 
 namespace ZETL;
 
@@ -21,6 +22,11 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
     private ZetlProject? newProjectSentinel;
     private ZetlBucket? lastFullProjectBucket;
     private bool completionDecided;
+    private bool suppressClickAwayForCombo;
+    private readonly DispatcherTimer comboDismissGraceTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(250)
+    };
     // The project the note will be filed into; follows the selector.
     private ZetlProject selectedProject = null!;
 
@@ -64,6 +70,13 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
 
         saveButton.Click += (_, _) => Commit(saved: true);
         cancelButton.Click += (_, _) => Commit(saved: false);
+        comboDismissGraceTimer.Tick += (_, _) =>
+        {
+            comboDismissGraceTimer.Stop();
+            suppressClickAwayForCombo = projectBox.IsDropDownOpen || bucketBox.IsDropDownOpen;
+        };
+        HookComboClickAwaySuppression(projectBox);
+        HookComboClickAwaySuppression(bucketBox);
         bucketBox.SelectionChanged += (_, _) => UpdateInlineBucketLabel();
         inlineCreateButton.Click += (_, _) => CreateInlineBucket();
         inlineBucketNameBox.KeyDown += (_, e) =>
@@ -119,17 +132,39 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
     // Buckets can be browsed/created only for a concrete (existing) project.
     private bool CanEditBuckets => !IsNewProjectSelected;
 
-    protected override bool IsDismissSuppressed => completionDecided;
+    protected override bool IsDismissSuppressed =>
+        completionDecided
+        || suppressClickAwayForCombo
+        || projectBox.IsDropDownOpen
+        || bucketBox.IsDropDownOpen;
 
     protected override void OnClickAwayDismiss() => Commit(saved: true);
 
-    protected override void OnPopupClosing() => completionDecided = true;
+    protected override void OnPopupClosing()
+    {
+        comboDismissGraceTimer.Stop();
+        completionDecided = true;
+    }
 
     private void Commit(bool saved)
     {
         completionDecided = true;
         Saved = saved;
         Close();
+    }
+
+    private void HookComboClickAwaySuppression(ComboBox comboBox)
+    {
+        comboBox.DropDownOpened += (_, _) =>
+        {
+            comboDismissGraceTimer.Stop();
+            suppressClickAwayForCombo = true;
+        };
+        comboBox.DropDownClosed += (_, _) =>
+        {
+            comboDismissGraceTimer.Stop();
+            comboDismissGraceTimer.Start();
+        };
     }
 
     private void HandleAdditionalShortcut(KeyEventArgs e)
