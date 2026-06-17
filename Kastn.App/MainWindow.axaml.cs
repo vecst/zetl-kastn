@@ -378,8 +378,7 @@ internal partial class MainWindow : Window
                     {
                         pendingSlipFocus = false;
                         slipEditor.Focus();
-                        if (string.Equals(selected.Slip.Text, UntitledSlipText, StringComparison.Ordinal)
-                            && string.Equals(selected.Slip.Source, "kastn", StringComparison.Ordinal))
+                        if (IsUntitledKastnSlip(selected.Slip))
                         {
                             slipEditor.SelectAll();
                         }
@@ -993,7 +992,11 @@ internal partial class MainWindow : Window
         }
 
         editorUpdating = true;
-        slipEditor.Text = editorState.DraftText;
+        slipEditor.Text = SelectedSlip is { } editorSlip
+            && IsUntitledKastnSlip(editorSlip)
+            && !editorState.IsDirty
+                ? ""
+                : editorState.DraftText;
         editorUpdating = false;
         conflictPanel.IsVisible = editorState.ConflictCurrent is not null;
         if (editorState.ConflictCurrent is { } conflict)
@@ -1357,6 +1360,12 @@ internal partial class MainWindow : Window
             .Take(5)
             .ToList();
         return words.Count == 0 ? "Untitled" : string.Join(' ', words);
+    }
+
+    private static bool IsUntitledKastnSlip(ZetlSlipSnapshot slip)
+    {
+        return string.Equals(slip.Source, "kastn", StringComparison.Ordinal)
+            && string.Equals(slip.Text.Trim(), UntitledSlipText, StringComparison.Ordinal);
     }
 
     [DllImport("user32.dll")]
