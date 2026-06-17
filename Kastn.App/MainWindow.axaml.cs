@@ -36,8 +36,9 @@ internal partial class MainWindow : Window
     private string? pendingSaveText;
     private string? pendingBucketSelectionId;
     private string? pendingSlipSelectionId;
+    private string? pendingEditableBlockFocusId;
     private bool pendingSlipFocus;
-    private bool viewerMode;
+    private bool viewerMode = true;
     private bool editableViewMode;
 
     public MainWindow()
@@ -100,17 +101,16 @@ internal partial class MainWindow : Window
         newSlipMenuItem.Click += async (_, _) => await AddSlipAsync();
         saveSlipMenuItem.Click += async (_, _) => await SaveEditorAsync();
         deleteSlipMenuItem.Click += async (_, _) => await DeleteSlipAsync();
-        viewerModeMenuItem.Click += async (_, _) => await ToggleViewerModeAsync();
+        viewerModeMenuItem.Click += async (_, _) => await ToggleEditableViewAsync();
         focusSearchMenuItem.Click += (_, _) => searchBox.Focus();
         focusProjectsMenuItem.Click += (_, _) => landingProjectList.Focus();
         focusBucketsMenuItem.Click += (_, _) => bucketList.Focus();
-        focusSlipsMenuItem.Click += (_, _) => slipList.Focus();
+        focusSlipsMenuItem.Click += (_, _) => FocusMainView();
         aboutMenuItem.Click += ShowAbout;
         addBucketButton.Click += async (_, _) => await AddBucketAsync();
         saveBucketButton.Click += async (_, _) => await SaveBucketAsync();
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
         closeProjectButton.Click += async (_, _) => await CloseProjectAsync();
-        viewerModeButton.Click += async (_, _) => await ToggleViewerModeAsync();
         editViewButton.Click += async (_, _) => await ToggleEditableViewAsync();
         saveViewButton.Click += async (_, _) => await SaveEditableViewAsync();
         cancelViewButton.Click += (_, _) => CancelEditableView();
@@ -452,7 +452,7 @@ internal partial class MainWindow : Window
             return;
         }
 
-        await SetViewerModeAsync(false);
+        ExitEditableView(clearBlocks: true);
         editorState.Select(null);
         UpdateEditorFromState();
         pendingBucketSelectionId = null;
@@ -686,8 +686,17 @@ internal partial class MainWindow : Window
                 pendingBucketSelectionId = created.BucketId;
                 pendingSlipSelectionId = created.Id;
                 pendingSlipFocus = true;
+                pendingEditableBlockFocusId = created.Id;
                 ResetSlipFilters();
                 await connection.RefreshAsync();
+                if (viewerMode)
+                {
+                    editableViewMode = true;
+                    viewerTextBox.IsVisible = false;
+                    editViewScroll.IsVisible = true;
+                    BuildEditableViewBlocks(CurrentFilteredSlips());
+                }
+
                 statusText.Text = "Slip created.";
                 return;
             }
@@ -802,42 +811,6 @@ internal partial class MainWindow : Window
         }
 
         HandleSimpleResponse(response, "Project deleted.");
-    }
-
-    private async Task ToggleViewerModeAsync()
-    {
-        await SetViewerModeAsync(!viewerMode);
-    }
-
-    private async Task SetViewerModeAsync(bool enabled)
-    {
-        if (!enabled && !CanLeaveEditableView())
-        {
-            return;
-        }
-
-        if (enabled && !await SaveEditorAsync())
-        {
-            statusText.Text = "Save or resolve the current slip before opening viewer mode.";
-            return;
-        }
-
-        viewerMode = enabled;
-        if (!viewerMode)
-        {
-            ExitEditableView(clearBlocks: true);
-        }
-
-        editorPanel.IsVisible = !viewerMode;
-        viewerPanel.IsVisible = viewerMode;
-        viewerModeButton.Content = viewerMode ? "Editor" : "Viewer";
-        viewerModeMenuItem.Header = viewerMode ? "_Editor Mode" : "_Viewer Mode";
-        RefreshViewer();
-        SetEditingEnabled();
-        if (viewerMode)
-        {
-            viewerTextBox.Focus();
-        }
     }
 
     private async Task MoveSlipAsync()
@@ -1019,6 +992,17 @@ internal partial class MainWindow : Window
         SetEditingEnabled();
     }
 
+    private void FocusMainView()
+    {
+        if (editableViewMode)
+        {
+            editableViewBlocks.FirstOrDefault()?.Editor?.Focus();
+            return;
+        }
+
+        viewerTextBox.Focus();
+    }
+
     private void UpdateEditorFromState()
     {
         var selectedSlips = SelectedSlips();
@@ -1077,18 +1061,19 @@ internal partial class MainWindow : Window
             && !KastnWorkbench.IsDeletedBucket(SelectedBucket);
         slipEditor.IsEnabled = !viewerMode && canEdit && editorState.ConflictCurrent is null;
         saveSlipButton.IsEnabled = !viewerMode && canEdit && editorState.ConflictCurrent is null;
-        saveSlipMenuItem.IsEnabled = saveSlipButton.IsEnabled;
+        saveSlipMenuItem.IsEnabled = false;
         deleteSlipButton.IsEnabled = !viewerMode && canBatch && allSelectedSlipsAreActive;
-        deleteSlipMenuItem.IsEnabled = deleteSlipButton.IsEnabled;
+        deleteSlipMenuItem.IsEnabled = false;
         restoreSlipButton.IsEnabled = !viewerMode && canEdit && selectedSlipIsDeleted && moveBuckets.Count > 0;
         moveSlipButton.IsEnabled = !viewerMode && canBatch && allSelectedSlipsAreActive && moveBuckets.Count > 0;
         moveBucketBox.IsEnabled = moveSlipButton.IsEnabled || restoreSlipButton.IsEnabled;
         addBucketButton.IsEnabled = IsOnline && currentProject is not null;
         closeProjectButton.IsEnabled = currentProject is not null;
-        newSlipButton.IsEnabled = !viewerMode && canCreateSlip;
+        newSlipButton.IsEnabled = canCreateSlip && !savingEditableView;
         newSlipMenuItem.IsEnabled = newSlipButton.IsEnabled;
-        viewerModeButton.IsEnabled = currentProject is not null;
         viewerModeMenuItem.IsEnabled = currentProject is not null;
+        viewerModeMenuItem.Header = editableViewMode ? "_Read View" : "_Edit View";
+        RefreshEditableViewStatus();
     }
 
     private void SetConnectionState(KastnSessionSnapshot snapshot)
@@ -1188,7 +1173,7 @@ internal partial class MainWindow : Window
             && args.Key == Key.E)
         {
             args.Handled = true;
-            await ToggleViewerModeAsync();
+            await ToggleEditableViewAsync();
         }
         else if (args.Key == Key.F2 && SelectedBucket is not null)
         {
@@ -1445,6 +1430,7 @@ internal partial class MainWindow : Window
                 Text = block.DraftText,
                 IsEnabled = IsOnline && block.ConflictText is null
             };
+            block.Editor = textBox;
             textBox.TextChanged += (_, _) =>
             {
                 block.DraftText = textBox.Text ?? "";
@@ -1490,6 +1476,20 @@ internal partial class MainWindow : Window
             Grid.SetRow(statusTextBlock, 1);
             Grid.SetRow(textBox, 2);
             editableBlocksPanel.Children.Add(border);
+
+            if (block.SlipId == pendingEditableBlockFocusId)
+            {
+                pendingEditableBlockFocusId = null;
+                textBox.Focus();
+                if (string.Equals(block.BaselineText.Trim(), UntitledSlipText, StringComparison.Ordinal))
+                {
+                    textBox.SelectAll();
+                }
+                else
+                {
+                    textBox.CaretIndex = textBox.Text?.Length ?? 0;
+                }
+            }
         }
     }
 
@@ -1752,6 +1752,7 @@ internal partial class MainWindow : Window
         public string? Status { get; set; }
         public string? ConflictText { get; set; }
         public TextBlock? StatusText { get; set; }
+        public TextBox? Editor { get; set; }
 
         public bool IsDirty =>
             !string.Equals(DraftText, BaselineText, StringComparison.Ordinal);

@@ -23,11 +23,11 @@
         <MenuItem x:Name="focusSearchMenuItem" Header="_Find" InputGesture="Ctrl+F" />
       </MenuItem>
       <MenuItem Header="_View">
-        <MenuItem x:Name="viewerModeMenuItem" Header="_Viewer Mode" InputGesture="Ctrl+Shift+E" />
+        <MenuItem x:Name="viewerModeMenuItem" Header="_Edit View" InputGesture="Ctrl+Shift+E" />
         <Separator />
         <MenuItem x:Name="focusProjectsMenuItem" Header="Focus Project _Cards" />
         <MenuItem x:Name="focusBucketsMenuItem" Header="Focus _Buckets" />
-        <MenuItem x:Name="focusSlipsMenuItem" Header="Focus _Slips" />
+        <MenuItem x:Name="focusSlipsMenuItem" Header="Focus _Main View" />
       </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem x:Name="aboutMenuItem" Header="_About Kastn" />
@@ -138,7 +138,7 @@
               </StackPanel>
             </Grid>
 
-            <Grid Grid.Row="5" ColumnDefinitions="235,8,350,8,*">
+            <Grid Grid.Row="5" ColumnDefinitions="260,8,*">
               <Border Grid.Column="0"
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
@@ -187,51 +187,9 @@
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">
-                <Grid RowDefinitions="Auto,Auto,*">
-                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                    <TextBlock Grid.Column="0" Text="Slips" Classes="heading" />
-                    <Button Grid.Column="1"
-                            x:Name="viewerModeButton"
-                            Content="Viewer"
-                            Padding="12,3" />
-                    <Button Grid.Column="2"
-                            x:Name="newSlipButton"
-                            Content="New"
-                            Padding="12,3" />
-                  </Grid>
-                  <TextBlock Grid.Row="1"
-                             x:Name="slipCountText"
-                             Classes="muted"
-                             FontSize="12"
-                             Margin="0,2,0,8" />
-                  <ListBox Grid.Row="2"
-                           x:Name="slipList"
-                           SelectionMode="Multiple">
-                    <ListBox.ItemTemplate>
-                      <DataTemplate>
-                        <StackPanel Margin="4,6" Spacing="2">
-                          <TextBlock Text="{Binding Text}"
-                                     TextWrapping="Wrap"
-                                     MaxLines="1"
-                                     TextTrimming="CharacterEllipsis" />
-                          <TextBlock Text="{Binding Detail}"
-                                     Classes="muted"
-                                     FontSize="12" />
-                        </StackPanel>
-                      </DataTemplate>
-                    </ListBox.ItemTemplate>
-                  </ListBox>
-                </Grid>
-              </Border>
-
-              <GridSplitter Grid.Column="3" Width="8" ResizeDirection="Columns" />
-
-              <Border Grid.Column="4"
-                      Background="{DynamicResource ZetlSurfaceAltBrush}"
-                      CornerRadius="5"
-                      Padding="12">
                 <Grid>
                   <Grid x:Name="editorPanel"
+                        IsVisible="False"
                         RowDefinitions="Auto,Auto,*,Auto,Auto">
                     <TextBlock Grid.Row="0" Text="Editor" Classes="heading" />
                     <TextBlock Grid.Row="1"
@@ -295,19 +253,22 @@
                     </Grid>
                   </Grid>
                   <Grid x:Name="viewerPanel"
-                        IsVisible="False"
                         RowDefinitions="Auto,Auto,Auto,*">
-                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
-                      <TextBlock Grid.Column="0" Text="Viewer" Classes="heading" />
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                      <TextBlock Grid.Column="0" Text="Read View" Classes="heading" />
                       <Button Grid.Column="1"
+                              x:Name="newSlipButton"
+                              Content="New"
+                              Padding="12,3" />
+                      <Button Grid.Column="2"
                               x:Name="editViewButton"
                               Content="Edit View"
                               Padding="12,3" />
-                      <Button Grid.Column="2"
+                      <Button Grid.Column="3"
                               x:Name="saveViewButton"
                               Content="Save All"
                               Padding="12,3" />
-                      <Button Grid.Column="3"
+                      <Button Grid.Column="4"
                               x:Name="cancelViewButton"
                               Content="Cancel"
                               Padding="12,3" />
@@ -335,6 +296,10 @@
                       </ScrollViewer>
                     </Grid>
                   </Grid>
+                  <ListBox x:Name="slipList"
+                           IsVisible="False"
+                           SelectionMode="Multiple" />
+                  <TextBlock x:Name="slipCountText" IsVisible="False" />
                 </Grid>
               </Border>
             </Grid>
