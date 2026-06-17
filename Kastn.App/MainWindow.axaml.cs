@@ -60,6 +60,7 @@ internal partial class MainWindow : Window
         dateFilterBox.ItemsSource = dates;
         parentBucketBox.ItemsSource = parentBuckets;
         moveBucketBox.ItemsSource = moveBuckets;
+        editViewMoveBucketBox.ItemsSource = moveBuckets;
 
         dates.Add(new DateFilterItem(KastnDateFilter.All, "All time"));
         dates.Add(new DateFilterItem(KastnDateFilter.Today, "Today"));
@@ -114,6 +115,7 @@ internal partial class MainWindow : Window
         editViewButton.Click += async (_, _) => await ToggleEditableViewAsync();
         saveViewButton.Click += async (_, _) => await SaveEditableViewAsync();
         cancelViewButton.Click += (_, _) => CancelEditableView();
+        moveSelectedViewButton.Click += async (_, _) => await MoveSelectedEditableBlocksAsync();
         newSlipButton.Click += async (_, _) => await AddSlipAsync();
         saveSlipButton.Click += async (_, _) => await SaveEditorAsync();
         deleteSlipButton.Click += async (_, _) => await DeleteSlipAsync();
@@ -328,6 +330,9 @@ internal partial class MainWindow : Window
                     StringComparison.OrdinalIgnoreCase))
                 ?? moveBuckets.FirstOrDefault()
             : moveBuckets.FirstOrDefault();
+        editViewMoveBucketBox.SelectedItem = moveBuckets.FirstOrDefault(
+                item => item.Id != SelectedBucketId)
+            ?? moveBuckets.FirstOrDefault();
         SetEditingEnabled();
     }
 
@@ -1376,6 +1381,74 @@ internal partial class MainWindow : Window
         }
     }
 
+    private async Task MoveSelectedEditableBlocksAsync()
+    {
+        if (!editableViewMode
+            || !IsOnline
+            || currentProject is null
+            || editViewMoveBucketBox.SelectedItem is not KastnBucketItem destination
+            || destination.Id is null)
+        {
+            return;
+        }
+
+        if (HasDirtyEditableBlocks())
+        {
+            statusText.Text = "Save All or Cancel before moving edit blocks.";
+            RefreshEditableViewStatus();
+            return;
+        }
+
+        var selected = editableViewBlocks
+            .Where(block => block.IsSelected)
+            .ToList();
+        if (selected.Count == 0)
+        {
+            statusText.Text = "Select one or more edit blocks to move.";
+            return;
+        }
+
+        var moved = 0;
+        var failed = 0;
+        var projectId = currentProject.Id;
+        pendingBucketSelectionId = destination.Id;
+        savingEditableView = true;
+        SetEditingEnabled();
+        try
+        {
+            foreach (var block in selected)
+            {
+                var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                    Guid.NewGuid().ToString("N"),
+                    ZetlCommandKind.MoveSlip,
+                    new MoveSlipCommand { DestinationBucketId = destination.Id },
+                    projectId,
+                    block.SlipId,
+                    block.Revision));
+                if (response.Status == ZetlResponseStatus.Success)
+                {
+                    moved++;
+                }
+                else
+                {
+                    block.Status = response.Error?.Message ?? $"Move failed: {response.Status}.";
+                    failed++;
+                }
+            }
+
+            await connection.RefreshAsync();
+            statusText.Text = BatchStatus(
+                moved > 0 ? $"{moved} slip{Plural(moved)} moved to {destination.Bucket?.Name}" : null,
+                failed > 0 ? $"{failed} failed" : null);
+        }
+        finally
+        {
+            savingEditableView = false;
+            SetEditingEnabled();
+            RefreshEditableViewStatus();
+        }
+    }
+
     private void CancelEditableView()
     {
         if (!editableViewMode)
@@ -1412,8 +1485,10 @@ internal partial class MainWindow : Window
     private void RenderEditableViewBlocks()
     {
         editableBlocksPanel.Children.Clear();
-        foreach (var block in editableViewBlocks)
+        var total = editableViewBlocks.Count;
+        for (var index = 0; index < editableViewBlocks.Count; index++)
         {
+            var block = editableViewBlocks[index];
             var statusTextBlock = new TextBlock
             {
                 Classes = { "muted" },
@@ -1421,6 +1496,18 @@ internal partial class MainWindow : Window
                 Text = EditableBlockStatus(block)
             };
             block.StatusText = statusTextBlock;
+
+            var selectionBox = new CheckBox
+            {
+                Content = $"{index + 1}/{total}",
+                IsChecked = block.IsSelected,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            selectionBox.IsCheckedChanged += (_, _) =>
+            {
+                block.IsSelected = selectionBox.IsChecked == true;
+                RefreshEditableViewStatus();
+            };
 
             var textBox = new TextBox
             {
@@ -1450,18 +1537,21 @@ internal partial class MainWindow : Window
                     {
                         new Grid
                         {
-                            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+                            ColumnSpacing = 8,
                             Children =
                             {
+                                selectionBox,
                                 new TextBlock
                                 {
+                                    [Grid.ColumnProperty] = 1,
                                     Text = block.Title,
                                     FontWeight = FontWeight.SemiBold,
                                     TextTrimming = TextTrimming.CharacterEllipsis
                                 },
                                 new TextBlock
                                 {
-                                    [Grid.ColumnProperty] = 1,
+                                    [Grid.ColumnProperty] = 2,
                                     Classes = { "muted" },
                                     FontSize = 12,
                                     Text = $"revision {block.Revision}"
@@ -1499,12 +1589,20 @@ internal partial class MainWindow : Window
     private void RefreshEditableViewStatus()
     {
         editViewButton.Content = editableViewMode ? "Read View" : "Edit View";
+        editViewMoveBucketBox.IsVisible = editableViewMode;
+        moveSelectedViewButton.IsVisible = editableViewMode;
         saveViewButton.IsVisible = editableViewMode;
         cancelViewButton.IsVisible = editableViewMode;
         saveViewButton.IsEnabled = editableViewMode
             && IsOnline
             && !savingEditableView
             && HasDirtyEditableBlocks();
+        moveSelectedViewButton.IsEnabled = editableViewMode
+            && IsOnline
+            && !savingEditableView
+            && !HasDirtyEditableBlocks()
+            && editableViewBlocks.Any(block => block.IsSelected)
+            && editViewMoveBucketBox.SelectedItem is KastnBucketItem { Id: not null };
         cancelViewButton.IsEnabled = editableViewMode && !savingEditableView;
         editViewButton.IsEnabled = viewerMode && currentProject is not null && !savingEditableView;
         editViewStatusText.Text = editableViewMode
@@ -1516,8 +1614,10 @@ internal partial class MainWindow : Window
     {
         var dirty = editableViewBlocks.Count(block => block.IsDirty);
         var conflicts = editableViewBlocks.Count(block => block.ConflictText is not null);
+        var selected = editableViewBlocks.Count(block => block.IsSelected);
         return BatchStatus(
             $"{editableViewBlocks.Count} editable block{Plural(editableViewBlocks.Count)}",
+            selected > 0 ? $"{selected} selected" : null,
             dirty > 0 ? $"{dirty} unsaved" : "no unsaved changes",
             conflicts > 0 ? $"{conflicts} conflict{Plural(conflicts)}" : null);
     }
@@ -1756,6 +1856,7 @@ internal partial class MainWindow : Window
         public string? ConflictText { get; set; }
         public TextBlock? StatusText { get; set; }
         public TextBox? Editor { get; set; }
+        public bool IsSelected { get; set; }
 
         public bool IsDirty =>
             !string.Equals(DraftText, BaselineText, StringComparison.Ordinal);

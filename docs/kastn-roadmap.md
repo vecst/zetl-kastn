@@ -287,6 +287,11 @@ storage, templates, or full artifact rendering.
    - Render the current filtered slip set as editable blocks inside one flowing
      view while keeping each slip's identity visible through a block handle,
      bucket label, and status.
+   - Add explicit block selection so multiple visible slips can be moved or
+     acted on together without relying on a separate slip list.
+   - Show each block's visible order as `n/total`; later, allow typing a new
+     number and shifting the surrounding slips once Zetl exposes a durable
+     reorder command.
    - Track each block by slip ID, original revision, original text, draft text,
      dirty state, and conflict state.
    - Add session controls such as `Save All`, `Cancel`, dirty count, and
@@ -330,6 +335,7 @@ artifact work.
    - Turn the viewer into a deliberate multi-slip edit surface.
    - Save dirty blocks back to their original slips through revision-checked
      Zetl commands.
+   - Add a Zetl reorder command before making block order numbers editable.
 
 5. **Richer summaries and activity**
    - Add the Zetl-side summary fields needed for cards, recent activity,

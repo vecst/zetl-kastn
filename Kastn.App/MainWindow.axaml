@@ -254,21 +254,32 @@
                   </Grid>
                   <Grid x:Name="viewerPanel"
                         RowDefinitions="Auto,Auto,Auto,*">
-                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,190,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
                       <TextBlock Grid.Column="0" Text="Read View" Classes="heading" />
-                      <Button Grid.Column="1"
+                      <ComboBox Grid.Column="1"
+                                x:Name="editViewMoveBucketBox"
+                                IsVisible="False">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <Button Grid.Column="2"
+                              x:Name="moveSelectedViewButton"
+                              Content="Move Selected"
+                              Padding="12,3" />
+                      <Button Grid.Column="3"
                               x:Name="newSlipButton"
                               Content="New"
                               Padding="12,3" />
-                      <Button Grid.Column="2"
+                      <Button Grid.Column="4"
                               x:Name="editViewButton"
                               Content="Edit View"
                               Padding="12,3" />
-                      <Button Grid.Column="3"
+                      <Button Grid.Column="5"
                               x:Name="saveViewButton"
                               Content="Save All"
                               Padding="12,3" />
-                      <Button Grid.Column="4"
+                      <Button Grid.Column="6"
                               x:Name="cancelViewButton"
                               Content="Cancel"
                               Padding="12,3" />
