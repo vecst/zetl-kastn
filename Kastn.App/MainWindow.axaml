@@ -296,19 +296,44 @@
                   </Grid>
                   <Grid x:Name="viewerPanel"
                         IsVisible="False"
-                        RowDefinitions="Auto,Auto,*">
-                    <TextBlock Grid.Row="0" Text="Viewer" Classes="heading" />
+                        RowDefinitions="Auto,Auto,Auto,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+                      <TextBlock Grid.Column="0" Text="Viewer" Classes="heading" />
+                      <Button Grid.Column="1"
+                              x:Name="editViewButton"
+                              Content="Edit View"
+                              Padding="12,3" />
+                      <Button Grid.Column="2"
+                              x:Name="saveViewButton"
+                              Content="Save All"
+                              Padding="12,3" />
+                      <Button Grid.Column="3"
+                              x:Name="cancelViewButton"
+                              Content="Cancel"
+                              Padding="12,3" />
+                    </Grid>
                     <TextBlock Grid.Row="1"
                                x:Name="viewerSummaryText"
                                Classes="muted"
                                FontSize="12"
                                Margin="0,2,0,8" />
-                    <TextBox Grid.Row="2"
-                             x:Name="viewerTextBox"
-                             AcceptsReturn="True"
-                             IsReadOnly="True"
-                             TextWrapping="Wrap"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                    <TextBlock Grid.Row="2"
+                               x:Name="editViewStatusText"
+                               Classes="muted"
+                               FontSize="12"
+                               Margin="0,0,0,8" />
+                    <Grid Grid.Row="3">
+                      <TextBox x:Name="viewerTextBox"
+                               AcceptsReturn="True"
+                               IsReadOnly="True"
+                               TextWrapping="Wrap"
+                               ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                      <ScrollViewer x:Name="editViewScroll"
+                                    IsVisible="False"
+                                    VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="editableBlocksPanel" Spacing="10" />
+                      </ScrollViewer>
+                    </Grid>
                   </Grid>
                 </Grid>
               </Border>

@@ -4,6 +4,7 @@ using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -25,16 +26,19 @@ internal partial class MainWindow : Window
     private readonly ObservableCollection<KastnBucketItem> parentBuckets = [];
     private readonly ObservableCollection<KastnBucketItem> moveBuckets = [];
     private readonly KastnEditorState editorState = new();
+    private readonly List<EditableSlipBlock> editableViewBlocks = [];
     private readonly DispatcherTimer autosaveTimer;
     private ZetlProjectSnapshot? currentProject;
     private bool refreshing;
     private bool editorUpdating;
     private bool saving;
+    private bool savingEditableView;
     private string? pendingSaveText;
     private string? pendingBucketSelectionId;
     private string? pendingSlipSelectionId;
     private bool pendingSlipFocus;
     private bool viewerMode;
+    private bool editableViewMode;
 
     public MainWindow()
     {
@@ -107,6 +111,9 @@ internal partial class MainWindow : Window
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
         closeProjectButton.Click += async (_, _) => await CloseProjectAsync();
         viewerModeButton.Click += async (_, _) => await ToggleViewerModeAsync();
+        editViewButton.Click += async (_, _) => await ToggleEditableViewAsync();
+        saveViewButton.Click += async (_, _) => await SaveEditableViewAsync();
+        cancelViewButton.Click += (_, _) => CancelEditableView();
         newSlipButton.Click += async (_, _) => await AddSlipAsync();
         saveSlipButton.Click += async (_, _) => await SaveEditorAsync();
         deleteSlipButton.Click += async (_, _) => await DeleteSlipAsync();
@@ -430,6 +437,11 @@ internal partial class MainWindow : Window
     private async Task CloseProjectAsync()
     {
         if (currentProject is null)
+        {
+            return;
+        }
+
+        if (!CanLeaveEditableView())
         {
             return;
         }
@@ -799,6 +811,11 @@ internal partial class MainWindow : Window
 
     private async Task SetViewerModeAsync(bool enabled)
     {
+        if (!enabled && !CanLeaveEditableView())
+        {
+            return;
+        }
+
         if (enabled && !await SaveEditorAsync())
         {
             statusText.Text = "Save or resolve the current slip before opening viewer mode.";
@@ -806,6 +823,11 @@ internal partial class MainWindow : Window
         }
 
         viewerMode = enabled;
+        if (!viewerMode)
+        {
+            ExitEditableView(clearBlocks: true);
+        }
+
         editorPanel.IsVisible = !viewerMode;
         viewerPanel.IsVisible = viewerMode;
         viewerModeButton.Content = viewerMode ? "Editor" : "Viewer";
@@ -1226,6 +1248,7 @@ internal partial class MainWindow : Window
         {
             viewerSummaryText.Text = "No project selected.";
             viewerTextBox.Text = "";
+            ExitEditableView(clearBlocks: true);
             return;
         }
 
@@ -1233,9 +1256,304 @@ internal partial class MainWindow : Window
         viewerSummaryText.Text = visible.Count == 0
             ? "No slips match the current filters."
             : $"{visible.Count} of {currentProject.Slips.Count} slips in the current view.";
+        if (editableViewMode)
+        {
+            if (!savingEditableView && !HasDirtyEditableBlocks())
+            {
+                BuildEditableViewBlocks(visible);
+            }
+
+            RefreshEditableViewStatus();
+            return;
+        }
+
         viewerTextBox.Text = visible.Count == 0
             ? ""
             : KastnWorkbench.BuildViewerText(currentProject, visible);
+        RefreshEditableViewStatus();
+    }
+
+    private async Task ToggleEditableViewAsync()
+    {
+        if (!viewerMode || currentProject is null)
+        {
+            return;
+        }
+
+        if (!editableViewMode)
+        {
+            if (!await SaveEditorAsync())
+            {
+                statusText.Text = "Save or resolve the current slip before opening edit view.";
+                return;
+            }
+
+            editableViewMode = true;
+            viewerTextBox.IsVisible = false;
+            editViewScroll.IsVisible = true;
+            BuildEditableViewBlocks(CurrentFilteredSlips());
+            editableBlocksPanel.Focus();
+            return;
+        }
+
+        if (HasDirtyEditableBlocks())
+        {
+            statusText.Text = "Save All or Cancel before leaving edit view.";
+            RefreshEditableViewStatus();
+            return;
+        }
+
+        ExitEditableView(clearBlocks: true);
+        RefreshViewer();
+    }
+
+    private async Task SaveEditableViewAsync()
+    {
+        if (!editableViewMode || !IsOnline || currentProject is null || savingEditableView)
+        {
+            return;
+        }
+
+        var dirty = editableViewBlocks
+            .Where(block => block.IsDirty)
+            .ToList();
+        if (dirty.Count == 0)
+        {
+            statusText.Text = "Edit view has no unsaved slips.";
+            RefreshEditableViewStatus();
+            return;
+        }
+
+        savingEditableView = true;
+        SetEditingEnabled();
+        try
+        {
+            var saved = 0;
+            var failed = 0;
+            var projectId = currentProject.Id;
+            foreach (var block in dirty)
+            {
+                var text = block.DraftText.Trim();
+                if (text.Length == 0)
+                {
+                    block.Status = "Text is required.";
+                    failed++;
+                    continue;
+                }
+
+                var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                    Guid.NewGuid().ToString("N"),
+                    ZetlCommandKind.UpdateSlip,
+                    new UpdateSlipCommand { Text = text },
+                    projectId,
+                    block.SlipId,
+                    block.Revision));
+                if (response.Status == ZetlResponseStatus.Success)
+                {
+                    var savedSlip = response.Payload?.Deserialize<ZetlSlipSnapshot>(
+                        ZetlProtocolJson.Options);
+                    if (savedSlip is not null)
+                    {
+                        block.Accept(savedSlip);
+                    }
+
+                    block.Status = "Saved.";
+                    saved++;
+                    continue;
+                }
+
+                if (response.Status == ZetlResponseStatus.Conflict)
+                {
+                    var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
+                        ZetlProtocolJson.Options);
+                    block.ConflictText = current?.Text;
+                    block.Status = "Conflict: reload the project or copy your draft before retrying.";
+                }
+                else
+                {
+                    block.Status = response.Error?.Message ?? $"Save failed: {response.Status}.";
+                }
+
+                failed++;
+            }
+
+            RenderEditableViewBlocks();
+            statusText.Text = BatchStatus(
+                saved > 0 ? $"{saved} slip{Plural(saved)} saved" : null,
+                failed > 0 ? $"{failed} failed" : null);
+            await connection.RefreshAsync();
+        }
+        finally
+        {
+            savingEditableView = false;
+            SetEditingEnabled();
+            RefreshEditableViewStatus();
+        }
+    }
+
+    private void CancelEditableView()
+    {
+        if (!editableViewMode)
+        {
+            return;
+        }
+
+        ExitEditableView(clearBlocks: true);
+        RefreshViewer();
+        statusText.Text = "Edit view canceled.";
+    }
+
+    private void BuildEditableViewBlocks(IReadOnlyList<ZetlSlipSnapshot> visible)
+    {
+        editableViewBlocks.Clear();
+        if (currentProject is not null)
+        {
+            foreach (var slip in visible)
+            {
+                var bucket = currentProject.Buckets.FirstOrDefault(
+                    bucket => bucket.Id == slip.BucketId);
+                editableViewBlocks.Add(new EditableSlipBlock(
+                    slip,
+                    bucket is null
+                        ? "Unknown bucket"
+                        : KastnWorkbench.BucketPathLabel(currentProject, bucket)));
+            }
+        }
+
+        RenderEditableViewBlocks();
+        RefreshEditableViewStatus();
+    }
+
+    private void RenderEditableViewBlocks()
+    {
+        editableBlocksPanel.Children.Clear();
+        foreach (var block in editableViewBlocks)
+        {
+            var statusTextBlock = new TextBlock
+            {
+                Classes = { "muted" },
+                FontSize = 12,
+                Text = EditableBlockStatus(block)
+            };
+            block.StatusText = statusTextBlock;
+
+            var textBox = new TextBox
+            {
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                MinHeight = 90,
+                Text = block.DraftText,
+                IsEnabled = IsOnline && block.ConflictText is null
+            };
+            textBox.TextChanged += (_, _) =>
+            {
+                block.DraftText = textBox.Text ?? "";
+                block.Status = block.IsDirty ? "Unsaved." : "Unchanged.";
+                statusTextBlock.Text = EditableBlockStatus(block);
+                RefreshEditableViewStatus();
+            };
+
+            var border = new Border
+            {
+                Classes = { "surface" },
+                Padding = new Avalonia.Thickness(12),
+                Child = new Grid
+                {
+                    RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+                    Children =
+                    {
+                        new Grid
+                        {
+                            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                            Children =
+                            {
+                                new TextBlock
+                                {
+                                    Text = block.Title,
+                                    FontWeight = FontWeight.SemiBold,
+                                    TextTrimming = TextTrimming.CharacterEllipsis
+                                },
+                                new TextBlock
+                                {
+                                    [Grid.ColumnProperty] = 1,
+                                    Classes = { "muted" },
+                                    FontSize = 12,
+                                    Text = $"revision {block.Revision}"
+                                }
+                            }
+                        },
+                        statusTextBlock,
+                        textBox
+                    }
+                }
+            };
+            Grid.SetRow(statusTextBlock, 1);
+            Grid.SetRow(textBox, 2);
+            editableBlocksPanel.Children.Add(border);
+        }
+    }
+
+    private void RefreshEditableViewStatus()
+    {
+        editViewButton.Content = editableViewMode ? "Read View" : "Edit View";
+        saveViewButton.IsVisible = editableViewMode;
+        cancelViewButton.IsVisible = editableViewMode;
+        saveViewButton.IsEnabled = editableViewMode
+            && IsOnline
+            && !savingEditableView
+            && HasDirtyEditableBlocks();
+        cancelViewButton.IsEnabled = editableViewMode && !savingEditableView;
+        editViewButton.IsEnabled = viewerMode && currentProject is not null && !savingEditableView;
+        editViewStatusText.Text = editableViewMode
+            ? EditableSessionStatus()
+            : "Read-only view. Edit View turns each visible slip into a tracked block.";
+    }
+
+    private string EditableSessionStatus()
+    {
+        var dirty = editableViewBlocks.Count(block => block.IsDirty);
+        var conflicts = editableViewBlocks.Count(block => block.ConflictText is not null);
+        return BatchStatus(
+            $"{editableViewBlocks.Count} editable block{Plural(editableViewBlocks.Count)}",
+            dirty > 0 ? $"{dirty} unsaved" : "no unsaved changes",
+            conflicts > 0 ? $"{conflicts} conflict{Plural(conflicts)}" : null);
+    }
+
+    private static string EditableBlockStatus(EditableSlipBlock block)
+    {
+        var status = string.IsNullOrWhiteSpace(block.Status) ? "Unchanged." : block.Status;
+        return $"{block.BucketLabel} | {block.Source} | {block.CapturedAtUtc.LocalDateTime:g} | {status}";
+    }
+
+    private bool HasDirtyEditableBlocks()
+    {
+        return editableViewBlocks.Any(block => block.IsDirty);
+    }
+
+    private bool CanLeaveEditableView()
+    {
+        if (!editableViewMode || !HasDirtyEditableBlocks())
+        {
+            return true;
+        }
+
+        statusText.Text = "Save All or Cancel before leaving edit view.";
+        RefreshEditableViewStatus();
+        return false;
+    }
+
+    private void ExitEditableView(bool clearBlocks)
+    {
+        editableViewMode = false;
+        viewerTextBox.IsVisible = true;
+        editViewScroll.IsVisible = false;
+        if (clearBlocks)
+        {
+            editableViewBlocks.Clear();
+            editableBlocksPanel.Children.Clear();
+        }
+
+        RefreshEditableViewStatus();
     }
 
     private ZetlSlipSnapshot? SelectedSlip
@@ -1408,4 +1726,43 @@ internal partial class MainWindow : Window
         ZetlSlipSnapshot Slip);
     private sealed record FilterItem(string? Value, string Label);
     private sealed record DateFilterItem(KastnDateFilter Value, string Label);
+
+    private sealed class EditableSlipBlock
+    {
+        public EditableSlipBlock(ZetlSlipSnapshot slip, string bucketLabel)
+        {
+            SlipId = slip.Id;
+            Revision = slip.Revision;
+            BucketLabel = bucketLabel;
+            Source = slip.Source;
+            CapturedAtUtc = slip.CapturedAtUtc;
+            BaselineText = slip.Text;
+            DraftText = slip.Text;
+            Title = SlipPreviewText(slip);
+        }
+
+        public string SlipId { get; }
+        public long Revision { get; private set; }
+        public string BucketLabel { get; }
+        public string Source { get; }
+        public DateTimeOffset CapturedAtUtc { get; }
+        public string BaselineText { get; private set; }
+        public string DraftText { get; set; }
+        public string Title { get; private set; }
+        public string? Status { get; set; }
+        public string? ConflictText { get; set; }
+        public TextBlock? StatusText { get; set; }
+
+        public bool IsDirty =>
+            !string.Equals(DraftText, BaselineText, StringComparison.Ordinal);
+
+        public void Accept(ZetlSlipSnapshot slip)
+        {
+            Revision = slip.Revision;
+            BaselineText = slip.Text;
+            DraftText = slip.Text;
+            Title = SlipPreviewText(slip);
+            ConflictText = null;
+        }
+    }
 }
