@@ -47,7 +47,6 @@ internal partial class MainWindow : Window
     {
         this.connection = connection;
         InitializeComponent();
-        projectList.ItemsSource = projects;
         landingProjectList.ItemsSource = projects;
         bucketList.ItemsSource = buckets;
         slipList.ItemsSource = slips;
@@ -74,7 +73,6 @@ internal partial class MainWindow : Window
         };
 
         connection.SnapshotChanged += OnSnapshotChanged;
-        projectList.SelectionChanged += OnProjectSelectionChanged;
         landingProjectList.SelectionChanged += OnProjectSelectionChanged;
         bucketList.SelectionChanged += (_, _) =>
         {
@@ -100,7 +98,7 @@ internal partial class MainWindow : Window
         deleteSlipMenuItem.Click += async (_, _) => await DeleteSlipAsync();
         viewerModeMenuItem.Click += async (_, _) => await ToggleViewerModeAsync();
         focusSearchMenuItem.Click += (_, _) => searchBox.Focus();
-        focusProjectsMenuItem.Click += (_, _) => projectList.Focus();
+        focusProjectsMenuItem.Click += (_, _) => landingProjectList.Focus();
         focusBucketsMenuItem.Click += (_, _) => bucketList.Focus();
         focusSlipsMenuItem.Click += (_, _) => slipList.Focus();
         aboutMenuItem.Click += ShowAbout;
@@ -162,15 +160,7 @@ internal partial class MainWindow : Window
                     $"{project.BucketCount} buckets, {project.SlipCount} slips"));
             }
 
-            projectList.SelectedItem = projects.FirstOrDefault(
-                project => project.Id == selectedProjectId);
             landingProjectList.SelectedItem = null;
-            projectCountText.Text = snapshot.Projects.Count switch
-            {
-                0 => "No projects",
-                1 => "1 project",
-                var count => $"{count} projects"
-            };
 
             currentProject = snapshot.Project;
             if (currentProject is { } projectSnapshot)
@@ -428,8 +418,6 @@ internal partial class MainWindow : Window
             if (!await SaveEditorAsync())
             {
                 refreshing = true;
-                projectList.SelectedItem = projects.FirstOrDefault(
-                    item => item.Id == currentProject?.Id);
                 landingProjectList.SelectedItem = null;
                 refreshing = false;
                 return;
@@ -1096,6 +1084,7 @@ internal partial class MainWindow : Window
         refreshMenuItem.IsEnabled = online;
         closeProjectMenuItem.IsEnabled = currentProject is not null;
         deleteProjectMenuItem.IsEnabled = online && currentProject is not null;
+        focusProjectsMenuItem.IsEnabled = landingProjectList.IsVisible;
         newSlipMenuItem.IsEnabled = online
             && currentProject is not null
             && !KastnWorkbench.IsDeletedBucket(SelectedBucket);

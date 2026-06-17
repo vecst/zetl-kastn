@@ -25,7 +25,7 @@
       <MenuItem Header="_View">
         <MenuItem x:Name="viewerModeMenuItem" Header="_Viewer Mode" InputGesture="Ctrl+Shift+E" />
         <Separator />
-        <MenuItem x:Name="focusProjectsMenuItem" Header="Focus _Projects" />
+        <MenuItem x:Name="focusProjectsMenuItem" Header="Focus Project _Cards" />
         <MenuItem x:Name="focusBucketsMenuItem" Header="Focus _Buckets" />
         <MenuItem x:Name="focusSlipsMenuItem" Header="Focus _Slips" />
       </MenuItem>
@@ -44,35 +44,8 @@
                  Text="Zetl is offline. Your last snapshot remains readable; editing resumes after reconnect." />
     </Border>
 
-    <Grid Grid.Row="2" Margin="16" ColumnDefinitions="250,12,*">
-      <Border Grid.Column="0" Classes="surface" Padding="12">
-        <Grid RowDefinitions="Auto,Auto,*">
-          <TextBlock Grid.Row="0" Text="Projects" Classes="heading" />
-          <TextBlock Grid.Row="1"
-                     x:Name="projectCountText"
-                     Text="Waiting for Zetl..."
-                     Classes="muted"
-                     Margin="0,2,0,10" />
-          <ListBox Grid.Row="2" x:Name="projectList">
-            <ListBox.ItemTemplate>
-              <DataTemplate>
-                <Grid Margin="4,6" RowDefinitions="Auto,Auto">
-                  <TextBlock Grid.Row="0"
-                             Text="{Binding Name}"
-                             FontWeight="SemiBold"
-                             TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Row="1"
-                             Text="{Binding Detail}"
-                             Classes="muted"
-                             FontSize="12" />
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </Grid>
-      </Border>
-
-      <Border Grid.Column="2" Classes="surface" Padding="18">
+    <Grid Grid.Row="2" Margin="16">
+      <Border Classes="surface" Padding="18">
         <Grid>
           <StackPanel x:Name="emptyState"
                       HorizontalAlignment="Center"
