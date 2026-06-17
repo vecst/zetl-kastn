@@ -347,7 +347,7 @@ internal partial class MainWindow : Window
                     bucket => bucket.Id == slip.BucketId)?.Name ?? "Unknown";
                 slips.Add(new SlipListItem(
                     slip.Id,
-                    slip.Text,
+                    SlipPreviewText(slip),
                     $"{bucketName} | {slip.Source} | {slip.CapturedAtUtc.LocalDateTime:g}",
                     slip));
             }
@@ -494,8 +494,15 @@ internal partial class MainWindow : Window
         var text = editorState.DraftText.Trim();
         if (text.Length == 0)
         {
-            statusText.Text = "A slip cannot be saved with empty text.";
-            return false;
+            if (SelectedSlip?.Source == "kastn")
+            {
+                text = "";
+            }
+            else
+            {
+                statusText.Text = "A slip cannot be saved with empty text.";
+                return false;
+            }
         }
 
         saving = true;
@@ -618,19 +625,13 @@ internal partial class MainWindow : Window
             return;
         }
 
-        var text = await KastnDialogs.PromptAsync(this, "New Slip", "Initial slip text", "New slip");
-        if (text is null)
-        {
-            return;
-        }
-
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.AddSlip,
             new AddSlipCommand
             {
                 BucketId = destinationBucketId,
-                Text = text,
+                Text = "",
                 Source = "kastn"
             },
             currentProject.Id));
@@ -1337,6 +1338,15 @@ internal partial class MainWindow : Window
         }
 
         return session.Length <= 12 ? session : session[..12];
+    }
+
+    private static string SlipPreviewText(ZetlSlipSnapshot slip)
+    {
+        var words = slip.Text
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(5)
+            .ToList();
+        return words.Count == 0 ? "Untitled" : string.Join(' ', words);
     }
 
     [DllImport("user32.dll")]

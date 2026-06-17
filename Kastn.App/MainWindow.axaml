@@ -202,7 +202,7 @@
                         <StackPanel Margin="4,6" Spacing="2">
                           <TextBlock Text="{Binding Text}"
                                      TextWrapping="Wrap"
-                                     MaxLines="3"
+                                     MaxLines="1"
                                      TextTrimming="CharacterEllipsis" />
                           <TextBlock Text="{Binding Detail}"
                                      Classes="muted"
