@@ -16,6 +16,7 @@ public sealed record ZetlProjectSummary
     public required long ChangeSequence { get; init; }
     public int BucketCount { get; init; }
     public int SlipCount { get; init; }
+    public string PreviewText { get; init; } = "";
 }
 
 public sealed record ZetlProjectSnapshot

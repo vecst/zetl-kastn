@@ -284,7 +284,7 @@ storage, templates, or full artifact rendering.
    - Move project-level actions such as delete, rename, archive, and new-from-
      template toward the landing page instead of the project workbench.
    - Highest-win card finish:
-     1. Replace placeholder thumbnails with cheap preview snippets.
+     1. Replace placeholder thumbnails with cheap preview snippets. Done
      2. Add richer summary metadata to each card.
      3. Move project-level card actions onto the landing page.
 

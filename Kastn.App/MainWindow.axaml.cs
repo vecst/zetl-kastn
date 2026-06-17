@@ -180,7 +180,10 @@ internal partial class MainWindow : Window
                 projects.Add(new ProjectListItem(
                     project.Id,
                     project.Name,
-                    $"{project.BucketCount} buckets, {project.SlipCount} slips"));
+                    $"{project.BucketCount} buckets, {project.SlipCount} slips",
+                    string.IsNullOrWhiteSpace(project.PreviewText)
+                        ? "No notes yet"
+                        : project.PreviewText));
             }
             RefreshLandingGridLayout();
 
@@ -1872,7 +1875,7 @@ internal partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
 
-    private sealed record ProjectListItem(string Id, string Name, string Detail);
+    private sealed record ProjectListItem(string Id, string Name, string Detail, string PreviewText);
 
     private sealed record TemplateListItem(string Kind, string Name, string Detail);
     private sealed record SlipListItem(

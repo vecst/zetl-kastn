@@ -13,7 +13,8 @@ internal static class ZetlProjectSnapshotMapper
             MetadataRevision = project.MetadataRevision,
             ChangeSequence = project.ChangeSequence,
             BucketCount = project.Buckets.Count,
-            SlipCount = project.Buckets.Sum(bucket => bucket.Notes.Count)
+            SlipCount = project.Buckets.Sum(bucket => bucket.Notes.Count),
+            PreviewText = SummaryPreviewText(project)
         };
     }
 
@@ -73,5 +74,21 @@ internal static class ZetlProjectSnapshotMapper
                 : new DateTimeOffset(
                     DateTime.SpecifyKind(note.DeletedAtUtc.Value, DateTimeKind.Utc))
         };
+    }
+
+    private static string SummaryPreviewText(ZetlProject project)
+    {
+        var snippets = project.Buckets
+            .Where(bucket => !ZetlStateStore.IsDeletedBucket(bucket))
+            .SelectMany(bucket => bucket.Notes)
+            .Where(note => !string.IsNullOrWhiteSpace(note.Text))
+            .OrderByDescending(note => note.CreatedAtUtc)
+            .Take(3)
+            .Select(note => ZetlStateStore.PreviewText(note.Text))
+            .ToList();
+
+        return snippets.Count == 0
+            ? ""
+            : string.Join(Environment.NewLine, snippets);
     }
 }

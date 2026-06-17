@@ -138,6 +138,7 @@ internal static class PortableSelfTests
                 ("Project service publishes no event for rejected mutations", ZetlProjectServiceTests.FailedMutationPublishesNoEvent),
                 ("Project service subscriber failures do not change acknowledgement", ZetlProjectServiceTests.SubscriberFailureDoesNotChangeAcknowledgement),
                 ("Project service publishes direct capture changes", ZetlProjectServiceTests.DirectCapturePublishesProjectChange),
+                ("Project service lists cheap preview text", ZetlProjectServiceTests.ListProjectsIncludesCheapPreviewText),
                 ("IPC client lists, opens, and mutates a project", ZetlIpcTests.ClientListsOpensAndMutatesProject),
                 ("IPC two clients receive ordered changes", ZetlIpcTests.TwoClientsReceiveOrderedChanges),
                 ("IPC malformed message does not stop server", ZetlIpcTests.MalformedMessageDoesNotStopServer),

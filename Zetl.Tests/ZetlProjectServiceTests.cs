@@ -476,6 +476,38 @@ internal static class ZetlProjectServiceTests
             "Direct capture notification should carry the durable sequence.");
     }
 
+    public static void ListProjectsIncludesCheapPreviewText()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        store.AddNote(bucket, "first visible note", "copy");
+        store.AddNote(bucket, "second visible note", "copy");
+        var deletedBucket = store.GetDeletedBucket(project);
+        store.AddNote(deletedBucket, "deleted should stay out", "copy");
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(new ZetlCommandEnvelope
+        {
+            CommandId = "list-preview",
+            Kind = ZetlCommandKind.ListProjects
+        });
+        var summaries = response.Payload?.Deserialize<List<ZetlProjectSummary>>(
+                ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("ListProjects returned no summaries.");
+        var summary = summaries.Single(item => item.Id == project.Id);
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "ListProjects should succeed.");
+        AssertTrue(
+            summary.PreviewText.Contains("second visible note", StringComparison.Ordinal),
+            "Project summaries should include a recent visible note preview.");
+        AssertTrue(
+            summary.PreviewText.Contains("first visible note", StringComparison.Ordinal),
+            "Project summaries should include multiple cheap snippets.");
+        AssertTrue(
+            !summary.PreviewText.Contains("deleted should stay out", StringComparison.Ordinal),
+            "Project summary previews should skip Deleted content.");
+    }
+
     private static ZetlStateStore CreateStoreWithProject(
         TempStateDirectory temp,
         out ZetlProject project,
