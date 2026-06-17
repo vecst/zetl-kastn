@@ -62,6 +62,12 @@
                      MaxHeight="520"
                      Margin="0,16,0,0"
                      IsVisible="False">
+              <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                  <Setter Property="Padding" Value="0" />
+                  <Setter Property="Margin" Value="0" />
+                </Style>
+              </ListBox.Styles>
               <ListBox.ItemsPanel>
                 <ItemsPanelTemplate>
                   <WrapPanel Orientation="Horizontal" />
@@ -70,10 +76,10 @@
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Border Classes="surface"
-                          Width="270"
+                          Width="250"
                           Height="190"
                           Padding="12"
-                          Margin="6">
+                          Margin="8">
                     <Grid RowDefinitions="82,*,Auto">
                       <Border Grid.Row="0"
                               Background="{DynamicResource ZetlSurfaceAltBrush}"
