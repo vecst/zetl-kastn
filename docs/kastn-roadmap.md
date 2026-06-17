@@ -270,6 +270,8 @@ storage, templates, or full artifact rendering.
 
 7. **K7.2 Landing page and project cards**
    - Replace the always-visible projects pane with a Kastn landing page.
+   - Add a landing toggle for Projects and Templates with template cards present
+     as a future creation lane.
    - Show project cards with cheap thumbnail previews, project name, active or
      finished state, slip count, bucket count, and recent activity metadata.
    - Open a project card into the project workbench.
@@ -281,6 +283,10 @@ storage, templates, or full artifact rendering.
      metadata rather than loading every full project just to render cards.
    - Move project-level actions such as delete, rename, archive, and new-from-
      template toward the landing page instead of the project workbench.
+   - Highest-win card finish:
+     1. Replace placeholder thumbnails with cheap preview snippets.
+     2. Add richer summary metadata to each card.
+     3. Move project-level card actions onto the landing page.
 
 8. **K7.3 Editable view sessions**
    - Blend the read-only viewer with an explicit multi-slip edit session.
@@ -326,6 +332,8 @@ artifact work.
    - Replace the permanent project sidebar with a landing page.
    - Render cheap cards from project summaries and lightweight preview snippets.
    - Move project-level actions toward the cards.
+   - Add a Projects/Templates toggle so the landing page is ready to become
+     both an opener and a creation surface.
 
 3. **Unified theme and settings**
    - Make Kastn load the same selected theme as Zetl.
@@ -340,6 +348,12 @@ artifact work.
 5. **Richer summaries and activity**
    - Add the Zetl-side summary fields needed for cards, recent activity,
      lifecycle states, and later project history.
+
+6. **Template lane after cards**
+   - Once thumbnails, metadata, and card actions are working, turn the
+     Templates landing tab from placeholders into a real project creation flow.
+   - Define the template document format, default built-in templates, and
+     template picker behavior before wiring creation into Zetl.
 
 ## K5. Typed Capture Log
 
@@ -413,6 +427,8 @@ a workspace, not like a permanent project sidebar.
       direct project handoff.
 - [ ] Replace the in-workbench projects pane with project cards on the landing
       page.
+- [ ] Add a landing-page Projects/Templates toggle so templates have a visible
+      home before template creation is implemented.
 - [ ] Show cheap project thumbnails using summaries, snippets, or cached
       preview metadata instead of loading every full project.
 - [ ] Include project name, active/finished/archive state, slip count, bucket
@@ -466,7 +482,15 @@ Done when:
 
 Goal: connect project creation, fast capture, finishing, and later work.
 
+- [ ] Use the Kastn landing page Templates tab as the primary template entry
+      point.
+- [ ] Start with non-mutating template cards, then graduate them into project
+      creation once the template schema is finalized.
 - [ ] Add a versioned template document format for buckets and behaviors.
+- [ ] Ship a small set of built-in templates before adding user-authored
+      templates.
+- [ ] Define whether templates can include default views, project lifecycle
+      state, bucket settings, and sample slips.
 - [ ] Author and manage templates in Kastn.
 - [ ] Add a template picker to Zetl's New Project flow.
 - [ ] Allow a creation type to pair a template with one or more views.

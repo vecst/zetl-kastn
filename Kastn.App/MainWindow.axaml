@@ -57,6 +57,19 @@
                        Classes="muted"
                        TextAlignment="Center"
                        MaxWidth="440" />
+            <StackPanel x:Name="landingModeToggle"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Spacing="8"
+                        Margin="0,4,0,0"
+                        IsVisible="False">
+              <Button x:Name="landingProjectsButton"
+                      Content="Projects"
+                      Padding="16,5" />
+              <Button x:Name="landingTemplatesButton"
+                      Content="Templates"
+                      Padding="16,5" />
+            </StackPanel>
             <ListBox x:Name="landingProjectList"
                      Width="880"
                      MaxHeight="520"
@@ -106,6 +119,63 @@
                       </StackPanel>
                       <TextBlock Grid.Row="2"
                                  Text="Open project"
+                                 Classes="muted"
+                                 FontSize="12"
+                                 HorizontalAlignment="Right" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <ListBox x:Name="landingTemplateList"
+                     Width="880"
+                     MaxHeight="520"
+                     Margin="0,16,0,0"
+                     IsVisible="False"
+                     IsHitTestVisible="False">
+              <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                  <Setter Property="Padding" Value="0" />
+                  <Setter Property="Margin" Value="0" />
+                </Style>
+              </ListBox.Styles>
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="surface"
+                          Width="250"
+                          Height="190"
+                          Padding="12"
+                          Margin="8">
+                    <Grid RowDefinitions="82,*,Auto">
+                      <Border Grid.Row="0"
+                              Background="{DynamicResource ZetlSurfaceAltBrush}"
+                              CornerRadius="4"
+                              Padding="10">
+                        <TextBlock Text="{Binding Kind}"
+                                   Classes="muted"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Center" />
+                      </Border>
+                      <StackPanel Grid.Row="1"
+                                  Margin="0,10,0,0"
+                                  Spacing="4">
+                        <TextBlock Text="{Binding Name}"
+                                   FontWeight="SemiBold"
+                                   FontSize="16"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Detail}"
+                                   Classes="muted"
+                                   TextWrapping="Wrap"
+                                   MaxLines="2" />
+                      </StackPanel>
+                      <TextBlock Grid.Row="2"
+                                 Text="Coming soon"
                                  Classes="muted"
                                  FontSize="12"
                                  HorizontalAlignment="Right" />

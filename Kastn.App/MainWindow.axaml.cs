@@ -23,6 +23,7 @@ internal partial class MainWindow : Window
 
     private readonly KastnConnectionController connection;
     private readonly ObservableCollection<ProjectListItem> projects = [];
+    private readonly ObservableCollection<TemplateListItem> templates = [];
     private readonly ObservableCollection<KastnBucketItem> buckets = [];
     private readonly ObservableCollection<SlipListItem> slips = [];
     private readonly ObservableCollection<FilterItem> sources = [];
@@ -45,6 +46,7 @@ internal partial class MainWindow : Window
     private bool pendingSlipFocus;
     private bool viewerMode = true;
     private bool editableViewMode;
+    private bool landingShowingTemplates;
 
     public MainWindow()
     {
@@ -58,6 +60,7 @@ internal partial class MainWindow : Window
         this.connection = connection;
         InitializeComponent();
         landingProjectList.ItemsSource = projects;
+        landingTemplateList.ItemsSource = templates;
         bucketList.ItemsSource = buckets;
         slipList.ItemsSource = slips;
         sourceFilterBox.ItemsSource = sources;
@@ -72,6 +75,9 @@ internal partial class MainWindow : Window
         dates.Add(new DateFilterItem(KastnDateFilter.Last7Days, "Last 7 days"));
         dates.Add(new DateFilterItem(KastnDateFilter.Last30Days, "Last 30 days"));
         dateFilterBox.SelectedIndex = 0;
+        templates.Add(new TemplateListItem("Blank", "Empty project", "Start with a clean bucket structure."));
+        templates.Add(new TemplateListItem("Writing", "Draft stack", "Collect notes toward a draft or essay."));
+        templates.Add(new TemplateListItem("Research", "Research board", "Track sources, notes, and synthesis."));
 
         autosaveTimer = new DispatcherTimer
         {
@@ -128,7 +134,9 @@ internal partial class MainWindow : Window
         restoreSlipButton.Click += async (_, _) => await RestoreSlipAsync();
         useZetlButton.Click += (_, _) => UseZetlVersion();
         keepMineButton.Click += async (_, _) => await KeepMineAsync();
-        SizeChanged += (_, _) => RefreshLandingProjectGridLayout();
+        landingProjectsButton.Click += (_, _) => SetLandingMode(showTemplates: false);
+        landingTemplatesButton.Click += (_, _) => SetLandingMode(showTemplates: true);
+        SizeChanged += (_, _) => RefreshLandingGridLayout();
         KeyDown += OnKeyDown;
         Closed += (_, _) =>
         {
@@ -174,7 +182,7 @@ internal partial class MainWindow : Window
                     project.Name,
                     $"{project.BucketCount} buckets, {project.SlipCount} slips"));
             }
-            RefreshLandingProjectGridLayout();
+            RefreshLandingGridLayout();
 
             landingProjectList.SelectedItem = null;
 
@@ -217,13 +225,18 @@ internal partial class MainWindow : Window
                 RefreshViewer();
                 projectView.IsVisible = false;
                 emptyState.IsVisible = true;
-                landingProjectList.IsVisible = snapshot.ConnectionState == KastnConnectionState.Online
-                    && snapshot.Projects.Count > 0;
+                var showLandingChoices = snapshot.ConnectionState == KastnConnectionState.Online
+                    && (snapshot.Projects.Count > 0 || templates.Count > 0);
+                if (snapshot.Projects.Count == 0 && templates.Count > 0)
+                {
+                    landingShowingTemplates = true;
+                }
+
+                landingModeToggle.IsVisible = showLandingChoices;
                 emptyStateText.Text = snapshot.ConnectionState == KastnConnectionState.Online
-                    ? snapshot.Projects.Count == 0
-                        ? "No projects yet. Create one in Zetl, then it will appear here."
-                        : "Select a project from the list to begin."
+                    ? "Select a project or template to begin."
                     : snapshot.Status;
+                RefreshLandingMode();
             }
 
             SetConnectionState(snapshot);
@@ -234,23 +247,42 @@ internal partial class MainWindow : Window
         }
     }
 
-    private void RefreshLandingProjectGridLayout()
+    private void SetLandingMode(bool showTemplates)
+    {
+        landingShowingTemplates = showTemplates;
+        landingProjectList.SelectedItem = null;
+        RefreshLandingMode();
+    }
+
+    private void RefreshLandingMode()
+    {
+        var showChoices = emptyState.IsVisible && landingModeToggle.IsVisible;
+        landingProjectList.IsVisible = showChoices && !landingShowingTemplates && projects.Count > 0;
+        landingTemplateList.IsVisible = showChoices && landingShowingTemplates;
+        landingProjectsButton.IsEnabled = landingShowingTemplates;
+        landingTemplatesButton.IsEnabled = !landingShowingTemplates;
+        RefreshLandingGridLayout();
+    }
+
+    private void RefreshLandingGridLayout()
     {
         var cardOuterWidth = LandingCardWidth + (LandingCardMargin * 2);
         var cardOuterHeight = LandingCardHeight + (LandingCardMargin * 2);
-        var projectCount = Math.Max(1, projects.Count);
+        var cardCount = Math.Max(1, landingShowingTemplates ? templates.Count : projects.Count);
 
         var availableWidth = Math.Max(cardOuterWidth, Bounds.Width - 120);
         var columnsByWidth = Math.Clamp((int)Math.Floor(availableWidth / cardOuterWidth), 1, LandingMaxColumns);
-        var columns = Math.Min(projectCount, columnsByWidth);
+        var columns = Math.Min(cardCount, columnsByWidth);
 
         var availableHeight = Math.Max(cardOuterHeight, Bounds.Height - 190);
         var rowsByHeight = Math.Clamp((int)Math.Floor(availableHeight / cardOuterHeight), 1, LandingMaxRows);
-        var neededRows = (int)Math.Ceiling(projectCount / (double)columns);
+        var neededRows = (int)Math.Ceiling(cardCount / (double)columns);
         var rows = Math.Min(rowsByHeight, Math.Min(LandingMaxRows, neededRows));
 
         landingProjectList.Width = (columns * cardOuterWidth) + 4;
         landingProjectList.MaxHeight = (rows * cardOuterHeight) + 4;
+        landingTemplateList.Width = landingProjectList.Width;
+        landingTemplateList.MaxHeight = landingProjectList.MaxHeight;
     }
 
     private void RefreshFilterChoices(ZetlProjectSnapshot project)
@@ -1841,6 +1873,8 @@ internal partial class MainWindow : Window
     private static extern bool SetForegroundWindow(IntPtr window);
 
     private sealed record ProjectListItem(string Id, string Name, string Detail);
+
+    private sealed record TemplateListItem(string Kind, string Name, string Detail);
     private sealed record SlipListItem(
         string Id,
         string Text,
