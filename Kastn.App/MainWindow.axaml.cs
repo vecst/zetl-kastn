@@ -685,7 +685,7 @@ internal partial class MainWindow : Window
             {
                 pendingBucketSelectionId = created.BucketId;
                 pendingSlipSelectionId = created.Id;
-                pendingSlipFocus = true;
+                pendingSlipFocus = false;
                 pendingEditableBlockFocusId = created.Id;
                 ResetSlipFilters();
                 await connection.RefreshAsync();
@@ -1480,15 +1480,18 @@ internal partial class MainWindow : Window
             if (block.SlipId == pendingEditableBlockFocusId)
             {
                 pendingEditableBlockFocusId = null;
-                textBox.Focus();
-                if (string.Equals(block.BaselineText.Trim(), UntitledSlipText, StringComparison.Ordinal))
+                Dispatcher.UIThread.Post(() =>
                 {
-                    textBox.SelectAll();
-                }
-                else
-                {
-                    textBox.CaretIndex = textBox.Text?.Length ?? 0;
-                }
+                    textBox.Focus();
+                    if (string.Equals(block.BaselineText.Trim(), UntitledSlipText, StringComparison.Ordinal))
+                    {
+                        textBox.SelectAll();
+                    }
+                    else
+                    {
+                        textBox.CaretIndex = textBox.Text?.Length ?? 0;
+                    }
+                }, DispatcherPriority.Loaded);
             }
         }
     }
