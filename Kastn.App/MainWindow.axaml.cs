@@ -1491,15 +1491,14 @@ internal partial class MainWindow : Window
             var block = editableViewBlocks[index];
             var statusTextBlock = new TextBlock
             {
-                Classes = { "muted" },
-                FontSize = 12,
+                [Grid.ColumnProperty] = 1,
+                FontSize = 13,
                 Text = EditableBlockStatus(block)
             };
             block.StatusText = statusTextBlock;
 
             var selectionBox = new CheckBox
             {
-                Content = $"{index + 1}/{total}",
                 IsChecked = block.IsSelected,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -1532,39 +1531,33 @@ internal partial class MainWindow : Window
                 Padding = new Avalonia.Thickness(12),
                 Child = new Grid
                 {
-                    RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+                    RowDefinitions = new RowDefinitions("Auto,*"),
                     Children =
                     {
                         new Grid
                         {
                             ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
-                            ColumnSpacing = 8,
+                            ColumnSpacing = 10,
                             Children =
                             {
                                 selectionBox,
-                                new TextBlock
-                                {
-                                    [Grid.ColumnProperty] = 1,
-                                    Text = block.Title,
-                                    FontWeight = FontWeight.SemiBold,
-                                    TextTrimming = TextTrimming.CharacterEllipsis
-                                },
+                                statusTextBlock,
                                 new TextBlock
                                 {
                                     [Grid.ColumnProperty] = 2,
                                     Classes = { "muted" },
-                                    FontSize = 12,
-                                    Text = $"revision {block.Revision}"
+                                    FontSize = 18,
+                                    FontWeight = FontWeight.SemiBold,
+                                    Text = $"{index + 1}/{total}",
+                                    VerticalAlignment = VerticalAlignment.Center
                                 }
                             }
                         },
-                        statusTextBlock,
                         textBox
                     }
                 }
             };
-            Grid.SetRow(statusTextBlock, 1);
-            Grid.SetRow(textBox, 2);
+            Grid.SetRow(textBox, 1);
             editableBlocksPanel.Children.Add(border);
 
             if (block.SlipId == pendingEditableBlockFocusId)
