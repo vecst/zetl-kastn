@@ -286,7 +286,7 @@ storage, templates, or full artifact rendering.
    - Highest-win card finish:
      1. Replace placeholder thumbnails with cheap preview snippets. Done
      2. Add richer summary metadata to each card. Done
-     3. Move project-level card actions onto the landing page.
+     3. Move project-level card actions onto the landing page. Done
 
 8. **K7.3 Editable view sessions**
    - Blend the read-only viewer with an explicit multi-slip edit session.

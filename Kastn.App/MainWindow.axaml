@@ -122,11 +122,26 @@
                                    TextWrapping="Wrap"
                                    MaxLines="1" />
                       </StackPanel>
-                      <TextBlock Grid.Row="2"
-                                 Text="Open project"
-                                 Classes="muted"
-                                 FontSize="12"
-                                 HorizontalAlignment="Right" />
+                      <Grid Grid.Row="2"
+                            ColumnDefinitions="*,Auto,Auto"
+                            ColumnSpacing="6">
+                        <Button Grid.Column="0"
+                                Content="Open"
+                                Padding="10,3"
+                                HorizontalAlignment="Left"
+                                PointerPressed="OnProjectCardActionPointerPressed"
+                                Click="OnProjectCardOpenClick" />
+                        <Button Grid.Column="1"
+                                Content="Rename"
+                                Padding="10,3"
+                                PointerPressed="OnProjectCardActionPointerPressed"
+                                Click="OnProjectCardRenameClick" />
+                        <Button Grid.Column="2"
+                                Content="Delete"
+                                Padding="10,3"
+                                PointerPressed="OnProjectCardActionPointerPressed"
+                                Click="OnProjectCardDeleteClick" />
+                      </Grid>
                     </Grid>
                   </Border>
                 </DataTemplate>

@@ -47,6 +47,7 @@ internal partial class MainWindow : Window
     private bool viewerMode = true;
     private bool editableViewMode;
     private bool landingShowingTemplates;
+    private bool suppressLandingProjectSelection;
 
     public MainWindow()
     {
@@ -180,6 +181,7 @@ internal partial class MainWindow : Window
                 projects.Add(new ProjectListItem(
                     project.Id,
                     project.Name,
+                    project.MetadataRevision,
                     LandingProjectDetail(project),
                     string.IsNullOrWhiteSpace(project.PreviewText)
                         ? "No notes yet"
@@ -501,20 +503,69 @@ internal partial class MainWindow : Window
 
     private async void OnProjectSelectionChanged(object? sender, SelectionChangedEventArgs args)
     {
+        if (suppressLandingProjectSelection)
+        {
+            suppressLandingProjectSelection = false;
+            refreshing = true;
+            landingProjectList.SelectedItem = null;
+            refreshing = false;
+            return;
+        }
+
         if (!refreshing
             && sender is ListBox listBox
             && listBox.SelectedItem is ProjectListItem project)
         {
-            if (!await SaveEditorAsync())
-            {
-                refreshing = true;
-                landingProjectList.SelectedItem = null;
-                refreshing = false;
-                return;
-            }
-
-            await connection.NavigateToProjectAsync(project.Id);
+            await OpenProjectCardAsync(project);
         }
+    }
+
+    private void OnProjectCardActionPointerPressed(object? sender, PointerPressedEventArgs args)
+    {
+        suppressLandingProjectSelection = true;
+        Dispatcher.UIThread.Post(
+            () => suppressLandingProjectSelection = false,
+            DispatcherPriority.Background);
+    }
+
+    private async void OnProjectCardOpenClick(object? sender, RoutedEventArgs args)
+    {
+        args.Handled = true;
+        if ((sender as Control)?.DataContext is ProjectListItem project)
+        {
+            await OpenProjectCardAsync(project);
+        }
+    }
+
+    private async void OnProjectCardRenameClick(object? sender, RoutedEventArgs args)
+    {
+        args.Handled = true;
+        if ((sender as Control)?.DataContext is ProjectListItem project)
+        {
+            await RenameProjectAsync(project);
+        }
+    }
+
+    private async void OnProjectCardDeleteClick(object? sender, RoutedEventArgs args)
+    {
+        args.Handled = true;
+        if ((sender as Control)?.DataContext is ProjectListItem project)
+        {
+            await DeleteProjectAsync(project);
+        }
+    }
+
+    private async Task OpenProjectCardAsync(ProjectListItem project)
+    {
+        if (!await SaveEditorAsync())
+        {
+            refreshing = true;
+            landingProjectList.SelectedItem = null;
+            refreshing = false;
+            return;
+        }
+
+        await connection.NavigateToProjectAsync(project.Id);
     }
 
     private async Task CloseProjectAsync()
@@ -864,13 +915,66 @@ internal partial class MainWindow : Window
             return;
         }
 
+        await DeleteProjectAsync(new ProjectListItem(
+            currentProject.Id,
+            currentProject.Name,
+            currentProject.MetadataRevision,
+            "",
+            "",
+            ""));
+    }
+
+    private async Task RenameProjectAsync(ProjectListItem project)
+    {
+        if (!IsOnline)
+        {
+            return;
+        }
+
+        if (!await SaveEditorAsync())
+        {
+            statusText.Text = "Save or resolve the current slip before renaming the project.";
+            return;
+        }
+
+        var name = await KastnDialogs.PromptAsync(
+            this,
+            "Rename Project",
+            "Project name",
+            project.Name);
+        if (name is null || string.Equals(name, project.Name, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.RenameProject,
+            new RenameProjectCommand { Name = name },
+            project.Id,
+            project.Id,
+            project.MetadataRevision));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            await connection.RefreshAsync();
+        }
+
+        HandleSimpleResponse(response, $"Project renamed to '{name}'.");
+    }
+
+    private async Task DeleteProjectAsync(ProjectListItem project)
+    {
+        if (!IsOnline)
+        {
+            return;
+        }
+
         if (!await SaveEditorAsync())
         {
             statusText.Text = "Save or resolve the current slip before deleting the project.";
             return;
         }
 
-        var project = currentProject;
         if (!await KastnDialogs.ConfirmAsync(
                 this,
                 $"Delete project '{project.Name}' and all of its buckets and slips? This cannot be undone.",
@@ -888,8 +992,13 @@ internal partial class MainWindow : Window
             project.MetadataRevision));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            editorState.Select(null);
-            UpdateEditorFromState();
+            if (string.Equals(currentProject?.Id, project.Id, StringComparison.Ordinal))
+            {
+                editorState.Select(null);
+                UpdateEditorFromState();
+                await connection.NavigateToProjectAsync(null);
+            }
+
             await connection.RefreshAsync();
         }
 
@@ -1212,6 +1321,13 @@ internal partial class MainWindow : Window
             statusText.Text = editorState.ConflictCurrent is null
                 ? "The slip changed in Zetl. Review it and try again."
                 : "Resolve the slip conflict before continuing.";
+            return;
+        }
+
+        if (response.Status == ZetlResponseStatus.Conflict
+            && response.Conflict?.TargetKind == ZetlEntityKind.Project)
+        {
+            statusText.Text = "The project changed in Zetl. Refresh and try again.";
             return;
         }
 
@@ -1895,6 +2011,7 @@ internal partial class MainWindow : Window
     private sealed record ProjectListItem(
         string Id,
         string Name,
+        long MetadataRevision,
         string Detail,
         string PreviewText,
         string ActivityText);
