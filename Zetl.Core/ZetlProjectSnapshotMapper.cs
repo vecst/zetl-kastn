@@ -6,6 +6,16 @@ internal static class ZetlProjectSnapshotMapper
 {
     public static ZetlProjectSummary ToSummary(ZetlProject project)
     {
+        var visibleBuckets = project.Buckets
+            .Where(bucket => !ZetlStateStore.IsDeletedBucket(bucket))
+            .ToList();
+        var visibleNotes = visibleBuckets
+            .SelectMany(bucket => bucket.Notes)
+            .ToList();
+        var deletedSlipCount = project.Buckets
+            .Where(ZetlStateStore.IsDeletedBucket)
+            .Sum(bucket => bucket.Notes.Count);
+
         return new ZetlProjectSummary
         {
             Id = project.Id,
@@ -14,6 +24,10 @@ internal static class ZetlProjectSnapshotMapper
             ChangeSequence = project.ChangeSequence,
             BucketCount = project.Buckets.Count,
             SlipCount = project.Buckets.Sum(bucket => bucket.Notes.Count),
+            VisibleBucketCount = visibleBuckets.Count,
+            VisibleSlipCount = visibleNotes.Count,
+            DeletedSlipCount = deletedSlipCount,
+            LastActivityUtc = LastActivityUtc(visibleNotes),
             PreviewText = SummaryPreviewText(project)
         };
     }
@@ -90,5 +104,14 @@ internal static class ZetlProjectSnapshotMapper
         return snippets.Count == 0
             ? ""
             : string.Join(Environment.NewLine, snippets);
+    }
+
+    private static DateTimeOffset? LastActivityUtc(IReadOnlyList<ZetlNote> visibleNotes)
+    {
+        return visibleNotes.Count == 0
+            ? null
+            : new DateTimeOffset(DateTime.SpecifyKind(
+                visibleNotes.Max(note => note.CreatedAtUtc),
+                DateTimeKind.Utc));
     }
 }

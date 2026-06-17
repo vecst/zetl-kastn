@@ -15,8 +15,8 @@ namespace KASTN;
 internal partial class MainWindow : Window
 {
     private const string UntitledSlipText = "Untitled";
-    private const double LandingCardWidth = 250;
-    private const double LandingCardHeight = 190;
+    private const double LandingCardWidth = 300;
+    private const double LandingCardHeight = 220;
     private const double LandingCardMargin = 8;
     private const int LandingMaxColumns = 6;
     private const int LandingMaxRows = 5;
@@ -180,10 +180,11 @@ internal partial class MainWindow : Window
                 projects.Add(new ProjectListItem(
                     project.Id,
                     project.Name,
-                    $"{project.BucketCount} buckets, {project.SlipCount} slips",
+                    LandingProjectDetail(project),
                     string.IsNullOrWhiteSpace(project.PreviewText)
                         ? "No notes yet"
-                        : project.PreviewText));
+                        : project.PreviewText,
+                    LandingProjectActivity(project)));
             }
             RefreshLandingGridLayout();
 
@@ -286,6 +287,22 @@ internal partial class MainWindow : Window
         landingProjectList.MaxHeight = (rows * cardOuterHeight) + 4;
         landingTemplateList.Width = landingProjectList.Width;
         landingTemplateList.MaxHeight = landingProjectList.MaxHeight;
+    }
+
+    private static string LandingProjectDetail(ZetlProjectSummary project)
+    {
+        var detail = $"{project.VisibleSlipCount} slip{Plural(project.VisibleSlipCount)}"
+            + $" | {project.VisibleBucketCount} bucket{Plural(project.VisibleBucketCount)}";
+        return project.DeletedSlipCount == 0
+            ? detail
+            : $"{detail} | {project.DeletedSlipCount} deleted";
+    }
+
+    private static string LandingProjectActivity(ZetlProjectSummary project)
+    {
+        return project.LastActivityUtc is null
+            ? "No activity yet"
+            : $"Last note {project.LastActivityUtc.Value.LocalDateTime:g}";
     }
 
     private void RefreshFilterChoices(ZetlProjectSnapshot project)
@@ -1875,7 +1892,12 @@ internal partial class MainWindow : Window
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
 
-    private sealed record ProjectListItem(string Id, string Name, string Detail, string PreviewText);
+    private sealed record ProjectListItem(
+        string Id,
+        string Name,
+        string Detail,
+        string PreviewText,
+        string ActivityText);
 
     private sealed record TemplateListItem(string Kind, string Name, string Detail);
     private sealed record SlipListItem(

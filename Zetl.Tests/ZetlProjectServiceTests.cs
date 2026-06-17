@@ -480,10 +480,13 @@ internal static class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        store.AddNote(bucket, "first visible note", "copy");
-        store.AddNote(bucket, "second visible note", "copy");
+        var first = store.AddNote(bucket, "first visible note", "copy");
+        first.CreatedAtUtc = new DateTime(2026, 6, 15, 12, 0, 0, DateTimeKind.Utc);
+        var second = store.AddNote(bucket, "second visible note", "copy");
+        second.CreatedAtUtc = new DateTime(2026, 6, 16, 12, 0, 0, DateTimeKind.Utc);
         var deletedBucket = store.GetDeletedBucket(project);
-        store.AddNote(deletedBucket, "deleted should stay out", "copy");
+        var deleted = store.AddNote(deletedBucket, "deleted should stay out", "copy");
+        deleted.CreatedAtUtc = new DateTime(2026, 6, 17, 12, 0, 0, DateTimeKind.Utc);
         var service = new ZetlProjectService(store);
 
         var response = service.Execute(new ZetlCommandEnvelope
@@ -497,6 +500,13 @@ internal static class ZetlProjectServiceTests
         var summary = summaries.Single(item => item.Id == project.Id);
 
         AssertEqual(ZetlResponseStatus.Success, response.Status, "ListProjects should succeed.");
+        AssertEqual(2, summary.VisibleSlipCount, "Visible slip count should skip Deleted.");
+        AssertEqual(2, summary.VisibleBucketCount, "Visible bucket count should skip Deleted.");
+        AssertEqual(1, summary.DeletedSlipCount, "Deleted slip count should be separate.");
+        AssertEqual(
+            DateTimeOffset.Parse("2026-06-16T12:00:00Z"),
+            summary.LastActivityUtc,
+            "Last activity should come from the newest visible slip.");
         AssertTrue(
             summary.PreviewText.Contains("second visible note", StringComparison.Ordinal),
             "Project summaries should include a recent visible note preview.");

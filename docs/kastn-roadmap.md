@@ -285,7 +285,7 @@ storage, templates, or full artifact rendering.
      template toward the landing page instead of the project workbench.
    - Highest-win card finish:
      1. Replace placeholder thumbnails with cheap preview snippets. Done
-     2. Add richer summary metadata to each card.
+     2. Add richer summary metadata to each card. Done
      3. Move project-level card actions onto the landing page.
 
 8. **K7.3 Editable view sessions**
