@@ -3,12 +3,14 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using ZETL;
 
 namespace KASTN;
 
 public partial class App : Application
 {
     private KastnConnectionController? connection;
+    private KastnThemeManager? themeManager;
     private MainWindow? mainWindow;
 
     public override void Initialize()
@@ -24,6 +26,12 @@ public partial class App : Application
             var pipeName = Program.Value(Program.StartupArgs, "--ipc-pipe=");
             var zetlPath = Program.Value(Program.StartupArgs, "--zetl-path=");
             var projectId = Program.Value(Program.StartupArgs, "--project=");
+            var settingsStore = new ZetlAppSettingsStore();
+            var themeStore = new ZetlThemeStore();
+            themeManager = new KastnThemeManager(this);
+            themeManager.Apply(
+                themeStore.Resolve(settingsStore.Settings.ThemeId),
+                settingsStore.Settings.ThemeVariant);
             connection = new KastnConnectionController(
                 token => KastnZetlLauncher.LaunchAsync(zetlPath, pipeName, token),
                 pipeName);
@@ -48,6 +56,7 @@ public partial class App : Application
 
                 connection.DisposeAsync().AsTask().GetAwaiter().GetResult();
                 connection = null;
+                themeManager = null;
                 mainWindow = null;
             };
             connection.Start(projectId);

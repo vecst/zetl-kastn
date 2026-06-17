@@ -13,6 +13,10 @@
     <SolidColorBrush x:Key="KastnOnlineBrush" Color="#71D49B" />
     <SolidColorBrush x:Key="KastnOfflineBrush" Color="#FFB86B" />
     <FontFamily x:Key="ZetlFontFamily">Inter</FontFamily>
+    <FontFamily x:Key="ZetlMonoFontFamily">Cascadia Mono</FontFamily>
+    <x:Double x:Key="ZetlBodyFontSize">14</x:Double>
+    <x:Double x:Key="ZetlHeadingFontSize">16</x:Double>
+    <x:Double x:Key="ZetlTitleFontSize">24</x:Double>
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
@@ -20,17 +24,17 @@
       <Setter Property="Background" Value="{DynamicResource ZetlWindowBackgroundBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource ZetlTextBrush}" />
       <Setter Property="FontFamily" Value="{DynamicResource ZetlFontFamily}" />
-      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontSize" Value="{DynamicResource ZetlBodyFontSize}" />
     </Style>
     <Style Selector="TextBlock.muted">
       <Setter Property="Foreground" Value="{DynamicResource ZetlMutedTextBrush}" />
     </Style>
     <Style Selector="TextBlock.heading">
-      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontSize" Value="{DynamicResource ZetlHeadingFontSize}" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="TextBlock.title">
-      <Setter Property="FontSize" Value="24" />
+      <Setter Property="FontSize" Value="{DynamicResource ZetlTitleFontSize}" />
       <Setter Property="FontWeight" Value="Bold" />
     </Style>
     <Style Selector="Border.surface">
