@@ -268,6 +268,20 @@ storage, templates, or full artifact rendering.
    - Reuse compile-style grouping and indentation for an easy reading layout.
    - Keep this as a view over slips, not a second editable document.
 
+7. **K7.2 Landing page and project cards**
+   - Replace the always-visible projects pane with a Kastn landing page.
+   - Show project cards with cheap thumbnail previews, project name, active or
+     finished state, slip count, bucket count, and recent activity metadata.
+   - Open a project card into the project workbench.
+   - Add a `Close Project` action that unloads the current project and returns
+     to the landing page without closing Kastn.
+   - Keep `Open in Kastn` from Zetl as a direct handoff that bypasses the
+     landing page and opens the requested project.
+   - Keep thumbnails cheap: use summaries, small snippets, or cached preview
+     metadata rather than loading every full project just to render cards.
+   - Move project-level actions such as delete, rename, archive, and new-from-
+     template toward the landing page instead of the project workbench.
+
 Defer for now:
 
 - Typed capture storage and migration.
@@ -340,6 +354,39 @@ Done when:
 - [ ] All organizing operations remain projections or mutations of slips.
 - [ ] No workbench-only document becomes a second authoritative copy.
 
+## K6.5. Kastn Navigation And Landing Page
+
+Goal: separate project selection from project organization so Kastn opens like
+a workspace, not like a permanent project sidebar.
+
+- [ ] Add a landing page for project selection when Kastn launches without a
+      direct project handoff.
+- [ ] Replace the in-workbench projects pane with project cards on the landing
+      page.
+- [ ] Show cheap project thumbnails using summaries, snippets, or cached
+      preview metadata instead of loading every full project.
+- [ ] Include project name, active/finished/archive state, slip count, bucket
+      count, and recent activity on each card.
+- [ ] Open a selected project into the existing buckets/slips/editor workbench.
+- [ ] Add a `Close Project` action that returns to the landing page without
+      shutting down Kastn or Zetl.
+- [ ] Keep Zetl's `Open in Kastn` action as a direct route into the requested
+      project, bypassing the landing page.
+- [ ] Move project-level actions such as rename, delete, archive, and future
+      new-from-template toward the landing page.
+- [ ] Keep settings and theme access available from both landing and workbench
+      contexts.
+- [ ] Decide whether normal startup restores the last open project or always
+      starts at the landing page, then make it a user setting if both behaviors
+      are valuable.
+
+Done when:
+
+- [ ] Kastn can launch to a clear project selection screen.
+- [ ] Opening, closing, and direct handoff all land in the expected view.
+- [ ] The workbench no longer needs a permanent projects pane.
+- [ ] Large workspaces can render the landing page within the agreed UX budget.
+
 ## K7. Views And Artifact Production
 
 Goal: render project slips into useful documents without making rendered output
@@ -385,6 +432,33 @@ Done when:
       in Kastn, and render through a paired view.
 - [ ] Finished means set aside, not locked or immutable.
 - [ ] Reopening or reactivating a finished project is explicit and lossless.
+
+## K8.5. Unified Settings And Theme
+
+Goal: make Zetl and Kastn feel like two surfaces of one local system, not two
+apps with unrelated preferences.
+
+- [ ] Treat the selected theme as a global Zetl/Kastn preference.
+- [ ] Load the same `settings.json` theme id, theme variant, and `themes/`
+      documents in Kastn.
+- [ ] Apply global theme changes across open Zetl and Kastn windows without
+      requiring either app to restart.
+- [ ] Keep one theme editor rather than forking separate Zetl and Kastn theme
+      editors.
+- [ ] Add Kastn-specific settings to the Zetl Settings window in a clearly
+      labeled Kastn section.
+- [ ] Store Kastn app preferences in the shared app settings document unless a
+      setting is project-specific.
+- [ ] Keep project-specific Kastn choices with the project or view definition,
+      not in global app settings.
+
+Done when:
+
+- [ ] Changing the active theme in Zetl updates Kastn, and changing it from any
+      future Kastn entry point updates Zetl.
+- [ ] A user can discover and edit Kastn preferences from Zetl Settings.
+- [ ] Backing up the app settings and theme folder preserves the visible
+      behavior of both applications.
 
 ## K9. Hardening And Release
 
