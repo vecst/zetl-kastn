@@ -15,6 +15,11 @@ namespace KASTN;
 internal partial class MainWindow : Window
 {
     private const string UntitledSlipText = "Untitled";
+    private const double LandingCardWidth = 250;
+    private const double LandingCardHeight = 190;
+    private const double LandingCardMargin = 8;
+    private const int LandingMaxColumns = 6;
+    private const int LandingMaxRows = 5;
 
     private readonly KastnConnectionController connection;
     private readonly ObservableCollection<ProjectListItem> projects = [];
@@ -123,6 +128,7 @@ internal partial class MainWindow : Window
         restoreSlipButton.Click += async (_, _) => await RestoreSlipAsync();
         useZetlButton.Click += (_, _) => UseZetlVersion();
         keepMineButton.Click += async (_, _) => await KeepMineAsync();
+        SizeChanged += (_, _) => RefreshLandingProjectGridLayout();
         KeyDown += OnKeyDown;
         Closed += (_, _) =>
         {
@@ -168,6 +174,7 @@ internal partial class MainWindow : Window
                     project.Name,
                     $"{project.BucketCount} buckets, {project.SlipCount} slips"));
             }
+            RefreshLandingProjectGridLayout();
 
             landingProjectList.SelectedItem = null;
 
@@ -225,6 +232,25 @@ internal partial class MainWindow : Window
         {
             refreshing = false;
         }
+    }
+
+    private void RefreshLandingProjectGridLayout()
+    {
+        var cardOuterWidth = LandingCardWidth + (LandingCardMargin * 2);
+        var cardOuterHeight = LandingCardHeight + (LandingCardMargin * 2);
+        var projectCount = Math.Max(1, projects.Count);
+
+        var availableWidth = Math.Max(cardOuterWidth, Bounds.Width - 120);
+        var columnsByWidth = Math.Clamp((int)Math.Floor(availableWidth / cardOuterWidth), 1, LandingMaxColumns);
+        var columns = Math.Min(projectCount, columnsByWidth);
+
+        var availableHeight = Math.Max(cardOuterHeight, Bounds.Height - 190);
+        var rowsByHeight = Math.Clamp((int)Math.Floor(availableHeight / cardOuterHeight), 1, LandingMaxRows);
+        var neededRows = (int)Math.Ceiling(projectCount / (double)columns);
+        var rows = Math.Min(rowsByHeight, Math.Min(LandingMaxRows, neededRows));
+
+        landingProjectList.Width = (columns * cardOuterWidth) + 4;
+        landingProjectList.MaxHeight = (rows * cardOuterHeight) + 4;
     }
 
     private void RefreshFilterChoices(ZetlProjectSnapshot project)
