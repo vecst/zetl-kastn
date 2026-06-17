@@ -282,6 +282,20 @@ storage, templates, or full artifact rendering.
    - Move project-level actions such as delete, rename, archive, and new-from-
      template toward the landing page instead of the project workbench.
 
+8. **K7.3 Editable view sessions**
+   - Blend the read-only viewer with an explicit multi-slip edit session.
+   - Render the current filtered slip set as editable blocks inside one flowing
+     view while keeping each slip's identity visible through a block handle,
+     bucket label, and status.
+   - Track each block by slip ID, original revision, original text, draft text,
+     dirty state, and conflict state.
+   - Add session controls such as `Save All`, `Cancel`, dirty count, and
+     per-block conflict handling.
+   - Save only dirty blocks through ordinary revision-checked Zetl `UpdateSlip`
+     commands.
+   - Keep this as a projection over slips, not a second document that can drift
+     away from project truth.
+
 Defer for now:
 
 - Typed capture storage and migration.
