@@ -197,26 +197,26 @@ internal static class ZetlProjectServiceTests
             project.Id,
             inbox.Id,
             ""));
-        var addBlankKastn = service.Execute(ZetlCommandEnvelope.Create(
-            "slip-add-blank-kastn",
+        var addUntitledKastn = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-add-untitled-kastn",
             ZetlCommandKind.AddSlip,
             new AddSlipCommand
             {
                 BucketId = inbox.Id,
-                Text = "",
+                Text = "Untitled",
                 Source = "kastn"
             },
             project.Id));
-        var blankKastn = addBlankKastn.Payload?.Deserialize<ZetlSlipSnapshot>(
+        var untitledKastn = addUntitledKastn.Payload?.Deserialize<ZetlSlipSnapshot>(
             ZetlProtocolJson.Options)
-            ?? throw new InvalidOperationException("Blank Kastn slip did not return a slip.");
+            ?? throw new InvalidOperationException("Untitled Kastn slip did not return a slip.");
         var updateBlankKastn = service.Execute(ZetlCommandEnvelope.Create(
             "slip-update-blank-kastn",
             ZetlCommandKind.UpdateSlip,
             new UpdateSlipCommand { Text = "" },
             project.Id,
-            blankKastn.Id,
-            blankKastn.Revision));
+            untitledKastn.Id,
+            untitledKastn.Revision));
         var move = service.Execute(ZetlCommandEnvelope.Create(
             "slip-move",
             ZetlCommandKind.MoveSlip,
@@ -274,9 +274,9 @@ internal static class ZetlProjectServiceTests
         AssertEqual("TSV", drafts.Settings.DefaultCompileMode, "Bucket settings should round-trip.");
         AssertEqual(project.ActiveBucketId, snapshot.ActiveBucketId, "Project snapshots should expose the active bucket for clients.");
         AssertEqual(ZetlResponseStatus.ValidationError, addBlankCapture.Status, "Non-Kastn capture commands should still reject blank slips.");
-        AssertEqual(ZetlResponseStatus.Success, addBlankKastn.Status, "Kastn should be able to create an unnamed slip.");
-        AssertEqual("", blankKastn.Text, "Unnamed Kastn slips should store blank text.");
-        AssertEqual(ZetlResponseStatus.Success, updateBlankKastn.Status, "Kastn slips should be able to remain blank while editing.");
+        AssertEqual(ZetlResponseStatus.Success, addUntitledKastn.Status, "Kastn should be able to create a default untitled slip.");
+        AssertEqual("Untitled", untitledKastn.Text, "Kastn's default slip text should be explicit.");
+        AssertEqual(ZetlResponseStatus.ValidationError, updateBlankKastn.Status, "Blank updates should still be rejected by the command service.");
         AssertEqual(ZetlResponseStatus.Success, move.Status, "Slip move should succeed.");
         AssertEqual(drafts.Id, moved.BucketId, "Moved slip should identify its destination.");
         AssertEqual(ZetlResponseStatus.Success, delete.Status, "Slip delete should succeed.");

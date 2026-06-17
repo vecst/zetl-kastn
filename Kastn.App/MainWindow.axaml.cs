@@ -13,6 +13,8 @@ namespace KASTN;
 
 internal partial class MainWindow : Window
 {
+    private const string UntitledSlipText = "Untitled";
+
     private readonly KastnConnectionController connection;
     private readonly ObservableCollection<ProjectListItem> projects = [];
     private readonly ObservableCollection<KastnBucketItem> buckets = [];
@@ -376,7 +378,15 @@ internal partial class MainWindow : Window
                     {
                         pendingSlipFocus = false;
                         slipEditor.Focus();
-                        slipEditor.CaretIndex = slipEditor.Text?.Length ?? 0;
+                        if (string.Equals(selected.Slip.Text, UntitledSlipText, StringComparison.Ordinal)
+                            && string.Equals(selected.Slip.Source, "kastn", StringComparison.Ordinal))
+                        {
+                            slipEditor.SelectAll();
+                        }
+                        else
+                        {
+                            slipEditor.CaretIndex = slipEditor.Text?.Length ?? 0;
+                        }
                     }
                 }
             }
@@ -496,7 +506,7 @@ internal partial class MainWindow : Window
         {
             if (SelectedSlip?.Source == "kastn")
             {
-                text = "";
+                text = UntitledSlipText;
             }
             else
             {
@@ -631,7 +641,7 @@ internal partial class MainWindow : Window
             new AddSlipCommand
             {
                 BucketId = destinationBucketId,
-                Text = "",
+                Text = UntitledSlipText,
                 Source = "kastn"
             },
             currentProject.Id));

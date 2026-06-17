@@ -378,9 +378,9 @@ internal sealed class ZetlProjectService
         }
 
         var (project, bucket) = found.Value;
-        if (string.IsNullOrWhiteSpace(payload.Source))
+        if (string.IsNullOrWhiteSpace(payload.Text))
         {
-            return ValidationError(command, "slip_source_required", "A slip source is required.");
+            return ValidationError(command, "slip_text_required", "Slip text is required.");
         }
 
         if (ZetlStateStore.IsDeletedBucket(bucket))
@@ -388,9 +388,9 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "deleted_bucket_protected", "Deleted is not a capture target.");
         }
 
-        if (string.IsNullOrWhiteSpace(payload.Text) && !IsKastnSource(payload.Source))
+        if (string.IsNullOrWhiteSpace(payload.Source))
         {
-            return ValidationError(command, "slip_text_required", "Slip text is required.");
+            return ValidationError(command, "slip_source_required", "A slip source is required.");
         }
 
         var note = store.AddNote(
@@ -425,7 +425,7 @@ internal sealed class ZetlProjectService
         }
 
         var payload = Payload<UpdateSlipCommand>(command);
-        if (string.IsNullOrWhiteSpace(payload.Text) && !IsKastnSource(note.Source))
+        if (string.IsNullOrWhiteSpace(payload.Text))
         {
             return ValidationError(command, "slip_text_required", "Slip text is required.");
         }
@@ -434,11 +434,6 @@ internal sealed class ZetlProjectService
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);
-    }
-
-    private static bool IsKastnSource(string? source)
-    {
-        return string.Equals(source, "kastn", StringComparison.Ordinal);
     }
 
     private ZetlResponseEnvelope MoveSlip(ZetlCommandEnvelope command)
