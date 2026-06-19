@@ -132,6 +132,7 @@ internal static class PortableSelfTests
                 ("Project service serializes concurrent adds", ZetlProjectServiceTests.ConcurrentAddsAreSerialized),
                 ("Project service shares one writer with existing mutations", ZetlProjectServiceTests.DirectAndServiceMutationsShareOneWriter),
                 ("Project service bucket and slip commands round-trip", ZetlProjectServiceTests.BucketAndSlipCommandsRoundTrip),
+                ("Project service reorders slips within a bucket", ZetlProjectServiceTests.ReorderSlipMovesWithinBucket),
                 ("Project service project and bucket commands honor revisions", ZetlProjectServiceTests.ProjectAndBucketCommandsHonorRevisions),
                 ("Project service persists revisions", ZetlProjectServiceTests.RevisionsPersistAcrossReload),
                 ("Project service publishes detailed durable events", ZetlProjectServiceTests.SuccessfulMutationPublishesOneDetailedEvent),

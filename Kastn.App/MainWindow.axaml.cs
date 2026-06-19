@@ -1675,6 +1675,7 @@ internal partial class MainWindow : Window
     {
         editableBlocksPanel.Children.Clear();
         var total = editableViewBlocks.Count;
+        var reorderable = total > 1 && EditViewBlocksShareBucket();
         for (var index = 0; index < editableViewBlocks.Count; index++)
         {
             var block = editableViewBlocks[index];
@@ -1731,15 +1732,7 @@ internal partial class MainWindow : Window
                             {
                                 selectionBox,
                                 statusTextBlock,
-                                new TextBlock
-                                {
-                                    [Grid.ColumnProperty] = 2,
-                                    Classes = { "muted" },
-                                    FontSize = 18,
-                                    FontWeight = FontWeight.SemiBold,
-                                    Text = $"{index + 1}/{total}",
-                                    VerticalAlignment = VerticalAlignment.Center
-                                }
+                                BuildOrderBadge(block, index, total, reorderable)
                             }
                         },
                         textBox
@@ -1768,6 +1761,166 @@ internal partial class MainWindow : Window
         }
     }
 
+    private Control BuildOrderBadge(EditableSlipBlock block, int index, int total, bool reorderable)
+    {
+        if (!reorderable)
+        {
+            return new TextBlock
+            {
+                [Grid.ColumnProperty] = 2,
+                Classes = { "muted" },
+                FontSize = 18,
+                FontWeight = FontWeight.SemiBold,
+                Text = $"{index + 1}/{total}",
+                VerticalAlignment = VerticalAlignment.Center
+            };
+        }
+
+        var orderBox = new TextBox
+        {
+            Text = (index + 1).ToString(),
+            Width = 52,
+            FontSize = 16,
+            FontWeight = FontWeight.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            IsEnabled = IsOnline && !savingEditableView && block.ConflictText is null,
+            [ToolTip.TipProperty] =
+                "Type a position and press Enter to reorder this slip within its bucket."
+        };
+        orderBox.KeyDown += async (_, keyArgs) =>
+        {
+            if (keyArgs.Key == Key.Enter)
+            {
+                keyArgs.Handled = true;
+                if (int.TryParse(orderBox.Text, out var position))
+                {
+                    await ReorderEditableBlockAsync(block, position);
+                }
+                else
+                {
+                    orderBox.Text = (index + 1).ToString();
+                }
+            }
+            else if (keyArgs.Key == Key.Escape)
+            {
+                keyArgs.Handled = true;
+                orderBox.Text = (index + 1).ToString();
+                editableBlocksPanel.Focus();
+            }
+        };
+
+        return new StackPanel
+        {
+            [Grid.ColumnProperty] = 2,
+            Orientation = Orientation.Horizontal,
+            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                orderBox,
+                new TextBlock
+                {
+                    Classes = { "muted" },
+                    FontSize = 16,
+                    FontWeight = FontWeight.SemiBold,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Text = $"/{total}"
+                }
+            }
+        };
+    }
+
+    private async Task ReorderEditableBlockAsync(EditableSlipBlock block, int targetOneBased)
+    {
+        if (!editableViewMode || !IsOnline || currentProject is null || savingEditableView)
+        {
+            return;
+        }
+
+        if (HasDirtyEditableBlocks())
+        {
+            statusText.Text = "Save All or Cancel before reordering edit blocks.";
+            RenderEditableViewBlocks();
+            return;
+        }
+
+        var total = editableViewBlocks.Count;
+        var currentIndex = editableViewBlocks.IndexOf(block);
+        if (currentIndex < 0 || total <= 1)
+        {
+            return;
+        }
+
+        var targetIndex = Math.Clamp(targetOneBased - 1, 0, total - 1);
+        if (targetIndex == currentIndex)
+        {
+            RenderEditableViewBlocks();
+            return;
+        }
+
+        var others = editableViewBlocks.Where(item => item != block).ToList();
+        var beforeSlipId = targetIndex < others.Count ? others[targetIndex].SlipId : null;
+
+        savingEditableView = true;
+        SetEditingEnabled();
+        RefreshEditableViewStatus();
+        try
+        {
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.ReorderSlip,
+                new ReorderSlipCommand { BeforeSlipId = beforeSlipId },
+                currentProject.Id,
+                block.SlipId,
+                block.Revision));
+            if (response.Status == ZetlResponseStatus.Success)
+            {
+                statusText.Text = $"Slip moved to position {targetIndex + 1} of {total}.";
+            }
+            else if (response.Status == ZetlResponseStatus.Conflict)
+            {
+                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
+                    ZetlProtocolJson.Options);
+                block.ConflictText = current?.Text;
+                statusText.Text = "Reorder conflict; the slip changed elsewhere.";
+            }
+            else
+            {
+                statusText.Text = response.Error?.Message ?? $"Reorder failed: {response.Status}.";
+            }
+
+            await connection.RefreshAsync();
+        }
+        finally
+        {
+            savingEditableView = false;
+            SetEditingEnabled();
+            RefreshEditableViewStatus();
+        }
+    }
+
+    private bool EditViewBlocksShareBucket()
+    {
+        return editableViewBlocks.Count > 0
+            && editableViewBlocks
+                .Select(block => block.BucketId)
+                .Distinct(StringComparer.Ordinal)
+                .Count() == 1;
+    }
+
+    private string EditableReorderHint()
+    {
+        if (editableViewBlocks.Count <= 1)
+        {
+            return "";
+        }
+
+        return EditViewBlocksShareBucket()
+            ? " Type a slip's number to reorder it within the bucket."
+            : " Filter to one bucket to reorder slips by number.";
+    }
+
     private void RefreshEditableViewStatus()
     {
         editViewButton.Content = editableViewMode ? "Read View" : "Edit View";
@@ -1788,7 +1941,7 @@ internal partial class MainWindow : Window
         cancelViewButton.IsEnabled = editableViewMode && !savingEditableView;
         editViewButton.IsEnabled = viewerMode && currentProject is not null && !savingEditableView;
         editViewStatusText.Text = editableViewMode
-            ? EditableSessionStatus()
+            ? EditableSessionStatus() + EditableReorderHint()
             : "Read-only view. Edit View turns each visible slip into a tracked block.";
     }
 
@@ -2026,6 +2179,7 @@ internal partial class MainWindow : Window
         {
             SlipId = slip.Id;
             Revision = slip.Revision;
+            BucketId = slip.BucketId;
             BucketLabel = bucketLabel;
             Source = slip.Source;
             CapturedAtUtc = slip.CapturedAtUtc;
@@ -2036,6 +2190,7 @@ internal partial class MainWindow : Window
 
         public string SlipId { get; }
         public long Revision { get; private set; }
+        public string BucketId { get; }
         public string BucketLabel { get; }
         public string Source { get; }
         public DateTimeOffset CapturedAtUtc { get; }

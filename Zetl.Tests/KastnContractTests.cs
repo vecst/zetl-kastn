@@ -175,6 +175,7 @@ internal static class KastnContractTests
             typeof(AddSlipCommand),
             typeof(UpdateSlipCommand),
             typeof(MoveSlipCommand),
+            typeof(ReorderSlipCommand),
             typeof(DeleteSlipCommand)
         };
 

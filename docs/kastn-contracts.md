@@ -21,8 +21,13 @@ the resident Zetl process. The public DTOs and enums live in `Zetl.Contracts`.
 - Capturing a slip advances the project change sequence and the new slip's
   revision. It does not advance the project metadata revision or revisions of
   unrelated buckets and slips.
-- Rename, update, move, and delete commands include the revision of the record
-  the client observed. Adds do not require an expected revision.
+- Rename, update, move, reorder, and delete commands include the revision of the
+  record the client observed. Adds do not require an expected revision.
+- `ReorderSlip` repositions a slip within its current bucket. It carries the
+  optional id of the slip the target should sit immediately before; a null anchor
+  moves the target to the end of its bucket. The anchor must belong to the same
+  bucket as the target. Reorder never moves a slip across buckets — that remains
+  `MoveSlip`.
 
 This separation prevents a new Zetl capture from conflicting with an unrelated
 slip edit in Kastn.

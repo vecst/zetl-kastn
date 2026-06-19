@@ -112,6 +112,7 @@ internal sealed class ZetlProjectService
             ZetlCommandKind.AddSlip => AddSlip(command),
             ZetlCommandKind.UpdateSlip => UpdateSlip(command),
             ZetlCommandKind.MoveSlip => MoveSlip(command),
+            ZetlCommandKind.ReorderSlip => ReorderSlip(command),
             ZetlCommandKind.DeleteSlip => DeleteSlip(command),
             _ => ErrorResponse(
                 command,
@@ -473,6 +474,49 @@ internal sealed class ZetlProjectService
         }
 
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(destination, note);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
+        return Success(command, project, snapshot);
+    }
+
+    private ZetlResponseEnvelope ReorderSlip(ZetlCommandEnvelope command)
+    {
+        var found = FindNote(command.ProjectId!, command.TargetId!);
+        if (found is null)
+        {
+            return NotFound(command, ZetlEntityKind.Slip, command.TargetId!);
+        }
+
+        var (project, bucket, note) = found.Value;
+        var conflict = CheckRevision(
+            command,
+            ZetlEntityKind.Slip,
+            note.Id,
+            note.Revision,
+            ZetlProjectSnapshotMapper.ToSnapshot(bucket, note));
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        var payload = Payload<ReorderSlipCommand>(command);
+        if (payload.BeforeSlipId is not null
+            && bucket.Notes.All(item => item.Id != payload.BeforeSlipId))
+        {
+            return ValidationError(
+                command,
+                "slip_reorder_anchor_invalid",
+                "The reorder anchor must be another slip in the same bucket.");
+        }
+
+        if (!store.ReorderNote(project, note, payload.BeforeSlipId))
+        {
+            return ValidationError(
+                command,
+                "slip_reorder_invalid",
+                "The slip could not be reordered.");
+        }
+
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);
     }

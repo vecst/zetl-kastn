@@ -518,6 +518,58 @@ internal static class ZetlProjectServiceTests
             "Project summary previews should skip Deleted content.");
     }
 
+    public static void ReorderSlipMovesWithinBucket()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var inbox);
+        var drafts = store.AddBucket(project, "Drafts");
+        var first = store.AddNote(inbox, "first", "copy");
+        var second = store.AddNote(inbox, "second", "copy");
+        var third = store.AddNote(inbox, "third", "copy");
+        var elsewhere = store.AddNote(drafts, "elsewhere", "copy");
+        var service = new ZetlProjectService(store);
+
+        // Move the last slip ahead of the first: first, second, third -> third, first, second.
+        var toFront = service.Execute(ReorderSlipCommand(
+            "reorder-front", project.Id, third.Id, third.Revision, first.Id));
+        AssertEqual(ZetlResponseStatus.Success, toFront.Status, "Reorder to front should succeed.");
+        AssertEqual(
+            "third,first,second",
+            string.Join(",", inbox.Notes.Select(note => note.Text)),
+            "Reorder should move the slip immediately before its anchor.");
+        AssertEqual(2L, third.Revision, "Reorder should advance the moved slip's revision.");
+
+        // A stale revision must conflict and leave the order untouched.
+        var stale = service.Execute(ReorderSlipCommand(
+            "reorder-stale", project.Id, third.Id, 1, second.Id));
+        AssertEqual(ZetlResponseStatus.Conflict, stale.Status, "A stale reorder should conflict.");
+        AssertEqual(
+            "third,first,second",
+            string.Join(",", inbox.Notes.Select(note => note.Text)),
+            "A stale reorder must not change order.");
+
+        // An anchor in another bucket is rejected and changes nothing.
+        var crossBucket = service.Execute(ReorderSlipCommand(
+            "reorder-cross", project.Id, first.Id, first.Revision, elsewhere.Id));
+        AssertEqual(
+            ZetlResponseStatus.ValidationError,
+            crossBucket.Status,
+            "An anchor in another bucket should be rejected.");
+        AssertEqual(
+            "third,first,second",
+            string.Join(",", inbox.Notes.Select(note => note.Text)),
+            "A rejected reorder must not change order.");
+
+        // A null anchor moves the slip to the end: third, first, second -> third, second, first.
+        var toEnd = service.Execute(ReorderSlipCommand(
+            "reorder-end", project.Id, first.Id, first.Revision, beforeSlipId: null));
+        AssertEqual(ZetlResponseStatus.Success, toEnd.Status, "Reorder to end should succeed.");
+        AssertEqual(
+            "third,second,first",
+            string.Join(",", inbox.Notes.Select(note => note.Text)),
+            "A null anchor should move the slip to the end of its bucket.");
+    }
+
     private static ZetlStateStore CreateStoreWithProject(
         TempStateDirectory temp,
         out ZetlProject project,
@@ -545,6 +597,22 @@ internal static class ZetlProjectServiceTests
                 Source = "copy"
             },
             projectId);
+    }
+
+    private static ZetlCommandEnvelope ReorderSlipCommand(
+        string commandId,
+        string projectId,
+        string slipId,
+        long expectedRevision,
+        string? beforeSlipId)
+    {
+        return ZetlCommandEnvelope.Create(
+            commandId,
+            ZetlCommandKind.ReorderSlip,
+            new ReorderSlipCommand { BeforeSlipId = beforeSlipId },
+            projectId,
+            slipId,
+            expectedRevision);
     }
 
     private static void AssertTrue(bool condition, string message)

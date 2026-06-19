@@ -90,6 +90,7 @@ public static class ZetlContractRules
             or ZetlCommandKind.DeleteBucket
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip
+            or ZetlCommandKind.ReorderSlip
             or ZetlCommandKind.DeleteSlip;
     }
 
@@ -101,6 +102,7 @@ public static class ZetlContractRules
             or ZetlCommandKind.DeleteBucket
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip
+            or ZetlCommandKind.ReorderSlip
             or ZetlCommandKind.DeleteSlip;
     }
 
@@ -112,7 +114,8 @@ public static class ZetlContractRules
             or ZetlCommandKind.UpdateBucket
             or ZetlCommandKind.AddSlip
             or ZetlCommandKind.UpdateSlip
-            or ZetlCommandKind.MoveSlip;
+            or ZetlCommandKind.MoveSlip
+            or ZetlCommandKind.ReorderSlip;
     }
 
     private static ZetlCommandValidation Invalid(

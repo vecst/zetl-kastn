@@ -59,4 +59,13 @@ public sealed record MoveSlipCommand
     public required string DestinationBucketId { get; init; }
 }
 
+public sealed record ReorderSlipCommand
+{
+    /// <summary>
+    /// The slip the target should be placed immediately before, within the same
+    /// bucket. A null anchor moves the target to the end of its bucket.
+    /// </summary>
+    public string? BeforeSlipId { get; init; }
+}
+
 public sealed record DeleteSlipCommand;

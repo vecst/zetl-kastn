@@ -43,6 +43,7 @@ public enum ZetlCommandKind
     AddSlip,
     UpdateSlip,
     MoveSlip,
+    ReorderSlip,
     DeleteSlip
 }
 

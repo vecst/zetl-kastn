@@ -722,6 +722,46 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool ReorderNote(ZetlProject project, ZetlNote note, string? beforeNoteId)
+    {
+        var bucket = project.Buckets.FirstOrDefault(bucket =>
+            bucket.Notes.Any(item => item.Id == note.Id));
+        if (bucket is null)
+        {
+            return false;
+        }
+
+        var currentIndex = bucket.Notes.FindIndex(item => item.Id == note.Id);
+        int targetIndex;
+        if (beforeNoteId is null)
+        {
+            targetIndex = bucket.Notes.Count;
+        }
+        else
+        {
+            var anchorIndex = bucket.Notes.FindIndex(item => item.Id == beforeNoteId);
+            if (anchorIndex < 0)
+            {
+                return false;
+            }
+
+            targetIndex = anchorIndex;
+        }
+
+        bucket.Notes.RemoveAt(currentIndex);
+        if (targetIndex > currentIndex)
+        {
+            targetIndex--;
+        }
+
+        targetIndex = Math.Clamp(targetIndex, 0, bucket.Notes.Count);
+        bucket.Notes.Insert(targetIndex, note);
+        note.Revision++;
+        PersistProject(project);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public void ToggleActiveBucketPopMode(bool shifted = false)
     {
         var bucket = GetActiveBucket(shifted);
