@@ -38,17 +38,15 @@ internal static class KastnZetlLauncher
             return Path.GetFullPath(configured);
         }
 
+        // Zetl ships and builds next to Kastn in one shared output directory
+        // (see Directory.Build.props), so look for the host right beside us. The
+        // self-contained exe is preferred; the framework-dependent .dll covers a
+        // UseAppHost=false build.
         var baseDirectory = AppContext.BaseDirectory;
         var candidates = new[]
         {
             Path.Combine(baseDirectory, OperatingSystem.IsWindows() ? "Zetl.exe" : "Zetl"),
-            Path.Combine(baseDirectory, "Zetl.dll"),
-            Path.GetFullPath(Path.Combine(
-                baseDirectory, "..", "..", "..", "..",
-                "Zetl.App", "bin", "Debug", "net10.0", "Zetl.dll")),
-            Path.GetFullPath(Path.Combine(
-                baseDirectory, "..", "..", "..", "..",
-                "Zetl.App", "bin", "Release", "net10.0", "Zetl.dll"))
+            Path.Combine(baseDirectory, "Zetl.dll")
         };
         return candidates.FirstOrDefault(File.Exists);
     }

@@ -1,0 +1,15 @@
+<Project>
+  <!-- Build every project into one shared output directory so the Zetl and Kastn
+       executables and their shared dependencies sit side by side, the way an
+       installed copy ships. Kastn then finds Zetl right next to it (no per-project
+       bin hunting), and there is a single place to look for build output. It lives
+       under the already git-ignored artifacts\ tree, alongside publish output.
+
+       Each project keeps its own obj\ intermediate directory; only the final bin
+       output is shared. Assembly names are unique (Zetl, Kastn, Zetl.Legacy,
+       Zetl.Core, ...), so nothing collides in the flat directory. -->
+  <PropertyGroup>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)artifacts\bin\</BaseOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+</Project>

@@ -238,17 +238,10 @@ internal static class ZetlIpcTests
     {
         RunAsync(async () =>
         {
-            var appPath = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory,
-                "..",
-                "..",
-                "..",
-                "..",
-                "Zetl.App",
-                "bin",
-                "Debug",
-                "net10.0",
-                "Zetl.dll"));
+            // All projects build into one shared output directory (see
+            // Directory.Build.props), so the Zetl host assembly sits next to the
+            // test assembly.
+            var appPath = Path.Combine(AppContext.BaseDirectory, "Zetl.dll");
             if (!File.Exists(appPath))
             {
                 throw new FileNotFoundException(

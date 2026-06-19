@@ -510,6 +510,21 @@ Build:
 dotnet build Zetl.slnx
 ```
 
+All projects build into one shared output directory rather than per-project
+`bin` folders, so the executables sit side by side the way an installed copy
+ships (`Directory.Build.props` sets this up):
+
+```text
+artifacts\bin\<Config>\
+  Zetl.exe          Avalonia tray app
+  Kastn.exe         workbench (finds Zetl.exe right beside it)
+  Zetl.Legacy.exe   WinForms fallback
+  Zetl.Tests.exe    portable test runner
+```
+
+A plain `dotnet build` produces the `.exe` apphosts; the test gate's
+`-p:UseAppHost=false` builds only the `.dll`s.
+
 Run portable and Windows-specific tests:
 
 ```powershell

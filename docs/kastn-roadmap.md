@@ -611,10 +611,13 @@ projection or interchange format, with freshness visible and repairable.
 
 Run the existing gates after each milestone:
 
+All projects build into one shared output directory, `artifacts\bin\<Config>\`
+(see `Directory.Build.props`), so the gate assemblies sit side by side:
+
 ```powershell
 dotnet build Zetl.slnx --no-restore -p:UseAppHost=false
-dotnet .\Zetl.Tests\bin\Debug\net10.0\Zetl.Tests.dll
-dotnet .\bin\Debug\net10.0-windows\Zetl.dll --self-test
+dotnet .\artifacts\bin\Debug\Zetl.Tests.dll
+dotnet .\artifacts\bin\Debug\Zetl.dll --self-test
 ```
 
 Add contract, service, IPC, migration, and Kastn UI tests to these gates as their
