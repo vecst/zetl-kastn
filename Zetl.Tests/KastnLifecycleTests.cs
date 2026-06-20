@@ -172,6 +172,15 @@ internal static class KastnLifecycleTests
                 fixture.PipeName,
                 TimeSpan.FromMilliseconds(75),
                 TimeSpan.FromMilliseconds(25));
+
+            // Record every connection state before the outage. The relaunch is
+            // fast, so the Offline blip is fleeting; observing it through a fresh
+            // "wait for Offline" would race the immediate reconnect. Recording all
+            // transitions and asserting Offline appeared is race-free, and matches
+            // ControllerReconnectsAfterZetlRestart.
+            var states = new ConcurrentQueue<KastnConnectionState>();
+            controller.SnapshotChanged += (_, snapshot) => states.Enqueue(
+                snapshot.ConnectionState);
             controller.Start(fixture.Project.Id);
 
             await WaitForSnapshotAsync(
@@ -179,14 +188,15 @@ internal static class KastnLifecycleTests
                 snapshot => snapshot.ConnectionState == KastnConnectionState.Online);
 
             fixture.StopServer();
-            await WaitForSnapshotAsync(
-                controller,
-                snapshot => snapshot.ConnectionState == KastnConnectionState.Offline);
             var relaunched = await WaitForSnapshotAsync(
                 controller,
                 snapshot => snapshot.ConnectionState == KastnConnectionState.Online
-                    && Volatile.Read(ref launches) == 1);
+                    && Volatile.Read(ref launches) == 1
+                    && snapshot.Project?.Id == fixture.Project.Id);
 
+            AssertTrue(
+                states.Contains(KastnConnectionState.Offline),
+                "Kastn should report the outage before relaunching Zetl.");
             AssertEqual(1, launches, "Kastn should launch Zetl again after a later outage.");
             AssertEqual(
                 fixture.Project.Id,
