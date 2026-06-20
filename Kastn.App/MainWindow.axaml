@@ -161,72 +161,64 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
-            <ListBox x:Name="landingTemplateList"
-                     Width="880"
-                     MaxHeight="520"
-                     Margin="0,16,0,0"
-                     IsVisible="False">
-              <ListBox.Resources>
-                <!-- Template cards act through their Use Template button, so the
-                     list itself should not show a selection or hover highlight. -->
-                <SolidColorBrush x:Key="ListBoxItemBackgroundPointerOver" Color="Transparent" />
-                <SolidColorBrush x:Key="ListBoxItemBackgroundPressed" Color="Transparent" />
-                <SolidColorBrush x:Key="ListBoxItemBackgroundSelected" Color="Transparent" />
-                <SolidColorBrush x:Key="ListBoxItemBackgroundSelectedPointerOver" Color="Transparent" />
-                <SolidColorBrush x:Key="ListBoxItemBackgroundSelectedPressed" Color="Transparent" />
-              </ListBox.Resources>
-              <ListBox.Styles>
-                <Style Selector="ListBoxItem">
-                  <Setter Property="Padding" Value="0" />
-                  <Setter Property="Margin" Value="0" />
-                </Style>
-              </ListBox.Styles>
-              <ListBox.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <WrapPanel Orientation="Horizontal" />
-                </ItemsPanelTemplate>
-              </ListBox.ItemsPanel>
-              <ListBox.ItemTemplate>
-                <DataTemplate>
-                  <Border Classes="surface"
-                          Width="450"
-                          Height="330"
-                          Padding="16"
-                          Margin="8">
-                    <Grid RowDefinitions="170,*,Auto">
-                      <Border Grid.Row="0"
-                              Background="{DynamicResource ZetlSurfaceAltBrush}"
-                              CornerRadius="4"
-                              Padding="14">
-                        <TextBlock Text="{Binding Kind}"
-                                   Classes="muted"
-                                   FontSize="14"
-                                   VerticalAlignment="Center"
-                                   HorizontalAlignment="Center" />
-                      </Border>
-                      <StackPanel Grid.Row="1"
-                                  Margin="0,14,0,0"
-                                  Spacing="6">
-                        <TextBlock Text="{Binding Name}"
-                                   FontWeight="SemiBold"
-                                   FontSize="20"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding Detail}"
-                                   Classes="muted"
-                                   FontSize="14"
-                                   TextWrapping="Wrap"
-                                   MaxLines="3" />
-                      </StackPanel>
-                      <Button Grid.Row="2"
-                              Content="Use Template"
-                              Padding="14,5"
-                              HorizontalAlignment="Right"
-                              Click="OnUseTemplateClick" />
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
+            <!-- An ItemsControl, not a ListBox: template cards act through their
+                 Use Template button, so the cards must never show selection or
+                 focus chrome. -->
+            <ScrollViewer x:Name="landingTemplateList"
+                          Width="880"
+                          MaxHeight="520"
+                          Margin="0,16,0,0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto"
+                          IsVisible="False">
+              <ItemsControl x:Name="landingTemplateItems">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="surface"
+                            Width="450"
+                            Height="330"
+                            Padding="16"
+                            Margin="8">
+                      <Grid RowDefinitions="170,*,Auto">
+                        <Border Grid.Row="0"
+                                Background="{DynamicResource ZetlSurfaceAltBrush}"
+                                CornerRadius="4"
+                                Padding="14">
+                          <TextBlock Text="{Binding Kind}"
+                                     Classes="muted"
+                                     FontSize="14"
+                                     VerticalAlignment="Center"
+                                     HorizontalAlignment="Center" />
+                        </Border>
+                        <StackPanel Grid.Row="1"
+                                    Margin="0,14,0,0"
+                                    Spacing="6">
+                          <TextBlock Text="{Binding Name}"
+                                     FontWeight="SemiBold"
+                                     FontSize="20"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Detail}"
+                                     Classes="muted"
+                                     FontSize="14"
+                                     TextWrapping="Wrap"
+                                     MaxLines="3" />
+                        </StackPanel>
+                        <Button Grid.Row="2"
+                                Content="Use Template"
+                                Padding="14,5"
+                                HorizontalAlignment="Right"
+                                Click="OnUseTemplateClick" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
           </StackPanel>
 
           <Grid x:Name="projectView"

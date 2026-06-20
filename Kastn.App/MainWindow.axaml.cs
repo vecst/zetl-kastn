@@ -62,7 +62,7 @@ internal partial class MainWindow : Window
         this.connection = connection;
         InitializeComponent();
         landingProjectList.ItemsSource = projects;
-        landingTemplateList.ItemsSource = templates;
+        landingTemplateItems.ItemsSource = templates;
         bucketList.ItemsSource = buckets;
         slipList.ItemsSource = slips;
         sourceFilterBox.ItemsSource = sources;
