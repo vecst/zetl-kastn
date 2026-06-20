@@ -10,28 +10,41 @@ internal static class KastnDialogs
         Window owner,
         string title,
         string label,
-        string initial = "")
+        string initial = "",
+        Func<string, string?>? validate = null)
     {
         var input = new TextBox { Text = initial };
         var validation = new TextBlock
         {
-            Text = "Enter a value first.",
             Foreground = Avalonia.Media.Brushes.OrangeRed,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             IsVisible = false
         };
-        var dialog = Dialog(title, 390, 180);
+        var dialog = Dialog(title, 390, 190);
         var ok = new Button { Content = "OK", Width = 84, IsDefault = true };
         var cancel = new Button { Content = "Cancel", Width = 84, IsCancel = true };
         ok.Click += (_, _) =>
         {
-            if (string.IsNullOrWhiteSpace(input.Text))
+            var value = input.Text?.Trim() ?? "";
+            if (value.Length == 0)
             {
+                validation.Text = "Enter a value first.";
                 validation.IsVisible = true;
                 input.Focus();
                 return;
             }
 
-            dialog.Close(input.Text.Trim());
+            var error = validate?.Invoke(value);
+            if (error is not null)
+            {
+                validation.Text = error;
+                validation.IsVisible = true;
+                input.Focus();
+                input.SelectAll();
+                return;
+            }
+
+            dialog.Close(value);
         };
         cancel.Click += (_, _) => dialog.Close(null);
         dialog.Content = new StackPanel

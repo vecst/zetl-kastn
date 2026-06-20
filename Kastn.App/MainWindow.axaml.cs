@@ -76,9 +76,14 @@ internal partial class MainWindow : Window
         dates.Add(new DateFilterItem(KastnDateFilter.Last7Days, "Last 7 days"));
         dates.Add(new DateFilterItem(KastnDateFilter.Last30Days, "Last 30 days"));
         dateFilterBox.SelectedIndex = 0;
-        templates.Add(new TemplateListItem("Blank", "Empty project", "Start with a clean bucket structure."));
-        templates.Add(new TemplateListItem("Writing", "Draft stack", "Collect notes toward a draft or essay."));
-        templates.Add(new TemplateListItem("Research", "Research board", "Track sources, notes, and synthesis."));
+        foreach (var template in KastnTemplateCatalog.BuiltIns)
+        {
+            templates.Add(new TemplateListItem(
+                template.Category,
+                template.Name,
+                template.Description,
+                template));
+        }
 
         autosaveTimer = new DispatcherTimer
         {
@@ -260,6 +265,7 @@ internal partial class MainWindow : Window
         var showChoices = emptyState.IsVisible && landingModeToggle.IsVisible;
         landingProjectList.IsVisible = showChoices && !landingShowingTemplates && projects.Count > 0;
         landingTemplateList.IsVisible = showChoices && landingShowingTemplates;
+        landingTemplateList.IsEnabled = IsOnline;
         landingProjectsButton.IsEnabled = landingShowingTemplates;
         landingTemplatesButton.IsEnabled = !landingShowingTemplates;
         RefreshLandingGridLayout();
@@ -548,6 +554,56 @@ internal partial class MainWindow : Window
         {
             await DeleteProjectAsync(project);
         }
+    }
+
+    private async void OnUseTemplateClick(object? sender, RoutedEventArgs args)
+    {
+        args.Handled = true;
+        if ((sender as Control)?.DataContext is TemplateListItem template)
+        {
+            await CreateProjectFromTemplateAsync(template.Source);
+        }
+    }
+
+    private async Task CreateProjectFromTemplateAsync(KastnTemplate template)
+    {
+        if (!IsOnline)
+        {
+            statusText.Text = "Connect to Zetl before creating a project from a template.";
+            return;
+        }
+
+        var name = await KastnDialogs.PromptAsync(
+            this,
+            $"New {template.Name} Project",
+            "Project name",
+            template.Name,
+            candidate => projects.Any(project =>
+                string.Equals(project.Name, candidate, StringComparison.OrdinalIgnoreCase))
+                ? "A project with that name already exists."
+                : null);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.CreateProject,
+            template.ToCreateProjectCommand(name.Trim())));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            var created = response.Payload?.Deserialize<ZetlProjectSnapshot>(
+                ZetlProtocolJson.Options);
+            if (created is not null)
+            {
+                await connection.NavigateToProjectAsync(created.Id);
+                statusText.Text = $"Created '{created.Name}' from the {template.Name} template.";
+                return;
+            }
+        }
+
+        HandleSimpleResponse(response, $"Created a project from the {template.Name} template.");
     }
 
     private async Task OpenProjectCardAsync(ProjectListItem project)
@@ -2164,7 +2220,11 @@ internal partial class MainWindow : Window
         string PreviewText,
         string ActivityText);
 
-    private sealed record TemplateListItem(string Kind, string Name, string Detail);
+    private sealed record TemplateListItem(
+        string Kind,
+        string Name,
+        string Detail,
+        KastnTemplate Source);
     private sealed record SlipListItem(
         string Id,
         string Text,

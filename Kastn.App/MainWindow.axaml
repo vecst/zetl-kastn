@@ -152,8 +152,16 @@
                      Width="880"
                      MaxHeight="520"
                      Margin="0,16,0,0"
-                     IsVisible="False"
-                     IsHitTestVisible="False">
+                     IsVisible="False">
+              <ListBox.Resources>
+                <!-- Template cards act through their Use Template button, so the
+                     list itself should not show a selection or hover highlight. -->
+                <SolidColorBrush x:Key="ListBoxItemBackgroundPointerOver" Color="Transparent" />
+                <SolidColorBrush x:Key="ListBoxItemBackgroundPressed" Color="Transparent" />
+                <SolidColorBrush x:Key="ListBoxItemBackgroundSelected" Color="Transparent" />
+                <SolidColorBrush x:Key="ListBoxItemBackgroundSelectedPointerOver" Color="Transparent" />
+                <SolidColorBrush x:Key="ListBoxItemBackgroundSelectedPressed" Color="Transparent" />
+              </ListBox.Resources>
               <ListBox.Styles>
                 <Style Selector="ListBoxItem">
                   <Setter Property="Padding" Value="0" />
@@ -196,11 +204,11 @@
                                    TextWrapping="Wrap"
                                    MaxLines="3" />
                       </StackPanel>
-                      <TextBlock Grid.Row="2"
-                                 Text="Coming soon"
-                                 Classes="muted"
-                                 FontSize="13"
-                                 HorizontalAlignment="Right" />
+                      <Button Grid.Row="2"
+                              Content="Use Template"
+                              Padding="14,5"
+                              HorizontalAlignment="Right"
+                              Click="OnUseTemplateClick" />
                     </Grid>
                   </Border>
                 </DataTemplate>
