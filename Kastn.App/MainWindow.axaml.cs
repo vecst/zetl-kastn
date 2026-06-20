@@ -47,6 +47,7 @@ internal partial class MainWindow : Window
     private bool viewerMode = true;
     private bool editableViewMode;
     private bool landingShowingTemplates;
+    private bool landingShowingConsumable;
     private bool suppressLandingProjectSelection;
 
     public MainWindow()
@@ -76,14 +77,7 @@ internal partial class MainWindow : Window
         dates.Add(new DateFilterItem(KastnDateFilter.Last7Days, "Last 7 days"));
         dates.Add(new DateFilterItem(KastnDateFilter.Last30Days, "Last 30 days"));
         dateFilterBox.SelectedIndex = 0;
-        foreach (var template in KastnTemplateCatalog.BuiltIns)
-        {
-            templates.Add(new TemplateListItem(
-                template.Category,
-                template.Name,
-                template.Description,
-                template));
-        }
+        RebuildTemplateCards();
 
         autosaveTimer = new DispatcherTimer
         {
@@ -142,6 +136,8 @@ internal partial class MainWindow : Window
         keepMineButton.Click += async (_, _) => await KeepMineAsync();
         landingProjectsButton.Click += (_, _) => SetLandingMode(showTemplates: false);
         landingTemplatesButton.Click += (_, _) => SetLandingMode(showTemplates: true);
+        landingCaptureButton.Click += (_, _) => SetTemplateType(consumable: false);
+        landingConsumableButton.Click += (_, _) => SetTemplateType(consumable: true);
         SizeChanged += (_, _) => RefreshLandingGridLayout();
         KeyDown += OnKeyDown;
         Closed += (_, _) =>
@@ -237,7 +233,7 @@ internal partial class MainWindow : Window
                 projectView.IsVisible = false;
                 emptyState.IsVisible = true;
                 var showLandingChoices = snapshot.ConnectionState == KastnConnectionState.Online
-                    && (snapshot.Projects.Count > 0 || templates.Count > 0);
+                    && (snapshot.Projects.Count > 0 || KastnTemplateCatalog.BuiltIns.Count > 0);
                 landingModeToggle.IsVisible = showLandingChoices;
                 emptyStateText.Text = snapshot.ConnectionState == KastnConnectionState.Online
                     ? "Select a project or template to begin."
@@ -260,14 +256,43 @@ internal partial class MainWindow : Window
         RefreshLandingMode();
     }
 
+    private void SetTemplateType(bool consumable)
+    {
+        landingShowingConsumable = consumable;
+        RebuildTemplateCards();
+        RefreshLandingMode();
+    }
+
+    private void RebuildTemplateCards()
+    {
+        var type = landingShowingConsumable
+            ? KastnTemplateType.Consumable
+            : KastnTemplateType.Capture;
+        templates.Clear();
+        foreach (var template in KastnTemplateCatalog.BuiltIns.Where(item => item.Type == type))
+        {
+            templates.Add(new TemplateListItem(
+                template.Category,
+                template.Name,
+                template.Description,
+                template));
+        }
+
+        RefreshLandingGridLayout();
+    }
+
     private void RefreshLandingMode()
     {
         var showChoices = emptyState.IsVisible && landingModeToggle.IsVisible;
         landingProjectList.IsVisible = showChoices && !landingShowingTemplates && projects.Count > 0;
         landingTemplateList.IsVisible = showChoices && landingShowingTemplates;
         landingTemplateList.IsEnabled = IsOnline;
+        landingTemplateTypeToggle.IsVisible = showChoices && landingShowingTemplates;
+        landingTemplateTypeToggle.IsEnabled = IsOnline;
         landingProjectsButton.IsEnabled = landingShowingTemplates;
         landingTemplatesButton.IsEnabled = !landingShowingTemplates;
+        landingCaptureButton.IsEnabled = landingShowingConsumable;
+        landingConsumableButton.IsEnabled = !landingShowingConsumable;
         RefreshLandingGridLayout();
     }
 
@@ -597,13 +622,61 @@ internal partial class MainWindow : Window
                 ZetlProtocolJson.Options);
             if (created is not null)
             {
+                var allSeeded = await SeedTemplateSlipsAsync(template, created);
                 await connection.NavigateToProjectAsync(created.Id);
-                statusText.Text = $"Created '{created.Name}' from the {template.Name} template.";
+                statusText.Text = allSeeded
+                    ? $"Created '{created.Name}' from the {template.Name} template."
+                    : $"Created '{created.Name}', but some {template.Name} fields could not be added.";
                 return;
             }
         }
 
         HandleSimpleResponse(response, $"Created a project from the {template.Name} template.");
+    }
+
+    // Seed a consumable template's ordered slips into their buckets through Zetl,
+    // in listed order so a Replay bucket pastes them back in the same sequence.
+    // Capture templates have no seeds and skip this entirely.
+    private async Task<bool> SeedTemplateSlipsAsync(
+        KastnTemplate template,
+        ZetlProjectSnapshot project)
+    {
+        var allSeeded = true;
+        foreach (var bucket in template.Buckets)
+        {
+            if (bucket.Seeds.Count == 0)
+            {
+                continue;
+            }
+
+            var target = project.Buckets.FirstOrDefault(
+                item => string.Equals(item.Name, bucket.Name, StringComparison.Ordinal));
+            if (target is null)
+            {
+                allSeeded = false;
+                continue;
+            }
+
+            foreach (var text in bucket.Seeds)
+            {
+                var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                    Guid.NewGuid().ToString("N"),
+                    ZetlCommandKind.AddSlip,
+                    new AddSlipCommand
+                    {
+                        BucketId = target.Id,
+                        Text = text,
+                        Source = "template"
+                    },
+                    project.Id));
+                if (response.Status != ZetlResponseStatus.Success)
+                {
+                    allSeeded = false;
+                }
+            }
+        }
+
+        return allSeeded;
     }
 
     private async Task OpenProjectCardAsync(ProjectListItem project)

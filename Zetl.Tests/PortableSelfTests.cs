@@ -135,6 +135,7 @@ internal static class PortableSelfTests
                 ("Project service reorders slips within a bucket", ZetlProjectServiceTests.ReorderSlipMovesWithinBucket),
                 ("Kastn built-in templates are well-formed", KastnTemplateCatalogTests.BuiltInTemplatesAreValid),
                 ("Kastn template creates a project through Zetl", KastnTemplateCatalogTests.TemplateCreatesProjectThroughService),
+                ("Kastn consumable template seeds an ordered Replay queue", KastnTemplateCatalogTests.ConsumableTemplateSeedsOrderedReplayQueue),
                 ("Kastn blank template creates a minimal project", KastnTemplateCatalogTests.BlankTemplateCreatesMinimalProject),
                 ("Project service project and bucket commands honor revisions", ZetlProjectServiceTests.ProjectAndBucketCommandsHonorRevisions),
                 ("Project service persists revisions", ZetlProjectServiceTests.RevisionsPersistAcrossReload),

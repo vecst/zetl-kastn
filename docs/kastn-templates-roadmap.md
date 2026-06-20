@@ -8,13 +8,28 @@ useful bucket structure and bucket behaviors.
 Views are related but separate. A later creation type may bundle a template and
 one or more views, but templates should not wait for artifact rendering.
 
+## Template Types
+
+Templates split by **how they are used**:
+
+- **Capture templates** create an *empty* project to collect into. They define
+  buckets, bucket settings, compile defaults, starting text, and TSV defaults,
+  and never copy sample slips.
+- **Consumable templates** seed an *ordered Replay queue* you paste through —
+  e.g. your details into a form, field by field. Because Replay consumes and
+  empties its queue, and only replays current-session slips, the **template** is
+  the durable source: each use **instantiates a fresh project** from it, pastes
+  through, and is discarded. The real payoff lands with user-authored consumable
+  templates (your actual info baked in); built-ins ship placeholder fields.
+
 ## Template Principles
 
-- **Templates create empty projects.** A template may define buckets, nesting,
-  bucket settings, compile defaults, starting text, and TSV defaults. It should
-  not copy sample slips into the user's project by default.
+- **Capture templates create empty projects; consumable templates seed their
+  payload.** A template may define buckets, nesting, bucket settings, compile
+  defaults, starting text, and TSV defaults. Only consumable templates copy
+  slips, and only their own declared seed fields.
 - **Zetl remains the writer.** Kastn can present templates, but project creation
-  still goes through Zetl's command service.
+  (and any seeding) still goes through Zetl's command service.
 - **Built-ins come first.** Ship a small protected set before supporting
   user-authored/imported templates.
 - **Readable JSON later.** User templates should eventually live as versioned

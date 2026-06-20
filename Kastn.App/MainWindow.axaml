@@ -70,6 +70,19 @@
                       Content="Templates"
                       Padding="16,5" />
             </StackPanel>
+            <StackPanel x:Name="landingTemplateTypeToggle"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Spacing="8"
+                        Margin="0,4,0,0"
+                        IsVisible="False">
+              <Button x:Name="landingCaptureButton"
+                      Content="Capture"
+                      Padding="16,5" />
+              <Button x:Name="landingConsumableButton"
+                      Content="Consumable"
+                      Padding="16,5" />
+            </StackPanel>
             <ListBox x:Name="landingProjectList"
                      Width="880"
                      MaxHeight="520"

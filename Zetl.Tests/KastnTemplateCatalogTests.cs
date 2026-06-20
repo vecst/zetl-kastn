@@ -59,6 +59,63 @@ internal static class KastnTemplateCatalogTests
             "Sources should carry the template's TSV header starting text.");
     }
 
+    public static void ConsumableTemplateSeedsOrderedReplayQueue()
+    {
+        using var temp = new TempDir();
+        var store = new ZetlStateStore(temp.StatePath, "template-tests");
+        var service = new ZetlProjectService(store);
+        var personal = KastnTemplateCatalog.BuiltIns.Single(
+            template => template.Id == "personal-info");
+        var seeds = personal.Buckets.Single(bucket => bucket.Name == "Fields").Seeds;
+
+        var snapshot = service.Execute(ZetlCommandEnvelope.Create(
+            "create-consumable",
+            ZetlCommandKind.CreateProject,
+            personal.ToCreateProjectCommand("Me")))
+            .Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("CreateProject returned no snapshot.");
+        var fields = snapshot.Buckets.Single(bucket => bucket.Name == "Fields");
+
+        // Seed in listed order, the same way Kastn's create path does.
+        foreach (var text in seeds)
+        {
+            service.Execute(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.AddSlip,
+                new AddSlipCommand { BucketId = fields.Id, Text = text, Source = "template" },
+                snapshot.Id));
+        }
+
+        var refreshed = service.Execute(new ZetlCommandEnvelope
+        {
+            CommandId = "get-consumable",
+            Kind = ZetlCommandKind.GetProject,
+            ProjectId = snapshot.Id
+        }).Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("GetProject returned no snapshot.");
+        var fieldSlips = refreshed.Slips
+            .Where(slip => slip.BucketId == fields.Id)
+            .ToList();
+
+        AssertEqual(
+            KastnTemplateType.Consumable,
+            personal.Type,
+            "Personal info should be a consumable template.");
+        AssertEqual(
+            "Replay",
+            fields.Settings.Kind,
+            "The seeded Fields bucket should be a Replay bucket.");
+        AssertEqual(seeds.Count, fieldSlips.Count, "Every template field should be seeded once.");
+        AssertEqual(
+            "Full name",
+            fieldSlips[0].Text,
+            "Seeds should keep order: the first field replays first.");
+        AssertEqual(
+            "ZIP",
+            fieldSlips[^1].Text,
+            "Seeds should keep order: the last field replays last.");
+    }
+
     public static void BlankTemplateCreatesMinimalProject()
     {
         using var temp = new TempDir();
