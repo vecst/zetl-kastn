@@ -27,6 +27,12 @@
       "dispatch": "TapOnly"
     },
     {
+      "name": "Ctrl+T",
+      "key": "T",
+      "modifiers": ["Ctrl"],
+      "dispatch": "TapOnly"
+    },
+    {
       "name": "Ctrl+V",
       "key": "V",
       "modifiers": ["Ctrl"],
@@ -67,6 +73,13 @@
     {
       "name": "Ctrl+Shift+R",
       "key": "R",
+      "modifiers": ["Ctrl", "Shift"],
+      "dispatch": "TapOnly",
+      "replayModifiers": ["Ctrl", "Shift"]
+    },
+    {
+      "name": "Ctrl+Shift+T",
+      "key": "T",
       "modifiers": ["Ctrl", "Shift"],
       "dispatch": "TapOnly",
       "replayModifiers": ["Ctrl", "Shift"]

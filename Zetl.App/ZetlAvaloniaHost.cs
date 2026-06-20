@@ -1,10 +1,12 @@
 using System.Reflection;
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Chordl;
+using ZETL.Contracts;
 
 namespace ZETL;
 
@@ -21,6 +23,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly ZetlIpcServer ipcServer;
     private readonly ZetlAppSettingsStore settingsStore;
     private readonly ZetlThemeStore themeStore;
+    private readonly ZetlTemplateStore templateStore;
     private readonly ZetlActivityLogBuffer activityLog = new();
     private readonly AvaloniaNotificationService notifications;
     private readonly ZetlUndoStack undoStack = new(MaxUndoActions);
@@ -75,6 +78,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         themeStore = new ZetlThemeStore(dataDirectory is null
             ? null
             : Path.Combine(dataDirectory, "themes"));
+        templateStore = new ZetlTemplateStore(
+            dataDirectory is null ? null : Path.Combine(dataDirectory, "templates"),
+            Log);
         diagnosticLogPath = Path.Combine(
             dataDirectory
                 ?? Path.Combine(
@@ -136,6 +142,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         // project, bucket kind, and pop toggles; UpdateTrayIcon no-ops when the
         // effective state is unchanged, so this stays cheap despite firing often.
         store.Changed += (_, _) => Dispatcher.UIThread.Post(UpdateTrayIcon);
+        // Announce projects created through the project service — notably a template
+        // used in Kastn, which creates and activates the project in Zetl over IPC —
+        // so the user sees Zetl is now armed with it (ready to capture or replay).
+        projectService.ProjectChanged += OnProjectServiceProjectChanged;
         logFlushTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(LogFlushIntervalMs)
@@ -449,7 +459,47 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             case ZetlCompileRequest compile:
                 ShowCompile(compile, target);
                 break;
+            case ZetlTemplatePickerRequest picker:
+                ShowTemplatePicker(picker, target);
+                break;
         }
+    }
+
+    // Zetl's quick template access: a held Ctrl+T (or a held Ctrl+V with no active
+    // project and nothing to compile) lets the user start a fresh project from a
+    // consumable template and immediately replay it. When no consumable templates
+    // exist, fall back to the original behavior/message.
+    private void ShowTemplatePicker(ZetlTemplatePickerRequest request, object? target)
+    {
+        var templates = templateStore.LoadAll();
+        if (templates.Count == 0)
+        {
+            // No templates at all (built-ins always ship some, so this is rare):
+            // keep the original message for the compile fallback path.
+            notifications.Show(request.FromCompileFallback
+                ? "No Zetl notes to compile yet."
+                : "No templates yet. Create one in Kastn.");
+            return;
+        }
+
+        // A held Ctrl+V fallback defaults to consumable (start replaying); a held
+        // Ctrl+T defaults to capture (start a project). Either way the switcher
+        // exposes both kinds.
+        var window = new TemplatePickerWindow(templates, initialConsumable: request.FromCompileFallback)
+        {
+            ShowInTaskbar = false,
+            DismissOnDeactivate = target is not null
+        };
+        ConfigureAndShowPopup(window, target, "Template picker", () =>
+        {
+            if (window.SelectedTemplate is { } template)
+            {
+                CreateProjectFromTemplate(
+                    template,
+                    $"{template.Name} {DateTime.Now:yyyy-MM-dd HH:mm}",
+                    request.Shifted);
+            }
+        });
     }
 
     private void ShowBoard(bool shifted, object? target = null)
@@ -612,18 +662,107 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     private async Task ShowProjectSetupAsync()
     {
-        var window = new ProjectSetupWindow(store.Defaults.ProjectBuckets);
+        var window = new ProjectSetupWindow(store.Defaults.ProjectBuckets, templateStore.LoadAll());
         await ShowUntilClosedAsync(window);
         if (!window.Saved)
         {
             return;
         }
 
-        store.CreateProject(
-            window.ProjectName,
-            window.BucketNames,
-            window.ActiveBucketName);
+        if (window.SelectedTemplate is { } template)
+        {
+            CreateProjectFromTemplate(template, window.ProjectName);
+        }
+        else
+        {
+            store.CreateProject(
+                window.ProjectName,
+                window.BucketNames,
+                window.ActiveBucketName);
+        }
+
         ShowBoard(shifted: false);
+    }
+
+    // Create a project from a template through the same domain operations Kastn
+    // uses — CreateProject (which applies bucket settings) plus AddSlip for any
+    // consumable seeds — so both apps produce equivalent projects from one template.
+    private void OnProjectServiceProjectChanged(object? sender, ZetlProjectChangedEvent change)
+    {
+        if (change.ChangeKind != ZetlChangeKind.Created || change.EntityKind != ZetlEntityKind.Project)
+        {
+            return;
+        }
+
+        var name = store.State.Projects
+            .FirstOrDefault(project => project.Id == change.ProjectId)?.Name;
+        if (string.IsNullOrEmpty(name)
+            || string.Equals(name, ZetlStateStore.LogProjectName, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => notifications.Show($"Activated '{name}' in Zetl."));
+    }
+
+    private void CreateProjectFromTemplate(
+        ZetlTemplateDocument template,
+        string name,
+        bool shifted = false)
+    {
+        // The service activates the new project in the normal lane. For the Shift
+        // lane, remember the normal lane's prior active project so we can restore it
+        // after moving activation to the Shift lane.
+        var priorNormalActiveId = shifted ? store.GetActiveProject(shifted: false)?.Id : null;
+
+        var response = projectService.Execute(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.CreateProject,
+            template.ToCreateProjectCommand(name)));
+        if (response.Status != ZetlResponseStatus.Success)
+        {
+            notifications.Show($"Could not create '{name}' from the {template.Name} template.");
+            return;
+        }
+
+        var snapshot = response.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options);
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        foreach (var bucket in template.Buckets.Where(bucket => bucket.Seeds.Count > 0))
+        {
+            var target = snapshot.Buckets.FirstOrDefault(
+                item => string.Equals(item.Name, bucket.Name, StringComparison.Ordinal));
+            if (target is null)
+            {
+                continue;
+            }
+
+            foreach (var text in bucket.Seeds)
+            {
+                projectService.Execute(ZetlCommandEnvelope.Create(
+                    Guid.NewGuid().ToString("N"),
+                    ZetlCommandKind.AddSlip,
+                    new AddSlipCommand { BucketId = target.Id, Text = text, Source = "template" },
+                    snapshot.Id));
+            }
+        }
+
+        if (shifted)
+        {
+            // Move activation to the Shift lane and undo the normal-lane side effect.
+            store.SetActiveProject(snapshot.Id, shifted: true);
+            if (priorNormalActiveId is not null)
+            {
+                store.SetActiveProject(priorNormalActiveId, shifted: false);
+            }
+            else
+            {
+                store.ClearActiveProject(shifted: false);
+            }
+        }
     }
 
     private async Task ShowSettingsAsync()

@@ -1,211 +1,42 @@
-using ZETL.Contracts;
+using ZETL;
 
 namespace KASTN;
 
 /// <summary>
-/// How a template is meant to be used. Capture templates create an empty project
-/// to collect into. Consumable templates seed an ordered Replay queue you paste
-/// through (e.g. your details into a form), then discard — the template, not the
-/// project, is the durable source, so each use instantiates a fresh project.
+/// Kastn's view onto the shared, versioned template catalog. The template format,
+/// built-in presets, validation, and the user-template store all live in Zetl.Core
+/// (<see cref="ZetlTemplateDefaults"/>, <see cref="ZetlTemplateValidator"/>,
+/// <see cref="ZetlTemplateStore"/>) so Zetl can reuse the exact same catalog for
+/// its own New Project flow. Kastn only presents these documents and asks Zetl to
+/// create projects from them.
 /// </summary>
-internal enum KastnTemplateType
+internal sealed class KastnTemplateCatalog
 {
-    Capture,
-    Consumable
-}
+    private readonly ZetlTemplateStore store;
 
-/// <summary>
-/// A built-in project template: a named, input-side scaffold. Capture templates
-/// only shape the starting buckets; consumable templates also seed ordered slips.
-/// Project creation still goes through Zetl's <see cref="CreateProjectCommand"/>
-/// (and <c>AddSlip</c> for seeds), so Zetl remains the sole writer.
-/// </summary>
-internal sealed record KastnTemplate(
-    string Id,
-    string Name,
-    string Category,
-    string Description,
-    KastnTemplateType Type,
-    IReadOnlyList<KastnTemplateBucket> Buckets)
-{
-    public CreateProjectCommand ToCreateProjectCommand(string projectName)
-    {
-        return new CreateProjectCommand
-        {
-            Name = projectName,
-            Buckets = Buckets
-                .Select(bucket => new CreateBucketDefinition
-                {
-                    Name = bucket.Name,
-                    Settings = bucket.Settings
-                })
-                .ToList()
-        };
-    }
-}
-
-/// <summary>
-/// One bucket in a template. The first bucket of a template becomes the created
-/// project's active capture bucket. <see cref="Seeds"/> are ordered slip texts a
-/// consumable template pre-loads into this bucket; capture buckets leave it empty.
-/// Nesting is not represented yet: templates are flat until the create contract
-/// carries parent references by name.
-/// </summary>
-internal sealed record KastnTemplateBucket(
-    string Name,
-    ZetlBucketSettings Settings,
-    IReadOnlyList<string> Seeds)
-{
-    public KastnTemplateBucket(string name)
-        : this(name, new ZetlBucketSettings(), [])
+    public KastnTemplateCatalog(Action<string>? log = null)
+        : this(new ZetlTemplateStore(log: log))
     {
     }
 
-    public KastnTemplateBucket(string name, ZetlBucketSettings settings)
-        : this(name, settings, [])
+    public KastnTemplateCatalog(ZetlTemplateStore store)
     {
+        this.store = store;
     }
-}
 
-internal static class KastnTemplateCatalog
-{
-    // Reserved bucket names Zetl manages itself; templates must not define them.
-    // Scratch is always added to a new project, and Deleted is the protected
-    // soft-delete bucket.
-    private static readonly string[] ReservedBucketNames = ["Scratch", "Deleted"];
+    public string TemplateDirectory => store.TemplateDirectory;
 
-    public static IReadOnlyList<KastnTemplate> BuiltIns { get; } =
-    [
-        new KastnTemplate(
-            "blank",
-            "Blank",
-            "Start",
-            "Start with a clean bucket structure.",
-            KastnTemplateType.Capture,
-            [new KastnTemplateBucket("Inbox")]),
-        new KastnTemplate(
-            "draft-stack",
-            "Draft stack",
-            "Writing",
-            "Collect notes toward a draft or essay.",
-            KastnTemplateType.Capture,
-            [
-                new KastnTemplateBucket("Ideas"),
-                new KastnTemplateBucket("Draft"),
-                new KastnTemplateBucket("References")
-            ]),
-        new KastnTemplate(
-            "research-board",
-            "Research board",
-            "Research",
-            "Track sources as a table, then gather notes and synthesis.",
-            KastnTemplateType.Capture,
-            [
-                new KastnTemplateBucket(
-                    "Sources",
-                    new ZetlBucketSettings
-                    {
-                        DefaultCompileMode = "TSV",
-                        DefaultStartingText = "Title\nAuthor\nURL\nYear",
-                        DefaultTsvRowLength = 4
-                    }),
-                new KastnTemplateBucket("Notes"),
-                new KastnTemplateBucket("Synthesis")
-            ]),
-        new KastnTemplate(
-            "personal-info",
-            "Personal info",
-            "Forms",
-            "Replay your details through a form, field by field. Edit the "
-                + "placeholders to your own info, then tab-paste them into any form.",
-            KastnTemplateType.Consumable,
-            [
-                new KastnTemplateBucket(
-                    "Fields",
-                    new ZetlBucketSettings { Kind = "Replay", DefaultKind = "Replay" },
-                    [
-                        "Full name",
-                        "Email",
-                        "Phone",
-                        "Street address",
-                        "City",
-                        "State",
-                        "ZIP"
-                    ])
-            ])
-    ];
+    // The backing store, for authoring actions (save, duplicate, delete).
+    public ZetlTemplateStore Store => store;
 
     /// <summary>
-    /// Validates the built-in catalog: stable unique ids, named templates with at
-    /// least one bucket, no empty or reserved bucket names, and seeds that match
-    /// the template type (capture templates stay empty; consumable templates seed
-    /// at least one non-empty slip). Returns the first problem found, or null when
-    /// the catalog is well-formed. Used by tests so built-ins can be checked
-    /// without launching Kastn.
+    /// Built-ins plus valid user templates, re-read from disk on each call so a
+    /// user adding or removing a template file is reflected on the next refresh.
     /// </summary>
-    public static string? Validate(IReadOnlyList<KastnTemplate> templates)
-    {
-        var seenIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var template in templates)
-        {
-            if (string.IsNullOrWhiteSpace(template.Id))
-            {
-                return "A template is missing an id.";
-            }
+    public IReadOnlyList<ZetlTemplateDocument> LoadAll() => store.LoadAll();
 
-            if (!seenIds.Add(template.Id))
-            {
-                return $"Duplicate template id '{template.Id}'.";
-            }
-
-            if (string.IsNullOrWhiteSpace(template.Name))
-            {
-                return $"Template '{template.Id}' is missing a name.";
-            }
-
-            if (template.Buckets.Count == 0)
-            {
-                return $"Template '{template.Id}' has no buckets.";
-            }
-
-            var seenBuckets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var seedCount = 0;
-            foreach (var bucket in template.Buckets)
-            {
-                if (string.IsNullOrWhiteSpace(bucket.Name))
-                {
-                    return $"Template '{template.Id}' has a bucket without a name.";
-                }
-
-                if (ReservedBucketNames.Contains(bucket.Name, StringComparer.OrdinalIgnoreCase))
-                {
-                    return $"Template '{template.Id}' uses reserved bucket name '{bucket.Name}'.";
-                }
-
-                if (!seenBuckets.Add(bucket.Name))
-                {
-                    return $"Template '{template.Id}' repeats bucket name '{bucket.Name}'.";
-                }
-
-                if (bucket.Seeds.Any(string.IsNullOrWhiteSpace))
-                {
-                    return $"Template '{template.Id}' has an empty seed in bucket '{bucket.Name}'.";
-                }
-
-                seedCount += bucket.Seeds.Count;
-            }
-
-            if (template.Type == KastnTemplateType.Capture && seedCount > 0)
-            {
-                return $"Capture template '{template.Id}' must not seed slips.";
-            }
-
-            if (template.Type == KastnTemplateType.Consumable && seedCount == 0)
-            {
-                return $"Consumable template '{template.Id}' must seed at least one slip.";
-            }
-        }
-
-        return null;
-    }
+    /// <summary>
+    /// The protected built-ins, always available even with no user templates.
+    /// </summary>
+    public static IReadOnlyList<ZetlTemplateDocument> BuiltIns => ZetlTemplateDefaults.CreateAll();
 }

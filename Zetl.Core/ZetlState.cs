@@ -18,6 +18,9 @@ internal sealed class ZetlProject
     public long ChangeSequence { get; set; }
     public string? ActiveBucketId { get; set; }
     public string? QuickNoteBucketId { get; set; }
+    // The view document this project renders with by default (set by a creation
+    // type, or chosen in Kastn). Null falls back to the first view.
+    public string? DefaultViewId { get; set; }
     public List<ZetlBucket> Buckets { get; set; } = new();
 }
 
@@ -238,6 +241,14 @@ internal sealed class ZetlStateStore
     public void UpdateProjectName(ZetlProject project, string name, bool shifted = false)
     {
         project.Name = NormalizeName(name, DefaultProjectName(shifted));
+        project.MetadataRevision++;
+        PersistProject(project);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void SetProjectDefaultView(ZetlProject project, string? viewId)
+    {
+        project.DefaultViewId = string.IsNullOrWhiteSpace(viewId) ? null : viewId.Trim();
         project.MetadataRevision++;
         PersistProject(project);
     }

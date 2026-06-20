@@ -35,7 +35,7 @@
         <Border Classes="surface"
                 BorderThickness="1">
           <Grid ColumnDefinitions="100,*,*,80"
-                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
             <Border Grid.Row="0" Grid.ColumnSpan="4"
                     Background="{DynamicResource ZetlSurfaceAltBrush}" />
 
@@ -55,7 +55,7 @@
 
             <TextBlock Grid.Row="3" Grid.Column="0" Text="Ctrl+V" FontWeight="Bold" Margin="8" />
             <TextBlock Grid.Row="3" Grid.Column="1" Text="Pop the last item in Pop Mode, or paste the next item in Replay Mode." TextWrapping="Wrap" Margin="8" />
-            <TextBlock Grid.Row="3" Grid.Column="2" Text="Compile notes." TextWrapping="Wrap" Margin="8" />
+            <TextBlock Grid.Row="3" Grid.Column="2" Text="Compile notes — or, with no active project and nothing to compile, pick a template (like Ctrl+T)." TextWrapping="Wrap" Margin="8" />
 
             <TextBlock Grid.Row="4" Grid.Column="0" Text="Ctrl+P" FontWeight="Bold" Margin="8" />
             <TextBlock Grid.Row="4" Grid.Column="1" Text="Normal Ctrl+P." TextWrapping="Wrap" Margin="8" />
@@ -74,6 +74,11 @@
             <TextBlock Grid.Row="7" Grid.Column="1" Text="Normal undo." TextWrapping="Wrap" Margin="8" />
             <TextBlock Grid.Row="7" Grid.Column="2" Text="Undo the latest Zetl action for this lane." TextWrapping="Wrap" Margin="8" />
             <TextBlock Grid.Row="7" Grid.Column="3" Text="Yes" HorizontalAlignment="Center" Margin="8" />
+
+            <TextBlock Grid.Row="8" Grid.Column="0" Text="Ctrl+T" FontWeight="Bold" Margin="8" />
+            <TextBlock Grid.Row="8" Grid.Column="1" Text="Normal Ctrl+T." TextWrapping="Wrap" Margin="8" />
+            <TextBlock Grid.Row="8" Grid.Column="2" Text="Pick a template (Capture or Consumable) to start a fresh project. Arrow keys to choose, Ctrl+Enter to start." TextWrapping="Wrap" Margin="8" />
+            <TextBlock Grid.Row="8" Grid.Column="3" Text="Yes" HorizontalAlignment="Center" Margin="8" />
           </Grid>
         </Border>
 
@@ -97,6 +102,16 @@
           Replay Mode pastes a bucket's notes in order. Each Ctrl+V uses the next
           item, archives it for review, and restores your own clipboard. When the
           bucket is empty, normal paste resumes.
+        </TextBlock>
+
+        <TextBlock Text="Templates" Classes="heading" />
+        <TextBlock TextWrapping="Wrap">
+          Hold Ctrl+T to start a project from any template — switch between Capture
+          and Consumable in the picker, choose with the arrow keys, and press
+          Ctrl+Enter to start (Escape cancels). A Consumable template begins
+          replaying right away. New Project also offers a template picker, and you
+          build and edit templates in Kastn, including from an existing project's
+          structure.
         </TextBlock>
 
         <TextBlock Text="Two independent lanes" Classes="heading" />

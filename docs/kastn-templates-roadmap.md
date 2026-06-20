@@ -78,94 +78,169 @@ Done when:
 - Creation goes through Zetl IPC and never writes JSON directly.
 - Failed creation leaves no partial project visible in Kastn.
 
-## K8.3 Versioned Template Documents
+## K8.3 Versioned Template Documents — Done
 
 Goal: introduce the shareable JSON shape for user templates.
 
-- Define a versioned template document format.
-- Include forward-compatible unknown-field behavior.
-- Validate:
-  - required name/id fields
-  - duplicate bucket names where they would be ambiguous
-  - missing parent bucket references
-  - invalid bucket settings
-  - reserved/protected bucket names such as `Deleted`
-- Decide whether template documents may include:
-  - default project state
-  - default active bucket
-  - default quick-note bucket
-  - paired view ids
-- Add tests for valid, invalid, and future-version documents.
+- [x] Define a versioned template document format. `ZetlTemplateDocument` /
+  `ZetlTemplateBucketDocument` live in `Zetl.Core` (namespace `ZETL`), modeled on
+  the theme system, so Zetl can reuse the same catalog and validation for its own
+  New Project flow (K8.6). The built-in catalog is now authored as these documents
+  in `ZetlTemplateDefaults`; `KastnTemplateCatalog` is a thin facade over it.
+- [x] Include forward-compatible unknown-field behavior via `[JsonExtensionData]`
+  on the document and each bucket, plus an integer `Version`.
+- [x] Validate (in `ZetlTemplateValidator`, returning every error, not just the
+  first):
+  - [x] required name/id fields
+  - [x] duplicate bucket names
+  - [x] missing (and self-referential) parent bucket references
+  - [x] invalid bucket settings (kind, default kind, compile mode, TSV row length)
+  - [x] reserved/protected bucket names (`Scratch`, `Deleted`)
+  - [x] template type and capture/consumable seed rules
+- [x] Add tests for valid, invalid, and future-version documents
+  (`ZetlTemplateDocumentTests`), plus the existing built-in catalog tests.
+
+Decisions on optional content:
+
+- **Type** is stored as a readable word (`Capture` / `Consumable`), matching the
+  string convention used for bucket kind and compile mode.
+- **Nesting** is expressed as an optional parent bucket *name* (validated now),
+  but creation is still flat: wiring nested creation through Zetl
+  (resolving parent names to ids) is deferred, so built-ins stay flat.
+- **Deferred fields** — default project state, default active bucket, default
+  quick-note bucket, and paired view ids are intentionally *not* in v1. The first
+  bucket already becomes the active capture bucket by convention; paired views
+  belong to creation types (K8.7). `[JsonExtensionData]` plus the version field
+  let these arrive in a later version without breaking v1 documents.
 
 Done when:
 
-- Built-ins can be represented in the same shape as future user templates.
-- A copied template document can be inspected and understood by a person.
-- Invalid templates fail with actionable errors before project creation.
+- [x] Built-ins can be represented in the same shape as future user templates.
+- [x] A copied template document can be inspected and understood by a person
+  (readable JSON, covered by a round-trip test).
+- [x] Invalid templates fail with actionable errors before project creation.
 
-## K8.4 Template Store
+Not yet (next slices): loading user template JSON from disk is K8.4; the
+authoring UI is K8.5.
+
+## K8.4 Template Store — Done
 
 Goal: load built-in and user templates into one catalog.
 
-- Add a templates directory under the shared Zetl app data folder.
-- Load user templates from JSON.
-- Keep built-ins protected and always available.
-- Handle corrupt template files without blocking Kastn startup.
-- Add import/export/duplicate mechanics later, after load and validation work.
+- [x] Add a templates directory under the shared Zetl app data folder
+  (`%AppData%\Zetl\templates`, via `ZetlTemplateStore`, default path alongside
+  `themes`).
+- [x] Load user templates from JSON (`ZetlTemplateStore.LoadAll` returns built-ins
+  plus every valid user document).
+- [x] Keep built-ins protected and always available; a user file whose id
+  collides with a built-in (or duplicates another user id) is skipped, not merged.
+- [x] Handle corrupt template files without blocking startup: a corrupt file is
+  quarantined to a `.corrupt-*` copy and skipped; an invalid (but parseable) file
+  is skipped with a diagnostic. The built-ins always load regardless.
+- [ ] Import/export/duplicate mechanics — deferred to authoring (K8.5), as planned.
 
 Done when:
 
-- The Templates tab shows built-ins plus valid user templates.
-- Invalid user templates are ignored with a visible diagnostic path.
-- Removing a user template file removes it from the catalog after refresh.
+- [x] The Templates tab shows built-ins plus valid user templates. Kastn loads via
+  `KastnTemplateCatalog.LoadAll()`.
+- [x] Invalid user templates are ignored with a visible diagnostic path
+  (quarantine on disk + a line on Kastn's `Console.Error` channel).
+- [x] Removing a user template file removes it from the catalog after refresh:
+  Kastn re-reads the store each time the Templates landing is opened or toggled.
 
-## K8.5 Template Authoring In Kastn
+## K8.5 Template Authoring In Kastn — Done
 
 Goal: let users create and edit templates deliberately.
 
-- Add a template editor in Kastn.
-- Start with bucket structure and bucket settings.
-- Allow previewing the bucket tree before saving.
-- Save user templates as JSON documents.
-- Add duplicate-from-built-in so users can customize protected presets safely.
+- [x] Add a template editor in Kastn as an **in-window mode that mirrors the
+  project workbench** (not a separate dialog): template metadata (name, category,
+  description, type) across the top, a bucket list on the left, and the selected
+  bucket's settings on the right — the same shape as picking a slip in a project.
+- [x] Start with bucket structure and bucket settings — per bucket: name, kind,
+  compile mode, TSV row length, starting text, and (for consumable templates)
+  ordered seeds; with add / move up-down / remove.
+- [x] See the structure while editing: the left bucket list updates live as
+  buckets are added, renamed, and reordered.
+- [x] Save user templates as JSON documents through `ZetlTemplateStore.Save`
+  (validated first; built-in ids refused). New templates get an id from their name.
+- [x] Add duplicate-from-built-in (`ZetlTemplateDefaults.Duplicate`) so users can
+  customize protected presets safely. Edit works on a clone; delete is confirmed.
+- [x] Start a template from an existing project: a **Save as Template** button in
+  the project view grabs that project's bucket structure (names + settings, minus
+  reserved buckets and project-specific replay links) into a new draft.
+
+Landing wiring: a `+ New Template` button plus per-card `Edit` / `Duplicate` /
+`Delete` (Edit and Delete only on user cards; Duplicate on every card). New / Edit
+/ Duplicate / Save-as-Template all switch the window into the editor view; Save and
+Cancel return to the templates tab (or the open project), and the tab re-reads the
+store so authored templates appear immediately.
 
 Done when:
 
-- A user can create a template without hand-editing JSON.
-- Built-in templates remain immutable.
-- User-authored templates immediately appear in the landing Templates tab.
+- [x] A user can create a template without hand-editing JSON.
+- [x] Built-in templates remain immutable (edited/duplicated via a copy; the store
+  refuses to save or delete a built-in id).
+- [x] User-authored templates immediately appear in the landing Templates tab.
 
-## K8.6 Zetl New Project Picker
+Not yet (deferred): import/export of template files, and nested-bucket authoring
+(templates still create flat buckets — see K8.3).
+
+## K8.6 Zetl New Project Picker — Done
 
 Goal: bring template creation back to the fast capture side.
 
-- Add a template picker to Zetl's New Project flow.
-- Keep a quick default path for users who do not care about templates.
-- Use the same template catalog and validation path as Kastn.
-- Create the project through the same domain operation.
+- [x] Add a template picker to Zetl's New Project flow. `ProjectSetupWindow` gains
+  an optional "Start from" selector; the tray New Project passes the catalog in.
+- [x] Keep a quick default path for users who do not care about templates. The
+  selector defaults to "Custom buckets" — the existing name/bucket-lines flow,
+  untouched — and the Board's quick add-project stays template-free.
+- [x] Use the same template catalog and validation path as Kastn. The host loads a
+  shared `ZetlTemplateStore`; the picker lists built-ins plus user templates.
+- [x] Create the project through the same domain operation: the template path runs
+  `projectService` `CreateProject` (applying bucket settings) plus `AddSlip`
+  seeding — the identical sequence Kastn uses.
 
 Done when:
 
-- Zetl and Kastn create equivalent projects from the same template.
-- Zetl's quick project creation remains fast.
-- Template choice is optional, not a new forced decision during capture.
+- [x] Zetl and Kastn create equivalent projects from the same template (both go
+  through the same `ToCreateProjectCommand` + `AddSlip` service path, covered by
+  the existing service/catalog tests).
+- [x] Zetl's quick project creation remains fast: "Custom buckets" is the default
+  and bypasses templates entirely.
+- [x] Template choice is optional, not a new forced decision during capture.
 
-## K8.7 Creation Types
+Scope note: the picker is wired into the canonical tray New Project flow (which
+owns the project service and is normal-lane). The Board's add-project remains the
+quick names-only path.
 
-Goal: pair input templates with output views when views are ready.
+## K8.7 Creation Types — Done
 
-- Define a creation type as a bundle of:
-  - one template
-  - zero or more default views
-  - optional finish behavior
-- Keep this after the view document format exists.
-- Avoid making creation types the source of truth for project content.
+Goal: pair input templates with output views.
+
+- [x] Define a creation type as a bundle of one template plus default view(s)
+  (`ZetlCreationTypeDocument` / `ZetlCreationTypeDefaults` / validator /
+  `ZetlCreationTypeStore`, mirroring the template/view systems; one built-in,
+  "Research report"). Finish behavior is left for the lifecycle work.
+- [x] Built after the view document format, referencing template + view by id.
+- [x] Never the source of truth for project content — a creation type only
+  references a template and views; using it creates a project via the existing
+  template path and sets the project's default view.
+
+Mechanics: a project now persists a `DefaultViewId` (Zetl project metadata, a
+revision-checked `SetProjectView` IPC command, surfaced on the snapshot). Using a
+creation type creates the project from its template, seeds it, sets its default
+view, and navigates there; opening any project auto-selects its default view.
+Kastn's landing gains a **Create** tab with creation-type cards (Use / Edit /
+Duplicate / Delete / + New) and an in-window editor (name, category, description,
+template picker, view picker).
 
 Done when:
 
-- A creation type can start a project and later render it without manual setup.
-- The project still stores slips as the only authoritative content.
-- Re-rendering uses current slips, not stale generated output.
+- [x] A creation type can start a project and later render it without manual setup
+  (the default view persists on the project and is auto-selected on open).
+- [x] The project still stores slips as the only authoritative content.
+- [x] Re-rendering uses current slips, not stale generated output (views are live
+  projections).
 
 ## First Build Slice
 

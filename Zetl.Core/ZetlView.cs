@@ -1,0 +1,364 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+
+namespace ZETL;
+
+// How a view renders a project's slips. Stored as readable text (like bucket Kind
+// / compile mode) so a copied view document is understandable without a legend.
+// The first three mirror Zetl's hardcoded compile formats; Markdown is the first
+// document-oriented view.
+internal static class ZetlViewKinds
+{
+    public const string Formatted = "Formatted";
+    public const string Plain = "Plain";
+    public const string Tsv = "TSV";
+    public const string Markdown = "Markdown";
+    public const string Html = "HTML";
+    // PDF output is binary, so it is produced by the head (Kastn renders it with
+    // MigraDoc from the same snapshot model); the portable text renderer only
+    // returns a note for it.
+    public const string Pdf = "PDF";
+}
+
+/// <summary>
+/// A versioned, human-readable view document: a named renderer that projects an
+/// existing project's slips into an artifact. This is the output-side counterpart
+/// to <see cref="ZetlTemplateDocument"/>, mirroring the theme/template systems
+/// (stable id, version, <see cref="JsonExtensionData"/> for forward compatibility).
+///
+/// A view never owns content — it renders slips and is discarded. Slips remain the
+/// only source of truth, so re-rendering always reflects current slips.
+/// </summary>
+internal sealed class ZetlViewDocument
+{
+    public const int CurrentVersion = 1;
+
+    public int Version { get; set; } = CurrentVersion;
+
+    public string Id { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string Category { get; set; } = "";
+
+    public string Description { get; set; } = "";
+
+    // One of ZetlViewKinds.
+    public string Kind { get; set; } = ZetlViewKinds.Formatted;
+
+    // Slips per row for the TSV kind; ignored by other kinds. A bucket's own header
+    // lines still override this at render time, matching today's compile behavior.
+    public int TsvRowLength { get; set; } = 5;
+
+    // Optional named output sections mapping buckets to headings. When empty, the
+    // view renders every bucket under its own name (today's behavior). When set,
+    // the view renders exactly these sections, in order — letting a view rename,
+    // reorder, merge, or omit buckets.
+    public List<ZetlViewSection> Sections { get; set; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+/// <summary>
+/// One named output section: a heading plus the bucket names whose slips it gathers
+/// (in order). Bucket names are matched case-insensitively against the project at
+/// render time, so a view stays project-agnostic.
+/// </summary>
+internal sealed class ZetlViewSection
+{
+    public string Title { get; set; } = "";
+
+    public List<string> Buckets { get; set; } = [];
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+/// <summary>
+/// The protected, built-in view catalog. The first three reproduce Zetl's compile
+/// formats so the existing fast workflows are expressible as views; Markdown is the
+/// first new artifact kind.
+/// </summary>
+internal static partial class ZetlViewDefaults
+{
+    public static IReadOnlyList<ZetlViewDocument> CreateAll() =>
+    [
+        new ZetlViewDocument
+        {
+            Id = "formatted",
+            Name = "Formatted",
+            Category = "Compile",
+            Description = "Group slips under project and bucket headings.",
+            Kind = ZetlViewKinds.Formatted
+        },
+        new ZetlViewDocument
+        {
+            Id = "plain",
+            Name = "Plain",
+            Category = "Compile",
+            Description = "One slip per line, without headings.",
+            Kind = ZetlViewKinds.Plain
+        },
+        new ZetlViewDocument
+        {
+            Id = "tsv",
+            Name = "TSV",
+            Category = "Compile",
+            Description = "Spreadsheet rows from slips, with optional bucket headers.",
+            Kind = ZetlViewKinds.Tsv
+        },
+        new ZetlViewDocument
+        {
+            Id = "markdown",
+            Name = "Markdown",
+            Category = "Document",
+            Description = "A Markdown document: project title, bucket sections, and slip bullets.",
+            Kind = ZetlViewKinds.Markdown
+        },
+        new ZetlViewDocument
+        {
+            Id = "html",
+            Name = "HTML",
+            Category = "Document",
+            Description = "A self-contained HTML document: project title, bucket headings, and slip lists.",
+            Kind = ZetlViewKinds.Html
+        },
+        new ZetlViewDocument
+        {
+            Id = "pdf",
+            Name = "PDF",
+            Category = "Document",
+            Description = "A PDF document built from the project: title, bucket headings, and slip bullets.",
+            Kind = ZetlViewKinds.Pdf
+        }
+    ];
+
+    private static readonly HashSet<string> BuiltInIds =
+        new(CreateAll().Select(view => view.Id), StringComparer.Ordinal);
+
+    public static bool IsBuiltIn(string? id) => id is not null && BuiltInIds.Contains(id);
+
+    public static ZetlViewDocument? FindBuiltIn(string? id) =>
+        CreateAll().FirstOrDefault(view => view.Id == id);
+
+    public static ZetlViewDocument Clone(ZetlViewDocument view)
+    {
+        var json = JsonSerializer.Serialize(view, JsonFile.Options);
+        return JsonSerializer.Deserialize<ZetlViewDocument>(json, JsonFile.Options)
+            ?? CreateAll()[0];
+    }
+
+    // An independent user copy of a view (typically a built-in) with a fresh id and
+    // name, so the original stays immutable.
+    public static ZetlViewDocument Duplicate(ZetlViewDocument source, string? newName = null)
+    {
+        var copy = Clone(source);
+        copy.Name = string.IsNullOrWhiteSpace(newName) ? $"{source.Name} copy" : newName.Trim();
+        copy.Id = CreateId(copy.Name);
+        copy.Version = ZetlViewDocument.CurrentVersion;
+        return copy;
+    }
+
+    public static string CreateId(string name)
+    {
+        var slug = NonSlugCharacters().Replace(name.Trim().ToLowerInvariant(), "-").Trim('-');
+        if (slug.Length == 0)
+        {
+            slug = "view";
+        }
+
+        slug = slug[..Math.Min(slug.Length, 30)];
+        return $"{slug}-{Guid.NewGuid():N}"[..Math.Min(slug.Length + 9, 48)];
+    }
+
+    [GeneratedRegex("[^a-z0-9]+")]
+    private static partial Regex NonSlugCharacters();
+}
+
+/// <summary>
+/// Validates a view document. Returns every problem found (empty when well-formed)
+/// so an authoring/import path can list actionable errors. Used by tests so
+/// built-ins can be checked without launching the app.
+/// </summary>
+internal static class ZetlViewValidator
+{
+    private static readonly string[] ValidKinds =
+    [
+        ZetlViewKinds.Formatted,
+        ZetlViewKinds.Plain,
+        ZetlViewKinds.Tsv,
+        ZetlViewKinds.Markdown,
+        ZetlViewKinds.Html,
+        ZetlViewKinds.Pdf
+    ];
+
+    public static IReadOnlyList<string> Validate(ZetlViewDocument? view)
+    {
+        if (view is null)
+        {
+            return ["View data is missing."];
+        }
+
+        var errors = new List<string>();
+
+        if (view.Version < 1)
+        {
+            errors.Add("View version must be at least 1.");
+        }
+
+        if (string.IsNullOrWhiteSpace(view.Id))
+        {
+            errors.Add("View id is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(view.Name))
+        {
+            errors.Add("View name is required.");
+        }
+
+        if (!ValidKinds.Contains(view.Kind, StringComparer.OrdinalIgnoreCase))
+        {
+            errors.Add($"View kind must be one of: {string.Join(", ", ValidKinds)}.");
+        }
+
+        if (view.TsvRowLength < 1)
+        {
+            errors.Add("TSV row length must be at least 1.");
+        }
+
+        foreach (var section in view.Sections)
+        {
+            if (string.IsNullOrWhiteSpace(section.Title))
+            {
+                errors.Add("A section is missing a title.");
+                continue;
+            }
+
+            if (section.Buckets.Count == 0 || section.Buckets.All(string.IsNullOrWhiteSpace))
+            {
+                errors.Add($"Section '{section.Title}' references no buckets.");
+            }
+        }
+
+        return errors;
+    }
+}
+
+/// <summary>
+/// Loads the view catalog: the protected built-ins plus any valid user view JSON
+/// documents under the views directory (default <c>%AppData%\Zetl\views</c>).
+/// Mirrors <see cref="ZetlTemplateStore"/> / <see cref="ZetlThemeStore"/>: one bad
+/// file never blocks the catalog — a corrupt file is quarantined and an invalid,
+/// id-colliding, or duplicate file is skipped with a diagnostic.
+/// </summary>
+internal sealed class ZetlViewStore
+{
+    private readonly string viewDirectory;
+    private readonly Action<string>? log;
+
+    public ZetlViewStore(string? viewDirectory = null, Action<string>? log = null)
+    {
+        this.viewDirectory = viewDirectory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Zetl",
+            "views");
+        this.log = log;
+    }
+
+    public string ViewDirectory => viewDirectory;
+
+    public IReadOnlyList<ZetlViewDocument> LoadAll()
+    {
+        var views = ZetlViewDefaults.CreateAll().ToList();
+        if (!Directory.Exists(viewDirectory))
+        {
+            return views;
+        }
+
+        string[] paths;
+        try
+        {
+            paths = Directory.GetFiles(viewDirectory, "*.json");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log?.Invoke($"Could not list view directory '{viewDirectory}': {ex.Message}");
+            return views;
+        }
+
+        var seenIds = new HashSet<string>(views.Select(view => view.Id), StringComparer.Ordinal);
+        foreach (var path in paths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var name = Path.GetFileName(path);
+            var view = JsonFile.ReadOrQuarantine<ZetlViewDocument>(path, log);
+            if (view is null)
+            {
+                continue;
+            }
+
+            var errors = ZetlViewValidator.Validate(view);
+            if (errors.Count > 0)
+            {
+                log?.Invoke($"Ignoring invalid view '{name}': {string.Join("; ", errors)}");
+                continue;
+            }
+
+            if (ZetlViewDefaults.IsBuiltIn(view.Id))
+            {
+                log?.Invoke($"Ignoring user view '{name}': id '{view.Id}' is reserved by a built-in.");
+                continue;
+            }
+
+            if (!seenIds.Add(view.Id))
+            {
+                log?.Invoke($"Ignoring user view '{name}': duplicate id '{view.Id}'.");
+                continue;
+            }
+
+            views.Add(view);
+        }
+
+        return views;
+    }
+
+    public void Save(ZetlViewDocument view)
+    {
+        var errors = ZetlViewValidator.Validate(view);
+        if (errors.Count > 0)
+        {
+            throw new InvalidDataException(string.Join(Environment.NewLine, errors));
+        }
+
+        if (ZetlViewDefaults.IsBuiltIn(view.Id))
+        {
+            throw new InvalidOperationException("Built-in views cannot be overwritten.");
+        }
+
+        JsonFile.WriteAtomic(PathFor(view.Id), view);
+    }
+
+    public void Delete(string id)
+    {
+        if (ZetlViewDefaults.IsBuiltIn(id))
+        {
+            throw new InvalidOperationException("Built-in views cannot be deleted.");
+        }
+
+        var path = PathFor(id);
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+    }
+
+    private string PathFor(string id)
+    {
+        var safeId = string.Concat(id.Select(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '-' or '_'
+                ? character
+                : '-'));
+        return Path.Combine(viewDirectory, $"{safeId}.json");
+    }
+}

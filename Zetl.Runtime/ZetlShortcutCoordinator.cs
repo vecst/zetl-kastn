@@ -142,6 +142,7 @@ internal sealed class ZetlShortcutCoordinator
             VK_C => CreateCopyHoldRequest(context, pending),
             VK_P => HandlePopToggle(context.ShiftLane),
             VK_R => HandleReplayToggle(context.ShiftLane),
+            VK_T => new ZetlTemplatePickerRequest(context.ShiftLane, FromCompileFallback: false),
             VK_X => CreateCutHoldRequest(context, pending),
             VK_V => CreateCompileRequest(context.ShiftLane),
             VK_Z => HandleUndo(context.ShiftLane),
@@ -452,8 +453,11 @@ internal sealed class ZetlShortcutCoordinator
                 || project is null
                 || scratchBucket is null)
             {
-                notifications.Show("No Zetl notes to compile yet.");
-                return null;
+                // No active project and nothing in Scratch to compile: offer Zetl's
+                // quick template picker instead. The host decides whether any
+                // consumable templates exist, falling back to the original
+                // "nothing to compile" message when none do.
+                return new ZetlTemplatePickerRequest(shifted, FromCompileFallback: true);
             }
         }
         else if (!store.HasCompilableNotes(project))

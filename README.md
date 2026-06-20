@@ -83,6 +83,7 @@ It also introduces the main Coldkeys:
 - `Ctrl+B`
 - `Ctrl+P`
 - `Ctrl+R`
+- `Ctrl+T`
 - `Ctrl+Z`
 - the `Ctrl+Shift` project lane
 
@@ -156,13 +157,15 @@ Coldkeys are Chordl shortcuts: hotkeys you hold. Tapping the chord keeps the nor
 | `Ctrl+C` | Normal copy. If a project is active, changed non-empty clipboard text is captured into the active bucket. | Capture/manage. With copied text, opens the note dialog. With no copied text, opens the Board/project management flow. |
 | `Ctrl+P` | Normal `Ctrl+P`, replayed on key-up. | Toggles Pop Mode for the active bucket. |
 | `Ctrl+R` | Normal `Ctrl+R`, replayed on key-up. | Toggles Replay Mode for the active bucket. |
+| `Ctrl+T` | Normal `Ctrl+T`, replayed on key-up. | Opens the template picker to start a fresh project from a template. A Capture/Consumable switcher shows both kinds; defaults to Capture. Quick access to your templates. |
 | `Ctrl+X` | Normal cut. Does not auto-capture. | Quick note. Prefills with cut text if available, otherwise starts empty. Defaults to the project's remembered quick-note bucket, starting with `Scratch`. |
-| `Ctrl+V` | Normal paste. If the active bucket is in Replay Mode, pastes the next replay item instead. | Compile. Opens the compile dialog when there are current-session notes. |
+| `Ctrl+V` | Normal paste. If the active bucket is in Replay Mode, pastes the next replay item instead. | Compile when there are current-session notes. With no active project and nothing to compile, opens the template picker (same as held `Ctrl+T`) defaulting to Consumable. |
 | `Ctrl+Z` | Normal undo. | Zetl undo for the normal project lane. |
 | `Ctrl+Shift+B` | Normal `Ctrl+Shift+B`, replayed on key-up. | Opens the Shift Board without depending on selected text or clipboard contents. |
 | `Ctrl+Shift+C` | Normal copy through Zetl's replay path. | Same as held `Ctrl+C`, but using the Shift project lane. |
 | `Ctrl+Shift+P` | Normal `Ctrl+Shift+P`, replayed on key-up. | Toggles Pop Mode for the Shift lane's active bucket. |
 | `Ctrl+Shift+R` | Normal `Ctrl+Shift+R`, replayed on key-up. | Toggles Replay Mode for the Shift lane's active bucket. |
+| `Ctrl+Shift+T` | Normal `Ctrl+Shift+T`, replayed on key-up. | Same as held `Ctrl+T`, but starts the template's project in the Shift project lane. |
 | `Ctrl+Shift+X` | Normal cut through Zetl's replay path. | Same as held `Ctrl+X`, but using the Shift project lane. |
 | `Ctrl+Shift+V` | Normal paste through Zetl's replay path. If the Shift active bucket is in Replay Mode, pastes the next Shift-lane replay item. | Same as held `Ctrl+V`, but using the Shift project lane. |
 | `Ctrl+Shift+Z` | Normal redo, replayed as `Ctrl+Shift+Z`. | Zetl undo for the Shift project lane. |

@@ -41,6 +41,7 @@ internal static class ZetlProjectSnapshotMapper
             MetadataRevision = project.MetadataRevision,
             ChangeSequence = project.ChangeSequence,
             ActiveBucketId = project.ActiveBucketId,
+            DefaultViewId = project.DefaultViewId,
             Buckets = project.Buckets.Select(ToSnapshot).ToList(),
             Slips = project.Buckets
                 .SelectMany(bucket => bucket.Notes.Select(note => ToSnapshot(bucket, note)))

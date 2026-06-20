@@ -463,25 +463,57 @@ Done when:
 Goal: render project slips into useful documents without making rendered output
 the source of truth.
 
-- [ ] Add a Kastn viewer mode that behaves like an expanded compile preview for
-      reading all selected notes in layout.
-- [ ] Extract current Formatted, Plain, and TSV compile behavior into view
-      definitions or shared renderer contracts.
-- [ ] Add a versioned view document format.
-- [ ] Map buckets and filters to named output sections.
-- [ ] Render Markdown and HTML previews.
-- [ ] Add Markdown-to-PDF and HTML-to-PDF output after renderer evaluation.
-- [ ] Keep generated artifacts outside authoritative slip state.
+- [x] Add a Kastn viewer mode that behaves like an expanded compile preview for
+      reading all selected notes in layout. (Read-only viewer + editable view
+      sessions; see the Next Docket section.)
+- [x] Extract current Formatted, Plain, and TSV compile behavior into view
+      definitions or shared renderer contracts. `ZetlViewRenderer` renders these
+      over the public snapshot DTOs (a pure projection), so Zetl and Kastn can
+      share one renderer.
+- [x] Add a versioned view document format (`ZetlViewDocument` / `ZetlViewDefaults`
+      / `ZetlViewValidator`, modeled on the template/theme systems, with built-in
+      Formatted / Plain / TSV / Markdown views).
+- [x] Map buckets to named output sections. A view can define ordered sections,
+      each a heading plus the bucket names it gathers — letting a view rename,
+      reorder, merge, and omit buckets. Empty sections list = render every bucket
+      (today's behavior). Honored by every kind (text/Markdown/HTML/PDF) via the
+      shared `ZetlViewRenderer.BuildGroups`, authored in Kastn's view editor.
+      (Filter-based sections are a later extension.)
+- [x] Render Markdown and HTML previews. Kastn's read view renders through a chosen
+      view (Formatted / Plain / TSV / Markdown / HTML) with Copy and Export
+      (.md / .html / .tsv / .txt). HTML is a self-contained, escaped document.
+- [x] Add PDF output. PDF is a view kind rendered by Kastn with MigraDoc
+      (PDFsharp-MigraDoc, MIT) built from the same snapshot model as the text views
+      — no HTML/browser engine, pure managed, single-file-publish friendly. Fonts
+      come from a system-font resolver (no System.Drawing).
+- [x] Keep generated artifacts outside authoritative slip state — the renderer is
+      a read-only projection over snapshots; it never writes slips.
 - [ ] Define exactly which rendered fields may edit slips and how those edits
       map back without ambiguous round-tripping.
-- [ ] Add protected presets, duplicate, import, export, validation, and
-      forward-compatible unknown fields.
+- [~] Add protected presets, duplicate, import, export, validation, and
+      forward-compatible unknown fields. Done: protected built-ins, duplicate, a
+      user view store (`ZetlViewStore`, `%AppData%\Zetl\views`), in-Kastn authoring
+      (New / Edit / Duplicate-from-built-in / Delete), validation, and
+      forward-compatible unknown fields. Remaining: file import/export.
+
+Landed so far: the view document format, a shared snapshot renderer
+(Formatted / Plain / TSV / Markdown / HTML), PDF export via MigraDoc, an in-Kastn
+read view that renders through a chosen view with Copy/Export, and a user view
+store + authoring (mirroring the template store/editor), and named section mapping
+(rename/reorder/merge/omit buckets). PDFsharp-MigraDoc is verified working under
+the single-file self-contained publish. Next: K8.7 creation types (template + view
+bundles) — both extension points now exist. (Filter-based view sections remain a
+later extension.)
 
 Done when:
 
-- [ ] A project can produce a repeatable artifact from a shareable view.
-- [ ] Re-rendering reflects current slips without manual content synchronization.
-- [ ] Existing fast compile workflows remain available in Zetl.
+- [x] A project can produce a repeatable artifact from a shareable view. Kastn
+      exports Formatted / Plain / TSV / Markdown / HTML, and users author their own
+      view documents (stored as JSON under `%AppData%\Zetl\views`).
+- [x] Re-rendering reflects current slips without manual content synchronization —
+      the renderer is a live projection over the current snapshot.
+- [x] Existing fast compile workflows remain available in Zetl — the compile path
+      is untouched; views are additive.
 
 ## K8. Templates, Handoff, And Project Lifecycle
 
@@ -508,7 +540,10 @@ New Project picker, and finally creation types that pair templates with views.
       state, bucket settings, and sample slips.
 - [ ] Author and manage templates in Kastn.
 - [ ] Add a template picker to Zetl's New Project flow.
-- [ ] Allow a creation type to pair a template with one or more views.
+- [x] Allow a creation type to pair a template with one or more views
+      (`ZetlCreationTypeStore` + Kastn's Create landing tab; projects persist a
+      default view via the `SetProjectView` IPC command). See K8.7 in the templates
+      roadmap.
 - [ ] Add reversible project states such as active, finished, and archived.
 - [ ] Add Zetl's Finish action and default finish output behavior.
 - [ ] Advance dated default projects after finish without reusing a finished
@@ -553,8 +588,11 @@ Done when:
 
 Goal: make the two-process system trustworthy for daily use.
 
-- [ ] Fix Zetl popup/dropdown focus behavior where choosing an item beyond the
-      note dialog bounds can dismiss the note on mouse-up.
+- [x] Fix Zetl popup/dropdown focus behavior where choosing an item beyond the
+      note dialog bounds can dismiss the note on mouse-up. Popups now render as
+      in-window overlays (`OverlayPopups`), so a dropdown can no longer be a
+      separate top-level window that survives its owner; clicking off closes the
+      whole popup.
 - [ ] Improve Zetl bucket management so nesting buckets is discoverable and
       quick.
 - [ ] Exercise startup races where Kastn and Zetl launch simultaneously.

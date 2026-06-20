@@ -1,5 +1,6 @@
 using System.Text.Json;
 using KASTN;
+using ZETL;
 using ZETL.Contracts;
 
 namespace ZETL.Tests;
@@ -8,11 +9,18 @@ internal static class KastnTemplateCatalogTests
 {
     public static void BuiltInTemplatesAreValid()
     {
+        var builtIns = KastnTemplateCatalog.BuiltIns;
+        foreach (var template in builtIns)
+        {
+            var errors = ZetlTemplateValidator.Validate(template);
+            AssertTrue(
+                errors.Count == 0,
+                $"Built-in template '{template.Id}' should be well-formed: "
+                    + string.Join("; ", errors));
+        }
+
         AssertTrue(
-            KastnTemplateCatalog.Validate(KastnTemplateCatalog.BuiltIns) is null,
-            "Built-in templates should be well-formed.");
-        AssertTrue(
-            KastnTemplateCatalog.BuiltIns.Count >= 3,
+            builtIns.Count >= 3,
             "The catalog should ship at least the three built-in templates.");
     }
 
@@ -98,7 +106,7 @@ internal static class KastnTemplateCatalogTests
             .ToList();
 
         AssertEqual(
-            KastnTemplateType.Consumable,
+            ZetlTemplateTypes.Consumable,
             personal.Type,
             "Personal info should be a consumable template.");
         AssertEqual(

@@ -36,6 +36,10 @@ public sealed record ZetlProjectSnapshot
     public required long ChangeSequence { get; init; }
 
     public string? ActiveBucketId { get; init; }
+
+    // The view document id this project renders with by default (null = first view).
+    public string? DefaultViewId { get; init; }
+
     public IReadOnlyList<ZetlBucketSnapshot> Buckets { get; init; } = [];
     public IReadOnlyList<ZetlSlipSnapshot> Slips { get; init; } = [];
 }

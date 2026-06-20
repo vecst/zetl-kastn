@@ -105,6 +105,7 @@ internal sealed class ZetlProjectService
             ZetlCommandKind.GetProject => GetProject(command),
             ZetlCommandKind.CreateProject => CreateProject(command),
             ZetlCommandKind.RenameProject => RenameProject(command),
+            ZetlCommandKind.SetProjectView => SetProjectView(command),
             ZetlCommandKind.DeleteProject => DeleteProject(command),
             ZetlCommandKind.AddBucket => AddBucket(command),
             ZetlCommandKind.UpdateBucket => UpdateBucket(command),
@@ -211,6 +212,32 @@ internal sealed class ZetlProjectService
         }
 
         store.UpdateProjectName(project, payload.Name);
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Project, project.Id, project.MetadataRevision);
+        return Success(command, project, snapshot);
+    }
+
+    private ZetlResponseEnvelope SetProjectView(ZetlCommandEnvelope command)
+    {
+        var project = FindProject(command.ProjectId!);
+        if (project is null)
+        {
+            return NotFound(command, ZetlEntityKind.Project, command.ProjectId!);
+        }
+
+        var conflict = CheckRevision(
+            command,
+            ZetlEntityKind.Project,
+            project.Id,
+            project.MetadataRevision,
+            ZetlProjectSnapshotMapper.ToSnapshot(project));
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        var payload = Payload<SetProjectViewCommand>(command);
+        store.SetProjectDefaultView(project, payload.ViewId);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Project, project.Id, project.MetadataRevision);
         return Success(command, project, snapshot);

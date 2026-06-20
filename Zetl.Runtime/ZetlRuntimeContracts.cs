@@ -39,6 +39,13 @@ internal abstract record ZetlShortcutRequest(bool Shifted);
 
 internal sealed record ZetlBoardRequest(bool Shifted) : ZetlShortcutRequest(Shifted);
 
+// A request to open Zetl's quick template picker. Raised by a held Ctrl+T, or by a
+// held Ctrl+V when no project is active and there is nothing to compile.
+// FromCompileFallback distinguishes the two so the host can keep the original
+// "nothing to compile" message when no templates exist.
+internal sealed record ZetlTemplatePickerRequest(bool Shifted, bool FromCompileFallback)
+    : ZetlShortcutRequest(Shifted);
+
 internal sealed record ZetlNoteCaptureRequest(
     bool Shifted,
     ZetlProject Project,

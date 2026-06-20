@@ -69,6 +69,9 @@
               <Button x:Name="landingTemplatesButton"
                       Content="Templates"
                       Padding="16,5" />
+              <Button x:Name="landingCreateButton"
+                      Content="Create"
+                      Padding="16,5" />
             </StackPanel>
             <StackPanel x:Name="landingTemplateTypeToggle"
                         Orientation="Horizontal"
@@ -83,6 +86,20 @@
                       Content="Consumable"
                       Padding="16,5" />
             </StackPanel>
+            <Button x:Name="landingNewTemplateButton"
+                    Content="+ New Template"
+                    Padding="16,5"
+                    HorizontalAlignment="Center"
+                    Margin="0,4,0,0"
+                    IsVisible="False"
+                    Click="OnNewTemplateClick" />
+            <Button x:Name="landingNewCreationButton"
+                    Content="+ New Creation Type"
+                    Padding="16,5"
+                    HorizontalAlignment="Center"
+                    Margin="0,4,0,0"
+                    IsVisible="False"
+                    Click="OnNewCreationClick" />
             <ListBox x:Name="landingProjectList"
                      Width="880"
                      MaxHeight="520"
@@ -208,11 +225,94 @@
                                      TextWrapping="Wrap"
                                      MaxLines="3" />
                         </StackPanel>
-                        <Button Grid.Row="2"
-                                Content="Use Template"
-                                Padding="14,5"
-                                HorizontalAlignment="Right"
-                                Click="OnUseTemplateClick" />
+                        <StackPanel Grid.Row="2"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="6">
+                          <Button Content="Edit"
+                                  Padding="12,5"
+                                  IsVisible="{Binding IsUser}"
+                                  Click="OnEditTemplateClick" />
+                          <Button Content="Duplicate"
+                                  Padding="12,5"
+                                  Click="OnDuplicateTemplateClick" />
+                          <Button Content="Delete"
+                                  Padding="12,5"
+                                  IsVisible="{Binding IsUser}"
+                                  Click="OnDeleteTemplateClick" />
+                          <Button Content="Use"
+                                  Padding="12,5"
+                                  Click="OnUseTemplateClick" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+            <ScrollViewer x:Name="landingCreationList"
+                          Width="880"
+                          MaxHeight="520"
+                          Margin="0,16,0,0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto"
+                          IsVisible="False">
+              <ItemsControl x:Name="landingCreationItems">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="surface"
+                            Width="450"
+                            Height="330"
+                            Padding="16"
+                            Margin="8">
+                      <Grid RowDefinitions="170,*,Auto">
+                        <Border Grid.Row="0"
+                                Background="{DynamicResource ZetlSurfaceAltBrush}"
+                                CornerRadius="4"
+                                Padding="14">
+                          <TextBlock Text="{Binding Kind}"
+                                     Classes="muted"
+                                     FontSize="14"
+                                     VerticalAlignment="Center"
+                                     HorizontalAlignment="Center" />
+                        </Border>
+                        <StackPanel Grid.Row="1"
+                                    Margin="0,14,0,0"
+                                    Spacing="6">
+                          <TextBlock Text="{Binding Name}"
+                                     FontWeight="SemiBold"
+                                     FontSize="20"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Detail}"
+                                     Classes="muted"
+                                     FontSize="14"
+                                     TextWrapping="Wrap"
+                                     MaxLines="3" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="2"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="6">
+                          <Button Content="Edit"
+                                  Padding="12,5"
+                                  IsVisible="{Binding IsUser}"
+                                  Click="OnEditCreationClick" />
+                          <Button Content="Duplicate"
+                                  Padding="12,5"
+                                  Click="OnDuplicateCreationClick" />
+                          <Button Content="Delete"
+                                  Padding="12,5"
+                                  IsVisible="{Binding IsUser}"
+                                  Click="OnDeleteCreationClick" />
+                          <Button Content="Use"
+                                  Padding="12,5"
+                                  Click="OnUseCreationClick" />
+                        </StackPanel>
                       </Grid>
                     </Border>
                   </DataTemplate>
@@ -224,12 +324,16 @@
           <Grid x:Name="projectView"
                 IsVisible="False"
                 RowDefinitions="Auto,Auto,14,Auto,14,*">
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
               <TextBlock Grid.Column="0"
                          x:Name="projectTitle"
                          Classes="title"
                          TextTrimming="CharacterEllipsis" />
               <Button Grid.Column="1"
+                      x:Name="saveAsTemplateButton"
+                      Content="Save as Template"
+                      Padding="14,5" />
+              <Button Grid.Column="2"
                       x:Name="closeProjectButton"
                       Content="Close Project"
                       Padding="14,5" />
@@ -387,7 +491,28 @@
                   <Grid x:Name="viewerPanel"
                         RowDefinitions="Auto,Auto,Auto,*">
                     <Grid Grid.Row="0" ColumnDefinitions="*,190,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
-                      <TextBlock Grid.Column="0" Text="Read View" Classes="heading" />
+                      <StackPanel Grid.Column="0"
+                                  Orientation="Horizontal"
+                                  Spacing="8"
+                                  VerticalAlignment="Center">
+                        <TextBlock Text="View" Classes="heading" VerticalAlignment="Center" />
+                        <ComboBox x:Name="viewPickerBox" Width="150" VerticalAlignment="Center">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button x:Name="copyViewButton" Content="Copy" Padding="12,3" VerticalAlignment="Center" />
+                        <Button x:Name="exportViewButton" Content="Export…" Padding="12,3" VerticalAlignment="Center" />
+                        <Button x:Name="manageViewsButton" Content="Manage ▾" Padding="12,3" VerticalAlignment="Center">
+                          <Button.Flyout>
+                            <MenuFlyout>
+                              <MenuItem x:Name="newViewMenuItem" Header="New view…" />
+                              <MenuItem x:Name="editViewSettingsMenuItem" Header="Edit view…" />
+                              <MenuItem x:Name="deleteViewMenuItem" Header="Delete view" />
+                            </MenuFlyout>
+                          </Button.Flyout>
+                        </Button>
+                      </StackPanel>
                       <ComboBox Grid.Column="1"
                                 x:Name="editViewMoveBucketBox"
                                 IsVisible="False">
@@ -446,6 +571,269 @@
                 </Grid>
               </Border>
             </Grid>
+          </Grid>
+
+          <Grid x:Name="templateEditorView"
+                IsVisible="False"
+                RowDefinitions="Auto,Auto,Auto,Auto,14,*">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Grid.Column="0"
+                         x:Name="templateEditorTitle"
+                         Classes="title"
+                         TextTrimming="CharacterEllipsis" />
+              <Button Grid.Column="1"
+                      x:Name="saveTemplateButton"
+                      Content="Save Template"
+                      Padding="14,5" />
+              <Button Grid.Column="2"
+                      x:Name="cancelTemplateButton"
+                      Content="Cancel"
+                      Padding="14,5" />
+            </Grid>
+
+            <Grid Grid.Row="1" ColumnDefinitions="2*,12,*,12,Auto" Margin="0,8,0,0">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Template name" Classes="muted" FontSize="12" />
+                <TextBox x:Name="templateNameBox" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="4">
+                <TextBlock Text="Category" Classes="muted" FontSize="12" />
+                <TextBox x:Name="templateCategoryBox" />
+              </StackPanel>
+              <StackPanel Grid.Column="4" Spacing="4">
+                <TextBlock Text="Type" Classes="muted" FontSize="12" />
+                <ComboBox x:Name="templateTypeBox" Width="150" />
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Grid.Row="2" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="Description" Classes="muted" FontSize="12" />
+              <TextBox x:Name="templateDescriptionBox"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       Height="48" />
+            </StackPanel>
+
+            <TextBlock Grid.Row="3"
+                       x:Name="templateErrorText"
+                       Foreground="#E5484D"
+                       TextWrapping="Wrap"
+                       Margin="0,8,0,0"
+                       IsVisible="False" />
+
+            <Grid Grid.Row="5" ColumnDefinitions="260,8,*">
+              <Border Grid.Column="0"
+                      Background="{DynamicResource ZetlSurfaceAltBrush}"
+                      CornerRadius="5"
+                      Padding="12">
+                <Grid RowDefinitions="Auto,*,Auto">
+                  <TextBlock Grid.Row="0" Text="Buckets" Classes="heading" Margin="0,0,0,8" />
+                  <ListBox Grid.Row="1" x:Name="templateBucketList">
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Label}"
+                                   Margin="4,5"
+                                   TextTrimming="CharacterEllipsis" />
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <Grid Grid.Row="2"
+                        ColumnDefinitions="*,*,*,*"
+                        ColumnSpacing="6"
+                        Margin="0,8,0,0">
+                    <Button Grid.Column="0" x:Name="templateAddBucketButton" Content="Add" />
+                    <Button Grid.Column="1" x:Name="templateBucketUpButton" Content="↑" />
+                    <Button Grid.Column="2" x:Name="templateBucketDownButton" Content="↓" />
+                    <Button Grid.Column="3" x:Name="templateDeleteBucketButton" Content="Del" />
+                  </Grid>
+                </Grid>
+              </Border>
+
+              <GridSplitter Grid.Column="1" Width="8" ResizeDirection="Columns" />
+
+              <Border Grid.Column="2"
+                      Background="{DynamicResource ZetlSurfaceAltBrush}"
+                      CornerRadius="5"
+                      Padding="12">
+                <Grid>
+                  <TextBlock x:Name="templateBucketEmptyHint"
+                             Classes="muted"
+                             Text="Add or select a bucket to edit its settings."
+                             VerticalAlignment="Center"
+                             HorizontalAlignment="Center" />
+                  <Grid x:Name="templateBucketEditor"
+                        IsVisible="False"
+                        RowDefinitions="Auto,Auto,Auto,Auto,*">
+                    <TextBlock Grid.Row="0" Text="Bucket" Classes="heading" />
+                    <StackPanel Grid.Row="1" Spacing="4" Margin="0,8,0,0">
+                      <TextBlock Text="Bucket name" Classes="muted" FontSize="12" />
+                      <TextBox x:Name="templateBucketNameBox" />
+                    </StackPanel>
+                    <Grid Grid.Row="2" ColumnDefinitions="*,12,*,12,Auto" Margin="0,8,0,0">
+                      <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="Kind" Classes="muted" FontSize="12" />
+                        <ComboBox x:Name="templateBucketKindBox" HorizontalAlignment="Stretch" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="2" Spacing="4">
+                        <TextBlock Text="Compile mode" Classes="muted" FontSize="12" />
+                        <ComboBox x:Name="templateBucketCompileBox" HorizontalAlignment="Stretch" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="4" Spacing="4">
+                        <TextBlock Text="TSV rows" Classes="muted" FontSize="12" />
+                        <NumericUpDown x:Name="templateBucketTsvBox"
+                                       Minimum="1"
+                                       Maximum="100"
+                                       Increment="1"
+                                       FormatString="0"
+                                       Width="120" />
+                      </StackPanel>
+                    </Grid>
+                    <StackPanel Grid.Row="3" Spacing="4" Margin="0,8,0,0">
+                      <TextBlock Text="Starting text / TSV headers (one per line)"
+                                 Classes="muted"
+                                 FontSize="12" />
+                      <TextBox x:Name="templateBucketStartBox"
+                               AcceptsReturn="True"
+                               TextWrapping="Wrap"
+                               Height="70" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="4"
+                                x:Name="templateSeedsPanel"
+                                Spacing="4"
+                                Margin="0,10,0,0">
+                      <TextBlock Text="Seeds — one per line (replayed in order)"
+                                 Classes="muted"
+                                 FontSize="12" />
+                      <TextBox x:Name="templateBucketSeedsBox"
+                               AcceptsReturn="True"
+                               TextWrapping="Wrap"
+                               ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                    </StackPanel>
+                  </Grid>
+                </Grid>
+              </Border>
+            </Grid>
+          </Grid>
+
+          <Grid x:Name="viewEditorView"
+                IsVisible="False"
+                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Grid.Column="0"
+                         x:Name="viewEditorTitle"
+                         Classes="title"
+                         TextTrimming="CharacterEllipsis" />
+              <Button Grid.Column="1" x:Name="saveViewSettingsButton" Content="Save View" Padding="14,5" />
+              <Button Grid.Column="2" x:Name="cancelViewSettingsButton" Content="Cancel" Padding="14,5" />
+            </Grid>
+
+            <StackPanel Grid.Row="1" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="View name" Classes="muted" FontSize="12" />
+              <TextBox x:Name="viewNameBox" />
+            </StackPanel>
+
+            <Grid Grid.Row="2" ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Category" Classes="muted" FontSize="12" />
+                <TextBox x:Name="viewCategoryBox" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="4">
+                <TextBlock Text="Kind" Classes="muted" FontSize="12" />
+                <ComboBox x:Name="viewKindBox" HorizontalAlignment="Stretch" />
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Grid.Row="3" x:Name="viewTsvPanel" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="TSV rows per line" Classes="muted" FontSize="12" />
+              <NumericUpDown x:Name="viewTsvRowBox"
+                             Minimum="1"
+                             Maximum="100"
+                             Increment="1"
+                             FormatString="0"
+                             Width="160"
+                             HorizontalAlignment="Left" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="4" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="Description" Classes="muted" FontSize="12" />
+              <TextBox x:Name="viewDescriptionBox" AcceptsReturn="True" TextWrapping="Wrap" Height="60" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="5" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="Sections (optional)" Classes="muted" FontSize="12" />
+              <TextBox x:Name="viewSectionsBox"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       Height="96"
+                       Watermark="One per line:  Heading = Bucket, Bucket. Leave empty to render every bucket." />
+            </StackPanel>
+
+            <TextBlock Grid.Row="6"
+                       x:Name="viewErrorText"
+                       Foreground="#E5484D"
+                       TextWrapping="Wrap"
+                       Margin="0,8,0,0"
+                       IsVisible="False" />
+
+            <TextBlock Grid.Row="7"
+                       Classes="muted"
+                       FontSize="12"
+                       Margin="0,8,0,0"
+                       TextWrapping="Wrap"
+                       Text="Views render the current project's slips. Slips stay the source of truth; a view never changes them." />
+          </Grid>
+
+          <Grid x:Name="creationEditorView"
+                IsVisible="False"
+                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+              <TextBlock Grid.Column="0"
+                         x:Name="creationEditorTitle"
+                         Classes="title"
+                         TextTrimming="CharacterEllipsis" />
+              <Button Grid.Column="1" x:Name="saveCreationButton" Content="Save" Padding="14,5" />
+              <Button Grid.Column="2" x:Name="cancelCreationButton" Content="Cancel" Padding="14,5" />
+            </Grid>
+
+            <StackPanel Grid.Row="1" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="Creation type name" Classes="muted" FontSize="12" />
+              <TextBox x:Name="creationNameBox" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="Category" Classes="muted" FontSize="12" />
+              <TextBox x:Name="creationCategoryBox" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="3" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="Template" Classes="muted" FontSize="12" />
+              <ComboBox x:Name="creationTemplateBox" HorizontalAlignment="Stretch">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel Grid.Row="4" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="Default view" Classes="muted" FontSize="12" />
+              <ComboBox x:Name="creationViewBox" HorizontalAlignment="Stretch">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel Grid.Row="5" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="Description" Classes="muted" FontSize="12" />
+              <TextBox x:Name="creationDescriptionBox" AcceptsReturn="True" TextWrapping="Wrap" Height="60" />
+            </StackPanel>
+
+            <TextBlock Grid.Row="6"
+                       x:Name="creationErrorText"
+                       Foreground="#E5484D"
+                       TextWrapping="Wrap"
+                       Margin="0,8,0,0"
+                       IsVisible="False" />
           </Grid>
         </Grid>
       </Border>

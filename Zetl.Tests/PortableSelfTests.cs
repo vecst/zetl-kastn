@@ -106,6 +106,9 @@ internal static class PortableSelfTests
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
                 ("Runtime cut hold defaults to Scratch", RuntimeCutHoldDefaultsToScratch),
+                ("Runtime template hold requests the picker", RuntimeTemplateHoldRequestsPicker),
+                ("Runtime compile hold without a project requests the picker", RuntimeCompileHoldWithoutProjectRequestsPicker),
+                ("Runtime compile hold with an active project stays compile", RuntimeCompileHoldWithActiveProjectStaysCompile),
                 ("Runtime hold toggles and undo stay portable", RuntimeHoldTogglesAndUndoStayPortable),
                 ("Runtime completes quick-note result", RuntimeCompletesQuickNoteResult),
                 ("Runtime pastes cut back when held cut is discarded", RuntimePastesCutBackOnDiscardedCut),
@@ -137,6 +140,25 @@ internal static class PortableSelfTests
                 ("Kastn template creates a project through Zetl", KastnTemplateCatalogTests.TemplateCreatesProjectThroughService),
                 ("Kastn consumable template seeds an ordered Replay queue", KastnTemplateCatalogTests.ConsumableTemplateSeedsOrderedReplayQueue),
                 ("Kastn blank template creates a minimal project", KastnTemplateCatalogTests.BlankTemplateCreatesMinimalProject),
+                ("Template documents round-trip through JSON", ZetlTemplateDocumentTests.BuiltInsRoundTripThroughJson),
+                ("Template documents preserve future versions and unknown fields", ZetlTemplateDocumentTests.FutureVersionAndUnknownFieldsArePreserved),
+                ("Template validation reports actionable errors", ZetlTemplateDocumentTests.InvalidTemplatesReportActionableErrors),
+                ("Template store loads built-ins without a directory", ZetlTemplateStoreTests.LoadsBuiltInsWhenNoDirectory),
+                ("Template store loads valid user templates and skips bad ones", ZetlTemplateStoreTests.LoadsValidUserTemplatesAndSkipsBadOnes),
+                ("Template store drops a removed user template after refresh", ZetlTemplateStoreTests.RemovingAFileDropsTheTemplateAfterRefresh),
+                ("Template store saves user templates and refuses built-in ids", ZetlTemplateStoreTests.SaveRoundTripsAndRefusesBuiltInIds),
+                ("Template duplicate makes an independent editable copy", ZetlTemplateStoreTests.DuplicateMakesAnIndependentEditableCopy),
+                ("Template store deletes user templates but not built-ins", ZetlTemplateStoreTests.DeleteRemovesUserTemplatesButNotBuiltIns),
+                ("View built-ins are valid and round-trip", ZetlViewTests.BuiltInViewsAreValidAndRoundTrip),
+                ("View validation reports errors", ZetlViewTests.InvalidViewsReportErrors),
+                ("View renderer formats nested buckets and slips", ZetlViewTests.RendererFormatsNestedBucketsAndSlips),
+                ("View renderer builds TSV rows using bucket headers", ZetlViewTests.RendererBuildsTsvRowsUsingBucketHeaders),
+                ("View renderer builds escaped HTML", ZetlViewTests.RendererBuildsEscapedHtml),
+                ("View store loads, saves, and deletes user views", ZetlViewTests.StoreLoadsSavesAndDeletesUserViews),
+                ("View sections rename, reorder, and omit buckets", ZetlViewTests.SectionsRenameReorderAndOmitBuckets),
+                ("Project remembers its default view across reload", ZetlViewTests.ProjectRemembersDefaultViewAcrossReload),
+                ("Creation type store loads, saves, and deletes", ZetlViewTests.CreationTypeStoreLoadsSavesAndDeletes),
+                ("View PDF renderer produces a PDF document", ZetlViewTests.PdfRendererProducesAPdfDocument),
                 ("Project service project and bucket commands honor revisions", ZetlProjectServiceTests.ProjectAndBucketCommandsHonorRevisions),
                 ("Project service persists revisions", ZetlProjectServiceTests.RevisionsPersistAcrossReload),
                 ("Project service publishes detailed durable events", ZetlProjectServiceTests.SuccessfulMutationPublishesOneDetailedEvent),
@@ -2309,6 +2331,69 @@ internal static class PortableSelfTests
             AssertEqual("Scratch", note.PreferredBucket!.Name, "First quick note should default to Scratch.");
             AssertTrue(note.ShowStartProjectToggle, "First quick note should offer project activation.");
             AssertFalse(note.StartProjectDefault, "Quick note should not activate the project by default.");
+        }
+
+        private static void RuntimeTemplateHoldRequestsPicker()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            var request = coordinator.HandleHoldAsync(
+                ShortcutContext(VK_T)).GetAwaiter().GetResult();
+
+            AssertTrue(request is ZetlTemplatePickerRequest, "Held Ctrl+T should request the template picker.");
+            AssertFalse(
+                ((ZetlTemplatePickerRequest)request!).FromCompileFallback,
+                "A held Ctrl+T picker request is not a compile fallback.");
+        }
+
+        private static void RuntimeCompileHoldWithoutProjectRequestsPicker()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            // No active project and nothing in Scratch to compile: held Ctrl+V should
+            // offer the template picker (flagged as the compile fallback).
+            var request = coordinator.HandleHoldAsync(
+                ShortcutContext(VK_V)).GetAwaiter().GetResult();
+
+            AssertTrue(
+                request is ZetlTemplatePickerRequest { FromCompileFallback: true },
+                "Held Ctrl+V with nothing to compile should request the template picker as a fallback.");
+        }
+
+        private static void RuntimeCompileHoldWithActiveProjectStaysCompile()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            store.SetActiveProject(project.Id, shifted: false);
+            store.AddNote(project.Buckets.First(), "a note", "copy");
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            var request = coordinator.HandleHoldAsync(
+                ShortcutContext(VK_V)).GetAwaiter().GetResult();
+
+            AssertTrue(
+                request is ZetlCompileRequest,
+                "Held Ctrl+V with an active project and notes should still compile.");
         }
 
         private static void RuntimeHoldTogglesAndUndoStayPortable()

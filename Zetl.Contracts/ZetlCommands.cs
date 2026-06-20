@@ -22,6 +22,12 @@ public sealed record RenameProjectCommand
     public required string Name { get; init; }
 }
 
+public sealed record SetProjectViewCommand
+{
+    // The default view document id, or null to clear it (fall back to the first view).
+    public string? ViewId { get; init; }
+}
+
 public sealed record DeleteProjectCommand;
 
 public sealed record AddBucketCommand
