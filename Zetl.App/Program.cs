@@ -88,6 +88,15 @@ internal static class Program
     {
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            // Render dropdowns, flyouts, and tooltips as in-window overlays
+            // instead of separate top-level OS windows. Zetl's popups force
+            // their own foreground/topmost (see ZetlWindowActivation); a
+            // ComboBox dropdown that is its own top-level window gets caught in
+            // that contest and is orphaned on screen when its owner dismisses
+            // on click-away. An overlay popup is part of the owning window's
+            // surface, so it can never outlive it.
+            .With(new Win32PlatformOptions { OverlayPopups = true })
+            .With(new X11PlatformOptions { OverlayPopups = true })
             .WithInterFont()
             .LogToTrace();
     }
