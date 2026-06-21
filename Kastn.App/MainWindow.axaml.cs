@@ -1559,10 +1559,7 @@ internal partial class MainWindow : Window
                 await connection.RefreshAsync();
                 if (viewerMode)
                 {
-                    editableViewMode = true;
-                    viewerTextBox.IsVisible = false;
-                    editViewScroll.IsVisible = true;
-                    BuildEditableViewBlocks(CurrentFilteredSlips());
+                    EnterEditableView();
                 }
 
                 statusText.Text = "Slip created.";
@@ -2180,6 +2177,11 @@ internal partial class MainWindow : Window
             : $"{visible.Count} of {currentProject.Slips.Count} slips in the current view.";
         if (editableViewMode)
         {
+            // Read and edit surfaces share the same grid. Keep the read layers
+            // explicitly hidden even when a live refresh arrives mid-session.
+            viewerTextBox.IsVisible = false;
+            viewerDocumentScroll.IsVisible = false;
+            editViewScroll.IsVisible = true;
             if (!savingEditableView && !HasDirtyEditableBlocks())
             {
                 BuildEditableViewBlocks(visible);
@@ -3181,11 +3183,7 @@ internal partial class MainWindow : Window
                 return;
             }
 
-            editableViewMode = true;
-            ClearPictureDocument();
-            viewerTextBox.IsVisible = false;
-            editViewScroll.IsVisible = true;
-            BuildEditableViewBlocks(CurrentFilteredSlips());
+            EnterEditableView();
             editableBlocksPanel.Focus();
             return;
         }
@@ -3199,6 +3197,19 @@ internal partial class MainWindow : Window
 
         ExitEditableView(clearBlocks: true);
         RefreshViewer();
+    }
+
+    private void EnterEditableView()
+    {
+        editableViewMode = true;
+        // The read document and editable cards occupy stacked layers. Clear the
+        // read picture layer before revealing cards so it cannot remain visible
+        // behind them through alternate entry paths such as New Slip.
+        ClearPictureDocument();
+        viewerTextBox.IsVisible = false;
+        viewerDocumentScroll.IsVisible = false;
+        editViewScroll.IsVisible = true;
+        BuildEditableViewBlocks(CurrentFilteredSlips());
     }
 
     private async Task SaveEditableViewAsync()
