@@ -61,6 +61,8 @@ protocols. A transient transport failure may retry the same command ID.
 
 - `ListProjects` returns project summaries.
 - `GetProject` returns one complete project snapshot.
+- `GetSlipPicture` returns normalized picture bytes for one picture slip without
+  exposing storage paths or changing project state.
 - A snapshot includes project metadata revision, project change sequence,
   buckets, and slips.
 - Change events identify the changed entity and resulting project change
@@ -72,9 +74,8 @@ protocols. A transient transport failure may retry the same command ID.
 
 ## Protocol Evolution
 
-- Version 1 covers the current text-slip model and the first Kastn MVP.
+- Version 1 covers text and picture slips plus the first Kastn workbench.
 - Unknown JSON properties are ignored for forward-compatible additions.
 - Breaking changes require a new protocol version and handshake negotiation.
-- File and picture transfer contracts are deferred to the typed capture
-  milestone. Version 1 mutation commands contain no client-provided storage
-  paths.
+- Picture transfer is read-only and content-addressed. File-attachment transfer
+  remains deferred. Version 1 contracts contain no storage paths.
