@@ -115,13 +115,28 @@ item 7, which formats a single slip's text.
 
 ### 9. Linked slips — wiki-links + backlinks
 The missing zettelkasten piece, and the highest-leverage structural add. A slip
-can reference another with `[[slip]]`; the Detail pane shows a "linked from"
+can reference another with `[[…]]`; the Detail pane shows a "linked from"
 backlinks list. Turns the *kasten* from a folder tree into a linked knowledge
-base, and composes with the Markdown plan (links land in item 7). Render flow:
-`[[…]]` resolves to the target slip in the View/exports; an unresolved link is
-left visible (a stub worth filling, not an error), mirroring how memory links
-work. Design alongside the typed-capture-log direction so link storage stays
-inspectable.
+base, and composes with the Markdown plan (links land in item 7).
+
+Link model (decided): **anchor on the slip id, cache the title for readability.**
+- The stored token is `[[id|Title]]`. The **id is authoritative**; the title
+  after `|` keeps the raw Markdown human-readable/inspectable.
+- **Resolve at display time from the id** — Editor, View, and exports look up
+  the slip by id and show its *current* title, so renaming a target updates
+  every link automatically. On save/export, rewrite the cached title so even
+  the raw text stays fresh.
+- **Re-link = re-point the id:** invoking the `[[` picker again on an existing
+  link swaps the id (and refreshes the cached title); no manual text surgery.
+- **Backlinks key on the id**, so they survive renames and moves between buckets;
+  they are computed (a scan for `[[id…]]`), never stored — no new persisted
+  state, slips stay the source of truth.
+- **Unresolved / deleted target:** id resolves to nothing → fall back to the
+  cached title as a visible dashed stub (a "worth filling," not an error,
+  mirroring memory links). Once soft-delete/trash lands it can still resolve to
+  the trashed slip.
+- Interaction detail to design at build time: how to re-trigger the picker on an
+  existing link inside the plain-text editor (cursor-in-link + key/click).
 
 ### 10. Board (kanban) mode
 An alternative project surface for organizing and triage: **buckets become
