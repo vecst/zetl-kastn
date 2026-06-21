@@ -5,7 +5,7 @@ namespace ZETL;
 internal static class ZetlKastnLauncher
 {
     public static void Launch(
-        string projectId,
+        string? projectId = null,
         string? explicitPath = null,
         string? pipeName = null)
     {
@@ -29,7 +29,11 @@ internal static class ZetlKastnLauncher
             startInfo.FileName = path;
         }
 
-        startInfo.ArgumentList.Add($"--project={projectId}");
+        if (!string.IsNullOrWhiteSpace(projectId))
+        {
+            startInfo.ArgumentList.Add($"--project={projectId}");
+        }
+
         if (!string.IsNullOrWhiteSpace(pipeName))
         {
             startInfo.ArgumentList.Add($"--ipc-pipe={pipeName}");

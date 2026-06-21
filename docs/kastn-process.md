@@ -36,7 +36,7 @@ the user and login session, so Zetl computes the same name without it being
 passed at launch. The pipe carries three signals:
 
 - **Activate** — focus Kastn and optionally navigate to a project. Used by the
-  single-instance forward and by Zetl's `Show Kastn` tray item. Fire-and-forget.
+  single-instance forward and by Zetl's `Open Kastn` tray item. Fire-and-forget.
 - **Shutdown** — Zetl is quitting and asks whether Kastn should close with it.
   Kastn replies with its decision (see Tray And Shutdown Coordination).
 
@@ -49,10 +49,10 @@ Kastn participates in Zetl's single system-tray presence rather than carrying it
 own tray icon:
 
 - **Minimize hides into Zetl's tray.** Minimizing Kastn takes it off the taskbar
-  and hides the window. It returns through the `Show Kastn` item in Zetl's tray
-  menu, which is enabled only while a Kastn client is connected and sends an
-  activate request over the control pipe. Closing (the window's X) still exits
-  Kastn outright and leaves Zetl resident.
+  and hides the window. It returns through the `Open Kastn` item in Zetl's tray
+  menu, which focuses a connected Kastn (including a tray-minimized one) over the
+  control pipe and launches Kastn when none is running. Closing (the window's X)
+  still exits Kastn outright and leaves Zetl resident.
 - **Quitting Zetl coordinates the shutdown.** When the user quits Zetl with a
   Kastn connected, Zetl sends a shutdown request and waits for Kastn's decision.
   A Kastn minimized to the tray closes silently, so quitting Zetl closes

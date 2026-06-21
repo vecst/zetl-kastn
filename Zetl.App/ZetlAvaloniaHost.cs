@@ -47,7 +47,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly List<IClickAwayDismissable> clickAwayPopups = [];
     private readonly ZetlClickAwayWatcher clickAwayWatcher;
     private DateTime lastTrayClickUtc = DateTime.MinValue;
-    private NativeMenuItem? showKastnItem;
     private bool disposed;
 
     public ZetlAvaloniaHost(
@@ -144,8 +143,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             clipboard.GetChangeToken);
 
         trayIcon = CreateTrayIcon();
-        // Enable/disable "Show Kastn" as Kastn connects and disconnects.
-        ipcServer.ClientsChanged += () => Dispatcher.UIThread.Post(UpdateKastnMenuItem);
         // Reflect Zetl's state in the tray icon. store.Changed covers active
         // project, bucket kind, and pop toggles; UpdateTrayIcon no-ops when the
         // effective state is unchanged, so this stays cheap despite firing often.
@@ -266,11 +263,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         menu.Items.Add(Item("Toggle Active Bucket Pop Mode", TogglePopMode));
         menu.Items.Add(Item("Settings", () => _ = ShowSettingsAsync()));
         menu.Items.Add(new NativeMenuItemSeparator());
-        // Unified tray: Kastn minimizes into Zetl's tray, so its restore lives here.
-        // Enabled only while a Kastn client is connected.
-        showKastnItem = Item("Show Kastn", ShowKastn);
-        showKastnItem.IsEnabled = ipcServer.HasClient("Kastn");
-        menu.Items.Add(showKastnItem);
+        // Unified tray: launch Kastn when it is not running, or focus/restore it
+        // (including from a tray-minimized state) when it is.
+        menu.Items.Add(Item("Open Kastn", OpenKastn));
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(Item("Quit", RequestQuit));
 
@@ -410,25 +405,35 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         return item;
     }
 
-    private void UpdateKastnMenuItem()
+    // Open Kastn from the tray: focus/restore a connected Kastn (including one
+    // minimized into the tray) over the control pipe, or launch it when none is
+    // running.
+    private async void OpenKastn()
     {
-        if (!disposed && showKastnItem is not null)
+        if (ipcServer.HasClient("Kastn"))
         {
-            showKastnItem.IsEnabled = ipcServer.HasClient("Kastn");
+            try
+            {
+                await KastnControlChannel.ActivateAsync(null);
+                return;
+            }
+            catch (Exception ex)
+            {
+                // Kastn may have vanished between the check and the signal; fall
+                // through to launching a fresh instance.
+                Log($"Show Kastn failed ({ex.GetType().Name}): {ex.Message}");
+            }
         }
-    }
 
-    // Restore a Kastn that has minimized into the tray. The activate request is
-    // handled by Kastn's control pipe (it shows and focuses its window).
-    private async void ShowKastn()
-    {
         try
         {
-            await KastnControlChannel.ActivateAsync(null);
+            ZetlKastnLauncher.Launch(explicitPath: kastnPath, pipeName: ipcPipeName);
+            Log("Launched Kastn from the tray.");
         }
         catch (Exception ex)
         {
-            Log($"Show Kastn failed: {ex.Message}");
+            Log($"Open Kastn failed ({ex.GetType().Name}): {ex.Message}");
+            notifications.Show($"Could not open Kastn: {ex.Message}");
         }
     }
 
