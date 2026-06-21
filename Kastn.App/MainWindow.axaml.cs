@@ -72,7 +72,7 @@ internal partial class MainWindow : Window
     private string templateBaselineJson = "";
     private readonly ObservableCollection<ProjectListItem> projects = [];
     private readonly ObservableCollection<TemplateListItem> templates = [];
-    private readonly ObservableCollection<KastnBucketItem> buckets = [];
+    private string? lastSelectedNodeId;
     private readonly ObservableCollection<SlipListItem> slips = [];
     private readonly ObservableCollection<FilterItem> sources = [];
     private readonly ObservableCollection<FilterItem> sessions = [];
@@ -122,7 +122,6 @@ internal partial class MainWindow : Window
         Icon = KastnIcon.Create();
         landingProjectList.ItemsSource = projects;
         landingTemplateItems.ItemsSource = templates;
-        bucketList.ItemsSource = buckets;
         slipList.ItemsSource = slips;
         sourceFilterBox.ItemsSource = sources;
         sessionFilterBox.ItemsSource = sessions;
@@ -151,14 +150,9 @@ internal partial class MainWindow : Window
 
         connection.SnapshotChanged += OnSnapshotChanged;
         landingProjectList.SelectionChanged += OnProjectSelectionChanged;
-        bucketList.SelectionChanged += (_, _) =>
-        {
-            if (!refreshing)
-            {
-                RefreshBucketEditor();
-                RefreshSlipView(force: true);
-            }
-        };
+        projectTree.SelectionChanged += OnTreeSelectionChanged;
+        slipModeButton.Click += (_, _) => SetRightPaneMode(viewer: false);
+        viewModeButton.Click += (_, _) => SetRightPaneMode(viewer: true);
         slipList.SelectionChanged += OnSlipSelectionChanged;
         searchBox.TextChanged += (_, _) => RefreshSlipView();
         sourceFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
@@ -185,7 +179,7 @@ internal partial class MainWindow : Window
         viewerModeMenuItem.Click += async (_, _) => await ToggleEditableViewAsync();
         focusSearchMenuItem.Click += (_, _) => searchBox.Focus();
         focusProjectsMenuItem.Click += (_, _) => landingProjectList.Focus();
-        focusBucketsMenuItem.Click += (_, _) => bucketList.Focus();
+        focusBucketsMenuItem.Click += (_, _) => projectTree.Focus();
         focusSlipsMenuItem.Click += (_, _) => FocusMainView();
         aboutMenuItem.Click += ShowAbout;
         addBucketButton.Click += async (_, _) => await AddBucketAsync();
@@ -396,7 +390,8 @@ internal partial class MainWindow : Window
             else
             {
                 currentProject = null;
-                buckets.Clear();
+                projectTree.ItemsSource = null;
+                lastSelectedNodeId = null;
                 slips.Clear();
                 editorState.Select(null);
                 UpdateEditorFromState();
@@ -592,17 +587,19 @@ internal partial class MainWindow : Window
 
     private void RefreshBuckets(ZetlProjectSnapshot project, string? selectedBucketId)
     {
-        buckets.Clear();
-        foreach (var bucket in KastnWorkbench.BuildBucketHierarchy(project, includeAll: true))
-        {
-            buckets.Add(bucket);
-        }
-
-        bucketList.SelectedItem = buckets.FirstOrDefault(
-                bucket => bucket.Id == selectedBucketId)
-            ?? buckets[0];
+        // Restore whichever node (slip or bucket) was selected, falling back to the
+        // requested bucket, then the first bucket. Runs inside ApplySnapshot's
+        // refreshing guard, so re-selecting drives no side effects here.
+        var restoreId = lastSelectedNodeId
+            ?? selectedBucketId
+            ?? project.Buckets.FirstOrDefault()?.Id;
+        projectTree.ItemsSource = KastnWorkbench.BuildProjectTree(project, project.Slips);
+        var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, restoreId);
+        projectTree.SelectedItem = node;
+        lastSelectedNodeId = node?.Id;
         RefreshBucketEditor();
         RefreshDestinationBuckets();
+        SetRightPaneMode(viewerMode);
     }
 
     private void RefreshBucketEditor()
@@ -2257,11 +2254,110 @@ internal partial class MainWindow : Window
     private bool IsOnline =>
         connection.Current.ConnectionState == KastnConnectionState.Online;
 
-    private string? SelectedBucketId =>
-        (bucketList.SelectedItem as KastnBucketItem)?.Id;
+    private KastnTreeNode? SelectedTreeNode => projectTree.SelectedItem as KastnTreeNode;
 
-    private ZetlBucketSnapshot? SelectedBucket =>
-        (bucketList.SelectedItem as KastnBucketItem)?.Bucket;
+    private string? SelectedBucketId => SelectedBucket?.Id;
+
+    // The bucket a tree selection acts on: the bucket node itself, or the parent
+    // bucket of a selected slip (so bucket add/move/rename target something sane
+    // whether a bucket or a slip is selected).
+    private ZetlBucketSnapshot? SelectedBucket
+    {
+        get
+        {
+            var node = SelectedTreeNode;
+            if (node is null || currentProject is null)
+            {
+                return null;
+            }
+
+            return node.Kind == KastnTreeNodeKind.Bucket
+                ? node.Bucket
+                : currentProject.Buckets.FirstOrDefault(bucket => bucket.Id == node.Slip!.BucketId);
+        }
+    }
+
+    private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (refreshing)
+        {
+            return;
+        }
+
+        var node = SelectedTreeNode;
+        if (node is null)
+        {
+            return;
+        }
+
+        // Save the current edit before switching away. On a failed save (conflict
+        // or offline) revert the selection so the dirty slip stays put.
+        if (editorState.SlipId is { } editingId
+            && !string.Equals(editingId, node.Id, StringComparison.Ordinal)
+            && editorState.IsDirty
+            && !await SaveEditorAsync())
+        {
+            refreshing = true;
+            projectTree.SelectedItem = FindTreeNode(
+                projectTree.ItemsSource as IEnumerable<KastnTreeNode>, editingId);
+            refreshing = false;
+            return;
+        }
+
+        lastSelectedNodeId = node.Id;
+        if (node.Kind == KastnTreeNodeKind.Slip)
+        {
+            // Reuse the programmatic-selection path: load the slip into the editor
+            // and scope the view to its bucket, then show the Slip pane.
+            pendingSlipSelectionId = node.Id;
+            RefreshBucketEditor();
+            RefreshSlipView(force: true);
+            SetRightPaneMode(viewer: false);
+        }
+        else
+        {
+            RefreshBucketEditor();
+            RefreshSlipView(force: true);
+            SetRightPaneMode(viewer: true);
+        }
+    }
+
+    // Slip ⇄ View toggle. Slip shows the slip-detail editor; View shows the
+    // rendered viewer. The active mode's own button is disabled for a simple
+    // segmented look.
+    private void SetRightPaneMode(bool viewer)
+    {
+        viewerMode = viewer;
+        editorPanel.IsVisible = !viewer;
+        viewerPanel.IsVisible = viewer;
+        var hasProject = currentProject is not null;
+        slipModeButton.IsEnabled = hasProject && viewer;
+        viewModeButton.IsEnabled = hasProject && !viewer;
+        SetEditingEnabled();
+    }
+
+    private static KastnTreeNode? FindTreeNode(IEnumerable<KastnTreeNode>? nodes, string? id)
+    {
+        if (nodes is null || id is null)
+        {
+            return null;
+        }
+
+        foreach (var node in nodes)
+        {
+            if (string.Equals(node.Id, id, StringComparison.Ordinal))
+            {
+                return node;
+            }
+
+            if (FindTreeNode(node.Children, id) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
 
     private IReadOnlyList<ZetlSlipSnapshot> CurrentFilteredSlips()
     {

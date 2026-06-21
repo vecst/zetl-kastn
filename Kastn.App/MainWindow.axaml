@@ -374,22 +374,27 @@
               </StackPanel>
             </Grid>
 
-            <Grid Grid.Row="5" ColumnDefinitions="260,8,*">
+            <Grid Grid.Row="5" ColumnDefinitions="300,8,*">
               <Border Grid.Column="0"
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">
                 <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto">
-                  <TextBlock Grid.Row="0" Text="Buckets" Classes="heading" Margin="0,0,0,8" />
-                  <ListBox Grid.Row="1" x:Name="bucketList">
-                    <ListBox.ItemTemplate>
-                      <DataTemplate>
+                  <TextBlock Grid.Row="0" Text="Buckets &amp; slips" Classes="heading" Margin="0,0,0,8" />
+                  <TreeView Grid.Row="1" x:Name="projectTree">
+                    <TreeView.Styles>
+                      <Style Selector="TreeViewItem">
+                        <Setter Property="IsExpanded" Value="True" />
+                      </Style>
+                    </TreeView.Styles>
+                    <TreeView.ItemTemplate>
+                      <TreeDataTemplate ItemsSource="{Binding Children}">
                         <TextBlock Text="{Binding Label}"
-                                   Margin="4,5"
+                                   Margin="2,3"
                                    TextTrimming="CharacterEllipsis" />
-                      </DataTemplate>
-                    </ListBox.ItemTemplate>
-                  </ListBox>
+                      </TreeDataTemplate>
+                    </TreeView.ItemTemplate>
+                  </TreeView>
                   <TextBox Grid.Row="2"
                            x:Name="bucketNameBox"
                            Watermark="Bucket name"
@@ -423,7 +428,15 @@
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">
-                <Grid>
+                <Grid RowDefinitions="Auto,*">
+                  <StackPanel Grid.Row="0"
+                              Orientation="Horizontal"
+                              Spacing="6"
+                              Margin="0,0,0,10">
+                    <Button x:Name="slipModeButton" Content="Slip" Padding="18,4" />
+                    <Button x:Name="viewModeButton" Content="View" Padding="18,4" />
+                  </StackPanel>
+                  <Grid Grid.Row="1">
                   <Grid x:Name="editorPanel"
                         IsVisible="False"
                         RowDefinitions="Auto,Auto,*,Auto,Auto">
@@ -601,6 +614,7 @@
                   <ListBox x:Name="slipList"
                            IsVisible="False"
                            SelectionMode="Multiple" />
+                  </Grid>
                 </Grid>
               </Border>
             </Grid>
