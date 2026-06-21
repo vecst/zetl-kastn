@@ -19,7 +19,7 @@ namespace KASTN;
 
 internal partial class MainWindow : Window
 {
-    private const string UntitledSlipText = "Untitled";
+    private const string UntitledSlipTitle = "Untitled";
     private const double LandingCardWidth = 450;
     private const double LandingCardHeight = 330;
     private const double LandingCardMargin = 8;
@@ -91,6 +91,7 @@ internal partial class MainWindow : Window
     private bool editorUpdating;
     private bool saving;
     private bool savingEditableView;
+    private bool addingSlip;
     private string? pendingSaveText;
     private string? pendingBucketSelectionId;
     private string? pendingSlipSelectionId;
@@ -916,9 +917,8 @@ internal partial class MainWindow : Window
             return;
         }
 
-        // Grab the project's bucket structure (names + settings), dropping reserved
-        // buckets and any project-specific replay-review link. Seeds stay empty: this
-        // is a capture template scaffold.
+        // Grab the project's bucket structure and text cards. Optional titles let
+        // a project act as a worksheet without putting its labels in note text.
         var buckets = project.Buckets
             .Where(bucket => !ZetlTemplateValidator.ReservedName(bucket.Name))
             .Select(bucket => new ZetlTemplateBucketDocument
@@ -932,7 +932,18 @@ internal partial class MainWindow : Window
                     DefaultStartingText = bucket.Settings.DefaultStartingText,
                     DefaultTsvRowLength = bucket.Settings.DefaultTsvRowLength,
                     PopMode = bucket.Settings.PopMode
-                }
+                },
+                Cards = project.Slips
+                    .Where(slip => slip.BucketId == bucket.Id
+                        && slip.Type != ZetlSlipType.Picture
+                        && (!string.IsNullOrWhiteSpace(slip.Title)
+                            || !string.IsNullOrWhiteSpace(slip.Text)))
+                    .Select(slip => new ZetlTemplateSlipDocument
+                    {
+                        Title = slip.Title,
+                        Text = slip.Text
+                    })
+                    .ToList()
             })
             .ToList();
         if (buckets.Count == 0)
@@ -997,7 +1008,7 @@ internal partial class MainWindow : Window
                 : "Formatted";
         templateBucketTsvBox.Value = Math.Clamp(bucket.Settings.DefaultTsvRowLength, 1, 100);
         templateBucketStartBox.Text = bucket.Settings.DefaultStartingText;
-        templateBucketSeedsBox.Text = string.Join("\n", bucket.Seeds);
+        templateBucketSeedsBox.Text = FormatTemplateCards(bucket);
         templateEditorUpdating = false;
     }
 
@@ -1019,7 +1030,8 @@ internal partial class MainWindow : Window
             DefaultStartingText = templateBucketStartBox.Text ?? "",
             DefaultTsvRowLength = (int)(templateBucketTsvBox.Value ?? 5)
         };
-        bucket.Seeds = ParseSeedLines(templateBucketSeedsBox.Text);
+        bucket.Seeds = [];
+        bucket.Cards = ParseTemplateCards(templateBucketSeedsBox.Text);
 
         if (renamed)
         {
@@ -1085,8 +1097,7 @@ internal partial class MainWindow : Window
 
     private void ApplyTemplateSeedsVisibility()
     {
-        var consumable = (templateTypeBox.SelectedItem as string) == ZetlTemplateTypes.Consumable;
-        templateSeedsPanel.IsVisible = consumable;
+        templateSeedsPanel.IsVisible = true;
     }
 
     private void SaveTemplate()
@@ -1103,16 +1114,6 @@ internal partial class MainWindow : Window
             : templateCategoryBox.Text.Trim();
         template.Description = templateDescriptionBox.Text?.Trim() ?? "";
         template.Type = consumable ? ZetlTemplateTypes.Consumable : ZetlTemplateTypes.Capture;
-        if (!consumable)
-        {
-            // Capture templates never carry seeds; drop any entered while in
-            // consumable mode so the document validates and stays a pure scaffold.
-            foreach (var bucket in template.Buckets)
-            {
-                bucket.Seeds = [];
-            }
-        }
-
         if (string.IsNullOrEmpty(template.Id))
         {
             template.Id = ZetlTemplateDefaults.CreateId(template.Name);
@@ -1180,13 +1181,33 @@ internal partial class MainWindow : Window
     private static string BucketLabel(ZetlTemplateBucketDocument bucket) =>
         string.IsNullOrWhiteSpace(bucket.Name) ? "(unnamed bucket)" : bucket.Name;
 
-    private static List<string> ParseSeedLines(string? text) =>
+    private static List<ZetlTemplateSlipDocument> ParseTemplateCards(string? text) =>
         (text ?? "")
             .Replace("\r\n", "\n")
             .Split('\n')
             .Select(line => line.Trim())
             .Where(line => line.Length > 0)
+            .Select(line =>
+            {
+                var separator = line.IndexOf("::", StringComparison.Ordinal);
+                return separator < 0
+                    ? new ZetlTemplateSlipDocument { Text = line }
+                    : new ZetlTemplateSlipDocument
+                    {
+                        Title = line[..separator].Trim(),
+                        Text = line[(separator + 2)..].Trim()
+                    };
+            })
             .ToList();
+
+    private static string FormatTemplateCards(ZetlTemplateBucketDocument bucket)
+    {
+        var lines = bucket.Seeds.ToList();
+        lines.AddRange(bucket.Cards.Select(card => string.IsNullOrWhiteSpace(card.Title)
+            ? card.Text
+            : $"{card.Title} :: {card.Text}".TrimEnd()));
+        return string.Join("\n", lines);
+    }
 
     private async Task CreateProjectFromTemplateAsync(
         ZetlTemplateDocument template,
@@ -1254,7 +1275,7 @@ internal partial class MainWindow : Window
         var allSeeded = true;
         foreach (var bucket in template.Buckets)
         {
-            if (bucket.Seeds.Count == 0)
+            if (bucket.Seeds.Count == 0 && bucket.Cards.Count == 0)
             {
                 continue;
             }
@@ -1267,7 +1288,10 @@ internal partial class MainWindow : Window
                 continue;
             }
 
-            foreach (var text in bucket.Seeds)
+            var cards = bucket.Seeds
+                .Select(text => new ZetlTemplateSlipDocument { Text = text })
+                .Concat(bucket.Cards);
+            foreach (var card in cards)
             {
                 var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
                     Guid.NewGuid().ToString("N"),
@@ -1275,7 +1299,8 @@ internal partial class MainWindow : Window
                     new AddSlipCommand
                     {
                         BucketId = target.Id,
-                        Text = text,
+                        Title = card.Title,
+                        Text = card.Text,
                         Source = "template"
                     },
                     project.Id));
@@ -1402,17 +1427,12 @@ internal partial class MainWindow : Window
         }
 
         var text = editorState.DraftText.Trim();
-        if (text.Length == 0 && SelectedSlip?.Type != ZetlSlipType.Picture)
+        if (text.Length == 0
+            && string.IsNullOrWhiteSpace(SelectedSlip?.Title)
+            && SelectedSlip?.Type != ZetlSlipType.Picture)
         {
-            if (SelectedSlip?.Source == "kastn")
-            {
-                text = UntitledSlipText;
-            }
-            else
-            {
-                statusText.Text = "A slip cannot be saved with empty text.";
-                return false;
-            }
+            statusText.Text = "A slip needs a title or note.";
+            return false;
         }
 
         saving = true;
@@ -1511,63 +1531,96 @@ internal partial class MainWindow : Window
 
     private async Task AddSlipAsync()
     {
-        if (!IsOnline || currentProject is null)
+        if (!IsOnline || currentProject is null || addingSlip)
         {
             return;
         }
 
-        if (!await SaveEditorAsync())
+        var existingDraft = currentProject.Slips.LastOrDefault(slip =>
+            slip.Source == "kastn"
+            && string.Equals(slip.Title, UntitledSlipTitle, StringComparison.Ordinal)
+            && string.IsNullOrWhiteSpace(slip.Text)
+            && !KastnWorkbench.IsDeletedBucket(currentProject.Buckets.FirstOrDefault(
+                bucket => bucket.Id == slip.BucketId)));
+        if (existingDraft is not null)
         {
-            statusText.Text = "Save or resolve the current slip before creating a new one.";
-            return;
-        }
-
-        var destinationBucketId = SelectedBucketId
-            is { } selectedBucketId && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
-                ? selectedBucketId
-                : null;
-        destinationBucketId ??= currentProject.ActiveBucketId
-            ?? currentProject.Buckets.FirstOrDefault(
-                bucket => !KastnWorkbench.IsDeletedBucket(bucket))?.Id;
-        if (destinationBucketId is null)
-        {
-            statusText.Text = "Create a bucket before adding a slip.";
-            return;
-        }
-
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
-            Guid.NewGuid().ToString("N"),
-            ZetlCommandKind.AddSlip,
-            new AddSlipCommand
+            pendingEditableBlockFocusId = existingDraft.Id;
+            ResetSlipFilters();
+            if (!editableViewMode)
             {
-                BucketId = destinationBucketId,
-                Text = UntitledSlipText,
-                Source = "kastn"
-            },
-            currentProject.Id));
-        if (response.Status == ZetlResponseStatus.Success)
-        {
-            var created = response.Payload?.Deserialize<ZetlSlipSnapshot>(
-                ZetlProtocolJson.Options);
-            if (created is not null)
+                EnterEditableView();
+            }
+            else
             {
-                pendingBucketSelectionId = created.BucketId;
-                pendingSlipSelectionId = created.Id;
-                pendingSlipFocus = false;
-                pendingEditableBlockFocusId = created.Id;
-                ResetSlipFilters();
-                await connection.RefreshAsync();
-                if (viewerMode)
-                {
-                    EnterEditableView();
-                }
+                BuildEditableViewBlocks(CurrentFilteredSlips());
+            }
+            statusText.Text = "Finish the current untitled slip before creating another.";
+            return;
+        }
 
-                statusText.Text = "Slip created.";
+        addingSlip = true;
+        SetEditingEnabled();
+        try
+        {
+            if (!await SaveEditorAsync())
+            {
+                statusText.Text = "Save or resolve the current slip before creating a new one.";
                 return;
             }
-        }
 
-        HandleSimpleResponse(response, "Slip created.");
+            var destinationBucketId = SelectedBucketId
+                is { } selectedBucketId && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
+                    ? selectedBucketId
+                    : null;
+            destinationBucketId ??= currentProject.ActiveBucketId
+                ?? currentProject.Buckets.FirstOrDefault(
+                    bucket => !KastnWorkbench.IsDeletedBucket(bucket))?.Id;
+            if (destinationBucketId is null)
+            {
+                statusText.Text = "Create a bucket before adding a slip.";
+                return;
+            }
+
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.AddSlip,
+                new AddSlipCommand
+                {
+                    BucketId = destinationBucketId,
+                    Title = UntitledSlipTitle,
+                    Text = "",
+                    Source = "kastn"
+                },
+                currentProject.Id));
+            if (response.Status == ZetlResponseStatus.Success)
+            {
+                var created = response.Payload?.Deserialize<ZetlSlipSnapshot>(
+                    ZetlProtocolJson.Options);
+                if (created is not null)
+                {
+                    pendingBucketSelectionId = created.BucketId;
+                    pendingSlipSelectionId = created.Id;
+                    pendingSlipFocus = false;
+                    pendingEditableBlockFocusId = created.Id;
+                    ResetSlipFilters();
+                    await connection.RefreshAsync();
+                    if (viewerMode)
+                    {
+                        EnterEditableView();
+                    }
+
+                    statusText.Text = "Slip created.";
+                    return;
+                }
+            }
+
+            HandleSimpleResponse(response, "Slip created.");
+        }
+        finally
+        {
+            addingSlip = false;
+            SetEditingEnabled();
+        }
     }
 
     private async Task SaveBucketAsync()
@@ -1981,7 +2034,8 @@ internal partial class MainWindow : Window
             && editorState.ConflictCurrent is null;
         var canCreateSlip = IsOnline
             && currentProject is not null
-            && !KastnWorkbench.IsDeletedBucket(SelectedBucket);
+            && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
+            && !addingSlip;
         slipEditor.IsEnabled = !viewerMode && canEdit && editorState.ConflictCurrent is null;
         saveSlipButton.IsEnabled = !viewerMode && canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = false;
@@ -2360,7 +2414,7 @@ internal partial class MainWindow : Window
                 {
                     viewerDocumentPanel.Children.Add(new TextBlock
                     {
-                        Text = $"• {slip.Text}",
+                        Text = $"• {(string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text)}",
                         TextWrapping = TextWrapping.Wrap,
                         Margin = new Avalonia.Thickness((group.Depth + 1) * 14, 0, 0, 0)
                     });
@@ -2399,11 +2453,12 @@ internal partial class MainWindow : Window
                         }
                     }
                 };
-                if (!string.IsNullOrWhiteSpace(slip.Text))
+                var pictureLabel = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
+                if (!string.IsNullOrWhiteSpace(pictureLabel))
                 {
                     picturePanel.Children.Add(new TextBlock
                     {
-                        Text = slip.Text.Trim(),
+                        Text = pictureLabel.Trim(),
                         Classes = { "muted" },
                         FontStyle = FontStyle.Italic,
                         TextWrapping = TextWrapping.Wrap
@@ -3239,9 +3294,10 @@ internal partial class MainWindow : Window
             foreach (var block in dirty)
             {
                 var text = block.DraftText.Trim();
-                if (text.Length == 0 && !block.IsPicture)
+                var title = block.DraftTitle.Trim();
+                if (text.Length == 0 && title.Length == 0 && !block.IsPicture)
                 {
-                    block.Status = "Text is required.";
+                    block.Status = "A title or note is required.";
                     failed++;
                     continue;
                 }
@@ -3249,7 +3305,7 @@ internal partial class MainWindow : Window
                 var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
                     Guid.NewGuid().ToString("N"),
                     ZetlCommandKind.UpdateSlip,
-                    new UpdateSlipCommand { Text = text },
+                    new UpdateSlipCommand { Title = title, Text = text },
                     projectId,
                     block.SlipId,
                     block.Revision));
@@ -3409,11 +3465,33 @@ internal partial class MainWindow : Window
             var block = editableViewBlocks[index];
             var statusTextBlock = new TextBlock
             {
-                [Grid.ColumnProperty] = 1,
                 FontSize = 13,
                 Text = EditableBlockStatus(block)
             };
             block.StatusText = statusTextBlock;
+
+            var titleBox = new TextBox
+            {
+                Text = block.DisplayTitle,
+                Watermark = "Title defaults to note text",
+                FontWeight = FontWeight.SemiBold,
+                FontSize = 16,
+                IsEnabled = IsOnline && block.ConflictText is null
+            };
+            block.TitleEditor = titleBox;
+            titleBox.TextChanged += (_, _) =>
+            {
+                block.DraftTitle = titleBox.Text?.Trim() ?? "";
+                block.Status = block.IsDirty ? "Unsaved." : "Unchanged.";
+                statusTextBlock.Text = EditableBlockStatus(block);
+                RefreshEditableViewStatus();
+            };
+            var headingPanel = new StackPanel
+            {
+                [Grid.ColumnProperty] = 1,
+                Spacing = 2,
+                Children = { titleBox, statusTextBlock }
+            };
 
             var detailsButton = new Button
             {
@@ -3503,7 +3581,7 @@ internal partial class MainWindow : Window
                             Children =
                             {
                                 selectionBox,
-                                statusTextBlock,
+                                headingPanel,
                                 detailsButton,
                                 BuildOrderBadge(block, index, total, reorderable)
                             }
@@ -3520,10 +3598,13 @@ internal partial class MainWindow : Window
                 pendingEditableBlockFocusId = null;
                 Dispatcher.UIThread.Post(() =>
                 {
-                    textBox.Focus();
-                    if (string.Equals(block.BaselineText.Trim(), UntitledSlipText, StringComparison.Ordinal))
+                    var focusTarget = block.TitleEditor ?? textBox;
+                    focusTarget.BringIntoView();
+                    focusTarget.Focus();
+                    if (string.Equals(block.DraftTitle, UntitledSlipTitle, StringComparison.Ordinal)
+                        && block.TitleEditor is not null)
                     {
-                        textBox.SelectAll();
+                        block.TitleEditor.SelectAll();
                     }
                     else
                     {
@@ -3980,7 +4061,8 @@ internal partial class MainWindow : Window
 
     private static string SlipPreviewText(ZetlSlipSnapshot slip)
     {
-        var words = slip.Text
+        var source = string.IsNullOrWhiteSpace(slip.Title) ? slip.Text : slip.Title;
+        var words = source
             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Take(5)
             .ToList();
@@ -3990,7 +4072,8 @@ internal partial class MainWindow : Window
     private static bool IsUntitledKastnSlip(ZetlSlipSnapshot slip)
     {
         return string.Equals(slip.Source, "kastn", StringComparison.Ordinal)
-            && string.Equals(slip.Text.Trim(), UntitledSlipText, StringComparison.Ordinal);
+            && string.Equals(slip.Title.Trim(), UntitledSlipTitle, StringComparison.Ordinal)
+            && string.IsNullOrWhiteSpace(slip.Text);
     }
 
     [DllImport("user32.dll")]
@@ -4071,6 +4154,8 @@ internal partial class MainWindow : Window
             Source = slip.Source;
             CapturedAtUtc = slip.CapturedAtUtc;
             IsPicture = slip.Type == ZetlSlipType.Picture;
+            BaselineTitle = slip.Title;
+            DraftTitle = slip.Title;
             BaselineText = slip.Text;
             DraftText = slip.Text;
             Title = SlipPreviewText(slip);
@@ -4083,25 +4168,44 @@ internal partial class MainWindow : Window
         public string Source { get; }
         public DateTimeOffset CapturedAtUtc { get; }
         public bool IsPicture { get; }
+        public string BaselineTitle { get; private set; }
+        public string DraftTitle { get; set; }
         public string BaselineText { get; private set; }
         public string DraftText { get; set; }
         public string Title { get; private set; }
         public string? Status { get; set; }
         public string? ConflictText { get; set; }
         public TextBlock? StatusText { get; set; }
+        public TextBox? TitleEditor { get; set; }
         public TextBox? Editor { get; set; }
         public bool IsSelected { get; set; }
 
         public bool IsDirty =>
-            !string.Equals(DraftText, BaselineText, StringComparison.Ordinal);
+            !string.Equals(DraftTitle, BaselineTitle, StringComparison.Ordinal)
+            || !string.Equals(DraftText, BaselineText, StringComparison.Ordinal);
+
+        public string DisplayTitle => string.IsNullOrWhiteSpace(DraftTitle)
+            ? SlipPreview(DraftText)
+            : DraftTitle;
 
         public void Accept(ZetlSlipSnapshot slip)
         {
             Revision = slip.Revision;
+            BaselineTitle = slip.Title;
+            DraftTitle = slip.Title;
             BaselineText = slip.Text;
             DraftText = slip.Text;
             Title = SlipPreviewText(slip);
             ConflictText = null;
+        }
+
+        private static string SlipPreview(string text)
+        {
+            var words = text
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Take(5)
+                .ToList();
+            return words.Count == 0 ? "Untitled" : string.Join(' ', words);
         }
     }
 }

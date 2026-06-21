@@ -203,7 +203,8 @@ internal static class ZetlProjectServiceTests
             new AddSlipCommand
             {
                 BucketId = inbox.Id,
-                Text = "Untitled",
+                Title = "Untitled",
+                Text = "",
                 Source = "kastn"
             },
             project.Id));
@@ -217,6 +218,16 @@ internal static class ZetlProjectServiceTests
             project.Id,
             untitledKastn.Id,
             untitledKastn.Revision));
+        var updatedTitleOnly = updateBlankKastn.Payload?.Deserialize<ZetlSlipSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Title-only Kastn update did not return a slip.");
+        var clearTitleAndText = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-clear-title-and-text",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Title = "", Text = "" },
+            project.Id,
+            updatedTitleOnly.Id,
+            updatedTitleOnly.Revision));
         var move = service.Execute(ZetlCommandEnvelope.Create(
             "slip-move",
             ZetlCommandKind.MoveSlip,
@@ -275,8 +286,10 @@ internal static class ZetlProjectServiceTests
         AssertEqual(project.ActiveBucketId, snapshot.ActiveBucketId, "Project snapshots should expose the active bucket for clients.");
         AssertEqual(ZetlResponseStatus.ValidationError, addBlankCapture.Status, "Non-Kastn capture commands should still reject blank slips.");
         AssertEqual(ZetlResponseStatus.Success, addUntitledKastn.Status, "Kastn should be able to create a default untitled slip.");
-        AssertEqual("Untitled", untitledKastn.Text, "Kastn's default slip text should be explicit.");
-        AssertEqual(ZetlResponseStatus.ValidationError, updateBlankKastn.Status, "Blank updates should still be rejected by the command service.");
+        AssertEqual("Untitled", untitledKastn.Title, "Kastn's default slip title should be explicit.");
+        AssertEqual("", untitledKastn.Text, "A new Kastn card should not put its placeholder in note text.");
+        AssertEqual(ZetlResponseStatus.Success, updateBlankKastn.Status, "A title-only slip should remain valid.");
+        AssertEqual(ZetlResponseStatus.ValidationError, clearTitleAndText.Status, "A non-picture slip cannot clear both title and note.");
         AssertEqual(ZetlResponseStatus.Success, move.Status, "Slip move should succeed.");
         AssertEqual(drafts.Id, moved.BucketId, "Moved slip should identify its destination.");
         AssertEqual(ZetlResponseStatus.Success, delete.Status, "Slip delete should succeed.");

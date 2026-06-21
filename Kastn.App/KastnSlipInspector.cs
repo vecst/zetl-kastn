@@ -24,6 +24,10 @@ internal static class KastnSlipInspector
             new("Captured", slip.CapturedAtUtc.ToLocalTime().ToString("F")),
             new("Source", slip.Source)
         };
+        if (!string.IsNullOrWhiteSpace(slip.Title))
+        {
+            overview.Insert(0, new("Title", slip.Title));
+        }
         AddIfPresent(overview, "Session", slip.SessionId);
 
         var sections = new List<KastnInspectorSection>

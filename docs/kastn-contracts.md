@@ -65,6 +65,8 @@ protocols. A transient transport failure may retry the same command ID.
   exposing storage paths or changing project state.
 - A snapshot includes project metadata revision, project change sequence,
   buckets, and slips.
+- A slip title is optional metadata. Clients display note text as the fallback
+  title when it is absent; non-picture slips require either a title or note text.
 - Change events identify the changed entity and resulting project change
   sequence.
 - On reconnect, after a sequence gap, or after any uncertain local merge, Kastn

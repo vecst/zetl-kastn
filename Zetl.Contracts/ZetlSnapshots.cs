@@ -70,6 +70,7 @@ public sealed record ZetlSlipSnapshot
     public required long Revision { get; init; }
     public required ZetlSlipType Type { get; init; }
     public required string BucketId { get; init; }
+    public string Title { get; init; } = "";
     public required string Text { get; init; }
     public ZetlPictureSnapshot? Picture { get; init; }
     public ZetlCaptureOriginSnapshot? CaptureOrigin { get; init; }

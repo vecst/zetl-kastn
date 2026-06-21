@@ -125,7 +125,8 @@ internal static class KastnPdfRenderer
                     continue;
                 }
 
-                var lines = slip.Text
+                var displayText = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
+                var lines = displayText
                     .ReplaceLineEndings("\n")
                     .Split('\n')
                     .Select(line => line.TrimEnd())

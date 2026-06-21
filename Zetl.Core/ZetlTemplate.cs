@@ -97,8 +97,18 @@ internal sealed class ZetlTemplateBucketDocument
 
     public List<string> Seeds { get; set; } = [];
 
+    // Rich starter cards. Legacy string Seeds remain supported and are treated
+    // as text-only cards when a template is used.
+    public List<ZetlTemplateSlipDocument> Cards { get; set; } = [];
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+internal sealed class ZetlTemplateSlipDocument
+{
+    public string Title { get; set; } = "";
+    public string Text { get; set; } = "";
 }
 
 /// <summary>
@@ -324,7 +334,13 @@ internal static class ZetlTemplateValidator
                 errors.Add($"Bucket '{bucket.Name}' has an empty seed.");
             }
 
-            seedCount += bucket.Seeds.Count;
+            if (bucket.Cards.Any(card =>
+                string.IsNullOrWhiteSpace(card.Title) && string.IsNullOrWhiteSpace(card.Text)))
+            {
+                errors.Add($"Bucket '{bucket.Name}' has an empty starter card.");
+            }
+
+            seedCount += bucket.Seeds.Count + bucket.Cards.Count;
             ValidateSettings(bucket, errors);
         }
 
@@ -346,11 +362,6 @@ internal static class ZetlTemplateValidator
                 errors.Add(
                     $"Bucket '{bucket.Name}' references a missing parent '{bucket.Parent}'.");
             }
-        }
-
-        if (isCapture && seedCount > 0)
-        {
-            errors.Add("Capture templates must not seed slips.");
         }
 
         if (template.IsConsumable && seedCount == 0)

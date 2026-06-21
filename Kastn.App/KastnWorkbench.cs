@@ -137,7 +137,8 @@ internal static class KastnWorkbench
                 || string.Equals(slip.SessionId, sessionId, StringComparison.Ordinal))
             && slip.CapturedAtUtc >= threshold
             && (string.IsNullOrWhiteSpace(search)
-                || slip.Text.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)));
+                || slip.Text.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
+                || slip.Title.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)));
         return query.ToList();
     }
 
@@ -160,7 +161,9 @@ internal static class KastnWorkbench
             var depth = Depth(item.Bucket, project.Buckets);
             parts.Add(IndentedText(item.Bucket.Name.Trim(), depth));
             parts.AddRange(bucketSlips
-                .Select(slip => IndentedText(slip.Text.Trim(), depth + 1))
+                .Select(slip => IndentedText(
+                    (string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text).Trim(),
+                    depth + 1))
                 .Where(text => text.Trim().Length > 0));
             parts.Add("");
         }

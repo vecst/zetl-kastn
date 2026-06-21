@@ -212,7 +212,7 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                var lines = slip.Text
+                var lines = SlipText(slip)
                     .ReplaceLineEndings("\n")
                     .Split('\n')
                     .Select(line => line.TrimEnd())
@@ -292,7 +292,7 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                var text = slip.Text;
+                var text = SlipText(slip);
                 if (text.Trim().Length == 0)
                 {
                     continue;
@@ -323,10 +323,14 @@ internal static class ZetlViewRenderer
         text.Replace("[", "\\[").Replace("]", "\\]");
 
     private static string SlipText(ZetlSlipSnapshot slip) =>
-        slip.Type == ZetlSlipType.Picture ? $"[Picture: {PictureCaption(slip)}]" : slip.Text;
+        slip.Type == ZetlSlipType.Picture
+            ? $"[Picture: {PictureCaption(slip)}]"
+            : string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
 
     private static string PictureCaption(ZetlSlipSnapshot slip) =>
-        string.IsNullOrWhiteSpace(slip.Text) ? "Picture" : slip.Text.Trim();
+        !string.IsNullOrWhiteSpace(slip.Text)
+            ? slip.Text.Trim()
+            : string.IsNullOrWhiteSpace(slip.Title) ? "Picture" : slip.Title.Trim();
 
     private static string DataUri(ZetlPictureContent picture) =>
         $"data:image/png;base64,{Convert.ToBase64String(picture.Bytes)}";

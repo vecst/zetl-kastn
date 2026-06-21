@@ -455,9 +455,9 @@ internal sealed class ZetlProjectService
         }
 
         var (project, bucket) = found.Value;
-        if (string.IsNullOrWhiteSpace(payload.Text))
+        if (string.IsNullOrWhiteSpace(payload.Text) && string.IsNullOrWhiteSpace(payload.Title))
         {
-            return ValidationError(command, "slip_text_required", "Slip text is required.");
+            return ValidationError(command, "slip_content_required", "A slip title or note is required.");
         }
 
         if (ZetlStateStore.IsDeletedBucket(bucket))
@@ -475,7 +475,8 @@ internal sealed class ZetlProjectService
             payload.Text,
             payload.Source,
             payload.SessionId,
-            payload.CapturedAtUtc?.UtcDateTime);
+            payload.CapturedAtUtc?.UtcDateTime,
+            title: payload.Title);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Created, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);
@@ -502,12 +503,15 @@ internal sealed class ZetlProjectService
         }
 
         var payload = Payload<UpdateSlipCommand>(command);
-        if (string.IsNullOrWhiteSpace(payload.Text) && !note.IsImage)
+        var title = payload.Title ?? note.Title;
+        if (string.IsNullOrWhiteSpace(payload.Text)
+            && string.IsNullOrWhiteSpace(title)
+            && !note.IsImage)
         {
-            return ValidationError(command, "slip_text_required", "Slip text is required.");
+            return ValidationError(command, "slip_content_required", "A slip title or note is required.");
         }
 
-        store.UpdateNote(note, payload.Text);
+        store.UpdateNote(note, payload.Text, payload.Title);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);

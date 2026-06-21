@@ -164,9 +164,10 @@ internal sealed class TemplatePickerWindow : ZetlPopupWindow
     {
         public static TemplateChoice From(ZetlTemplateDocument template)
         {
-            var detail = template.IsConsumable
-                ? $"{template.Category} · {template.Buckets.Count} buckets · "
-                    + $"{template.Buckets.Sum(bucket => bucket.Seeds.Count)} fields"
+            var cardCount = template.Buckets.Sum(
+                bucket => bucket.Seeds.Count + bucket.Cards.Count);
+            var detail = cardCount > 0
+                ? $"{template.Category} · {template.Buckets.Count} buckets · {cardCount} cards"
                 : $"{template.Category} · {template.Buckets.Count} buckets";
             return new TemplateChoice(template, template.Name, detail);
         }

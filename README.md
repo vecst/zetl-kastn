@@ -194,6 +194,7 @@ A project contains buckets. A bucket contains notes.
 
 Each note stores:
 
+- an optional card title (Kastn falls back to the note text when it is absent)
 - text
 - source, such as `copy`, `cut`, `compile`, or `replay`
 - creation timestamp
@@ -288,8 +289,9 @@ for a new project name, then creates, selects, and activates that project in the
 Board's current normal or Shift lane.
 
 Templates carry bucket structure and behavior, including Standard or Replay
-kind, Pop Mode, compile defaults, TSV headers, and row length. Capture templates
-start empty; Consumable templates can seed an ordered Replay queue. Zetl loads
+kind, Pop Mode, compile defaults, TSV headers, and row length. Either template
+type can include starter cards, including title-only blank cards; Consumable
+templates use their starter cards as an ordered Replay queue. Zetl loads
 the protected built-ins plus versioned user template JSON files from:
 
 ```text
@@ -304,6 +306,11 @@ project asset paths itself. Picture slips render inline in Read View and above
 their editable captions in Edit View. Markdown and HTML exports embed PNG data
 as self-contained data URIs, PDF embeds the pictures directly, and text/TSV
 views retain readable picture-caption markers.
+
+Kastn Edit View gives every card an optional title. With no explicit title the
+card derives one from its note. `New` creates one title-only `Untitled` draft,
+focuses its title, and redirects repeated clicks to that draft until it is named
+or given note content.
 
 ## Quick Notes
 

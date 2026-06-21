@@ -735,7 +735,7 @@
                                 x:Name="templateSeedsPanel"
                                 Spacing="4"
                                 Margin="0,10,0,0">
-                      <TextBlock Text="Seeds — one per line (replayed in order)"
+                      <TextBlock Text="Starter cards — one per line; use Title :: note (note may be blank)"
                                  Classes="muted"
                                  FontSize="12" />
                       <TextBox x:Name="templateBucketSeedsBox"

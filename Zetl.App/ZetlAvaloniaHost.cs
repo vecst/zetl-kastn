@@ -751,7 +751,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             return null;
         }
 
-        foreach (var bucket in template.Buckets.Where(bucket => bucket.Seeds.Count > 0))
+        foreach (var bucket in template.Buckets.Where(
+            bucket => bucket.Seeds.Count > 0 || bucket.Cards.Count > 0))
         {
             var target = snapshot.Buckets.FirstOrDefault(
                 item => string.Equals(item.Name, bucket.Name, StringComparison.Ordinal));
@@ -760,12 +761,21 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 continue;
             }
 
-            foreach (var text in bucket.Seeds)
+            var cards = bucket.Seeds
+                .Select(text => new ZetlTemplateSlipDocument { Text = text })
+                .Concat(bucket.Cards);
+            foreach (var card in cards)
             {
                 projectService.Execute(ZetlCommandEnvelope.Create(
                     Guid.NewGuid().ToString("N"),
                     ZetlCommandKind.AddSlip,
-                    new AddSlipCommand { BucketId = target.Id, Text = text, Source = "template" },
+                    new AddSlipCommand
+                    {
+                        BucketId = target.Id,
+                        Title = card.Title,
+                        Text = card.Text,
+                        Source = "template"
+                    },
                     snapshot.Id));
             }
         }

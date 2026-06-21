@@ -39,6 +39,13 @@ image provenance can be opened explicitly from the inspector.
 
 ## Editing
 
+Each Edit View card has an optional title field. A slip without an explicit
+title displays a title derived from its note, preserving every existing project
+without migration. A title-only slip is valid and useful as a labeled blank in
+a reusable template. `New` creates one empty-body `Untitled` card, focuses and
+selects its title, disables itself while creation is in flight, and focuses the
+existing untouched draft instead of creating another when pressed repeatedly.
+
 Selecting a slip opens it in the editor. Text changes autosave after a short
 idle delay and can also be saved with `Ctrl+S`. Zetl accepts the edit only when
 the slip revision still matches the revision Kastn opened.

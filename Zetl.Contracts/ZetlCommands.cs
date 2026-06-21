@@ -51,6 +51,7 @@ public sealed record DeleteBucketCommand;
 public sealed record AddSlipCommand
 {
     public required string BucketId { get; init; }
+    public string? Title { get; init; }
     public required string Text { get; init; }
     public required string Source { get; init; }
     public string? SessionId { get; init; }
@@ -59,6 +60,8 @@ public sealed record AddSlipCommand
 
 public sealed record UpdateSlipCommand
 {
+    // Null preserves the current title; empty clears an explicit title.
+    public string? Title { get; init; }
     public required string Text { get; init; }
 }
 

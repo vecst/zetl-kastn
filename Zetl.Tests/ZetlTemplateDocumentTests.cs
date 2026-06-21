@@ -139,10 +139,19 @@ internal static class ZetlTemplateDocumentTests
             "row length",
             "A non-positive TSV row length should be rejected.");
 
-        AssertError(
-            WithBuckets(Bucket("Inbox", seeds: ["x"])),
-            "must not seed",
-            "A capture template with seeds should be rejected.");
+        var captureWithCard = WithBuckets(Bucket("Inbox"));
+        captureWithCard.Buckets[0].Cards =
+        [
+            new ZetlTemplateSlipDocument { Title = "Question", Text = "" }
+        ];
+        AssertEqual(
+            0,
+            ZetlTemplateValidator.Validate(captureWithCard).Count,
+            "A capture template should allow a labeled blank starter card.");
+
+        var emptyCard = WithBuckets(Bucket("Inbox"));
+        emptyCard.Buckets[0].Cards = [new ZetlTemplateSlipDocument()];
+        AssertError(emptyCard, "empty starter card", "A starter card needs a title or note.");
 
         var emptyConsumable = WithBuckets(Bucket("Fields",
             settings: new ZetlBucketSettings { Kind = "Replay", DefaultKind = "Replay" }));

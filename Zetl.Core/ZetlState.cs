@@ -64,6 +64,7 @@ internal sealed class ZetlNote
     public string Id { get; set; } = "";
     public long Revision { get; set; } = 1;
     public string ContentKind { get; set; } = TextKind;
+    public string Title { get; set; } = "";
     public string Text { get; set; } = "";
     public ZetlImageAsset? Image { get; set; }
     public string Source { get; set; } = "";
@@ -86,9 +87,11 @@ internal sealed class ZetlNote
     [System.Text.Json.Serialization.JsonIgnore]
     public string DisplayText => IsImage
         ? string.IsNullOrWhiteSpace(Text)
-            ? $"Image · {Image!.Width}×{Image.Height} · {FormatBytes(Image.ByteLength)}"
+            ? !string.IsNullOrWhiteSpace(Title)
+                ? Title
+                : $"Image · {Image!.Width}×{Image.Height} · {FormatBytes(Image.ByteLength)}"
             : Text
-        : Text;
+        : string.IsNullOrWhiteSpace(Title) ? Text : Title;
 
     private static string FormatBytes(long bytes) => bytes >= 1024 * 1024
         ? $"{bytes / (1024d * 1024d):0.#} MB"
@@ -433,11 +436,13 @@ internal sealed class ZetlStateStore
         string source,
         string? noteSessionId = null,
         DateTime? createdAtUtc = null,
-        ZetlCaptureOrigin? captureOrigin = null)
+        ZetlCaptureOrigin? captureOrigin = null,
+        string? title = null)
     {
         var note = new ZetlNote
         {
             Id = NewId(),
+            Title = (title ?? "").Trim(),
             Text = text.Trim(),
             Source = source,
             SessionId = noteSessionId ?? sessionId,
@@ -631,9 +636,13 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public void UpdateNote(ZetlNote note, string text)
+    public void UpdateNote(ZetlNote note, string text, string? title = null)
     {
         note.Text = text.Trim();
+        if (title is not null)
+        {
+            note.Title = title.Trim();
+        }
         note.Revision++;
         PersistNote(note);
     }
@@ -1533,6 +1542,7 @@ internal sealed class ZetlStateStore
             {
                 note.Id = string.IsNullOrWhiteSpace(note.Id) ? NewId() : note.Id;
                 note.Revision = Math.Max(note.Revision, 1);
+                note.Title ??= "";
                 note.Text ??= "";
                 note.ContentKind = note.Image is not null
                     ? ZetlNote.ImageKind

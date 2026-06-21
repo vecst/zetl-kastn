@@ -78,6 +78,7 @@ internal static class ZetlProjectSnapshotMapper
             Revision = note.Revision,
             Type = note.IsImage ? ZetlSlipType.Picture : ZetlSlipType.Text,
             BucketId = bucket.Id,
+            Title = note.Title,
             Text = note.Text,
             Picture = note.Image is null
                 ? null
@@ -115,10 +116,11 @@ internal static class ZetlProjectSnapshotMapper
         var snippets = project.Buckets
             .Where(bucket => !ZetlStateStore.IsDeletedBucket(bucket))
             .SelectMany(bucket => bucket.Notes)
-            .Where(note => !string.IsNullOrWhiteSpace(note.Text))
+            .Where(note => !string.IsNullOrWhiteSpace(note.Title) || !string.IsNullOrWhiteSpace(note.Text))
             .OrderByDescending(note => note.CreatedAtUtc)
             .Take(3)
-            .Select(note => ZetlStateStore.PreviewText(note.Text))
+            .Select(note => ZetlStateStore.PreviewText(
+                string.IsNullOrWhiteSpace(note.Title) ? note.Text : note.Title))
             .ToList();
 
         return snippets.Count == 0

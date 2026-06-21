@@ -2,8 +2,8 @@
 
 This is the implementation path for turning the Kastn landing-page Templates
 tab into real project creation. It builds on the current decision that
-templates are input-side scaffolds: they create a new, empty project with a
-useful bucket structure and bucket behaviors.
+templates are input-side scaffolds: they create a new project with useful bucket
+structure, bucket behaviors, and optional starter cards.
 
 Views are related but separate. A later creation type may bundle a template and
 one or more views, but templates should not wait for artifact rendering.
@@ -12,9 +12,9 @@ one or more views, but templates should not wait for artifact rendering.
 
 Templates split by **how they are used**:
 
-- **Capture templates** create an *empty* project to collect into. They define
-  buckets, bucket settings, compile defaults, starting text, and TSV defaults,
-  and never copy sample slips.
+- **Capture templates** create a project to collect into. They define buckets,
+  bucket settings, compile defaults, starting text, TSV defaults, and optional
+  starter cards. A starter card may have a title with an empty note body.
 - **Consumable templates** seed an *ordered Replay queue* you paste through —
   e.g. your details into a form, field by field. Because Replay consumes and
   empties its queue, and only replays current-session slips, the **template** is
@@ -24,10 +24,9 @@ Templates split by **how they are used**:
 
 ## Template Principles
 
-- **Capture templates create empty projects; consumable templates seed their
-  payload.** A template may define buckets, nesting, bucket settings, compile
-  defaults, starting text, and TSV defaults. Only consumable templates copy
-  slips, and only their own declared seed fields.
+- **Templates may create starter cards.** A template may define buckets,
+  nesting, bucket settings, compile defaults, starting text, TSV defaults, and
+  titled starter cards. Consumable templates replay those cards in order.
 - **Zetl remains the writer.** Kastn can present templates, but project creation
   (and any seeding) still goes through Zetl's command service.
 - **Built-ins come first.** Ship a small protected set before supporting
@@ -157,8 +156,8 @@ Goal: let users create and edit templates deliberately.
   description, type) across the top, a bucket list on the left, and the selected
   bucket's settings on the right — the same shape as picking a slip in a project.
 - [x] Start with bucket structure and bucket settings — per bucket: name, kind,
-  compile mode, TSV row length, starting text, and (for consumable templates)
-  ordered seeds; with add / move up-down / remove.
+  compile mode, TSV row length, starting text, and ordered starter cards. The
+  editor accepts `Title :: note`; the note side may be blank.
 - [x] See the structure while editing: the left bucket list updates live as
   buckets are added, renamed, and reordered.
 - [x] Save user templates as JSON documents through `ZetlTemplateStore.Save`
@@ -166,8 +165,8 @@ Goal: let users create and edit templates deliberately.
 - [x] Add duplicate-from-built-in (`ZetlTemplateDefaults.Duplicate`) so users can
   customize protected presets safely. Edit works on a clone; delete is confirmed.
 - [x] Start a template from an existing project: a **Save as Template** button in
-  the project view grabs that project's bucket structure (names + settings, minus
-  reserved buckets and project-specific replay links) into a new draft.
+  the project view grabs that project's bucket structure and text cards (including
+  optional titles) into a new draft, minus reserved buckets and replay links.
 
 Landing wiring: a `+ New Template` button plus per-card `Edit` / `Duplicate` /
 `Delete` (Edit and Delete only on user cards; Duplicate on every card). New / Edit
