@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
+using System.Buffers.Binary;
+using Avalonia.Media.Imaging;
+using SkiaSharp;
 using Chordl;
 
 namespace ZETL;
@@ -353,6 +356,8 @@ internal static class AvaloniaWindowsInput
 internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 {
     private const uint UnicodeText = 13;
+    private const uint Dib = 8;
+    private const uint DibV5 = 17;
     private const uint Moveable = 0x0002;
     private const int ClipboardAttempts = 5;
     private const int HwndMessage = -3;
@@ -360,6 +365,7 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     private readonly Action<string> log;
     private readonly Func<IntPtr> createOwnerWindow;
     private IntPtr ownerWindow;
+    private static readonly uint Png = RegisterClipboardFormat("PNG");
 
     // ownerWindowFactory is a test seam: pass `() => IntPtr.Zero` to simulate a
     // failed owner-window creation and verify writes refuse without wiping the
@@ -404,6 +410,146 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         finally
         {
             CloseClipboard();
+        }
+    }
+
+    public ZetlClipboardImage? TryGetImage()
+    {
+        if (!TryOpen())
+        {
+            return null;
+        }
+
+        try
+        {
+            var pngBytes = ReadClipboardBytes(Png);
+            if (pngBytes is not null && TryNormalizeImage(pngBytes, out var pngImage))
+            {
+                return pngImage;
+            }
+
+            foreach (var format in new[] { DibV5, Dib })
+            {
+                var dibBytes = ReadClipboardBytes(format);
+                if (dibBytes is null)
+                {
+                    continue;
+                }
+
+                var bitmapBytes = AddBitmapFileHeader(dibBytes);
+                if (bitmapBytes is not null && TryNormalizeImage(bitmapBytes, out var image))
+                {
+                    return image;
+                }
+            }
+
+            return null;
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
+    private static byte[]? ReadClipboardBytes(uint format)
+    {
+        if (format == 0)
+        {
+            return null;
+        }
+
+        var handle = GetClipboardData(format);
+        if (handle == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        var size = GlobalSize(handle).ToUInt64();
+        if (size == 0 || size > 256UL * 1024 * 1024 || size > int.MaxValue)
+        {
+            return null;
+        }
+
+        var pointer = GlobalLock(handle);
+        if (pointer == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            var bytes = new byte[(int)size];
+            Marshal.Copy(pointer, bytes, 0, bytes.Length);
+            return bytes;
+        }
+        finally
+        {
+            GlobalUnlock(handle);
+        }
+    }
+
+    internal static byte[]? AddBitmapFileHeader(byte[] dib)
+    {
+        if (dib.Length < 40)
+        {
+            return null;
+        }
+
+        var headerSize = BinaryPrimitives.ReadInt32LittleEndian(dib.AsSpan(0, 4));
+        var bitsPerPixel = BinaryPrimitives.ReadUInt16LittleEndian(dib.AsSpan(14, 2));
+        var compression = BinaryPrimitives.ReadInt32LittleEndian(dib.AsSpan(16, 4));
+        var colorsUsed = BinaryPrimitives.ReadUInt32LittleEndian(dib.AsSpan(32, 4));
+        if (headerSize < 40 || headerSize > dib.Length)
+        {
+            return null;
+        }
+
+        var paletteEntries = colorsUsed != 0
+            ? colorsUsed
+            : bitsPerPixel <= 8 ? 1u << bitsPerPixel : 0u;
+        var masks = compression == 3 && headerSize == 40 ? 12 : 0;
+        int pixelOffset;
+        try
+        {
+            pixelOffset = checked(14 + headerSize + masks + (int)paletteEntries * 4);
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
+        if (pixelOffset > dib.Length + 14)
+        {
+            return null;
+        }
+
+        var bitmap = new byte[dib.Length + 14];
+        bitmap[0] = (byte)'B';
+        bitmap[1] = (byte)'M';
+        BinaryPrimitives.WriteInt32LittleEndian(bitmap.AsSpan(2, 4), bitmap.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(bitmap.AsSpan(10, 4), pixelOffset);
+        dib.CopyTo(bitmap, 14);
+        return bitmap;
+    }
+
+    internal static bool TryNormalizeImage(byte[] source, out ZetlClipboardImage? image)
+    {
+        try
+        {
+            using var input = new MemoryStream(source, writable: false);
+            using var bitmap = new Bitmap(input);
+            using var output = new MemoryStream();
+            bitmap.Save(output);
+            image = new ZetlClipboardImage(
+                output.ToArray(),
+                bitmap.PixelSize.Width,
+                bitmap.PixelSize.Height);
+            return image.PngBytes.Length > 0 && image.Width > 0 && image.Height > 0;
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException or IOException or InvalidOperationException or NotSupportedException)
+        {
+            image = null;
+            return false;
         }
     }
 
@@ -482,6 +628,132 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
             CloseClipboard();
         }
+    }
+
+    public bool SetImage(ZetlClipboardImage image)
+    {
+        if (!EnsureOwnerWindow())
+        {
+            log("Clipboard image write skipped: no owner window available; clipboard left intact.");
+            return false;
+        }
+
+        byte[] dib;
+        try
+        {
+            dib = CreateDib(image.PngBytes);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException)
+        {
+            log($"Clipboard image write failed: {ex.Message}");
+            return false;
+        }
+
+        var pngHandle = AllocateGlobal(image.PngBytes);
+        var dibHandle = AllocateGlobal(dib);
+        if (pngHandle == IntPtr.Zero || dibHandle == IntPtr.Zero)
+        {
+            if (pngHandle != IntPtr.Zero) GlobalFree(pngHandle);
+            if (dibHandle != IntPtr.Zero) GlobalFree(dibHandle);
+            return false;
+        }
+
+        if (!TryOpen())
+        {
+            GlobalFree(pngHandle);
+            GlobalFree(dibHandle);
+            return false;
+        }
+
+        var ownsPng = true;
+        var ownsDib = true;
+        try
+        {
+            if (!EmptyClipboard())
+            {
+                return false;
+            }
+
+            var pngWritten = SetClipboardData(Png, pngHandle) != IntPtr.Zero;
+            ownsPng = !pngWritten;
+            var dibWritten = SetClipboardData(Dib, dibHandle) != IntPtr.Zero;
+            ownsDib = !dibWritten;
+            if (!pngWritten && !dibWritten)
+            {
+                log($"Clipboard image write failed: SetClipboardData error {Marshal.GetLastWin32Error()}.");
+            }
+
+            return pngWritten || dibWritten;
+        }
+        finally
+        {
+            if (ownsPng) GlobalFree(pngHandle);
+            if (ownsDib) GlobalFree(dibHandle);
+            CloseClipboard();
+        }
+    }
+
+    private static IntPtr AllocateGlobal(byte[] bytes)
+    {
+        var handle = GlobalAlloc(Moveable, (UIntPtr)bytes.Length);
+        if (handle == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+
+        var pointer = GlobalLock(handle);
+        if (pointer == IntPtr.Zero)
+        {
+            GlobalFree(handle);
+            return IntPtr.Zero;
+        }
+
+        try
+        {
+            Marshal.Copy(bytes, 0, pointer, bytes.Length);
+        }
+        finally
+        {
+            GlobalUnlock(handle);
+        }
+
+        return handle;
+    }
+
+    internal static byte[] CreateDib(byte[] pngBytes)
+    {
+        using var source = SKBitmap.Decode(pngBytes)
+            ?? throw new InvalidDataException("The PNG image could not be decoded.");
+        var info = new SKImageInfo(
+            source.Width,
+            source.Height,
+            SKColorType.Bgra8888,
+            SKAlphaType.Premul);
+        using var bitmap = new SKBitmap(info);
+        if (!source.CopyTo(bitmap, SKColorType.Bgra8888))
+        {
+            throw new InvalidDataException("The PNG image could not be converted for the Windows clipboard.");
+        }
+
+        var rowBytes = checked(source.Width * 4);
+        var pixelBytes = checked(rowBytes * source.Height);
+        var dib = new byte[40 + pixelBytes];
+        BinaryPrimitives.WriteInt32LittleEndian(dib.AsSpan(0, 4), 40);
+        BinaryPrimitives.WriteInt32LittleEndian(dib.AsSpan(4, 4), source.Width);
+        BinaryPrimitives.WriteInt32LittleEndian(dib.AsSpan(8, 4), -source.Height);
+        BinaryPrimitives.WriteInt16LittleEndian(dib.AsSpan(12, 2), 1);
+        BinaryPrimitives.WriteInt16LittleEndian(dib.AsSpan(14, 2), 32);
+        BinaryPrimitives.WriteInt32LittleEndian(dib.AsSpan(20, 4), pixelBytes);
+        for (var row = 0; row < source.Height; row++)
+        {
+            Marshal.Copy(
+                bitmap.GetPixels() + row * bitmap.RowBytes,
+                dib,
+                40 + row * rowBytes,
+                rowBytes);
+        }
+
+        return dib;
     }
 
     public uint GetChangeToken()
@@ -621,6 +893,12 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     private static extern bool GlobalUnlock(IntPtr memory);
 
     [DllImport("kernel32.dll")]
+    private static extern UIntPtr GlobalSize(IntPtr memory);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterClipboardFormat(string format);
+
+    [DllImport("kernel32.dll")]
     private static extern IntPtr GlobalFree(IntPtr memory);
 }
 
@@ -648,6 +926,14 @@ internal sealed class UnsupportedKeyboardBackend(Action<string> log) : IKeyboard
 internal sealed class UnsupportedClipboard(Action<string> log) : IClipboard
 {
     public string? TryGetText() => null;
+
+    public ZetlClipboardImage? TryGetImage() => null;
+
+    public bool SetImage(ZetlClipboardImage image)
+    {
+        log("Clipboard image write ignored: no platform clipboard backend is installed.");
+        return false;
+    }
 
     public bool SetText(string text)
     {

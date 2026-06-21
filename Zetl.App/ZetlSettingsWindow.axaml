@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="ZETL.ZetlSettingsWindow"
-        Width="560" Height="430"
+        Width="560" Height="470"
         MinWidth="460" MinHeight="320"
         CanResize="True"
         SystemDecorations="BorderOnly"
@@ -12,7 +12,7 @@
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
       <Grid ColumnDefinitions="230,*"
-            RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+            RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
             Margin="0,0,8,0">
         <TextBlock Grid.Row="0" Grid.Column="0"
                    Text="Toast display time (ms)"
@@ -36,28 +36,35 @@
                   Content="Held Ctrl+X note also copies its text to the clipboard" />
 
         <TextBlock Grid.Row="3" Grid.Column="0"
+                   Text="Capture origin"
+                   Margin="0,12,0,0"
+                   VerticalAlignment="Center" />
+        <ComboBox Grid.Row="3" Grid.Column="1" x:Name="captureOriginBox"
+                  Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+
+        <TextBlock Grid.Row="4" Grid.Column="0"
                    Text="Default project buckets (one per line)"
                    Margin="0,14,10,0"
                    VerticalAlignment="Top"
                    TextWrapping="Wrap" />
-        <TextBox Grid.Row="3" Grid.Column="1" x:Name="defaultBucketsBox"
+        <TextBox Grid.Row="4" Grid.Column="1" x:Name="defaultBucketsBox"
                  Margin="0,12,0,0"
                  AcceptsReturn="True"
                  MinHeight="110"
                  ScrollViewer.VerticalScrollBarVisibility="Auto" />
 
-        <TextBlock Grid.Row="4" Grid.Column="0"
+        <TextBlock Grid.Row="5" Grid.Column="0"
                    Text="Default compile mode"
                    Margin="0,12,0,0"
                    VerticalAlignment="Center" />
-        <ComboBox Grid.Row="4" Grid.Column="1" x:Name="compileModeBox"
+        <ComboBox Grid.Row="5" Grid.Column="1" x:Name="compileModeBox"
                   Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
 
-        <TextBlock Grid.Row="5" Grid.Column="0"
+        <TextBlock Grid.Row="6" Grid.Column="0"
                    Text="Default TSV row length"
                    Margin="0,12,0,0"
                    VerticalAlignment="Center" />
-        <NumericUpDown Grid.Row="5" Grid.Column="1" x:Name="tsvRowLengthBox"
+        <NumericUpDown Grid.Row="6" Grid.Column="1" x:Name="tsvRowLengthBox"
                        Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
                        Minimum="1" Maximum="50" Increment="1" />
       </Grid>

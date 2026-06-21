@@ -52,6 +52,87 @@ internal sealed class ZetlStateStorage
         JsonFile.WriteAtomic(Path.Combine(projectsDirectory, folder, "project.json"), project);
     }
 
+    public string WriteAsset(
+        ZetlProject project,
+        string contentHash,
+        string extension,
+        byte[] bytes)
+    {
+        var fileName = $"{contentHash}{extension}";
+        var relativePath = $"assets/{fileName}";
+        var fullPath = ResolveAssetPath(project, relativePath, createProjectDirectory: true)
+            ?? throw new InvalidDataException("Could not resolve the project asset path.");
+        if (!File.Exists(fullPath))
+        {
+            JsonFile.WriteAtomicBytes(fullPath, bytes);
+        }
+
+        return relativePath;
+    }
+
+    public byte[]? ReadAsset(ZetlProject project, string relativePath)
+    {
+        var path = ResolveAssetPath(project, relativePath);
+        try
+        {
+            return path is not null && File.Exists(path) ? File.ReadAllBytes(path) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    public string? GetAssetPath(ZetlProject project, string relativePath)
+    {
+        var path = ResolveAssetPath(project, relativePath);
+        return path is not null && File.Exists(path) ? path : null;
+    }
+
+    public IReadOnlyList<ZetlProjectAssetFile> GetAssets(ZetlProject project)
+    {
+        var directory = ResolveAssetPath(project, "assets", createProjectDirectory: false);
+        if (directory is null || !Directory.Exists(directory))
+        {
+            return [];
+        }
+
+        try
+        {
+            return Directory.GetFiles(directory)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(path => new ZetlProjectAssetFile(
+                    $"assets/{Path.GetFileName(path)}",
+                    path))
+                .ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    private string? ResolveAssetPath(
+        ZetlProject project,
+        string relativePath,
+        bool createProjectDirectory = false)
+    {
+        var folder = GetOrAssignFolder(project);
+        var projectDirectory = Path.GetFullPath(Path.Combine(projectsDirectory, folder));
+        if (createProjectDirectory)
+        {
+            Directory.CreateDirectory(projectDirectory);
+        }
+
+        var normalized = relativePath.Replace('/', Path.DirectorySeparatorChar);
+        var fullPath = Path.GetFullPath(Path.Combine(projectDirectory, normalized));
+        var prefix = projectDirectory.TrimEnd(Path.DirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? fullPath
+            : null;
+    }
+
     public void WriteWorkspace(ZetlWorkspaceFile workspace)
     {
         JsonFile.WriteAtomic(workspacePath, workspace);
@@ -208,6 +289,8 @@ internal sealed class ZetlStateStorage
         return collapsed.Length == 0 ? "project" : collapsed;
     }
 }
+
+internal sealed record ZetlProjectAssetFile(string RelativePath, string FullPath);
 
 /// <summary>
 /// Serialized shape of <c>workspace.json</c>: the store-wide version and the

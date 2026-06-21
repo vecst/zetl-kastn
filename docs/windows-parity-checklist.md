@@ -32,6 +32,10 @@ this pass is complete.
 - [ ] Tap `Ctrl+C`, `Ctrl+X`, `Ctrl+V`, `Ctrl+B`, `Ctrl+P`, `Ctrl+R`, and
       `Ctrl+Z`; the foreground application keeps its normal tap behavior.
 - [ ] Held `Ctrl+C` captures copied text and click-away commits the note.
+- [ ] Plain `Ctrl+C` captures clipboard images into the active bucket; verify
+      Board thumbnail, full preview, provenance, deduplication, and ZIP export.
+- [ ] Held `Ctrl+C` with an image opens the image capture dialog; verify its
+      preview, optional caption, project/bucket routing, and click-away commit.
 - [ ] Held `Ctrl+X` opens quick note capture and respects the clipboard setting.
 - [ ] Held `Ctrl+B` opens an auto-hiding Board; held `Ctrl+Shift+B` uses the
       Shift lane.
@@ -39,6 +43,8 @@ this pass is complete.
 - [ ] Replay pastes in order, archives consumed notes, restores the user's
       clipboard, and can be undone.
 - [ ] Pop removes the matching pasted note and can be undone.
+- [ ] Replay and Pop image slips; verify image-to-image and image-to-text
+      clipboard restoration plus undo.
 - [ ] After rapid tap/hold replay stress and after forced Zetl termination,
       type in a plain editor and confirm Ctrl, Shift, Caps Lock, and the
       configured target keys are not inverted or stuck.
@@ -47,8 +53,12 @@ this pass is complete.
 
 - [ ] Create, rename, select, and delete projects, buckets, nested buckets, and
       notes in both lanes.
+- [ ] Edit and clear an image caption from the Board; verify its note-list label
+      updates and the caption survives restart.
 - [ ] Compile formatted, unformatted, and TSV output.
 - [ ] Save structured and flattened compile results to another bucket.
+- [ ] Export clean and archive project packages; confirm only the archive keeps
+      application and window-title provenance.
 - [ ] Copy and Paste Now compile actions restore the original target.
 - [ ] Change settings and create a custom theme; restart and confirm both
       persisted.

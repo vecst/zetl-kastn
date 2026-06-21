@@ -76,9 +76,28 @@ internal static class ZetlProjectSnapshotMapper
         {
             Id = note.Id,
             Revision = note.Revision,
-            Type = ZetlSlipType.Text,
+            Type = note.IsImage ? ZetlSlipType.Picture : ZetlSlipType.Text,
             BucketId = bucket.Id,
             Text = note.Text,
+            Picture = note.Image is null
+                ? null
+                : new ZetlPictureSnapshot
+                {
+                    RelativePath = note.Image.RelativePath,
+                    MimeType = note.Image.MimeType,
+                    Width = note.Image.Width,
+                    Height = note.Image.Height,
+                    ByteLength = note.Image.ByteLength,
+                    Sha256 = note.Image.Sha256
+                },
+            CaptureOrigin = note.CaptureOrigin is null
+                ? null
+                : new ZetlCaptureOriginSnapshot
+                {
+                    ApplicationName = note.CaptureOrigin.ApplicationName,
+                    ProcessName = note.CaptureOrigin.ProcessName,
+                    WindowTitle = note.CaptureOrigin.WindowTitle
+                },
             Source = note.Source,
             SessionId = note.SessionId,
             CapturedAtUtc = new DateTimeOffset(

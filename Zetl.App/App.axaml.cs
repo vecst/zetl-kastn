@@ -80,6 +80,7 @@ public partial class App : Application
                 Path.Combine(stateDir, "settings.json"));
             var themeStore = new ZetlThemeStore(
                 Path.Combine(stateDir, "themes"));
+            var templateStore = CreatePreviewTemplateStore(stateDir);
             var themeManager = new ZetlThemeManager(this, settingsStore);
             themeManager.Apply(
                 themeStore.Resolve(themeIdArgument ?? settingsStore.Settings.ThemeId),
@@ -88,6 +89,14 @@ public partial class App : Application
                     : settingsStore.Settings.ThemeVariant,
                 persist: false);
             var store = new ZetlStateStore(Path.Combine(stateDir, "state.json"));
+            ZetlProject? CreatePreviewProject(
+                ZetlTemplateDocument template,
+                string name,
+                bool shifted) => store.CreateProject(
+                    name,
+                    template.Buckets.Select(item => item.Name),
+                    template.Buckets[0].Name,
+                    shifted);
             var project = store.GetActiveProject()
                 ?? store.CreateProject("Preview", new[] { "Inbox", "Ideas", "Scratch" }, "Inbox");
             var bucket = store.GetActiveBucket()
@@ -104,8 +113,34 @@ public partial class App : Application
             };
             if (bucket.Notes.Count == 0)
             {
-                store.AddNote(bucket, "Review the Linux port roadmap.", "manual");
+                store.AddNote(
+                    bucket,
+                    "Review the Linux port roadmap.",
+                    "copy",
+                    ZetlCaptureOrigin.Create(
+                        "Microsoft Edge",
+                        "msedge",
+                        "Zetl Linux Port Roadmap",
+                        ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
                 store.AddNote(bucket, "Test Replay and Pop behavior.", "manual");
+            }
+
+            if (bucket.Notes.All(note => !note.IsImage))
+            {
+                store.AddImageNote(
+                    project,
+                    bucket,
+                    new ZetlClipboardImage(
+                        Convert.FromBase64String(
+                            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="),
+                        1,
+                        1),
+                    "copy",
+                    ZetlCaptureOrigin.Create(
+                        "Snipping Tool",
+                        "SnippingTool",
+                        "Screenshot",
+                        ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
             }
 
             if (project.Buckets.All(item => item.Name != "Nested"))
@@ -154,7 +189,10 @@ public partial class App : Application
 
             if (preview == "theme-board")
             {
-                var boardWindow = new BoardWindow(store)
+                var boardWindow = new BoardWindow(
+                    store,
+                    templateStore: templateStore,
+                    createProjectFromTemplate: CreatePreviewProject)
                 {
                     Width = 820,
                     Height = 650,
@@ -182,6 +220,7 @@ public partial class App : Application
                 desktop.MainWindow = preview switch
                 {
                     "project" => new ProjectSetupWindow(store.Defaults.ProjectBuckets),
+                    "export" => new ProjectExportWindow(project, store.GetProjectAssets(project)),
                     "settings" => new ZetlSettingsWindow(
                         settingsStore.Settings,
                         themeManager,
@@ -192,14 +231,22 @@ public partial class App : Application
                     "first-run" => new FirstRunWindow(),
                     "notifications" => new NotificationHistoryWindow(notifications),
                     "toast" => CreateToastPreview(),
-                    "board" => new BoardWindow(store),
-                    "board-shift" => new BoardWindow(store, shiftedLane: true),
+                    "board" => new BoardWindow(
+                        store,
+                        templateStore: templateStore,
+                        createProjectFromTemplate: CreatePreviewProject),
+                    "board-shift" => new BoardWindow(
+                        store,
+                        shiftedLane: true,
+                        templateStore: templateStore,
+                        createProjectFromTemplate: CreatePreviewProject),
                     "compile" => new CompileWindow(store, project),
                     "note-shortcut" => CreateShortcutNotePreview(
                         store,
                         project,
                         bucket,
                         "sample copied text"),
+                    "note-image" => CreateImageNotePreview(store, project, bucket),
                     "quick-note-shortcut" => CreateShortcutNotePreview(
                         store,
                         project,
@@ -216,6 +263,32 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static ZetlTemplateStore CreatePreviewTemplateStore(string stateDir)
+    {
+        var directory = Path.Combine(stateDir, "templates");
+        var template = new ZetlTemplateDocument
+        {
+            Id = "preview-research",
+            Name = "Research Notes",
+            Category = "Preview",
+            Description = "A preview-only research capture template.",
+            Type = ZetlTemplateTypes.Capture,
+            Buckets =
+            [
+                new ZetlTemplateBucketDocument
+                {
+                    Name = "Sources"
+                },
+                new ZetlTemplateBucketDocument
+                {
+                    Name = "Ideas"
+                }
+            ]
+        };
+        JsonFile.WriteAtomic(Path.Combine(directory, "research-notes.json"), template);
+        return new ZetlTemplateStore(directory);
     }
 
     private static Window CreateToastPreview()
@@ -255,6 +328,27 @@ public partial class App : Application
         {
             DismissOnDeactivate = true
         };
+    }
+
+    private static NoteCaptureWindow CreateImageNotePreview(
+        ZetlStateStore store,
+        ZetlProject project,
+        ZetlBucket bucket)
+    {
+        var note = project.Buckets
+            .SelectMany(item => item.Notes)
+            .First(item => item.IsImage);
+        var bytes = store.ReadImageAsset(project, note)!;
+        return new NoteCaptureWindow(
+            store,
+            project,
+            bucket,
+            "",
+            activateByDefault: true,
+            image: new ZetlClipboardImage(
+                bytes,
+                note.Image!.Width,
+                note.Image.Height));
     }
 
     private static void AttachPreviewResult(Window window)

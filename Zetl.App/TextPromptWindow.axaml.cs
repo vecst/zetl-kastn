@@ -9,17 +9,27 @@ internal partial class TextPromptWindow : Window
     {
     }
 
-    internal TextPromptWindow(string title, string label)
+    internal TextPromptWindow(
+        string title,
+        string label,
+        string? initialValue = null,
+        string okText = "OK")
     {
         InitializeComponent();
         ZetlWindowPlacement.Track(this);
 
         Title = title;
         promptLabel.Text = label;
+        textBox.Text = initialValue ?? "";
+        okButton.Content = okText;
         okButton.Click += (_, _) => Commit();
         cancelButton.Click += (_, _) => Close();
         ZetlWindowShortcuts.Enable(this, Commit, Close);
-        Opened += (_, _) => textBox.Focus();
+        Opened += (_, _) =>
+        {
+            textBox.Focus();
+            textBox.SelectAll();
+        };
     }
 
     public bool Saved { get; private set; }

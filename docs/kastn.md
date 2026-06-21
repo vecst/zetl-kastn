@@ -1,9 +1,9 @@
 # kastn — Direction
 
-> Status: forward-looking direction, not built and not scheduled against A7. This
-> document records the shared design intent so it has a home in the repo. Nothing
-> here describes current behavior. The staged implementation checklist lives in
-> [`kastn-roadmap.md`](kastn-roadmap.md).
+> Status: kastn is implemented as the deliberate project and template workbench.
+> Zetl consumes its shared template catalog read-only and can start a named project
+> from a template directly from the Board. The staged implementation history and
+> remaining work live in [`kastn-roadmap.md`](kastn-roadmap.md).
 
 ## Premise
 
@@ -94,6 +94,12 @@ Evolve the store from bucket-owns-notes containment to a **typed capture log**:
 - Capture stays decision-free because the clipboard format itself declares the
   type.
 
+Image Capture v1 now establishes the first typed-slip bridge without yet moving
+to the full per-type log: text notes load unchanged, image slips reference
+content-addressed PNG assets inside the project folder, and Board/export paths
+understand those assets. This compatibility step can migrate into the typed
+capture log without changing the asset references or package layout.
+
 ## Two extension points authored in kastn
 
 Both are authored in kastn and stored like the theme system (versioned,
@@ -101,9 +107,11 @@ import/export JSON documents, protected presets), but they are **distinct**:
 
 - **Templates (input side).** A named scaffold for a *new, empty* project: its
   default buckets and their behaviors (kind, pop/replay defaults, compile mode,
-  TSV headers / row length, starting text). Zetl's "New Project" gains a template
+  TSV headers / row length, starting text). Zetl's "New Project" has a template
   picker so you can start, say, a "Recipe" project with the right buckets and
-  rules already in place.
+  rules already in place. Zetl treats the shared catalog under
+  `%AppData%\Zetl\templates` as read-only: selecting one from the Board asks for a project name
+  and immediately starts the resulting project in that Board's lane.
 - **Views / creation-types (output side).** A renderer that projects an
   *existing* project's slips into an artifact — **Markdown, Markdown → PDF, or
   HTML → PDF** — based on the data available. View configuration (which buckets
@@ -122,6 +130,15 @@ as a recipe document → PDF).
 The firm principle: **slips are the only truth.** A view renders (and sometimes
 edits) slips, but never persists its own authoritative content. This keeps the
 archive durable and view-agnostic, and makes views shareable like themes.
+
+Capture provenance follows the same rule: application and window context enrich
+the private slip but are not part of its authored text. Archive exports may keep
+that envelope; clean sharing exports strip it from a detached project snapshot.
+Zetl now exposes both choices from the Board and writes a versioned `.zetl.zip`
+containing a manifest and project snapshot. The package is intentionally ready
+to gain binary asset entries when typed image and file capture lands.
+Future image cleanup must apply the same policy to EXIF and identifying original
+filenames.
 
 This also serves the archival philosophy: nothing captured is junk, slips are
 living documents enrichable years later, and cleanup mechanics (pop, replay
@@ -152,7 +169,7 @@ not locked.
 
 ## Groundwork already in place
 
-The split is incidentally well-seeded today, even though nothing is labeled for
-kastn: the `Zetl.Core` / `Zetl.Runtime` / head split, head-agnostic persistence,
+The split is supported by the `Zetl.Core` / `Zetl.Runtime` / head separation,
+head-agnostic persistence,
 self-contained per-project folders under `%AppData%\Zetl`, and the theme system
 as the template for versioned, shareable, import/export JSON definitions.

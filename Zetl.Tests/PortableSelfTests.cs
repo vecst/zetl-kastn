@@ -64,6 +64,12 @@ internal static class PortableSelfTests
                 ("Zetl state finds inactive scratch notes for compile", StateFindsInactiveScratchCompileTarget),
                 ("Zetl state pop mode removes matching last note", StatePopModeRemovesLastMatchingNote),
                 ("Zetl state finds the most recently written project", StateFindsMostRecentlyWrittenProject),
+                ("Zetl capture origin respects privacy detail", CaptureOriginRespectsPrivacyDetail),
+                ("Zetl capture origin round-trips with notes", CaptureOriginRoundTripsWithNotes),
+                ("Zetl clean export strips capture origin", CleanExportStripsCaptureOrigin),
+                ("Zetl project packages separate clean and archive provenance", ProjectPackagesSeparateProvenance),
+                ("Zetl image slips store deduplicated project assets", ImageSlipsStoreDeduplicatedAssets),
+                ("Zetl image project packages include referenced assets", ImageProjectPackagesIncludeAssets),
                 ("Zetl state round-trips JSON", StateRoundTripsJson),
                 ("Zetl state stores each project in its own folder", StateStoresEachProjectInItsOwnFolder),
                 ("Zetl state migrates a legacy single state file", StateMigratesLegacySingleFile),
@@ -93,16 +99,20 @@ internal static class PortableSelfTests
                 ("Runtime undo stack keeps lanes separate", RuntimeUndoStackKeepsLanesSeparate),
                 ("Runtime activity log buffer drains safely", RuntimeActivityLogBufferDrainsSafely),
                 ("Runtime auto-captures copied text", RuntimeAutoCapturesCopiedText),
+                ("Runtime auto-captures copied images", RuntimeAutoCapturesCopiedImages),
+                ("Runtime held copy opens image capture and saves captions", RuntimeHeldCopyCapturesImagesDirectly),
                 ("Runtime hold cancellation prevents auto-capture", RuntimeHoldCancellationPreventsAutoCapture),
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
                 ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
+                ("Runtime Replay handles images and restores image clipboard", RuntimeReplayHandlesImagesAndRestoresImageClipboard),
                 ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
                 ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
                 ("Runtime empty Replay reports a failed final paste", RuntimeEmptyReplayReportsFinalPasteFailure),
                 ("Runtime logged fire-and-forget records async failures", RuntimeRunLoggedRecordsAsyncFailure),
                 ("Runtime logged fire-and-forget records delayed async failures", RuntimeRunLoggedRecordsDelayedAsyncFailure),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
+                ("Runtime Pop removes matching image slip", RuntimePopRemovesMatchingImageSlip),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
                 ("Runtime cut hold defaults to Scratch", RuntimeCutHoldDefaultsToScratch),
@@ -625,6 +635,250 @@ internal static class PortableSelfTests
             AssertEqual("Newer", store.GetMostRecentlyWrittenProject()?.Name, "Zetl Logs must be excluded from the last-written project.");
         }
 
+        private static void CaptureOriginRespectsPrivacyDetail()
+        {
+            var full = ZetlCaptureOrigin.Create(
+                "Browser",
+                "browser",
+                "Private document title",
+                ZetlCaptureOriginDetail.ApplicationAndWindowTitle);
+            AssertEqual("Browser", full?.ApplicationName, "Full origin should retain the application name.");
+            AssertEqual("browser", full?.ProcessName, "Full origin should retain the process name.");
+            AssertEqual("Private document title", full?.WindowTitle, "Full origin should retain the window title.");
+
+            var applicationOnly = ZetlCaptureOrigin.Create(
+                "Browser",
+                "browser",
+                "Private document title",
+                ZetlCaptureOriginDetail.ApplicationOnly);
+            AssertEqual("Browser", applicationOnly?.ApplicationName, "Application-only origin should retain the application.");
+            AssertEqual<string?>(null, applicationOnly?.WindowTitle, "Application-only origin should omit the window title.");
+
+            AssertEqual<ZetlCaptureOrigin?>(
+                null,
+                ZetlCaptureOrigin.Create(
+                    "Browser",
+                    "browser",
+                    "Private document title",
+                    ZetlCaptureOriginDetail.Off),
+                "Disabled origin capture should produce no metadata envelope.");
+        }
+
+        private static void CaptureOriginRoundTripsWithNotes()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            store.AddNote(
+                project.Buckets[0],
+                "captured text",
+                "copy",
+                ZetlCaptureOrigin.Create(
+                    "Browser",
+                    "browser",
+                    "Research — Browser",
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            var note = reloaded.State.Projects
+                .Single(project => project.Name == "Demo")
+                .Buckets.Single(bucket => bucket.Name == "Inbox")
+                .Notes.Single();
+            AssertEqual("Browser", note.CaptureOrigin?.ApplicationName, "Application name should persist with the note.");
+            AssertEqual("browser", note.CaptureOrigin?.ProcessName, "Process name should persist with the note.");
+            AssertEqual("Research — Browser", note.CaptureOrigin?.WindowTitle, "Window title should persist with the note.");
+            AssertTrue(note.HasCaptureOrigin, "A persisted origin should remain displayable.");
+        }
+
+        private static void CleanExportStripsCaptureOrigin()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var note = store.AddNote(
+                project.Buckets[0],
+                "captured text",
+                "copy",
+                ZetlCaptureOrigin.Create(
+                    "Editor",
+                    "editor",
+                    "Sensitive customer name",
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
+
+            var clean = ZetlProjectExportSnapshot.Create(project, includeCaptureOrigins: false);
+            var archive = ZetlProjectExportSnapshot.Create(project, includeCaptureOrigins: true);
+
+            AssertEqual<ZetlCaptureOrigin?>(
+                null,
+                clean.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin,
+                "A clean export snapshot should remove the complete capture-origin envelope.");
+            AssertEqual(
+                "Sensitive customer name",
+                archive.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin?.WindowTitle,
+                "An archive export snapshot should preserve capture origin.");
+            AssertTrue(note.CaptureOrigin is not null, "Sanitizing an export snapshot must not modify the live project.");
+        }
+
+        private static void ProjectPackagesSeparateProvenance()
+        {
+            using var temp = new TempStateFile();
+            var root = System.IO.Path.GetDirectoryName(temp.Path)!;
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Share Me", ["Inbox"], "Inbox");
+            var liveNote = store.AddNote(
+                project.Buckets[0],
+                "captured text",
+                "copy",
+                ZetlCaptureOrigin.Create(
+                    "Browser",
+                    "browser",
+                    "Private account title",
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
+            var cleanPath = System.IO.Path.Combine(root, "clean.zetl.zip");
+            var archivePath = System.IO.Path.Combine(root, "archive.zetl.zip");
+            var exportedAt = new DateTime(2026, 6, 20, 12, 0, 0, DateTimeKind.Utc);
+
+            ZetlProjectExportPackage.Write(
+                cleanPath,
+                project,
+                includeCaptureOrigins: false,
+                exportedAtUtc: exportedAt);
+            ZetlProjectExportPackage.Write(
+                archivePath,
+                project,
+                includeCaptureOrigins: true,
+                exportedAtUtc: exportedAt);
+
+            (ZetlProjectExportManifest Manifest, ZetlProject Project) ReadPackage(string path)
+            {
+                using var archive = System.IO.Compression.ZipFile.OpenRead(path);
+                AssertEqual(2, archive.Entries.Count, "A text-only package should contain only its manifest and project snapshot.");
+                var manifestEntry = archive.GetEntry(ZetlProjectExportPackage.ManifestEntryName)
+                    ?? throw new InvalidOperationException("Missing export manifest.");
+                var projectEntry = archive.GetEntry(ZetlProjectExportPackage.ProjectEntryName)
+                    ?? throw new InvalidOperationException("Missing project snapshot.");
+                using var manifestStream = manifestEntry.Open();
+                var manifest = System.Text.Json.JsonSerializer.Deserialize<ZetlProjectExportManifest>(
+                    manifestStream,
+                    JsonFile.Options)
+                    ?? throw new InvalidOperationException("Invalid export manifest.");
+                using var projectStream = projectEntry.Open();
+                var packagedProject = System.Text.Json.JsonSerializer.Deserialize<ZetlProject>(
+                    projectStream,
+                    JsonFile.Options)
+                    ?? throw new InvalidOperationException("Invalid project snapshot.");
+                return (manifest, packagedProject);
+            }
+
+            var clean = ReadPackage(cleanPath);
+            var archiveCopy = ReadPackage(archivePath);
+            AssertEqual("zetl-project", clean.Manifest.Format, "The package manifest should identify the format.");
+            AssertEqual(exportedAt, clean.Manifest.ExportedAtUtc, "The manifest should record export time.");
+            AssertFalse(clean.Manifest.CaptureOriginsIncluded, "Clean package manifest should declare stripped provenance.");
+            AssertEqual<ZetlCaptureOrigin?>(
+                null,
+                clean.Project.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin,
+                "Clean package should not contain capture provenance.");
+            AssertTrue(archiveCopy.Manifest.CaptureOriginsIncluded, "Archive package manifest should declare retained provenance.");
+            AssertEqual(
+                "Private account title",
+                archiveCopy.Project.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin?.WindowTitle,
+                "Archive package should retain capture provenance.");
+            AssertTrue(liveNote.CaptureOrigin is not null, "Writing either package must leave live state untouched.");
+            AssertEqual(
+                0,
+                Directory.GetFiles(root, "*.tmp").Length,
+                "Successful package writes should not leave temporary files behind.");
+        }
+
+        private static void ImageSlipsStoreDeduplicatedAssets()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Images", ["Inbox"], "Inbox");
+            var bucket = project.Buckets.Single(item => item.Name == "Inbox");
+            var image = new ZetlClipboardImage([1, 2, 3, 4, 5], 20, 10);
+
+            var first = store.AddImageNote(
+                project,
+                bucket,
+                image,
+                "copy",
+                ZetlCaptureOrigin.Create(
+                    "Snipping Tool",
+                    "SnippingTool",
+                    "Screenshot",
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle),
+                "Diagram");
+            var second = store.AddImageNote(project, bucket, image, "copy");
+
+            AssertTrue(first.IsImage, "An image slip should identify its typed content.");
+            AssertEqual("Diagram", first.Text, "An image caption should remain separate from its asset bytes.");
+            AssertEqual(first.Image?.RelativePath, second.Image?.RelativePath, "Equal image content should deduplicate by hash.");
+            AssertEqual(1, store.GetProjectAssets(project).Count, "Deduplicated image content should create one asset file.");
+            AssertEqual(5, store.ReadImageAsset(project, first)?.Length, "Stored image bytes should be readable through the project store.");
+            var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, first);
+            AssertEqual(
+                ZETL.Contracts.ZetlSlipType.Picture,
+                snapshot.Type,
+                "Kastn snapshots should retain the image slip type.");
+            AssertEqual("Diagram", snapshot.Text, "The image caption should be available to Kastn.");
+            AssertEqual(20, snapshot.Picture?.Width, "Kastn snapshots should expose image dimensions.");
+            AssertEqual(
+                "Screenshot",
+                snapshot.CaptureOrigin?.WindowTitle,
+                "Kastn snapshots should expose private capture provenance locally.");
+
+            store.DeleteNote(bucket, first.Id);
+            AssertEqual(1, store.GetProjectAssets(project).Count, "Deleting a slip should retain its asset for undo safety.");
+            store.RestoreNote(bucket, first);
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            var loadedProject = reloaded.State.Projects.Single(item => item.Name == "Images");
+            var loadedImage = loadedProject.Buckets
+                .Single(item => item.Name == "Inbox")
+                .Notes.First();
+            AssertTrue(loadedImage.IsImage, "Image slip type should survive persistence.");
+            AssertEqual(20, loadedImage.Image?.Width, "Image dimensions should survive persistence.");
+        }
+
+        private static void ImageProjectPackagesIncludeAssets()
+        {
+            using var temp = new TempStateFile();
+            var root = System.IO.Path.GetDirectoryName(temp.Path)!;
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Images", ["Inbox"], "Inbox");
+            var bytes = new byte[] { 9, 8, 7, 6 };
+            var note = store.AddImageNote(
+                project,
+                project.Buckets.Single(item => item.Name == "Inbox"),
+                new ZetlClipboardImage(bytes, 2, 2),
+                "copy");
+            var exportPath = System.IO.Path.Combine(root, "images.zetl.zip");
+
+            ZetlProjectExportPackage.Write(
+                exportPath,
+                project,
+                includeCaptureOrigins: false,
+                assets: store.GetProjectAssets(project));
+
+            using var archive = System.IO.Compression.ZipFile.OpenRead(exportPath);
+            AssertEqual(3, archive.Entries.Count, "An image package should include manifest, project, and asset entries.");
+            var assetEntry = archive.GetEntry(note.Image!.RelativePath)
+                ?? throw new InvalidOperationException("Missing packaged image asset.");
+            using var assetStream = assetEntry.Open();
+            using var copied = new MemoryStream();
+            assetStream.CopyTo(copied);
+            AssertEqual(bytes.Length, copied.ToArray().Length, "The package should preserve normalized image bytes.");
+
+            var manifestEntry = archive.GetEntry(ZetlProjectExportPackage.ManifestEntryName)!;
+            using var manifestStream = manifestEntry.Open();
+            var manifest = System.Text.Json.JsonSerializer.Deserialize<ZetlProjectExportManifest>(
+                manifestStream,
+                JsonFile.Options)!;
+            AssertEqual(1, manifest.AssetCount, "The package manifest should report included assets.");
+        }
+
         private static void StateCreatesDatedDefaultProject()
         {
             using var temp = new TempStateFile();
@@ -720,30 +974,15 @@ internal static class PortableSelfTests
             var first = store.GetOrCreateDefaultProject();
             var firstScratch = store.GetScratchBucket(first);
             store.AddNote(firstScratch, "first", "cut");
-            store.State.Projects.Add(new ZetlProject
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                Name = DateTime.Now.ToString("yyyy-MM-dd"),
-                Buckets =
-                [
-                    new ZetlBucket
-                    {
-                        Id = Guid.NewGuid().ToString("N"),
-                        Name = "Scratch",
-                        Kind = "Standard",
-                        Notes =
-                        [
-                            new ZetlNote
-                            {
-                                Id = Guid.NewGuid().ToString("N"),
-                                Text = "second",
-                                Source = "cut",
-                                CreatedAtUtc = DateTime.UtcNow
-                            }
-                        ]
-                    }
-                ]
-            });
+            var duplicate = store.CreateProject("Temporary duplicate", ["Scratch"], "Scratch");
+            duplicate.Name = DateTime.Now.ToString("yyyy-MM-dd");
+            var duplicateScratch = store.GetScratchBucket(duplicate);
+            store.AddNote(duplicateScratch, "second", "cut");
+            store.AddImageNote(
+                duplicate,
+                duplicateScratch,
+                new ZetlClipboardImage([4, 3, 2, 1], 4, 3),
+                "copy");
             store.ClearActiveProject();
 
             var consolidated = store.GetOrCreateDefaultProject();
@@ -752,6 +991,8 @@ internal static class PortableSelfTests
             AssertEqual(1, store.State.Projects.Count(project => project.Name == DateTime.Now.ToString("yyyy-MM-dd")), "Duplicate daily projects should merge into one.");
             AssertTrue(scratch.Notes.Any(note => note.Text == "first"), "First scratch note should survive consolidation.");
             AssertTrue(scratch.Notes.Any(note => note.Text == "second"), "Duplicate scratch note should merge into primary scratch.");
+            var mergedImage = scratch.Notes.Single(note => note.IsImage);
+            AssertEqual(4, store.ReadImageAsset(consolidated, mergedImage)?.Length, "Consolidation should move image assets before deleting the duplicate folder.");
         }
 
         private static void StateConsolidatesDatedDefaultWithoutActivation()
@@ -1681,10 +1922,15 @@ internal static class PortableSelfTests
             AssertEqual(950, store.Settings.ToastDisplayMs, "Toast display should default to 950.");
             AssertTrue(store.Settings.AutoCaptureOnCopy, "Auto-capture should default to on.");
             AssertFalse(store.Settings.QuickNoteToClipboard, "Quick note to clipboard should default to off.");
+            AssertEqual(
+                ZetlCaptureOriginDetail.ApplicationAndWindowTitle,
+                store.Settings.CaptureOriginDetail,
+                "Capture origin should default to application and window title.");
 
             store.Settings.ToastDisplayMs = 1500;
             store.Settings.AutoCaptureOnCopy = false;
             store.Settings.QuickNoteToClipboard = true;
+            store.Settings.CaptureOriginDetail = ZetlCaptureOriginDetail.ApplicationOnly;
             store.Settings.DefaultProjectBuckets = new List<string> { "Notes", "Scratch" };
             store.Settings.DefaultCompileMode = "TSV";
             store.Settings.DefaultTsvRowLength = 4;
@@ -1696,6 +1942,10 @@ internal static class PortableSelfTests
             AssertEqual(1500, loaded.Settings.ToastDisplayMs, "Toast display should round-trip.");
             AssertFalse(loaded.Settings.AutoCaptureOnCopy, "Auto-capture flag should round-trip.");
             AssertTrue(loaded.Settings.QuickNoteToClipboard, "Quick note to clipboard flag should round-trip.");
+            AssertEqual(
+                ZetlCaptureOriginDetail.ApplicationOnly,
+                loaded.Settings.CaptureOriginDetail,
+                "Capture-origin privacy detail should round-trip.");
             AssertEqual("Notes", loaded.Settings.DefaultProjectBuckets[0], "Default buckets should round-trip.");
             AssertEqual("TSV", loaded.Settings.DefaultCompileMode, "Default compile mode should round-trip.");
             AssertEqual(4, loaded.Settings.DefaultTsvRowLength, "Default TSV row length should round-trip.");
@@ -1956,17 +2206,113 @@ internal static class PortableSelfTests
                 out _,
                 out _);
 
+            var origin = ZetlCaptureOrigin.Create(
+                "Editor",
+                "editor",
+                "Draft",
+                ZetlCaptureOriginDetail.ApplicationAndWindowTitle);
             coordinator.OnPhysicalShortcutPassedThroughAsync(
-                ShortcutContext(VK_C, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                origin).GetAwaiter().GetResult();
 
             var note = store.GetActiveBucket()!.Notes.Single();
             AssertEqual("copied text", note.Text, "Auto-capture should trim and save copied text.");
             AssertEqual("copy", note.Source, "Auto-capture should mark the copy source.");
+            AssertEqual("Editor", note.CaptureOrigin?.ApplicationName, "Auto-capture should retain its keydown origin.");
             AssertEqual(
                 "Captured to Inbox in Demo.",
                 notifications.Messages.Single(),
                 "Auto-capture should report its destination.");
             AssertEqual(project.Id, store.GetActiveProject()!.Id, "Auto-capture should keep the active project.");
+        }
+
+        private static void RuntimeAutoCapturesCopiedImages()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var clipboard = new FakeClipboard(null, changeToken: 2)
+            {
+                Image = new ZetlClipboardImage([1, 2, 3], 30, 20)
+            };
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out _,
+                out _);
+
+            coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                ZetlCaptureOrigin.Create(
+                    "Image Editor",
+                    "editor",
+                    "Canvas",
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle))
+                .GetAwaiter().GetResult();
+
+            var note = store.GetActiveBucket()!.Notes.Single();
+            AssertTrue(note.IsImage, "An image clipboard should create an image slip.");
+            AssertEqual(30, note.Image?.Width, "Captured image width should persist.");
+            AssertEqual("Canvas", note.CaptureOrigin?.WindowTitle, "Image capture should retain keydown provenance.");
+            AssertEqual(1, store.GetProjectAssets(project).Count, "Image auto-capture should write one project asset.");
+            AssertEqual(
+                "Captured image to Inbox in Demo.",
+                notifications.Messages.Single(),
+                "Image capture should report its destination clearly.");
+        }
+
+        private static void RuntimeHeldCopyCapturesImagesDirectly()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 2),
+                notifications,
+                out _,
+                out _);
+            var context = ShortcutContext(VK_C, clipboardSequenceNumber: 1);
+            var pending = new ZetlPendingShortcut(
+                VK_C,
+                shiftLane: false,
+                clipboardSequenceNumber: 1,
+                captureOrigin: ZetlCaptureOrigin.Create(
+                    "Snipping Tool",
+                    "snippingtool",
+                    "Screenshot",
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
+            pending.SetObservedClipboardContent(
+                null,
+                new ZetlClipboardImage([7, 8, 9], 3, 2));
+
+            var request = coordinator.HandleClaimedHoldAsync(context, pending)
+                .GetAwaiter().GetResult();
+
+            AssertTrue(request is ZetlNoteCaptureRequest, "Held image copy should open the shared capture dialog.");
+            var capture = (ZetlNoteCaptureRequest)request!;
+            AssertTrue(capture.Image is not null, "The capture request should carry the normalized image.");
+            coordinator.CompleteNoteCapture(
+                capture,
+                new ZetlNoteCaptureResult(
+                    Committed: true,
+                    NoteText: "Annotated screenshot",
+                    StartProject: true,
+                    CreateNewProject: false,
+                    ProjectName: capture.Project.Name,
+                    SelectedBucketName: capture.PreferredBucket!.Name,
+                    SelectedBucket: capture.PreferredBucket));
+
+            var project = store.GetActiveProject()!;
+            var note = project.Buckets.SelectMany(bucket => bucket.Notes).Single();
+            AssertTrue(note.IsImage, "Held image copy should create an image slip.");
+            AssertEqual("Annotated screenshot", note.Text, "The image caption should be stored as slip text.");
+            AssertEqual("Screenshot", note.CaptureOrigin?.WindowTitle, "Held image copy should retain its origin.");
+            AssertTrue(
+                notifications.Messages.Single().StartsWith("Saved image to", StringComparison.Ordinal),
+                "Committed image capture should report its destination.");
         }
 
         private static void RuntimeHoldCancellationPreventsAutoCapture()
@@ -2014,7 +2360,12 @@ internal static class PortableSelfTests
                 clipboardSequenceNumber: 1);
 
             var captureTask = coordinator.OnPhysicalShortcutPassedThroughAsync(
-                context);
+                context,
+                ZetlCaptureOrigin.Create(
+                    "Browser",
+                    "browser",
+                    "Held copy source",
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
             var pending = coordinator.ClaimPendingForHold(context);
             AssertTrue(
                 pending is not null,
@@ -2037,6 +2388,10 @@ internal static class PortableSelfTests
                 "copied text",
                 ((ZetlNoteCaptureRequest)holdTask.Result!).Text,
                 "The hold request should retain the observed clipboard text.");
+            AssertEqual(
+                "Held copy source",
+                ((ZetlNoteCaptureRequest)holdTask.Result!).CaptureOrigin?.WindowTitle,
+                "The hold request should retain the keydown origin while clipboard observation finishes.");
         }
 
         private static void RuntimeClaimedCopyHoldResolvesWithoutPolling()
@@ -2117,6 +2472,51 @@ internal static class PortableSelfTests
             AssertEqual("queued value", review.Notes.Single().Text, "Replay should archive the consumed note.");
             AssertEqual("Standard", queue.Kind, "An empty Replay bucket should return to Standard.");
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
+        }
+
+        private static void RuntimeReplayHandlesImagesAndRestoresImageClipboard()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            var queuedBytes = new byte[] { 4, 5, 6 };
+            store.AddImageNote(
+                project,
+                queue,
+                new ZetlClipboardImage(queuedBytes, 3, 2),
+                "copy");
+            var userBytes = new byte[] { 1, 2, 3 };
+            var clipboard = new FakeClipboard(null, changeToken: 1)
+            {
+                Image = new ZetlClipboardImage(userBytes, 1, 1)
+            };
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out var undo);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Image Replay should suppress the physical paste.");
+            AssertEqual(1, keyboard.PasteCount, "Image Replay should send one synthetic paste.");
+            AssertEqual(2, clipboard.ImageSetCount, "Image Replay should inject the item and restore the prior image.");
+            AssertTrue(
+                clipboard.Image?.PngBytes.SequenceEqual(userBytes) == true,
+                "Image Replay should restore the user's previous image clipboard.");
+            AssertEqual(0, queue.Notes.Count, "Successful image Replay should consume the queued slip.");
+            var review = project.Buckets.Single(bucket => bucket.Id == queue.FifoReviewBucketId);
+            AssertTrue(review.Notes.Single().IsImage, "Replay review should preserve the image slip type.");
+            AssertEqual(
+                queuedBytes.Length,
+                store.ReadImageAsset(project, review.Notes.Single())?.Length,
+                "Replay review should retain the queued image asset.");
+            AssertTrue(undo.TryPop(false, out var action), "Image Replay should be undoable.");
+            action!.Undo();
+            AssertTrue(queue.Notes.Single().IsImage, "Undo should restore the image slip to the Replay queue.");
         }
 
         private static void RuntimeRunLoggedRecordsAsyncFailure()
@@ -2271,6 +2671,39 @@ internal static class PortableSelfTests
             AssertFalse(handled, "Pop tap should allow the physical paste through.");
             AssertEqual(0, bucket.Notes.Count, "Pop tap should remove the matching note.");
             AssertTrue(undo.TryPop(false, out _), "Popped note should be undoable.");
+        }
+
+        private static void RuntimePopRemovesMatchingImageSlip()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var bucket = store.GetActiveBucket()!;
+            store.SetBucketPopMode(bucket, true);
+            var bytes = new byte[] { 3, 1, 4, 1, 5 };
+            store.AddImageNote(
+                project,
+                bucket,
+                new ZetlClipboardImage(bytes, 5, 1),
+                "copy");
+            var clipboard = new FakeClipboard(null, changeToken: 1)
+            {
+                Image = new ZetlClipboardImage(bytes, 5, 1)
+            };
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out var undo);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertFalse(handled, "Image Pop should allow the physical paste through.");
+            AssertEqual(0, bucket.Notes.Count, "Image Pop should remove the matching image slip.");
+            AssertTrue(undo.TryPop(false, out var action), "Popped image should be undoable.");
+            action!.Undo();
+            AssertTrue(bucket.Notes.Single().IsImage, "Undo should restore the popped image slip.");
         }
 
         private static void RuntimeCopyHoldCreatesNoteRequest()
@@ -2447,7 +2880,12 @@ internal static class PortableSelfTests
                 ScratchOnlyUntilProjectStarted: true,
                 CreateNewProjectToggle: false,
                 ProjectToggleText: null,
-                ProjectNameDefault: null);
+                ProjectNameDefault: null,
+                CaptureOrigin: ZetlCaptureOrigin.Create(
+                    "Editor",
+                    "editor",
+                    "Quick note source",
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
 
             coordinator.CompleteNoteCapture(
                 request,
@@ -2461,6 +2899,10 @@ internal static class PortableSelfTests
                     SelectedBucket: scratch));
 
             AssertEqual("quick note", scratch.Notes.Single().Text, "Quick-note result should save the note.");
+            AssertEqual(
+                "Quick note source",
+                scratch.Notes.Single().CaptureOrigin?.WindowTitle,
+                "Completed note capture should save the origin carried by its request.");
             AssertEqual("keep me", clipboard.Text, "Quick note should preserve clipboard when disabled.");
             AssertTrue(store.GetActiveProject() is null, "Quick note should leave the project inactive.");
         }
@@ -3181,11 +3623,20 @@ internal static class PortableSelfTests
 
             public uint ChangeToken { get; private set; }
 
+            public int ImageSetCount { get; private set; }
+
             public bool SetTextSucceeds { get; set; } = true;
 
             public string? TryGetText()
             {
                 return Text;
+            }
+
+            public ZetlClipboardImage? Image { get; set; }
+
+            public ZetlClipboardImage? TryGetImage()
+            {
+                return Image;
             }
 
             public bool SetText(string text)
@@ -3196,6 +3647,21 @@ internal static class PortableSelfTests
                 }
 
                 Text = text;
+                Image = null;
+                ChangeToken++;
+                return true;
+            }
+
+            public bool SetImage(ZetlClipboardImage image)
+            {
+                if (!SetTextSucceeds)
+                {
+                    return false;
+                }
+
+                Image = image;
+                Text = null;
+                ImageSetCount++;
                 ChangeToken++;
                 return true;
             }
@@ -3208,6 +3674,7 @@ internal static class PortableSelfTests
             public void SetState(string? text, uint changeToken)
             {
                 Text = text;
+                Image = null;
                 ChangeToken = changeToken;
             }
         }

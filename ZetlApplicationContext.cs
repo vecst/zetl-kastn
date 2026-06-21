@@ -30,6 +30,7 @@ internal sealed class ZetlApplicationContext :
     private readonly IKeyboardBackend keyboard;
     private readonly IClipboard clipboard;
     private readonly ZetlShortcutCoordinator shortcutCoordinator;
+    private readonly ICaptureOriginProvider captureOriginProvider = new WindowsCaptureOriginProvider();
 
     public ZetlApplicationContext(
         TimeSpan holdDelay,
@@ -90,8 +91,13 @@ internal sealed class ZetlApplicationContext :
 
     public void OnPhysicalShortcutPassedThrough(ChordlEventContext context)
     {
+        var captureOrigin = context.KeyCode is VK_C or VK_X
+            ? captureOriginProvider.Capture(appSettings.Settings.CaptureOriginDetail)
+            : null;
         ZetlAsync.RunLogged(
-            () => shortcutCoordinator.OnPhysicalShortcutPassedThroughAsync(context),
+            () => shortcutCoordinator.OnPhysicalShortcutPassedThroughAsync(
+                context,
+                captureOrigin),
             "physical shortcut pass-through",
             Log);
     }

@@ -57,7 +57,9 @@ internal sealed record ZetlNoteCaptureRequest(
     bool ScratchOnlyUntilProjectStarted,
     bool CreateNewProjectToggle,
     string? ProjectToggleText,
-    string? ProjectNameDefault) : ZetlShortcutRequest(Shifted);
+    string? ProjectNameDefault,
+    ZetlCaptureOrigin? CaptureOrigin = null,
+    ZetlClipboardImage? Image = null) : ZetlShortcutRequest(Shifted);
 
 internal sealed record ZetlNoteCaptureResult(
     bool Committed,

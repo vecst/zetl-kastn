@@ -77,6 +77,12 @@
       <Setter Property="Foreground" Value="{DynamicResource ZetlAccentTextBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource ZetlAccentBrush}" />
     </Style>
+    <Style Selector="SplitButton">
+      <Setter Property="Background" Value="{DynamicResource ZetlSurfaceAltBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ZetlTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ZetlBorderBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource ZetlCornerRadius}" />
+    </Style>
     <Style Selector="Border.surface">
       <Setter Property="Background" Value="{DynamicResource ZetlSurfaceBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource ZetlBorderBrush}" />

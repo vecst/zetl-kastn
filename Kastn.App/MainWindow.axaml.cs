@@ -3369,6 +3369,20 @@ internal partial class MainWindow : Window
     {
         var metadata = $"{slip.Source} | {ShortSession(slip.SessionId)} | "
             + $"{slip.CapturedAtUtc.LocalDateTime:F} | revision {editorState.Revision}";
+        if (slip.CaptureOrigin is { } captureOrigin)
+        {
+            var application = string.IsNullOrWhiteSpace(captureOrigin.ApplicationName)
+                ? captureOrigin.ProcessName
+                : captureOrigin.ApplicationName;
+            var location = string.IsNullOrWhiteSpace(captureOrigin.WindowTitle)
+                ? application
+                : $"{application} — {captureOrigin.WindowTitle}";
+            if (!string.IsNullOrWhiteSpace(location))
+            {
+                metadata += $" | Captured in {location}";
+            }
+        }
+
         if (!IsSlipInDeleted(slip))
         {
             return metadata;

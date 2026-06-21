@@ -58,14 +58,51 @@ internal sealed record NoteDisplayItem(ZetlBucket Bucket, ZetlNote Note, string 
 
 internal sealed class ZetlNote
 {
+    public const string TextKind = "Text";
+    public const string ImageKind = "Image";
+
     public string Id { get; set; } = "";
     public long Revision { get; set; } = 1;
+    public string ContentKind { get; set; } = TextKind;
     public string Text { get; set; } = "";
+    public ZetlImageAsset? Image { get; set; }
     public string Source { get; set; } = "";
     public string? SessionId { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public string? DeletedFromBucketId { get; set; }
     public DateTime? DeletedAtUtc { get; set; }
+
+    public ZetlCaptureOrigin? CaptureOrigin { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasCaptureOrigin => CaptureOrigin?.HasDisplayValue == true;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string CaptureOriginLabel => CaptureOrigin?.FormatDisplay(CreatedAtUtc) ?? "";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsImage => ContentKind == ImageKind && Image is not null;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayText => IsImage
+        ? string.IsNullOrWhiteSpace(Text)
+            ? $"Image · {Image!.Width}×{Image.Height} · {FormatBytes(Image.ByteLength)}"
+            : Text
+        : Text;
+
+    private static string FormatBytes(long bytes) => bytes >= 1024 * 1024
+        ? $"{bytes / (1024d * 1024d):0.#} MB"
+        : $"{Math.Max(1, bytes / 1024d):0.#} KB";
+}
+
+internal sealed class ZetlImageAsset
+{
+    public string RelativePath { get; set; } = "";
+    public string MimeType { get; set; } = "image/png";
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public long ByteLength { get; set; }
+    public string Sha256 { get; set; } = "";
 }
 
 internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, string CompileMode, int TsvRowLength)
@@ -385,8 +422,17 @@ internal sealed class ZetlStateStore
         ZetlBucket bucket,
         string text,
         string source,
+        ZetlCaptureOrigin? captureOrigin) =>
+        AddNote(bucket, text, source, null, null, captureOrigin);
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlNote AddNote(
+        ZetlBucket bucket,
+        string text,
+        string source,
         string? noteSessionId = null,
-        DateTime? createdAtUtc = null)
+        DateTime? createdAtUtc = null,
+        ZetlCaptureOrigin? captureOrigin = null)
     {
         var note = new ZetlNote
         {
@@ -394,12 +440,75 @@ internal sealed class ZetlStateStore
             Text = text.Trim(),
             Source = source,
             SessionId = noteSessionId ?? sessionId,
-            CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow
+            CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow,
+            CaptureOrigin = captureOrigin
         };
         bucket.Notes.Add(note);
         PersistBucket(bucket);
         return note;
     }
+
+    public ZetlNote AddImageNote(
+        ZetlProject project,
+        ZetlBucket bucket,
+        ZetlClipboardImage image,
+        string source,
+        ZetlCaptureOrigin? captureOrigin = null,
+        string? caption = null)
+    {
+        if (!project.Buckets.Any(item => item.Id == bucket.Id))
+        {
+            throw new InvalidOperationException("The image destination bucket does not belong to the project.");
+        }
+
+        if (image.PngBytes.Length == 0 || image.Width <= 0 || image.Height <= 0)
+        {
+            throw new InvalidDataException("The clipboard image is empty or has invalid dimensions.");
+        }
+
+        var hash = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(image.PngBytes))
+            .ToLowerInvariant();
+        var relativePath = storage.WriteAsset(project, hash, ".png", image.PngBytes);
+        var note = new ZetlNote
+        {
+            Id = NewId(),
+            ContentKind = ZetlNote.ImageKind,
+            Text = (caption ?? "").Trim(),
+            Image = new ZetlImageAsset
+            {
+                RelativePath = relativePath,
+                Width = image.Width,
+                Height = image.Height,
+                ByteLength = image.PngBytes.LongLength,
+                Sha256 = hash
+            },
+            Source = source,
+            SessionId = sessionId,
+            CreatedAtUtc = DateTime.UtcNow,
+            CaptureOrigin = captureOrigin
+        };
+        bucket.Notes.Add(note);
+        PersistProject(project);
+        return note;
+    }
+
+    public byte[]? ReadImageAsset(ZetlProject project, ZetlNote note)
+    {
+        return note.IsImage && note.Image is not null
+            ? storage.ReadAsset(project, note.Image.RelativePath)
+            : null;
+    }
+
+    public string? GetImageAssetPath(ZetlProject project, ZetlNote note)
+    {
+        return note.IsImage && note.Image is not null
+            ? storage.GetAssetPath(project, note.Image.RelativePath)
+            : null;
+    }
+
+    public IReadOnlyList<ZetlProjectAssetFile> GetProjectAssets(ZetlProject project) =>
+        storage.GetAssets(project);
 
     // Adds one note per non-blank text, preserving order, with a single save.
     // Used by a structured compile-to-bucket that keeps notes separate instead
@@ -859,6 +968,33 @@ internal sealed class ZetlStateStore
         return true;
     }
 
+    public bool TryPopLastMatchingActiveImage(
+        string sha256,
+        bool shifted,
+        out ZetlBucket? bucket,
+        out ZetlNote? note)
+    {
+        bucket = GetActiveBucket(shifted);
+        note = null;
+        if (bucket is null || IsFifoBucket(bucket) || !bucket.PopMode)
+        {
+            return false;
+        }
+
+        var last = bucket.Notes.LastOrDefault(IsCurrentSessionNote);
+        if (last?.IsImage != true
+            || last.Image is null
+            || !string.Equals(last.Image.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        bucket.Notes.Remove(last);
+        note = last;
+        PersistBucket(bucket);
+        return true;
+    }
+
     public bool TryPeekNextFifoNote(ZetlBucket? bucket, out ZetlNote? note)
     {
         if (bucket is null || !IsFifoBucket(bucket))
@@ -867,7 +1003,9 @@ internal sealed class ZetlStateStore
             return false;
         }
 
-        note = bucket.Notes.FirstOrDefault(item => IsCurrentSessionNote(item) && !string.IsNullOrWhiteSpace(item.Text));
+        note = bucket.Notes.FirstOrDefault(item =>
+            IsCurrentSessionNote(item)
+            && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
         return note is not null;
     }
 
@@ -932,16 +1070,29 @@ internal sealed class ZetlStateStore
         note.Revision++;
         bucket.Notes.Remove(note);
         consumedNote = note;
-        if (!string.IsNullOrWhiteSpace(note.Text))
+        if (note.IsImage || !string.IsNullOrWhiteSpace(note.Text))
         {
             reviewBucket = GetOrCreateFifoReviewBucket(project, bucket);
             reviewNote = new ZetlNote
             {
                 Id = NewId(),
+                ContentKind = note.ContentKind,
                 Text = note.Text.Trim(),
+                Image = note.Image is null
+                    ? null
+                    : new ZetlImageAsset
+                    {
+                        RelativePath = note.Image.RelativePath,
+                        MimeType = note.Image.MimeType,
+                        Width = note.Image.Width,
+                        Height = note.Image.Height,
+                        ByteLength = note.Image.ByteLength,
+                        Sha256 = note.Image.Sha256
+                    },
                 Source = "replay",
                 SessionId = sessionId,
-                CreatedAtUtc = DateTime.UtcNow
+                CreatedAtUtc = DateTime.UtcNow,
+                CaptureOrigin = note.CaptureOrigin
             };
             reviewBucket.Notes.Add(reviewNote);
         }
@@ -996,7 +1147,9 @@ internal sealed class ZetlStateStore
         {
             var depth = BucketDepth(bucket, project.Buckets);
             parts.Add(IndentedLine(bucket.Name.Trim(), depth));
-            parts.AddRange(bucket.Notes.Select(note => IndentedText(note.Text, depth + 1)));
+            parts.AddRange(bucket.Notes
+                .Where(note => !note.IsImage)
+                .Select(note => IndentedText(note.Text, depth + 1)));
             parts.Add("");
         }
 
@@ -1010,7 +1163,9 @@ internal sealed class ZetlStateStore
         {
             var depth = BucketDepth(group.Key, project.Buckets);
             parts.Add(IndentedLine(group.Key.Name.Trim(), depth));
-            parts.AddRange(group.Select(item => IndentedText(item.Note.Text, depth + 1)));
+            parts.AddRange(group
+                .Where(item => !item.Note.IsImage)
+                .Select(item => IndentedText(item.Note.Text, depth + 1)));
             parts.Add("");
         }
 
@@ -1375,6 +1530,9 @@ internal sealed class ZetlStateStore
                 note.Id = string.IsNullOrWhiteSpace(note.Id) ? NewId() : note.Id;
                 note.Revision = Math.Max(note.Revision, 1);
                 note.Text ??= "";
+                note.ContentKind = note.Image is not null
+                    ? ZetlNote.ImageKind
+                    : ZetlNote.TextKind;
                 note.Source ??= "";
                 if (note.CreatedAtUtc == default)
                 {
@@ -1462,6 +1620,7 @@ internal sealed class ZetlStateStore
         var merged = false;
         foreach (var duplicate in matchingProjects.Skip(1))
         {
+            CopyImageAssets(primary, duplicate);
             MergeProjectInto(primary, duplicate);
             State.Projects.Remove(duplicate);
             storage.RemoveProject(duplicate.Id);
@@ -1477,6 +1636,27 @@ internal sealed class ZetlStateStore
         }
 
         return primary;
+    }
+
+    private void CopyImageAssets(ZetlProject targetProject, ZetlProject sourceProject)
+    {
+        foreach (var note in sourceProject.Buckets
+            .SelectMany(bucket => bucket.Notes)
+            .Where(note => note.IsImage && note.Image is not null))
+        {
+            var bytes = storage.ReadAsset(sourceProject, note.Image!.RelativePath);
+            if (bytes is null)
+            {
+                continue;
+            }
+
+            var extension = Path.GetExtension(note.Image.RelativePath);
+            note.Image.RelativePath = storage.WriteAsset(
+                targetProject,
+                note.Image.Sha256,
+                string.IsNullOrWhiteSpace(extension) ? ".png" : extension,
+                bytes);
+        }
     }
 
     private static void MergeProjectInto(ZetlProject targetProject, ZetlProject sourceProject)

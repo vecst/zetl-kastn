@@ -71,9 +71,28 @@ public sealed record ZetlSlipSnapshot
     public required ZetlSlipType Type { get; init; }
     public required string BucketId { get; init; }
     public required string Text { get; init; }
+    public ZetlPictureSnapshot? Picture { get; init; }
+    public ZetlCaptureOriginSnapshot? CaptureOrigin { get; init; }
     public required string Source { get; init; }
     public string? SessionId { get; init; }
     public required DateTimeOffset CapturedAtUtc { get; init; }
     public string? DeletedFromBucketId { get; init; }
     public DateTimeOffset? DeletedAtUtc { get; init; }
+}
+
+public sealed record ZetlPictureSnapshot
+{
+    public required string RelativePath { get; init; }
+    public string MimeType { get; init; } = "image/png";
+    public int Width { get; init; }
+    public int Height { get; init; }
+    public long ByteLength { get; init; }
+    public required string Sha256 { get; init; }
+}
+
+public sealed record ZetlCaptureOriginSnapshot
+{
+    public string ApplicationName { get; init; } = "";
+    public string ProcessName { get; init; } = "";
+    public string? WindowTitle { get; init; }
 }

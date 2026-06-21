@@ -17,6 +17,7 @@ Zetl is local-only. Each project is stored in its own folder under:
   workspace.json                     active-project pointers (both lanes) + version
   projects\
     2026-06-05-3f2a91\project.json   one folder + json per project
+    2026-06-05-3f2a91\assets\        hashed image assets for that project
     Vehicles-9c4e02\project.json
 ```
 
@@ -197,6 +198,8 @@ Each note stores:
 - source, such as `copy`, `cut`, `compile`, or `replay`
 - creation timestamp
 - current session id
+- optional capture origin: application, process, and window title
+- content kind (`Text` or `Image`) and image asset metadata when applicable
 
 The Board window lets you:
 
@@ -274,6 +277,28 @@ Zetl uses those non-empty lines to infer TSV row length. In this example, row le
 
 Compiling to another bucket creates a note in the destination bucket. Future compiles of that saved note use the destination bucket's rules, not the source bucket's rules.
 
+## Project Templates
+
+Zetl and kastn share one template catalog. Kastn authors, duplicates, and deletes
+templates; Zetl consumes that catalog read-only.
+
+On the Board, the primary half of `New Project` opens the normal blank-project
+setup. Open the button's arrow to choose a template instead. Selecting one asks
+for a new project name, then creates, selects, and activates that project in the
+Board's current normal or Shift lane.
+
+Templates carry bucket structure and behavior, including Standard or Replay
+kind, Pop Mode, compile defaults, TSV headers, and row length. Capture templates
+start empty; Consumable templates can seed an ordered Replay queue. Zetl loads
+the protected built-ins plus versioned user template JSON files from:
+
+```text
+%AppData%\Zetl\templates\
+```
+
+The menu refreshes when the Board regains focus, so a template saved in kastn
+becomes available without restarting Zetl.
+
 ## Quick Notes
 
 Held `Ctrl+X` is the quick-note path.
@@ -310,6 +335,87 @@ Held `Ctrl+C` is the project/capture path:
 - with copied text: opens the note dialog
 - without copied text: opens project management/Board
 - when no project exists yet: starts from a dated project name and default buckets
+
+## Capture Origin
+
+Copy and quick-note captures can remember where the gesture began. Zetl takes
+the origin snapshot at keydown, before clipboard polling or a popup can change
+the foreground window. The metadata is stored with the note and shown as a
+muted secondary line in the Board, for example:
+
+```text
+Microsoft Edge · Zetl roadmap — Google Docs · 10:42 AM
+```
+
+Capture-origin detail is configurable in Settings:
+
+- `Off` stores no origin metadata.
+- `Application only` stores the friendly application and process names.
+- `Application and window title` also stores the foreground window title and is
+  the default.
+
+Zetl never stores the executable path. Older notes without origin metadata load
+normally. Replay review notes keep the origin of the item that was captured.
+
+Capture origin is private archival context, not part of the note text. Project
+export uses a detached snapshot and can remove the complete origin envelope for
+a clean sharing export without modifying the live project.
+
+## Image Capture
+
+With an active project, plain `Ctrl+C` can capture either Unicode text or an
+image from the Windows clipboard. When the clipboard supplies both, Image
+Capture v1 prefers the image. Images are normalized to PNG and stored under the
+project's `assets` folder; `project.json` contains only a typed slip and a
+relative asset descriptor:
+
+- content hash and relative path
+- MIME type
+- pixel width and height
+- byte length
+
+The SHA-256 content hash is also the filename, so copying the same image more
+than once reuses one asset file. The Board shows a thumbnail in the note list
+and a larger selected-image preview. Image slips can have an optional caption,
+which is editable beside the Board preview and becomes the slip's list label.
+Capture-origin metadata works the same way for text and images.
+
+Held `Ctrl+C` on an image opens the capture dialog with an image preview and an
+optional caption. It uses the same project, bucket, inline bucket-creation, and
+click-away behavior as text capture. Saving creates a new image slip; it does
+not replace the clipboard image with the caption.
+
+Image assets are retained when a slip is deleted so Zetl undo cannot restore a
+broken reference. Dated-project consolidation copies assets before removing a
+duplicate project folder, and exports include only assets referenced by exported
+slips. Orphan garbage collection will be added separately.
+
+Current v1 boundaries:
+
+- Compile remains text-only and does not list image slips.
+- Linux image clipboard capture awaits the Linux clipboard backend.
+
+## Project Export
+
+Use `Export` on the Board to write the selected project as a self-contained
+`.zetl.zip` package. The export dialog offers:
+
+- `Clean copy for sharing` (the default), which strips application, process, and
+  window-title metadata.
+- `Archive copy`, which retains capture provenance for private backup or transfer.
+
+Both modes preserve project and bucket structure, note content, settings, and
+timestamps. Export never changes the live project. Each versioned package
+contains:
+
+```text
+manifest.json   package version, project identity, export time, privacy mode
+project.json    detached project snapshot
+assets/...      referenced normalized image assets, when present
+```
+
+This package layout is also the extension point for future captured-image and
+file assets. Project import is not implemented yet.
 
 ## Compile
 
@@ -387,7 +493,9 @@ When Pop Mode is on:
 1. Tap `Ctrl+V`.
 2. The foreground app pastes normally.
 3. Zetl checks the clipboard shortly after paste.
-4. If the clipboard text matches the last current-session note in the active bucket, that note is removed.
+4. If the clipboard content matches the last current-session slip in the active
+   bucket, that slip is removed. Text compares by value; images compare by
+   content hash.
 
 Only the last matching note can pop. Pop Mode and Replay Mode are exclusive: holding `Ctrl+P` on a Replay bucket switches it straight to Pop, just as `Ctrl+R` switches a Pop bucket to Replay.
 
@@ -412,6 +520,11 @@ When the active bucket is in Replay Mode, tap `Ctrl+V` does not paste the curren
 6. restores your remembered clipboard once the paste lands
 
 Replay only borrows the clipboard for each paste. It does not pre-load the next item, and it puts your own clipboard back afterwards, so a plain `Ctrl+V` (or a paste in any other app) still pastes whatever you last copied — not a leftover replay item. If you copy something new mid-replay, Zetl notices and keeps your new copy instead of overwriting it.
+
+Replay supports both text and image slips. For an image item, Zetl writes PNG
+and standard Windows DIB clipboard formats before sending paste. The user's
+previous clipboard is restored with its original text-or-image type, and Replay
+review plus undo preserve the image asset reference.
 
 If your Replay bucket is named `Queue`, the review bucket is named:
 
@@ -464,6 +577,7 @@ Zetl ignores injected `SendInput` events, so its own replayed copy/cut/paste act
 
 The tray menu's `Settings` item edits app-wide preferences, stored in `%AppData%\Zetl\settings.json`:
 
+- **Capture origin** — whether captures store no foreground context, the application only, or the application plus window title.
 - **Toast display time** — how long each toast stays on screen, in milliseconds.
 - **Auto-capture on copy** — whether a plain `Ctrl+C` captures changed clipboard text into the active bucket. Turn it off to keep normal copy fully passive; held `Ctrl+C` still captures.
 - **Quick note goes to clipboard** — whether a saved held `Ctrl+X` quick note places its text on the clipboard. Off by default, so a quick jot does not overwrite what you already had copied. Held `Ctrl+C` copy notes update the clipboard regardless.
@@ -498,6 +612,8 @@ Preview mode uses disposable data and is development-only:
 ```powershell
 dotnet run --project Zetl.App -- --preview=board
 dotnet run --project Zetl.App -- --preview=toast
+dotnet run --project Zetl.App -- --preview=export
+dotnet run --project Zetl.App -- --preview=note-image
 ```
 
 Shortcut-opened note capture commits on click-away. Shortcut-opened compile

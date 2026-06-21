@@ -1,14 +1,16 @@
 namespace ZETL;
 
 /// <summary>
-/// The system clipboard. Windows uses the WinForms clipboard plus
-/// GetClipboardSequenceNumber; a Linux backend will shell out to
-/// wl-clipboard/xclip and hash the content for the change token.
+/// The system clipboard. Platform backends expose text and normalized image
+/// snapshots plus a token used to detect content changes.
 /// </summary>
 internal interface IClipboard
 {
     /// <summary>The clipboard's Unicode text, or null if it has none / is unavailable.</summary>
     string? TryGetText();
+
+    /// <summary>A normalized PNG snapshot, or null when no clipboard image is available.</summary>
+    ZetlClipboardImage? TryGetImage();
 
     /// <summary>
     /// Replace the clipboard text. Returns true when the write succeeded, false
@@ -17,6 +19,9 @@ internal interface IClipboard
     /// </summary>
     bool SetText(string text);
 
+    /// <summary>Replace the clipboard with a normalized PNG image.</summary>
+    bool SetImage(ZetlClipboardImage image);
+
     /// <summary>
     /// A token that changes whenever the clipboard content changes, used to
     /// detect "did the clipboard update after I copied". Only compared for
@@ -24,3 +29,5 @@ internal interface IClipboard
     /// </summary>
     uint GetChangeToken();
 }
+
+internal sealed record ZetlClipboardImage(byte[] PngBytes, int Width, int Height);

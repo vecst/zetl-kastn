@@ -20,6 +20,38 @@ internal static class ZetlWindowsSelfTests
         var failures = 0;
         try
         {
+            var dib = new byte[44];
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(dib.AsSpan(0, 4), 40);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(dib.AsSpan(4, 4), 1);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(dib.AsSpan(8, 4), 1);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(dib.AsSpan(12, 2), 1);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(dib.AsSpan(14, 2), 24);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(dib.AsSpan(20, 4), 4);
+            dib[40] = 0x33;
+            dib[41] = 0x66;
+            dib[42] = 0x99;
+            var bmp = AvaloniaWindowsClipboard.AddBitmapFileHeader(dib);
+            failures += Check(
+                "clipboard DIB conversion produces a valid BMP envelope",
+                bmp is { Length: 58 }
+                && bmp[0] == (byte)'B'
+                && bmp[1] == (byte)'M'
+                && System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(
+                    bmp.AsSpan(10, 4)) == 54);
+
+            var png = Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+            var outputDib = AvaloniaWindowsClipboard.CreateDib(png);
+            failures += Check(
+                "clipboard PNG output produces a 32-bit DIB",
+                outputDib.Length == 44
+                && System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(
+                    outputDib.AsSpan(4, 4)) == 1
+                && System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(
+                    outputDib.AsSpan(8, 4)) == -1
+                && System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(
+                    outputDib.AsSpan(14, 2)) == 32);
+
             var sample = $"zetl-selftest-{Guid.NewGuid():N}";
             failures += Check("clipboard write reports success", clipboard.SetText(sample));
             failures += Check("clipboard round-trips written text", clipboard.TryGetText() == sample);

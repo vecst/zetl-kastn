@@ -30,9 +30,21 @@
       <Button x:Name="inlineCreateButton" Content="Create" />
     </StackPanel>
 
-    <TextBox Grid.Row="4" x:Name="noteBox" AcceptsReturn="True" TextWrapping="Wrap"
-             FontSize="16" VerticalContentAlignment="Top"
-             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+    <Grid Grid.Row="4">
+      <TextBox x:Name="noteBox" AcceptsReturn="True" TextWrapping="Wrap"
+               FontSize="16" VerticalContentAlignment="Top"
+               ScrollViewer.VerticalScrollBarVisibility="Auto" />
+      <Grid x:Name="imageCapturePanel" RowDefinitions="*,Auto"
+            IsVisible="False">
+        <Border Grid.Row="0" Classes="surface" Padding="8">
+          <Image x:Name="captureImagePreview" Stretch="Uniform" />
+        </Border>
+        <TextBox Grid.Row="1" x:Name="imageCaptionBox"
+                 Watermark="Optional caption"
+                 FontSize="16"
+                 Margin="0,8,0,0" />
+      </Grid>
+    </Grid>
 
     <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8"
                 HorizontalAlignment="Right" Margin="0,10,0,0">

@@ -95,4 +95,19 @@ internal static class JsonFile
             File.Move(tempPath, path);
         }
     }
+
+    public static void WriteAtomicBytes(string path, byte[] bytes)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        File.WriteAllBytes(tempPath, bytes);
+        if (File.Exists(path))
+        {
+            File.Replace(tempPath, path, null);
+        }
+        else
+        {
+            File.Move(tempPath, path);
+        }
+    }
 }

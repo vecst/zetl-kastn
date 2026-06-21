@@ -23,6 +23,19 @@ internal partial class ZetlSettingsWindow : Window
         toastMsBox.Value = Clamp(settings.ToastDisplayMs, 200, 5000);
         autoCaptureBox.IsChecked = settings.AutoCaptureOnCopy;
         quickNoteClipboardBox.IsChecked = settings.QuickNoteToClipboard;
+        captureOriginBox.ItemsSource = new[]
+        {
+            "Off",
+            "Application only",
+            "Application and window title"
+        };
+        captureOriginBox.SelectedIndex = ZetlCaptureOriginDetail.Normalize(
+            settings.CaptureOriginDetail) switch
+        {
+            ZetlCaptureOriginDetail.Off => 0,
+            ZetlCaptureOriginDetail.ApplicationOnly => 1,
+            _ => 2
+        };
         defaultBucketsBox.Text = string.Join(Environment.NewLine, settings.DefaultProjectBuckets);
         compileModeBox.ItemsSource = new[] { "Formatted", "Plain", "TSV" };
         compileModeBox.SelectedItem = settings.DefaultCompileMode is "Plain" or "TSV"
@@ -60,6 +73,13 @@ internal partial class ZetlSettingsWindow : Window
     public bool AutoCaptureOnCopy => autoCaptureBox.IsChecked == true;
 
     public bool QuickNoteToClipboard => quickNoteClipboardBox.IsChecked == true;
+
+    public string CaptureOriginDetail => captureOriginBox.SelectedIndex switch
+    {
+        0 => ZetlCaptureOriginDetail.Off,
+        1 => ZetlCaptureOriginDetail.ApplicationOnly,
+        _ => ZetlCaptureOriginDetail.ApplicationAndWindowTitle
+    };
 
     public List<string> DefaultProjectBuckets => (defaultBucketsBox.Text ?? "")
         .Split(["\r\n", "\n", "\r"], StringSplitOptions.None)

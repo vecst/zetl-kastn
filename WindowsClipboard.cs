@@ -9,6 +9,25 @@ namespace ZETL;
 /// </summary>
 internal sealed class WindowsClipboard : IClipboard
 {
+    public ZetlClipboardImage? TryGetImage() => null;
+
+    public bool SetImage(ZetlClipboardImage image)
+    {
+        try
+        {
+            using var stream = new MemoryStream(image.PngBytes, writable: false);
+            using var decoded = System.Drawing.Image.FromStream(stream);
+            using var bitmap = new System.Drawing.Bitmap(decoded);
+            Clipboard.SetImage(bitmap);
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException or ExternalException or ThreadStateException)
+        {
+            return false;
+        }
+    }
+
     public string? TryGetText()
     {
         try

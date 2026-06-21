@@ -2,17 +2,22 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.Media.Imaging;
 
 namespace ZETL;
 
 internal partial class BoardWindow : ZetlPopupWindow
 {
     private readonly ZetlStateStore store = null!;
+    private readonly ZetlTemplateStore templateStore = null!;
     private readonly bool shiftedLane;
     private readonly Action<string>? openInKastn;
+    private readonly Func<ZetlTemplateDocument, string, bool, ZetlProject?>? createProjectFromTemplate;
     private bool refreshing;
     private bool childDialogOpen;
     private ZetlNote? editingNote;
+    private List<BoardNoteItem> noteItems = [];
+    private Bitmap? selectedImagePreview;
 
     // Non-null while a new note is being composed: an in-memory draft that lives
     // only in the editor and is not added to the store until it has non-blank
@@ -37,11 +42,15 @@ internal partial class BoardWindow : ZetlPopupWindow
     internal BoardWindow(
         ZetlStateStore store,
         bool shiftedLane = false,
-        Action<string>? openInKastn = null)
+        ZetlTemplateStore? templateStore = null,
+        Action<string>? openInKastn = null,
+        Func<ZetlTemplateDocument, string, bool, ZetlProject?>? createProjectFromTemplate = null)
     {
         this.store = store;
         this.shiftedLane = shiftedLane;
+        this.templateStore = templateStore ?? new ZetlTemplateStore();
         this.openInKastn = openInKastn;
+        this.createProjectFromTemplate = createProjectFromTemplate;
         InitializeComponent();
 
         Title = shiftedLane ? "Zetl Board - Shift" : "Zetl Board";
@@ -93,6 +102,7 @@ internal partial class BoardWindow : ZetlPopupWindow
         };
 
         newProjectButton.Click += async (_, _) => await AddProjectAsync();
+        Activated += (_, _) => RefreshProjectCreationFlyout();
         deleteProjectButton.Click += async (_, _) => await DeleteProjectAsync();
         openKastnButton.Click += (_, _) =>
         {
@@ -101,6 +111,7 @@ internal partial class BoardWindow : ZetlPopupWindow
                 this.openInKastn?.Invoke(project.Id);
             }
         };
+        exportProjectButton.Click += async (_, _) => await ExportProjectAsync();
         saveProjectButton.Click += (_, _) => SaveProjectName();
         addBucketButton.Click += async (_, _) => await AddBucketAsync();
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
@@ -115,6 +126,7 @@ internal partial class BoardWindow : ZetlPopupWindow
             }
         };
         noteEditor.LostFocus += (_, _) => SaveEditingNote();
+        imageCaptionBox.LostFocus += (_, _) => SaveEditingNote();
         createNoteButton.Click += (_, _) => CreateNote();
         deleteNoteButton.Click += (_, _) => DeleteNote();
         closeBoardButton.Click += (_, _) => CloseBoard();
@@ -123,9 +135,14 @@ internal partial class BoardWindow : ZetlPopupWindow
             CloseBoard,
             CloseBoard,
             HandleAdditionalShortcut);
-        Closed += (_, _) => store.Changed -= OnStoreChanged;
+        Closed += (_, _) =>
+        {
+            store.Changed -= OnStoreChanged;
+            DisposeNoteImages();
+        };
         store.Changed += OnStoreChanged;
 
+        RefreshProjectCreationFlyout();
         RefreshFromStore(preferActiveProject: true);
     }
 
@@ -135,7 +152,7 @@ internal partial class BoardWindow : ZetlPopupWindow
 
     private ZetlBucket? ActiveBucket => (bucketList.SelectedItem as BucketDisplayItem)?.Bucket;
 
-    private ZetlNote? ActiveNote => noteList.SelectedItem as ZetlNote;
+    private ZetlNote? ActiveNote => (noteList.SelectedItem as BoardNoteItem)?.Note;
 
     public void ShowActiveProject()
     {
@@ -205,6 +222,7 @@ internal partial class BoardWindow : ZetlPopupWindow
             saveProjectButton.IsEnabled = hasProject;
             deleteProjectButton.IsEnabled = hasProject;
             openKastnButton.IsEnabled = hasProject && openInKastn is not null;
+            exportProjectButton.IsEnabled = hasProject;
             activeProjectBox.IsEnabled = hasProject;
             addBucketButton.IsEnabled = hasProject;
             projectNameBox.Text = project?.Name ?? "";
@@ -259,14 +277,18 @@ internal partial class BoardWindow : ZetlPopupWindow
             popModeBox.IsEnabled = !ZetlStateStore.IsFifoBucket(bucket);
             createNoteButton.IsEnabled = true;
 
-            noteList.ItemsSource = bucket.Notes.ToList();
+            DisposeNoteImages();
+            noteItems = bucket.Notes
+                .Select(note => CreateNoteItem(ActiveProject!, note))
+                .ToList();
+            noteList.ItemsSource = noteItems;
             // While composing a new note the draft isn't in the list yet; keep
             // the list unselected so a background refresh doesn't yank focus onto
             // an existing note mid-typing.
             noteList.SelectedItem = composingBucket is not null
                 ? null
-                : bucket.Notes.FirstOrDefault(note => note.Id == selectedNoteId)
-                    ?? bucket.Notes.LastOrDefault();
+                : noteItems.FirstOrDefault(item => item.Note.Id == selectedNoteId)
+                    ?? noteItems.LastOrDefault();
             RefreshSelectedNote();
         }
         finally
@@ -288,11 +310,15 @@ internal partial class BoardWindow : ZetlPopupWindow
         popModeBox.IsEnabled = false;
         createNoteButton.IsEnabled = false;
         deleteNoteButton.IsEnabled = false;
-        noteList.ItemsSource = Array.Empty<ZetlNote>();
+        DisposeNoteImages();
+        noteList.ItemsSource = Array.Empty<BoardNoteItem>();
         composingBucket = null;
         editingNote = null;
         noteEditor.Text = "";
+        imageCaptionBox.Text = "";
         noteEditor.IsEnabled = false;
+        noteEditor.IsVisible = true;
+        imagePreviewPanel.IsVisible = false;
     }
 
     private void RefreshSelectedNote()
@@ -311,6 +337,7 @@ internal partial class BoardWindow : ZetlPopupWindow
         // the stored text. Raw, untrimmed comparison so a trailing space being
         // typed still counts as a pending edit and survives.
         if (editingNote is not null
+            && !editingNote.IsImage
             && ActiveNote?.Id == editingNote.Id
             && !string.Equals(noteEditor.Text ?? "", editingNote.Text, StringComparison.Ordinal))
         {
@@ -319,7 +346,14 @@ internal partial class BoardWindow : ZetlPopupWindow
 
         editingNote = ActiveNote;
         noteEditor.Text = editingNote?.Text ?? "";
-        noteEditor.IsEnabled = editingNote is not null;
+        var isImage = editingNote?.IsImage == true;
+        imageCaptionBox.Text = isImage ? editingNote?.Text ?? "" : "";
+        noteEditor.IsVisible = !isImage;
+        noteEditor.IsEnabled = editingNote is not null && !isImage;
+        imagePreviewPanel.IsVisible = isImage;
+        SetSelectedImagePreview(isImage && ActiveProject is { } project
+            ? store.ReadImageAsset(project, editingNote!)
+            : null);
         deleteNoteButton.IsEnabled = editingNote is not null;
     }
 
@@ -343,6 +377,27 @@ internal partial class BoardWindow : ZetlPopupWindow
                 store.AddNote(draftBucket, text, "manual");
             }
 
+            return;
+        }
+
+        if (editingNote?.IsImage == true)
+        {
+            var caption = imageCaptionBox.Text?.Trim() ?? "";
+            if (!string.Equals(editingNote.Text, caption, StringComparison.Ordinal))
+            {
+                store.UpdateNote(editingNote, caption);
+            }
+
+            return;
+        }
+
+        if (editingNote?.IsImage == true
+            && ActiveNote?.Id == editingNote.Id
+            && !string.Equals(
+                imageCaptionBox.Text ?? "",
+                editingNote.Text,
+                StringComparison.Ordinal))
+        {
             return;
         }
 
@@ -372,6 +427,60 @@ internal partial class BoardWindow : ZetlPopupWindow
         }
     }
 
+    private void RefreshProjectCreationFlyout()
+    {
+        var items = new List<Control>();
+        var blankProjectItem = new MenuItem { Header = "Blank Project" };
+        blankProjectItem.Click += async (_, _) => await AddProjectAsync();
+        items.Add(blankProjectItem);
+        items.Add(new Separator());
+
+        var templates = templateStore.LoadAll();
+        if (templates.Count == 0)
+        {
+            items.Add(new MenuItem
+            {
+                Header = "No templates available",
+                IsEnabled = false
+            });
+        }
+        else
+        {
+            foreach (var template in templates)
+            {
+                var item = new MenuItem
+                {
+                    Header = template.Name,
+                    IsEnabled = createProjectFromTemplate is not null
+                };
+                item.Click += async (_, _) => await StartProjectFromTemplateAsync(template);
+                items.Add(item);
+            }
+        }
+
+        newProjectButton.Flyout = new MenuFlyout { ItemsSource = items };
+    }
+
+    private async Task StartProjectFromTemplateAsync(ZetlTemplateDocument template)
+    {
+        var prompt = new TextPromptWindow(
+            $"Start from {template.Name}",
+            "Project name",
+            $"{DateTime.Now:yyyy-MM-dd} {template.Name}",
+            "Start Project");
+        await ShowChildDialogAsync(prompt);
+        if (!prompt.Saved)
+        {
+            return;
+        }
+
+        var project = createProjectFromTemplate?.Invoke(template, prompt.Value, shiftedLane);
+        if (project is not null)
+        {
+            SelectProject(project.Id);
+        }
+    }
+
     private async Task DeleteProjectAsync()
     {
         if (ActiveProject is not { } project)
@@ -383,6 +492,19 @@ internal partial class BoardWindow : ZetlPopupWindow
         {
             store.DeleteProject(project.Id);
         }
+    }
+
+    private async Task ExportProjectAsync()
+    {
+        if (ActiveProject is not { } project)
+        {
+            return;
+        }
+
+        SaveEditingNote();
+        await ShowChildDialogAsync(new ProjectExportWindow(
+            project,
+            store.GetProjectAssets(project)));
     }
 
     private void SaveProjectName()
@@ -473,7 +595,11 @@ internal partial class BoardWindow : ZetlPopupWindow
             editingNote = null;
             noteList.SelectedItem = null;
             noteEditor.Text = "";
+            noteEditor.IsVisible = true;
             noteEditor.IsEnabled = true;
+            imagePreviewPanel.IsVisible = false;
+            imageCaptionBox.Text = "";
+            SetSelectedImagePreview(null);
             deleteNoteButton.IsEnabled = false;
         }
         finally
@@ -491,6 +617,60 @@ internal partial class BoardWindow : ZetlPopupWindow
             editingNote = null;
             store.DeleteNote(bucket, note.Id);
         }
+    }
+
+    private BoardNoteItem CreateNoteItem(ZetlProject project, ZetlNote note)
+    {
+        Bitmap? thumbnail = null;
+        if (note.IsImage && store.ReadImageAsset(project, note) is { } bytes)
+        {
+            try
+            {
+                using var stream = new MemoryStream(bytes, writable: false);
+                thumbnail = Bitmap.DecodeToWidth(stream, 144);
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException)
+            {
+                thumbnail = null;
+            }
+        }
+
+        return new BoardNoteItem(note, thumbnail);
+    }
+
+    private void SetSelectedImagePreview(byte[]? bytes)
+    {
+        selectedImagePreview?.Dispose();
+        selectedImagePreview = null;
+        imagePreview.Source = null;
+        if (bytes is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream(bytes, writable: false);
+            selectedImagePreview = Bitmap.DecodeToWidth(stream, 900);
+            imagePreview.Source = selectedImagePreview;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException)
+        {
+            selectedImagePreview = null;
+        }
+    }
+
+    private void DisposeNoteImages()
+    {
+        foreach (var item in noteItems)
+        {
+            item.Thumbnail?.Dispose();
+        }
+
+        noteItems = [];
+        selectedImagePreview?.Dispose();
+        selectedImagePreview = null;
+        imagePreview.Source = null;
     }
 
     private void ToggleActiveProjectFromControl()
@@ -566,4 +746,12 @@ internal partial class BoardWindow : ZetlPopupWindow
             childDialogOpen = false;
         }
     }
+}
+
+internal sealed record BoardNoteItem(ZetlNote Note, Bitmap? Thumbnail)
+{
+    public string DisplayText => Note.DisplayText;
+    public bool IsImage => Note.IsImage;
+    public bool HasCaptureOrigin => Note.HasCaptureOrigin;
+    public string CaptureOriginLabel => Note.CaptureOriginLabel;
 }

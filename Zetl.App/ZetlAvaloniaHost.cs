@@ -34,6 +34,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly ChordlProcessor? processor;
     private readonly TrayIcon trayIcon;
     private readonly ZetlThemeManager themeManager;
+    private readonly ICaptureOriginProvider captureOriginProvider;
     private readonly Dictionary<bool, BoardWindow> boards = [];
     private readonly object shortcutTargetsGate = new();
     private readonly Dictionary<int, object?> shortcutTargets = [];
@@ -95,6 +96,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         };
         diagnosticThread.Start();
         clickAwayWatcher = new ZetlClickAwayWatcher(OnClickOutsideApp);
+        captureOriginProvider = new WindowsCaptureOriginProvider();
 
         themeManager = new ZetlThemeManager(application, settingsStore);
         themeManager.Apply(
@@ -412,6 +414,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     {
         if (context.KeyCode is ChordlKeys.VK_C or ChordlKeys.VK_X)
         {
+            var captureOrigin = captureOriginProvider.Capture(
+                settingsStore.Settings.CaptureOriginDetail);
             var target = ZetlForegroundService.CaptureTarget();
             lock (shortcutTargetsGate)
             {
@@ -419,6 +423,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             }
 
             Log($"{context.Name} keydown target: {ZetlForegroundService.DescribeTarget(target)}.");
+            ZetlAsync.RunLogged(
+                () => coordinator.OnPhysicalShortcutPassedThroughAsync(
+                    context,
+                    captureOrigin),
+                "physical shortcut pass-through",
+                Log);
+            return;
         }
 
         ZetlAsync.RunLogged(
@@ -506,7 +517,12 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     {
         if (!boards.TryGetValue(shifted, out var board))
         {
-            board = new BoardWindow(store, shifted, OpenInKastn)
+            board = new BoardWindow(
+                store,
+                shifted,
+                templateStore,
+                OpenInKastn,
+                CreateProjectFromTemplate)
             {
                 ShowInTaskbar = false
             };
@@ -555,7 +571,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             request.PreferredBucket,
             request.Text,
             noActiveProject: request.ShowStartProjectToggle,
-            activateByDefault: request.StartProjectDefault)
+            activateByDefault: request.StartProjectDefault,
+            image: request.Image)
         {
             ShowInTaskbar = false,
             DismissOnDeactivate = target is not null
@@ -705,7 +722,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         Dispatcher.UIThread.Post(() => notifications.Show($"Activated '{name}' in Zetl."));
     }
 
-    private void CreateProjectFromTemplate(
+    private ZetlProject? CreateProjectFromTemplate(
         ZetlTemplateDocument template,
         string name,
         bool shifted = false)
@@ -722,13 +739,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         if (response.Status != ZetlResponseStatus.Success)
         {
             notifications.Show($"Could not create '{name}' from the {template.Name} template.");
-            return;
+            return null;
         }
 
         var snapshot = response.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options);
         if (snapshot is null)
         {
-            return;
+            return null;
         }
 
         foreach (var bucket in template.Buckets.Where(bucket => bucket.Seeds.Count > 0))
@@ -763,6 +780,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 store.ClearActiveProject(shifted: false);
             }
         }
+
+        return store.State.Projects.FirstOrDefault(project => project.Id == snapshot.Id);
     }
 
     private async Task ShowSettingsAsync()
@@ -782,6 +801,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.ToastDisplayMs = window.ToastDisplayMs;
         settings.AutoCaptureOnCopy = window.AutoCaptureOnCopy;
         settings.QuickNoteToClipboard = window.QuickNoteToClipboard;
+        settings.CaptureOriginDetail = window.CaptureOriginDetail;
         settings.DefaultProjectBuckets =
             ZetlBucketDefaults.ResolveProjectBuckets(window.DefaultProjectBuckets).ToList();
         settings.DefaultCompileMode = window.DefaultCompileMode;

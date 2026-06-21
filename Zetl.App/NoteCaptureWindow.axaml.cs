@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media.Imaging;
 
 namespace ZETL;
 
@@ -23,6 +24,8 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
     private bool completionDecided;
     // The project the note will be filed into; follows the selector.
     private ZetlProject selectedProject = null!;
+    private readonly ZetlClipboardImage? image;
+    private Bitmap? imagePreviewBitmap;
 
     // Parameterless ctor for the Avalonia previewer / XAML tooling.
     public NoteCaptureWindow()
@@ -36,11 +39,13 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
         ZetlBucket? preferredBucket,
         string text,
         bool noActiveProject = false,
-        bool activateByDefault = false)
+        bool activateByDefault = false,
+        ZetlClipboardImage? image = null)
     {
         this.store = store;
         this.project = project;
         this.activateByDefault = activateByDefault;
+        this.image = image;
         lastFullProjectBucket = preferredBucket;
         selectedProject = project;
         preDialogActiveProjectId = noActiveProject ? null : project.Id;
@@ -61,6 +66,23 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
         projectBox.SelectionChanged += (_, _) => OnSelectedProjectChanged();
 
         noteBox.Text = BuildInitialNoteText(text);
+        if (image is not null)
+        {
+            Title = "Save Zetl Image";
+            Height = 520;
+            noteBox.IsVisible = false;
+            imageCapturePanel.IsVisible = true;
+            try
+            {
+                using var stream = new MemoryStream(image.PngBytes, writable: false);
+                imagePreviewBitmap = Bitmap.DecodeToWidth(stream, 900);
+                captureImagePreview.Source = imagePreviewBitmap;
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException)
+            {
+                captureImagePreview.Source = null;
+            }
+        }
 
         saveButton.Click += (_, _) => Commit(saved: true);
         cancelButton.Click += (_, _) => Commit(saved: false);
@@ -84,6 +106,7 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
             () => Commit(saved: true),
             () => Commit(saved: false),
             HandleAdditionalShortcut);
+        Closed += (_, _) => imagePreviewBitmap?.Dispose();
 
         RefreshBuckets(preferredBucket);
         UpdateProjectModeControls();
@@ -96,7 +119,9 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
 
     public string SelectedBucketName => SelectedBucket.Name;
 
-    public string NoteText => noteBox.Text?.Trim() ?? "";
+    public string NoteText => image is not null
+        ? imageCaptionBox.Text?.Trim() ?? ""
+        : noteBox.Text?.Trim() ?? "";
 
     // The Activate toggle decides whether the chosen project becomes the lane's
     // active project on save.
@@ -151,6 +176,13 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
 
     private void FocusNoteBox()
     {
+        if (image is not null)
+        {
+            imageCaptionBox.Focus();
+            imageCaptionBox.CaretIndex = imageCaptionBox.Text?.Length ?? 0;
+            return;
+        }
+
         noteBox.Focus();
         noteBox.CaretIndex = noteBox.Text?.Length ?? 0;
     }
