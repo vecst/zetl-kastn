@@ -36,6 +36,9 @@ internal sealed class KastnTreeNode
     public bool IsPicture { get; init; }
     public bool IsExcluded { get; init; }
     public bool IsDeletedBucket { get; init; }
+
+    // Dim slips held out of views so they read as present-but-inactive.
+    public double NodeOpacity => IsExcluded ? 0.5 : 1.0;
     // Bucket nodes: counts of this bucket's own (direct) slips.
     public int IncludedCount { get; init; }
     public int HiddenCount { get; init; }
@@ -173,7 +176,18 @@ internal static class KastnWorkbench
         IsExcluded = slip.ExcludedFromViews
     };
 
+    // Keep slip leaves short so the tree stays scannable regardless of pane width.
+    private const int MaxSlipLabelLength = 24;
+
     private static string SlipNodeLabel(ZetlSlipSnapshot slip)
+    {
+        var label = SlipLabelText(slip);
+        return label.Length <= MaxSlipLabelLength
+            ? label
+            : label[..(MaxSlipLabelLength - 1)].TrimEnd() + "…";
+    }
+
+    private static string SlipLabelText(ZetlSlipSnapshot slip)
     {
         if (!string.IsNullOrWhiteSpace(slip.Title))
         {

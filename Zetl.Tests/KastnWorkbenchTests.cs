@@ -168,6 +168,19 @@ internal static class KastnWorkbenchTests
         AssertEqual("Picture", pictureLeaf.Label, "A textless picture labels as Picture.");
     }
 
+    public static void SlipLabelTruncatesLongText()
+    {
+        var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
+        var project = Project(
+            buckets: [Bucket("b", "Bucket")],
+            slips: [Slip("s", "b", "this is a very long slip note that should be truncated", "copy", "a", now)]);
+
+        var label = KastnWorkbench.BuildProjectTree(project, project.Slips)[0].Children.Single().Label;
+
+        AssertTrue(label.EndsWith("…", StringComparison.Ordinal), "A long slip label should end with an ellipsis.");
+        AssertTrue(label.Length <= 24, "A truncated slip label should respect the max length.");
+    }
+
     public static void ViewerFormatsVisibleSlipsAsReadableOutline()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);

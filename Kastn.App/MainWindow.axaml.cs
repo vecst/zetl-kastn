@@ -153,6 +153,13 @@ internal partial class MainWindow : Window
         projectTree.SelectionChanged += OnTreeSelectionChanged;
         slipModeButton.Click += (_, _) => SetRightPaneMode(viewer: false);
         viewModeButton.Click += (_, _) => SetRightPaneMode(viewer: true);
+        includeInViewsCheck.IsCheckedChanged += (_, _) =>
+        {
+            if (!editorUpdating && !refreshing)
+            {
+                _ = ToggleSlipInclusionAsync(includeInViewsCheck.IsChecked != true);
+            }
+        };
         slipList.SelectionChanged += OnSlipSelectionChanged;
         searchBox.TextChanged += (_, _) => RefreshSlipView();
         sourceFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
@@ -1475,6 +1482,69 @@ internal partial class MainWindow : Window
         }
     }
 
+    // Persist the per-slip "include in views" flag. Carries the current editor
+    // text so a pending edit is saved alongside the toggle (one revision bump).
+    // The resulting change event refreshes the tree, dimming/undimming the slip.
+    private async Task ToggleSlipInclusionAsync(bool excluded)
+    {
+        if (!IsOnline || saving || currentProject is null
+            || editorState.SlipId is null || editorState.ConflictCurrent is not null)
+        {
+            return;
+        }
+
+        saving = true;
+        SetEditingEnabled();
+        try
+        {
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.UpdateSlip,
+                new UpdateSlipCommand
+                {
+                    Text = editorState.DraftText.Trim(),
+                    ExcludedFromViews = excluded
+                },
+                currentProject.Id,
+                editorState.SlipId,
+                editorState.Revision));
+            if (response.Status == ZetlResponseStatus.Conflict)
+            {
+                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
+                    ZetlProtocolJson.Options);
+                if (current is not null)
+                {
+                    editorState.Reconcile(current);
+                    ShowConflict();
+                }
+
+                return;
+            }
+
+            if (response.Status != ZetlResponseStatus.Success)
+            {
+                statusText.Text = response.Error?.Message
+                    ?? $"Could not update inclusion: {response.Status}.";
+                return;
+            }
+
+            if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved)
+            {
+                editorState.AcceptSaved(saved);
+            }
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            statusText.Text = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+            SetEditingEnabled();
+        }
+    }
+
     private async Task<bool> SaveEditorAsync()
     {
         autosaveTimer.Stop();
@@ -2076,6 +2146,9 @@ internal partial class MainWindow : Window
         slipMetadataText.Text = slip is null
             ? "Select a slip to read or edit it."
             : SlipMetadata(slip);
+        editorUpdating = true;
+        includeInViewsCheck.IsChecked = slip is null || !slip.ExcludedFromViews;
+        editorUpdating = false;
         SetEditingEnabled();
     }
 
@@ -2100,6 +2173,7 @@ internal partial class MainWindow : Window
             && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
             && !addingSlip;
         slipEditor.IsEnabled = !viewerMode && canEdit && editorState.ConflictCurrent is null;
+        includeInViewsCheck.IsEnabled = !viewerMode && canEdit && editorState.ConflictCurrent is null;
         saveSlipButton.IsEnabled = !viewerMode && canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = false;
         deleteSlipButton.IsEnabled = !viewerMode && canBatch && allSelectedSlipsAreActive;

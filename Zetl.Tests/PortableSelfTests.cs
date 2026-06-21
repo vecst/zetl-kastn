@@ -205,6 +205,7 @@ internal static class PortableSelfTests
                 ("Closing Kastn leaves Zetl available", KastnLifecycleTests.ClosingControllerLeavesZetlAvailable),
                 ("Kastn filters preserve order and hierarchy", KastnWorkbenchTests.FiltersPreserveSnapshotOrderAndHierarchy),
                 ("Kastn project tree nests buckets, slips, and counts", KastnWorkbenchTests.ProjectTreeNestsBucketsSlipsAndCounts),
+                ("Kastn tree truncates long slip labels", KastnWorkbenchTests.SlipLabelTruncatesLongText),
                 ("Kastn dirty editor survives unrelated changes", KastnWorkbenchTests.DirtyEditorSurvivesUnrelatedChanges),
                 ("Kastn same-slip changes require resolution", KastnWorkbenchTests.SameSlipChangesRequireExplicitResolution),
                 ("Kastn viewer formats visible slips", KastnWorkbenchTests.ViewerFormatsVisibleSlipsAsReadableOutline),
