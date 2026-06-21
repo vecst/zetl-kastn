@@ -67,32 +67,51 @@ With the View always visible, selecting a slip in the tree should scroll/
 highlight it in the rendered View, and clicking it in the View selects it in
 the tree. This is the step-6 "bridge" from the build workflow, now natural.
 
-### 7. Light slip formatting for publishing
-A small formatting toolbar above the Editor — **bold**, *italic*, and
-left / center / right alignment — so a slip can be dressed up enough to drop
-into a shareable PDF or HTML without leaving Kastn. Intentionally modest, not a
-word processor.
+### 7. Slip text formatting (the Editor toolbar)
+A small formatting toolbar above the Editor so a slip can be dressed up enough
+to drop into a shareable PDF or HTML without leaving Kastn. Intentionally
+modest — Markdown under the hood, not a word processor.
 
-This is a larger item than the rest because it touches the data model and the
-renderer, so it lands as its own phase, after the layout polish.
+Capabilities:
+- **Inline emphasis:** bold (`**…**`), italic (`*…*`), strikethrough
+  (`~~…~~`), inline code (`` `…` ``).
+- **Links** (`[text](url)`): high value — slips often capture URLs, and
+  clickable links in the exported PDF/HTML are nearly free once the parser is
+  in.
+- **Lists inside a slip:** bullet (`- `), numbered (`1. `), and checkbox / task
+  (`- [ ]` / `- [x]`) lists.
+- **Alignment:** left / center / right.
 
 Approach (proposal, to confirm):
-- **Inline emphasis → Markdown.** Bold/italic wrap the selection in `**…**` /
-  `*…*`. Slip text becomes Markdown-capable on the authoring side; **capture in
-  Zetl stays plain text**, and the change is opt-in per slip (plain text is
-  valid Markdown). Avalonia has no native rich-text editor, so this is a
-  plain `TextBox` whose toolbar inserts Markdown around the selection, not a
-  WYSIWYG surface.
+- **Markdown as the storage.** The toolbar inserts/wraps Markdown around the
+  selection. Slip text becomes Markdown-capable on the authoring side;
+  **capture in Zetl stays plain text**, and it's opt-in per slip (plain text is
+  valid Markdown). Avalonia has no native rich-text editor, so this is a plain
+  `TextBox` with a Markdown-inserting toolbar, not a WYSIWYG surface.
 - **Alignment → slip metadata, not inline markup.** Markdown has no alignment,
-  and alignment is almost always whole-slip, so carry it as a per-slip `Align`
-  field (left/center/right, default left) the same way `ExcludedFromViews`
-  rides along. The renderer applies it as a block style when emitting HTML/PDF.
+  and it's almost always whole-slip, so carry it as a per-slip `Align` field
+  (left/center/right, default left) the way `ExcludedFromViews` rides along; the
+  renderer applies it as a block style in HTML/PDF.
 - **Render flow.** The Markdown / HTML / PDF views parse slip text as Markdown
   (today they treat it as literal/escaped) and honor `Align`. The literal
   views — Formatted / Plain / TSV, which mirror Zetl's compile — keep text
   verbatim and ignore formatting, so the fast path is unchanged.
-- **Open question:** whether to pull in a small Markdown→inline parser or hand-
-  roll the limited subset (bold/italic/escape) we need. Lean hand-rolled first.
+- Once the parser is in, headings, blockquotes, and code blocks are trivial
+  later adds — no need to design each one now.
+- **Open question:** pull in a small Markdown library or hand-roll the limited
+  subset we need. Lean hand-rolled first, library if it gets fiddly.
+
+### 8. View document structure (the renderer)
+How a view projects the whole bucket tree into a document — distinct from
+item 7, which formats a single slip's text.
+- **Nested buckets → nested lists.** Sub-buckets render as nested lists with
+  cascading outline numbering (1 → i → ii, or 1 → 1.1 → 1.1.1) via per-depth
+  list styling in HTML/PDF.
+- **Per-view list style.** Render each bucket's slips as bullets, numbered,
+  checkboxes, or plain paragraphs — a setting on the view document, alongside
+  the existing section mapping.
+- Renderer-side only, on the Markdown / HTML / PDF views; the literal
+  Formatted / Plain / TSV views are untouched.
 
 ## Reconciliation with the build workflow
 
@@ -113,7 +132,8 @@ roadmap re-skins where they live:
 3. Tree icons + count badges + expander-glyph fix (item 5).
 4. Filters drive the tree (workflow step 4) + Tree ⇄ View link (item 6).
 5. Drag-and-drop (workflow step 5).
-6. Slip formatting for publishing (item 7) — its own phase: data model
-   (`Align` + Markdown-aware render) first, then the editor toolbar.
+6. Publishing phase (items 7–8): Markdown-aware render + `Align` data model
+   first, then the Editor formatting toolbar, then view structure (outline
+   numbering + list style).
 
 Each lands as its own buildable, GUI-verified commit.
