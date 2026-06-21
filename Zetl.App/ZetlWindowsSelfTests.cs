@@ -52,18 +52,37 @@ internal static class ZetlWindowsSelfTests
                 && System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(
                     outputDib.AsSpan(14, 2)) == 32);
 
+            // The stub keys off the request path so one handler can exercise each
+            // content-type classification branch in the resolver.
+            //   /image       declared image/png            -> resolves
+            //   /page        declared text/html            -> rejected (not image)
+            //   /octet       octet-stream + real PNG bytes -> resolves via sniff
+            //   /octet-html  octet-stream + HTML bytes     -> rejected by sniff
+            //   /missing     no content type + PNG bytes   -> resolves via sniff
             using var resolverClient = new HttpClient(new StubHttpHandler(request =>
             {
-                var isImage = request.RequestUri?.AbsolutePath == "/image";
+                var path = request.RequestUri?.AbsolutePath;
+                var servesImageBytes = path is "/image" or "/octet" or "/missing";
                 var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
                 {
                     RequestMessage = request,
-                    Content = new ByteArrayContent(isImage
+                    Content = new ByteArrayContent(servesImageBytes
                         ? png
                         : "<html>not an image</html>"u8.ToArray())
                 };
-                response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
-                    isImage ? "image/png" : "text/html");
+                var declaredType = path switch
+                {
+                    "/image" => "image/png",
+                    "/page" => "text/html",
+                    "/octet" or "/octet-html" => "application/octet-stream",
+                    _ => null,
+                };
+                if (declaredType is not null)
+                {
+                    response.Content.Headers.ContentType =
+                        new System.Net.Http.Headers.MediaTypeHeaderValue(declaredType);
+                }
+
                 return response;
             }));
             var resolver = new ZetlImageUrlResolver(resolverClient);
@@ -78,6 +97,18 @@ internal static class ZetlWindowsSelfTests
                 "image URL resolver rejects HTML content",
                 resolver.TryResolveAsync("https://example.test/page")
                     .GetAwaiter().GetResult() is null);
+            failures += Check(
+                "image URL resolver sniffs octet-stream image bytes",
+                resolver.TryResolveAsync("https://example.test/octet")
+                    .GetAwaiter().GetResult()?.Image is { Width: 1, Height: 1 });
+            failures += Check(
+                "image URL resolver rejects octet-stream non-image bytes",
+                resolver.TryResolveAsync("https://example.test/octet-html")
+                    .GetAwaiter().GetResult() is null);
+            failures += Check(
+                "image URL resolver sniffs image bytes when no content type is sent",
+                resolver.TryResolveAsync("https://example.test/missing")
+                    .GetAwaiter().GetResult()?.Image is { Width: 1, Height: 1 });
 
             var sample = $"zetl-selftest-{Guid.NewGuid():N}";
             failures += Check("clipboard write reports success", clipboard.SetText(sample));
