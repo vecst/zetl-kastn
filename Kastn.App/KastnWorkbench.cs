@@ -15,6 +15,33 @@ internal sealed record KastnBucketItem(
     string Label,
     ZetlBucketSnapshot? Bucket);
 
+internal enum KastnTreeNodeKind
+{
+    Bucket,
+    Slip
+}
+
+/// <summary>
+/// One node of the project tree: a bucket (with nested buckets and its slips as
+/// children) or a slip leaf. A view-agnostic projection of the snapshot so the
+/// tree's shape is unit-testable without the UI.
+/// </summary>
+internal sealed class KastnTreeNode
+{
+    public required KastnTreeNodeKind Kind { get; init; }
+    public required string Id { get; init; }
+    public required string Label { get; init; }
+    public ZetlBucketSnapshot? Bucket { get; init; }
+    public ZetlSlipSnapshot? Slip { get; init; }
+    public bool IsPicture { get; init; }
+    public bool IsExcluded { get; init; }
+    public bool IsDeletedBucket { get; init; }
+    // Bucket nodes: counts of this bucket's own (direct) slips.
+    public int IncludedCount { get; init; }
+    public int HiddenCount { get; init; }
+    public IReadOnlyList<KastnTreeNode> Children { get; init; } = [];
+}
+
 internal static class KastnWorkbench
 {
     public static bool IsDeletedBucket(ZetlBucketSnapshot? bucket)
@@ -83,6 +110,83 @@ internal static class KastnWorkbench
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Builds the bucket/slip tree for the project: top-level buckets (those with
+    /// no parent), each carrying its sub-buckets first, then its own slips as leaf
+    /// nodes in the order they appear in <paramref name="slips"/>. Pass all project
+    /// slips for the full tree, or a filtered subset for a filtered tree. Slips
+    /// whose bucket is absent are skipped. Excluded slips stay in the tree (flagged
+    /// via <see cref="KastnTreeNode.IsExcluded"/>); they only drop out of rendered
+    /// views.
+    /// </summary>
+    public static IReadOnlyList<KastnTreeNode> BuildProjectTree(
+        ZetlProjectSnapshot project,
+        IReadOnlyList<ZetlSlipSnapshot> slips)
+    {
+        var slipsByBucket = slips
+            .GroupBy(slip => slip.BucketId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<ZetlSlipSnapshot>)group.ToList(),
+                StringComparer.Ordinal);
+
+        return BuildLevel(parentId: null);
+
+        IReadOnlyList<KastnTreeNode> BuildLevel(string? parentId)
+        {
+            var nodes = new List<KastnTreeNode>();
+            foreach (var bucket in project.Buckets
+                .Where(bucket => bucket.ParentBucketId == parentId)
+                .OrderBy(bucket => bucket.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                var bucketSlips = slipsByBucket.TryGetValue(bucket.Id, out var found)
+                    ? found
+                    : [];
+                nodes.Add(new KastnTreeNode
+                {
+                    Kind = KastnTreeNodeKind.Bucket,
+                    Id = bucket.Id,
+                    Label = bucket.Name,
+                    Bucket = bucket,
+                    IsDeletedBucket = IsDeletedBucket(bucket),
+                    IncludedCount = bucketSlips.Count(slip => !slip.ExcludedFromViews),
+                    HiddenCount = bucketSlips.Count(slip => slip.ExcludedFromViews),
+                    Children = BuildLevel(bucket.Id)
+                        .Concat(bucketSlips.Select(SlipNode))
+                        .ToList()
+                });
+            }
+
+            return nodes;
+        }
+    }
+
+    private static KastnTreeNode SlipNode(ZetlSlipSnapshot slip) => new()
+    {
+        Kind = KastnTreeNodeKind.Slip,
+        Id = slip.Id,
+        Label = SlipNodeLabel(slip),
+        Slip = slip,
+        IsPicture = slip.Type == ZetlSlipType.Picture,
+        IsExcluded = slip.ExcludedFromViews
+    };
+
+    private static string SlipNodeLabel(ZetlSlipSnapshot slip)
+    {
+        if (!string.IsNullOrWhiteSpace(slip.Title))
+        {
+            return slip.Title.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(slip.Text))
+        {
+            var firstLine = slip.Text.Trim().Split('\n', 2)[0].Trim();
+            return firstLine.Length > 0 ? firstLine : "(untitled)";
+        }
+
+        return slip.Type == ZetlSlipType.Picture ? "Picture" : "(untitled)";
     }
 
     public static string BucketPathLabel(

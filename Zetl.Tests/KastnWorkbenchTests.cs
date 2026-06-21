@@ -129,6 +129,45 @@ internal static class KastnWorkbenchTests
         AssertTrue(!localSave.IsDirty, "An acknowledged local save event should clean the editor.");
     }
 
+    public static void ProjectTreeNestsBucketsSlipsAndCounts()
+    {
+        var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
+        var project = Project(
+            buckets:
+            [
+                Bucket("root", "Root"),
+                Bucket("child", "Child", "root")
+            ],
+            slips:
+            [
+                Slip("s1", "root", "kept note", "copy", "a", now),
+                Slip("s2", "root", "hidden note", "copy", "a", now) with { ExcludedFromViews = true },
+                Slip("s3", "child", "", "copy", "a", now) with { Type = ZetlSlipType.Picture }
+            ]);
+
+        var tree = KastnWorkbench.BuildProjectTree(project, project.Slips);
+
+        AssertEqual(1, tree.Count, "Only the top-level Root bucket is a root node.");
+        var root = tree[0];
+        AssertEqual(KastnTreeNodeKind.Bucket, root.Kind, "The top node is a bucket.");
+        AssertEqual(1, root.IncludedCount, "Root counts one included slip.");
+        AssertEqual(1, root.HiddenCount, "Root counts one excluded slip.");
+
+        AssertEqual(KastnTreeNodeKind.Bucket, root.Children[0].Kind, "Sub-buckets precede slips.");
+        AssertEqual("child", root.Children[0].Id, "The Child bucket nests under Root.");
+
+        var rootSlips = root.Children.Where(node => node.Kind == KastnTreeNodeKind.Slip).ToList();
+        AssertEqual(2, rootSlips.Count, "Root's two slips are leaves.");
+        AssertEqual("kept note", rootSlips[0].Label, "A slip label falls back to its text.");
+        AssertTrue(
+            rootSlips.Single(node => node.Id == "s2").IsExcluded,
+            "Excluded slips stay in the tree and are flagged.");
+
+        var pictureLeaf = root.Children[0].Children.Single(node => node.Kind == KastnTreeNodeKind.Slip);
+        AssertTrue(pictureLeaf.IsPicture, "Picture slips are flagged.");
+        AssertEqual("Picture", pictureLeaf.Label, "A textless picture labels as Picture.");
+    }
+
     public static void ViewerFormatsVisibleSlipsAsReadableOutline()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
