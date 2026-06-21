@@ -59,9 +59,19 @@ internal static class ZetlWindowsSelfTests
             //   /octet       octet-stream + real PNG bytes -> resolves via sniff
             //   /octet-html  octet-stream + HTML bytes     -> rejected by sniff
             //   /missing     no content type + PNG bytes   -> resolves via sniff
+            //   /blocked     403                           -> triggers curl fallback
             using var resolverClient = new HttpClient(new StubHttpHandler(request =>
             {
                 var path = request.RequestUri?.AbsolutePath;
+                if (path is "/blocked")
+                {
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.Forbidden)
+                    {
+                        RequestMessage = request,
+                        Content = new ByteArrayContent("<html>blocked</html>"u8.ToArray()),
+                    };
+                }
+
                 var servesImageBytes = path is "/image" or "/octet" or "/missing";
                 var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
                 {
@@ -85,7 +95,12 @@ internal static class ZetlWindowsSelfTests
 
                 return response;
             }));
-            var resolver = new ZetlImageUrlResolver(resolverClient);
+            // A curl fallback that throws if it is ever asked: proves the normal
+            // 200-image path resolves in-process without spawning a fallback.
+            var resolver = new ZetlImageUrlResolver(
+                resolverClient,
+                curlDownloader: (_, _) =>
+                    throw new InvalidOperationException("curl should not run for a 200 response."));
             var resolvedImage = resolver.TryResolveAsync("https://example.test/image")
                 .GetAwaiter().GetResult();
             failures += Check(
@@ -109,6 +124,28 @@ internal static class ZetlWindowsSelfTests
                 "image URL resolver sniffs image bytes when no content type is sent",
                 resolver.TryResolveAsync("https://example.test/missing")
                     .GetAwaiter().GetResult()?.Image is { Width: 1, Height: 1 });
+
+            // A blocked (403) response falls back to curl. A fallback that returns
+            // image bytes resolves; one that returns nothing yields a text slip.
+            var curlResolver = new ZetlImageUrlResolver(
+                resolverClient,
+                curlDownloader: (uri, _) =>
+                    Task.FromResult<(byte[] Bytes, string FinalUrl)?>((png, uri.AbsoluteUri)));
+            var viaCurl = curlResolver.TryResolveAsync("https://example.test/blocked")
+                .GetAwaiter().GetResult();
+            failures += Check(
+                "image URL resolver falls back to curl on a blocked response",
+                viaCurl?.Image is { Width: 1, Height: 1 }
+                && viaCurl.SourceUrl == "https://example.test/blocked");
+
+            var noCurlResolver = new ZetlImageUrlResolver(
+                resolverClient,
+                curlDownloader: (_, _) =>
+                    Task.FromResult<(byte[] Bytes, string FinalUrl)?>(null));
+            failures += Check(
+                "image URL resolver gives up when the curl fallback returns nothing",
+                noCurlResolver.TryResolveAsync("https://example.test/blocked")
+                    .GetAwaiter().GetResult() is null);
 
             var sample = $"zetl-selftest-{Guid.NewGuid():N}";
             failures += Check("clipboard write reports success", clipboard.SetText(sample));
