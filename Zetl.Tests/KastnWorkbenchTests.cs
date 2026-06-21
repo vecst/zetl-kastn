@@ -164,6 +164,62 @@ internal static class KastnWorkbenchTests
         AssertEqual(expected, text, "Viewer text should outline visible slips by nested bucket.");
     }
 
+    public static void InspectorSurfacesCaptureAndPictureMetadata()
+    {
+        var captured = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
+        var project = Project(
+            buckets:
+            [
+                Bucket("root", "Research"),
+                Bucket("child", "Images", "root"),
+                Bucket("deleted", "Deleted", kind: "Deleted")
+            ],
+            slips: []);
+        var slip = Slip(
+            "picture-one",
+            "deleted",
+            "whiteboard sketch",
+            "clipboard",
+            "session-one",
+            captured,
+            revision: 4) with
+        {
+            Type = ZetlSlipType.Picture,
+            Picture = new ZetlPictureSnapshot
+            {
+                SourceUrl = "https://example.com/sketch.png",
+                Width = 1600,
+                Height = 900,
+                ByteLength = 1_572_864,
+                Sha256 = new string('a', 64)
+            },
+            CaptureOrigin = new ZetlCaptureOriginSnapshot
+            {
+                ApplicationName = "Microsoft Edge",
+                ProcessName = "msedge",
+                WindowTitle = "Project reference"
+            },
+            DeletedFromBucketId = "child",
+            DeletedAtUtc = captured.AddHours(1)
+        };
+
+        var sections = KastnSlipInspector.Build(project, slip);
+        var fields = sections
+            .SelectMany(section => section.Fields)
+            .ToDictionary(field => field.Label, field => field.Value);
+
+        AssertSequence(
+            ["Overview", "Capture location", "Picture", "Lifecycle", "Technical"],
+            sections.Select(section => section.Heading),
+            "Inspector metadata should stay grouped and scannable.");
+        AssertEqual("Research > Images", fields["Deleted from"], "Deleted slips should retain their original bucket path.");
+        AssertEqual("1,600 × 900 px", fields["Dimensions"], "Picture dimensions should be human readable.");
+        AssertEqual("1.5 MiB", fields["Size"], "Picture byte size should be human readable.");
+        AssertEqual("Microsoft Edge", fields["Application"], "Capture application should be visible.");
+        AssertEqual("https://example.com/sketch.png", fields["Original URL"], "Downloaded-image provenance should be visible.");
+        AssertEqual("4", fields["Revision"], "Technical details should expose the current revision.");
+    }
+
     public static void CommandsOrganizeThroughZetl()
     {
         RunAsync(async () =>

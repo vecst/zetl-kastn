@@ -551,22 +551,51 @@
                                Classes="muted"
                                FontSize="12"
                                Margin="0,0,0,8" />
-                    <Grid Grid.Row="3">
-                      <TextBox x:Name="viewerTextBox"
-                               AcceptsReturn="True"
-                               IsReadOnly="True"
-                               TextWrapping="Wrap"
-                               ScrollViewer.VerticalScrollBarVisibility="Auto" />
-                      <ScrollViewer x:Name="viewerDocumentScroll"
-                                    IsVisible="False"
-                                    VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="viewerDocumentPanel" Spacing="12" Margin="8" />
-                      </ScrollViewer>
-                      <ScrollViewer x:Name="editViewScroll"
-                                    IsVisible="False"
-                                    VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="editableBlocksPanel" Spacing="10" />
-                      </ScrollViewer>
+                    <Grid Grid.Row="3" ColumnDefinitions="*,8,310">
+                      <Grid Grid.Column="0">
+                        <TextBox x:Name="viewerTextBox"
+                                 AcceptsReturn="True"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                        <ScrollViewer x:Name="viewerDocumentScroll"
+                                      IsVisible="False"
+                                      VerticalScrollBarVisibility="Auto">
+                          <StackPanel x:Name="viewerDocumentPanel" Spacing="12" Margin="8" />
+                        </ScrollViewer>
+                        <ScrollViewer x:Name="editViewScroll"
+                                      IsVisible="False"
+                                      VerticalScrollBarVisibility="Auto">
+                          <StackPanel x:Name="editableBlocksPanel" Spacing="10" />
+                        </ScrollViewer>
+                      </Grid>
+                      <GridSplitter Grid.Column="1"
+                                    Width="8"
+                                    ResizeDirection="Columns" />
+                      <Border Grid.Column="2"
+                              Classes="surface"
+                              Padding="12">
+                        <Grid RowDefinitions="Auto,Auto,*">
+                          <TextBlock Grid.Row="0"
+                                     Text="Slip details"
+                                     Classes="heading" />
+                          <ComboBox Grid.Row="1"
+                                    x:Name="inspectorSlipBox"
+                                    Margin="0,8,0,10">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate>
+                                <TextBlock Text="{Binding Label}"
+                                           TextTrimming="CharacterEllipsis" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                          <ScrollViewer Grid.Row="2"
+                                        VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="slipInspectorFieldsPanel"
+                                        Spacing="8" />
+                          </ScrollViewer>
+                        </Grid>
+                      </Border>
                     </Grid>
                   </Grid>
                   <ListBox x:Name="slipList"

@@ -201,6 +201,7 @@ internal static class PortableSelfTests
                 ("Kastn dirty editor survives unrelated changes", KastnWorkbenchTests.DirtyEditorSurvivesUnrelatedChanges),
                 ("Kastn same-slip changes require resolution", KastnWorkbenchTests.SameSlipChangesRequireExplicitResolution),
                 ("Kastn viewer formats visible slips", KastnWorkbenchTests.ViewerFormatsVisibleSlipsAsReadableOutline),
+                ("Kastn inspector surfaces rich slip metadata", KastnWorkbenchTests.InspectorSurfacesCaptureAndPictureMetadata),
                 ("Kastn organizes through Zetl commands", KastnWorkbenchTests.CommandsOrganizeThroughZetl)
         };
 

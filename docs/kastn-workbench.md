@@ -28,6 +28,15 @@ content from Zetl through the read-only IPC picture command and keeps a bounded
 in-memory cache; it never opens project asset paths directly. Edit View shows
 the picture above its editable caption.
 
+The Slip details rail keeps captured information visible without turning it
+into editable document content. Its visible-slip picker preserves the rendered
+Read View, while each Edit View block has an explicit `Details` action. The
+inspector groups bucket and capture time, source and session, application and
+window provenance, picture dimensions/size/original URL, deletion history, and
+technical identity. It follows the active filters and preserves the inspected
+slip across live snapshot refreshes while that slip remains visible. HTTP(S)
+image provenance can be opened explicitly from the inspector.
+
 ## Editing
 
 Selecting a slip opens it in the editor. Text changes autosave after a short

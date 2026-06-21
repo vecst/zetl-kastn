@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia.Controls;
@@ -77,6 +78,7 @@ internal partial class MainWindow : Window
     private readonly ObservableCollection<DateFilterItem> dates = [];
     private readonly ObservableCollection<KastnBucketItem> parentBuckets = [];
     private readonly ObservableCollection<KastnBucketItem> moveBuckets = [];
+    private readonly ObservableCollection<InspectorSlipItem> inspectorSlips = [];
     private readonly KastnEditorState editorState = new();
     private readonly List<EditableSlipBlock> editableViewBlocks = [];
     private readonly Dictionary<string, ZetlPictureContent> pictureCache = new(StringComparer.Ordinal);
@@ -99,6 +101,8 @@ internal partial class MainWindow : Window
     private bool landingShowingTemplates;
     private bool landingShowingConsumable;
     private bool suppressLandingProjectSelection;
+    private bool inspectorUpdating;
+    private string? inspectedSlipId;
     private int pictureRenderGeneration;
     private long pictureCacheBytes;
 
@@ -123,6 +127,7 @@ internal partial class MainWindow : Window
         parentBucketBox.ItemsSource = parentBuckets;
         moveBucketBox.ItemsSource = moveBuckets;
         editViewMoveBucketBox.ItemsSource = moveBuckets;
+        inspectorSlipBox.ItemsSource = inspectorSlips;
 
         dates.Add(new DateFilterItem(KastnDateFilter.All, "All time"));
         dates.Add(new DateFilterItem(KastnDateFilter.Today, "Today"));
@@ -157,6 +162,15 @@ internal partial class MainWindow : Window
         sessionFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
         dateFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
         slipEditor.TextChanged += (_, _) => OnEditorTextChanged();
+        inspectorSlipBox.SelectionChanged += (_, _) =>
+        {
+            if (!inspectorUpdating)
+            {
+                var selected = inspectorSlipBox.SelectedItem as InspectorSlipItem;
+                inspectedSlipId = selected?.Id;
+                RenderSlipInspector(selected?.Slip);
+            }
+        };
 
         refreshMenuItem.Click += async (_, _) => await RefreshAsync();
         closeProjectMenuItem.Click += async (_, _) => await CloseProjectAsync();
@@ -2153,11 +2167,13 @@ internal partial class MainWindow : Window
             viewerSummaryText.Text = "No project selected.";
             viewerTextBox.Text = "";
             ClearPictureDocument();
+            RefreshSlipInspector([]);
             ExitEditableView(clearBlocks: true);
             return;
         }
 
         var visible = CurrentFilteredSlips();
+        RefreshSlipInspector(visible);
         var hasPictures = visible.Any(slip => slip.Type == ZetlSlipType.Picture);
         viewerSummaryText.Text = visible.Count == 0
             ? "No slips match the current filters."
@@ -2208,6 +2224,112 @@ internal partial class MainWindow : Window
 
         deleteViewMenuItem.IsEnabled = !ZetlViewDefaults.IsBuiltIn(SelectedView.Id);
         RefreshEditableViewStatus();
+    }
+
+    private void RefreshSlipInspector(IReadOnlyList<ZetlSlipSnapshot> visible)
+    {
+        inspectorUpdating = true;
+        try
+        {
+            inspectorSlips.Clear();
+            foreach (var slip in visible)
+            {
+                inspectorSlips.Add(new InspectorSlipItem(
+                    slip.Id,
+                    $"{slip.Type} · {SlipPreviewText(slip)}",
+                    slip));
+            }
+
+            var selected = inspectorSlips.FirstOrDefault(item => item.Id == inspectedSlipId)
+                ?? inspectorSlips.FirstOrDefault();
+            inspectorSlipBox.SelectedItem = selected;
+            inspectedSlipId = selected?.Id;
+            RenderSlipInspector(selected?.Slip);
+        }
+        finally
+        {
+            inspectorUpdating = false;
+        }
+    }
+
+    private void InspectSlip(string slipId)
+    {
+        inspectedSlipId = slipId;
+        var selected = inspectorSlips.FirstOrDefault(item => item.Id == slipId);
+        if (selected is not null)
+        {
+            inspectorSlipBox.SelectedItem = selected;
+            RenderSlipInspector(selected.Slip);
+        }
+    }
+
+    private void RenderSlipInspector(ZetlSlipSnapshot? slip)
+    {
+        slipInspectorFieldsPanel.Children.Clear();
+        if (currentProject is null || slip is null)
+        {
+            slipInspectorFieldsPanel.Children.Add(new TextBlock
+            {
+                Text = "No slip is available in the current view.",
+                Classes = { "muted" },
+                TextWrapping = TextWrapping.Wrap
+            });
+            return;
+        }
+
+        foreach (var section in KastnSlipInspector.Build(currentProject, slip))
+        {
+            slipInspectorFieldsPanel.Children.Add(new TextBlock
+            {
+                Text = section.Heading,
+                FontWeight = FontWeight.SemiBold,
+                Margin = new Avalonia.Thickness(0, 8, 0, 0)
+            });
+            foreach (var field in section.Fields)
+            {
+                var fieldPanel = new StackPanel { Spacing = 1 };
+                fieldPanel.Children.Add(new TextBlock
+                {
+                    Text = field.Label,
+                    Classes = { "muted" },
+                    FontSize = 11
+                });
+                fieldPanel.Children.Add(new TextBlock
+                {
+                    Text = field.Value,
+                    TextWrapping = TextWrapping.Wrap,
+                    [ToolTip.TipProperty] = field.Value
+                });
+                if (string.Equals(field.Label, "Original URL", StringComparison.Ordinal)
+                    && Uri.TryCreate(field.Value, UriKind.Absolute, out var uri)
+                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                {
+                    var openButton = new Button
+                    {
+                        Content = "Open URL",
+                        Padding = new Avalonia.Thickness(9, 3),
+                        Margin = new Avalonia.Thickness(0, 4, 0, 0),
+                        HorizontalAlignment = HorizontalAlignment.Left
+                    };
+                    openButton.Click += (_, _) => OpenInspectorUrl(uri);
+                    fieldPanel.Children.Add(openButton);
+                }
+
+                slipInspectorFieldsPanel.Children.Add(fieldPanel);
+            }
+        }
+    }
+
+    private void OpenInspectorUrl(Uri uri)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or SystemException)
+        {
+            statusText.Text = "Kastn could not open that URL.";
+        }
     }
 
     private void BuildPictureDocument(IReadOnlyList<ZetlSlipSnapshot> visible)
@@ -3282,6 +3404,15 @@ internal partial class MainWindow : Window
             };
             block.StatusText = statusTextBlock;
 
+            var detailsButton = new Button
+            {
+                [Grid.ColumnProperty] = 2,
+                Content = "Details",
+                Padding = new Avalonia.Thickness(10, 3),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            detailsButton.Click += (_, _) => InspectSlip(block.SlipId);
+
             var selectionBox = new CheckBox
             {
                 IsChecked = block.IsSelected,
@@ -3356,12 +3487,13 @@ internal partial class MainWindow : Window
                     {
                         new Grid
                         {
-                            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+                            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"),
                             ColumnSpacing = 10,
                             Children =
                             {
                                 selectionBox,
                                 statusTextBlock,
+                                detailsButton,
                                 BuildOrderBadge(block, index, total, reorderable)
                             }
                         },
@@ -3446,7 +3578,7 @@ internal partial class MainWindow : Window
         {
             return new TextBlock
             {
-                [Grid.ColumnProperty] = 2,
+                [Grid.ColumnProperty] = 3,
                 Classes = { "muted" },
                 FontSize = 18,
                 FontWeight = FontWeight.SemiBold,
@@ -3491,7 +3623,7 @@ internal partial class MainWindow : Window
 
         return new StackPanel
         {
-            [Grid.ColumnProperty] = 2,
+            [Grid.ColumnProperty] = 3,
             Orientation = Orientation.Horizontal,
             Spacing = 2,
             VerticalAlignment = VerticalAlignment.Center,
@@ -3909,6 +4041,10 @@ internal partial class MainWindow : Window
         string Id,
         string Text,
         string Detail,
+        ZetlSlipSnapshot Slip);
+    private sealed record InspectorSlipItem(
+        string Id,
+        string Label,
         ZetlSlipSnapshot Slip);
     private sealed record FilterItem(string? Value, string Label);
     private sealed record DateFilterItem(KastnDateFilter Value, string Label);
