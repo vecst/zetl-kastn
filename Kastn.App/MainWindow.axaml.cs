@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -118,6 +119,7 @@ internal partial class MainWindow : Window
     {
         this.connection = connection;
         InitializeComponent();
+        Icon = KastnIcon.Create();
         landingProjectList.ItemsSource = projects;
         landingTemplateItems.ItemsSource = templates;
         bucketList.ItemsSource = buckets;
@@ -254,10 +256,77 @@ internal partial class MainWindow : Window
             WindowState = WindowState.Normal;
         }
 
+        ShowInTaskbar = true;
         Show();
         Activate();
         BringToForeground();
         await connection.NavigateToProjectAsync(projectId);
+    }
+
+    // Unified-tray model: minimizing hides Kastn into Zetl's tray instead of
+    // leaving it on the taskbar. It comes back through Zetl's "Show Kastn" item,
+    // which sends an activate request handled by ActivateRequest. Closing (the X)
+    // still exits Kastn outright and leaves Zetl resident.
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == WindowStateProperty
+            && change.GetNewValue<WindowState>() == WindowState.Minimized)
+        {
+            // Defer to avoid re-entering the WindowState change we are reacting to.
+            Dispatcher.UIThread.Post(HideToTray);
+        }
+    }
+
+    private void HideToTray()
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        ShowInTaskbar = false;
+        Hide();
+    }
+
+    // Called from the control pipe (off the UI thread) when Zetl is quitting and
+    // wants Kastn to close too. Hidden in the tray → close silently; open → raise
+    // Kastn and confirm. Returns true to close, false to keep both apps running.
+    public Task<bool> RequestShutdownDecisionAsync()
+    {
+        var decided = new TaskCompletionSource<bool>();
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try
+            {
+                decided.SetResult(await DecideShutdownAsync());
+            }
+            catch (Exception ex)
+            {
+                decided.SetException(ex);
+            }
+        });
+        return decided.Task;
+    }
+
+    private async Task<bool> DecideShutdownAsync()
+    {
+        if (!IsVisible || WindowState == WindowState.Minimized)
+        {
+            return true;
+        }
+
+        Activate();
+        BringToForeground();
+        return await KastnDialogs.ConfirmAsync(
+            this,
+            "Closing Zetl will also close Kastn. Close both apps?",
+            "Close both");
+    }
+
+    public void CloseForShutdown()
+    {
+        Dispatcher.UIThread.Post(Close);
     }
 
     private void OnSnapshotChanged(object? sender, KastnSessionSnapshot snapshot)

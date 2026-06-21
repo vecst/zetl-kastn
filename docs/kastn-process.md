@@ -23,11 +23,47 @@ Installed builds should place Zetl and Kastn together. Zetl uses the equivalent
 ## Single Instance
 
 The first Kastn process owns the `KastnSingleInstance` mutex and a current-user
-activation pipe. A later launch sends its optional `--project=` ID to the first
+control pipe. A later launch sends its optional `--project=` ID to the first
 process and exits.
 
 The first process restores and activates its main window, then navigates to the
-requested project. The activation pipe carries stable project IDs only.
+requested project. Activation requests carry stable project IDs only.
+
+## Control Pipe
+
+Kastn hosts a local control pipe whose name is derived deterministically from
+the user and login session, so Zetl computes the same name without it being
+passed at launch. The pipe carries three signals:
+
+- **Activate** — focus Kastn and optionally navigate to a project. Used by the
+  single-instance forward and by Zetl's `Show Kastn` tray item. Fire-and-forget.
+- **Shutdown** — Zetl is quitting and asks whether Kastn should close with it.
+  Kastn replies with its decision (see Tray And Shutdown Coordination).
+
+The pipe is restricted to the current user. Activation is the default; only a
+shutdown request expects a reply.
+
+## Tray And Shutdown Coordination
+
+Kastn participates in Zetl's single system-tray presence rather than carrying its
+own tray icon:
+
+- **Minimize hides into Zetl's tray.** Minimizing Kastn takes it off the taskbar
+  and hides the window. It returns through the `Show Kastn` item in Zetl's tray
+  menu, which is enabled only while a Kastn client is connected and sends an
+  activate request over the control pipe. Closing (the window's X) still exits
+  Kastn outright and leaves Zetl resident.
+- **Quitting Zetl coordinates the shutdown.** When the user quits Zetl with a
+  Kastn connected, Zetl sends a shutdown request and waits for Kastn's decision.
+  A Kastn minimized to the tray closes silently, so quitting Zetl closes
+  everything. An open Kastn raises itself and shows a `Close both / Cancel`
+  confirmation; cancelling aborts Zetl's quit, so closing Zetl no longer silently
+  relaunches because Kastn was still open. On a confirmed close, Kastn suppresses
+  the reconnect-driven relaunch and exits.
+
+This coordinated path applies to the Zetl tray's `Quit`. An unexpected Zetl exit
+(a crash or kill) is still treated as an outage: Kastn reports offline and
+relaunches Zetl, since it needs a resident host.
 
 ## Connection State
 
@@ -49,7 +85,10 @@ reconnects, and reloads snapshots. The user does not need to restart Kastn.
 
 K3 provides:
 
-- a persistent taskbar window;
+- a windowed application with a taskbar presence that minimizes into Zetl's
+  tray (see Tray And Shutdown Coordination);
+- a procedural window/taskbar icon (a white "K" over a dusk gradient, the sibling
+  of Zetl's tray "Z");
 - File, View, and Help menus;
 - a project navigator;
 - project, bucket, and recent-slip read views;

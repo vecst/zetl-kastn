@@ -10,14 +10,14 @@ internal static class KastnLifecycleTests
     {
         RunAsync(async () =>
         {
-            var pipeName = $"kastn-activation-tests-{Guid.NewGuid():N}";
-            await using var server = new KastnActivationServer(pipeName);
-            var received = new TaskCompletionSource<KastnActivationRequest>(
+            var pipeName = $"kastn-control-tests-{Guid.NewGuid():N}";
+            await using var server = new KastnControlServer(pipeName);
+            var received = new TaskCompletionSource<KastnControlRequest>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             server.ActivationRequested += (_, request) => received.TrySetResult(request);
             server.Start();
 
-            await KastnActivationClient.SendAsync(
+            await KastnControlChannel.ActivateAsync(
                 "project-to-focus",
                 pipeName,
                 TimeSpan.FromSeconds(5));
@@ -27,6 +27,105 @@ internal static class KastnLifecycleTests
                 "project-to-focus",
                 request.ProjectId,
                 "Activation should preserve the requested project ID.");
+        });
+    }
+
+    public static void ShutdownRequestClosesWhenHandlerAgrees()
+    {
+        RunAsync(async () =>
+        {
+            var pipeName = $"kastn-control-tests-{Guid.NewGuid():N}";
+            await using var server = new KastnControlServer(pipeName);
+            var confirmed = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            server.ShutdownRequested = () => Task.FromResult(true);
+            server.ShutdownConfirmed = () => confirmed.TrySetResult();
+            server.Start();
+
+            var decision = await KastnControlChannel.RequestShutdownAsync(
+                pipeName,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(5));
+
+            AssertEqual(
+                KastnShutdownDecision.Close,
+                decision,
+                "An agreeing Kastn should report a Close decision.");
+            await confirmed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        });
+    }
+
+    public static void ShutdownRequestCancelsWhenHandlerDeclines()
+    {
+        RunAsync(async () =>
+        {
+            var pipeName = $"kastn-control-tests-{Guid.NewGuid():N}";
+            await using var server = new KastnControlServer(pipeName);
+            var confirmedClose = false;
+            server.ShutdownRequested = () => Task.FromResult(false);
+            server.ShutdownConfirmed = () => confirmedClose = true;
+            server.Start();
+
+            var decision = await KastnControlChannel.RequestShutdownAsync(
+                pipeName,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(5));
+
+            AssertEqual(
+                KastnShutdownDecision.Cancel,
+                decision,
+                "A declining Kastn should report a Cancel decision.");
+            AssertTrue(!confirmedClose, "A cancelled shutdown must not confirm a close.");
+        });
+    }
+
+    public static void ShutdownRequestReturnsNoKastnWhenAbsent()
+    {
+        RunAsync(async () =>
+        {
+            var decision = await KastnControlChannel.RequestShutdownAsync(
+                $"kastn-control-absent-{Guid.NewGuid():N}",
+                TimeSpan.FromMilliseconds(250),
+                TimeSpan.FromSeconds(2));
+
+            AssertEqual(
+                KastnShutdownDecision.NoKastn,
+                decision,
+                "With no Kastn listening the requester should be free to quit.");
+        });
+    }
+
+    public static void BeginShutdownStopsZetlRelaunch()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new LifecycleFixture();
+            var launches = 0;
+            await using var controller = new KastnConnectionController(
+                _ =>
+                {
+                    Interlocked.Increment(ref launches);
+                    fixture.StartServer();
+                    return Task.CompletedTask;
+                },
+                fixture.PipeName,
+                TimeSpan.FromMilliseconds(75),
+                TimeSpan.FromMilliseconds(25));
+            controller.Start(fixture.Project.Id);
+            await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Online);
+
+            // Coordinated shutdown: Kastn is closing on purpose, so the dropped
+            // connection must not relaunch Zetl the way an unexpected outage would.
+            controller.BeginShutdown();
+            fixture.StopServer();
+            await Task.Delay(300);
+
+            AssertEqual(
+                0,
+                Volatile.Read(ref launches),
+                "A shutting-down Kastn must not relaunch Zetl.");
         });
     }
 

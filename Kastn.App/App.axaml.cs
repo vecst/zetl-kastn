@@ -41,6 +41,17 @@ public partial class App : Application
             if (Program.ActivationServer is { } activation)
             {
                 activation.ActivationRequested += OnActivationRequested;
+                // Zetl is quitting and asked whether Kastn may close too. Kastn owns
+                // the decision (silent when minimized to tray, a confirm dialog when
+                // open); on a "close" reply, suppress the auto-relaunch and exit.
+                var window = mainWindow!;
+                var session = connection!;
+                activation.ShutdownRequested = () => window.RequestShutdownDecisionAsync();
+                activation.ShutdownConfirmed = () => Dispatcher.UIThread.Post(() =>
+                {
+                    session.BeginShutdown();
+                    window.CloseForShutdown();
+                });
                 if (activation.PendingRequest is { } pending)
                 {
                     mainWindow.ActivateRequest(pending.ProjectId);
@@ -65,7 +76,7 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    private void OnActivationRequested(object? sender, KastnActivationRequest request)
+    private void OnActivationRequested(object? sender, KastnControlRequest request)
     {
         Dispatcher.UIThread.Post(() => mainWindow?.ActivateRequest(request.ProjectId));
     }

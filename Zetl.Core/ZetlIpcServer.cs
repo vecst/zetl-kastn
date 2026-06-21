@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Channels;
 using ZETL.Contracts;
@@ -30,6 +31,17 @@ internal sealed class ZetlIpcServer : IDisposable
     }
 
     public string PipeName => pipeName;
+
+    /// <summary>
+    /// Raised when a client finishes its handshake or disconnects, so the host can
+    /// reflect connected applications (e.g. show a "Show Kastn" tray item only
+    /// while Kastn is connected). Fires on IPC threads.
+    /// </summary>
+    public event Action? ClientsChanged;
+
+    /// <summary>True when a client identified itself with the given name in its hello.</summary>
+    public bool HasClient(string name) => clients.Values.Any(
+        client => string.Equals(client.ClientName, name, StringComparison.OrdinalIgnoreCase));
 
     public void Start()
     {
@@ -83,7 +95,8 @@ internal sealed class ZetlIpcServer : IDisposable
                     serverInstanceId,
                     service,
                     log,
-                    () => clients.TryRemove(clientId, out _));
+                    () => clients.TryRemove(clientId, out _),
+                    () => ClientsChanged?.Invoke());
                 clients[clientId] = connection;
                 pipe = null;
                 connection.Start(cancellationToken);
@@ -119,6 +132,7 @@ internal sealed class ZetlIpcServer : IDisposable
         private readonly ZetlProjectService service;
         private readonly Action<string>? log;
         private readonly Action onClosed;
+        private readonly Action onClientsChanged;
         private readonly CancellationTokenSource cancellation = new();
         private readonly Channel<ZetlIpcMessage> outbound = Channel.CreateBounded<ZetlIpcMessage>(
             new BoundedChannelOptions(OutboundCapacity)
@@ -136,7 +150,8 @@ internal sealed class ZetlIpcServer : IDisposable
             string serverInstanceId,
             ZetlProjectService service,
             Action<string>? log,
-            Action onClosed)
+            Action onClosed,
+            Action onClientsChanged)
         {
             this.clientId = clientId;
             this.pipe = pipe;
@@ -144,7 +159,11 @@ internal sealed class ZetlIpcServer : IDisposable
             this.service = service;
             this.log = log;
             this.onClosed = onClosed;
+            this.onClientsChanged = onClientsChanged;
         }
+
+        // The client name from its hello, available once the handshake completes.
+        public string? ClientName { get; private set; }
 
         public void Start(CancellationToken serverCancellation)
         {
@@ -185,6 +204,8 @@ internal sealed class ZetlIpcServer : IDisposable
                 }
 
                 var hello = Deserialize<ZetlIpcHello>(helloMessage);
+                ClientName = hello.ClientName;
+                onClientsChanged();
                 log?.Invoke(
                     $"IPC client {clientId} connected as '{hello.ClientName}' "
                     + $"(subscribe={hello.SubscribeToProjectChanges}).");
@@ -242,6 +263,10 @@ internal sealed class ZetlIpcServer : IDisposable
 
                 pipe.Dispose();
                 onClosed();
+                if (ClientName is not null)
+                {
+                    onClientsChanged();
+                }
             }
         }
 

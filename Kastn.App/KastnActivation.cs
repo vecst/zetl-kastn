@@ -1,47 +1,45 @@
-using System.Diagnostics;
 using System.IO.Pipes;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using ZETL;
 
 namespace KASTN;
 
-internal sealed record KastnActivationRequest(string? ProjectId);
-
-internal static class KastnActivationEndpoint
-{
-    public static string GetDefaultPipeName()
-    {
-        var session = OperatingSystem.IsWindows()
-            ? Process.GetCurrentProcess().SessionId.ToString()
-            : Environment.GetEnvironmentVariable("XDG_SESSION_ID")
-                ?? Environment.GetEnvironmentVariable("DISPLAY")
-                ?? "default";
-        var identity = $"{Environment.UserDomainName}\\{Environment.UserName}|{session}";
-        var hash = Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..16]
-            .ToLowerInvariant();
-        return $"kastn-activation-{hash}";
-    }
-}
-
-internal sealed class KastnActivationServer : IAsyncDisposable
+/// <summary>
+/// Hosts Kastn's control pipe: the single-instance "activate" forward plus the
+/// "show from tray" and coordinated-shutdown signals Zetl sends. Activation
+/// requests are fire-and-forget; a shutdown request waits for a decision the
+/// host supplies through <see cref="ShutdownRequested"/> and replies with it.
+/// </summary>
+internal sealed class KastnControlServer : IAsyncDisposable
 {
     private const int MaxRequestCharacters = 4096;
     private readonly string pipeName;
     private readonly CancellationTokenSource cancellation = new();
     private Task? acceptLoop;
 
-    public KastnActivationServer(string? pipeName = null)
+    public KastnControlServer(string? pipeName = null)
     {
         this.pipeName = string.IsNullOrWhiteSpace(pipeName)
-            ? KastnActivationEndpoint.GetDefaultPipeName()
+            ? KastnControlChannel.GetDefaultPipeName()
             : pipeName;
     }
 
-    public event EventHandler<KastnActivationRequest>? ActivationRequested;
+    /// Raised for an activation/restore request (focus Kastn, optional project).
+    public event EventHandler<KastnControlRequest>? ActivationRequested;
 
-    public KastnActivationRequest? PendingRequest { get; private set; }
+    /// <summary>
+    /// Invoked for a shutdown request. Returns true to close Kastn, false to keep
+    /// it running (the user cancelled). The reply is sent before
+    /// <see cref="ShutdownConfirmed"/> runs, so Kastn can exit afterward without
+    /// dropping the requester's pipe.
+    /// </summary>
+    public Func<Task<bool>>? ShutdownRequested { get; set; }
+
+    /// Invoked after a "close" reply has been flushed, so Kastn can actually exit.
+    public Action? ShutdownConfirmed { get; set; }
+
+    public KastnControlRequest? PendingRequest { get; private set; }
 
     public void Start()
     {
@@ -71,7 +69,7 @@ internal sealed class KastnActivationServer : IAsyncDisposable
         {
             await using var pipe = new NamedPipeServerStream(
                 pipeName,
-                PipeDirection.In,
+                PipeDirection.InOut,
                 NamedPipeServerStream.MaxAllowedServerInstances,
                 PipeTransmissionMode.Byte,
                 PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
@@ -90,14 +88,24 @@ internal sealed class KastnActivationServer : IAsyncDisposable
                     continue;
                 }
 
-                var request = JsonSerializer.Deserialize<KastnActivationRequest>(line);
+                var request = JsonSerializer.Deserialize<KastnControlRequest>(line);
                 if (request is null)
                 {
                     continue;
                 }
 
-                PendingRequest = request;
-                ActivationRequested?.Invoke(this, request);
+                if (string.Equals(
+                        request.Command,
+                        KastnControlChannel.ShutdownCommand,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    await HandleShutdownAsync(pipe, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    PendingRequest = request;
+                    ActivationRequested?.Invoke(this, request);
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -109,42 +117,35 @@ internal sealed class KastnActivationServer : IAsyncDisposable
             }
         }
     }
-}
 
-internal static class KastnActivationClient
-{
-    public static async Task SendAsync(
-        string? projectId,
-        string? pipeName = null,
-        TimeSpan? timeout = null,
-        CancellationToken cancellationToken = default)
+    private async Task HandleShutdownAsync(
+        PipeStream pipe,
+        CancellationToken cancellationToken)
     {
-        var resolvedPipeName = string.IsNullOrWhiteSpace(pipeName)
-            ? KastnActivationEndpoint.GetDefaultPipeName()
-            : pipeName;
-        using var timeoutCancellation = new CancellationTokenSource(
-            timeout ?? TimeSpan.FromSeconds(2));
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeoutCancellation.Token);
-
-        await using var pipe = new NamedPipeClientStream(
-            ".",
-            resolvedPipeName,
-            PipeDirection.Out,
-            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-        await pipe.ConnectAsync(linked.Token).ConfigureAwait(false);
-        await using var writer = new StreamWriter(
+        // No handler means Kastn can't make the decision; treat as a cancel so the
+        // requester stays running rather than killing an app that didn't consent.
+        var close = ShutdownRequested is { } handler
+            && await handler().ConfigureAwait(false);
+        await using (var writer = new StreamWriter(
             pipe,
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-            bufferSize: 1024,
+            bufferSize: 256,
             leaveOpen: true)
         {
             AutoFlush = true
-        };
-        await writer.WriteLineAsync(
-            JsonSerializer.Serialize(new KastnActivationRequest(projectId))
-                .AsMemory(),
-            linked.Token).ConfigureAwait(false);
+        })
+        {
+            await writer.WriteLineAsync(
+                KastnControlChannel.ReplyFor(close).AsMemory(),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        // Give the reply a moment to drain to the requester before we begin tearing
+        // the process down.
+        await pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
+        if (close)
+        {
+            ShutdownConfirmed?.Invoke();
+        }
     }
 }

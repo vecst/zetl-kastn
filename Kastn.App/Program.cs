@@ -1,4 +1,5 @@
 using Avalonia;
+using ZETL;
 
 namespace KASTN;
 
@@ -7,7 +8,7 @@ internal static class Program
     private static Mutex? singleInstanceMutex;
 
     internal static string[] StartupArgs { get; private set; } = [];
-    internal static KastnActivationServer? ActivationServer { get; private set; }
+    internal static KastnControlServer? ActivationServer { get; private set; }
 
     [STAThread]
     public static int Main(string[] args)
@@ -28,7 +29,7 @@ internal static class Program
             singleInstanceMutex = null;
             try
             {
-                KastnActivationClient.SendAsync(projectId, activationPipe)
+                KastnControlChannel.ActivateAsync(projectId, activationPipe)
                     .GetAwaiter()
                     .GetResult();
                 return 0;
@@ -40,7 +41,7 @@ internal static class Program
             }
         }
 
-        ActivationServer = new KastnActivationServer(activationPipe);
+        ActivationServer = new KastnControlServer(activationPipe);
         ActivationServer.Start();
         try
         {

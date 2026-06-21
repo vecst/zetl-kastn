@@ -19,6 +19,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     private bool projectSelectionRequested = true;
     private bool hasEverConnected;
     private bool launchAttemptedForOutage;
+    private volatile bool suppressRelaunch;
 
     public KastnConnectionController(
         Func<CancellationToken, Task> launchZetl,
@@ -50,6 +51,16 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         }
 
         runTask ??= Task.Run(() => RunAsync(cancellation.Token));
+    }
+
+    /// <summary>
+    /// Marks this session as shutting down on purpose (Zetl asked Kastn to close
+    /// with it). Stops the reconnect loop from relaunching Zetl as it tears down.
+    /// </summary>
+    public void BeginShutdown()
+    {
+        suppressRelaunch = true;
+        cancellation.Cancel();
     }
 
     public async Task NavigateToProjectAsync(
@@ -156,7 +167,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                 await nextClient.DisposeAsync().ConfigureAwait(false);
                 var serverAbsent =
                     ex is IOException or TimeoutException or OperationCanceledException;
-                if (!launchAttemptedForOutage && serverAbsent)
+                if (!suppressRelaunch && !launchAttemptedForOutage && serverAbsent)
                 {
                     launchAttemptedForOutage = true;
                     try
