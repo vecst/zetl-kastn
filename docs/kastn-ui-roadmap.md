@@ -113,6 +113,51 @@ item 7, which formats a single slip's text.
 - Renderer-side only, on the Markdown / HTML / PDF views; the literal
   Formatted / Plain / TSV views are untouched.
 
+### 9. Linked slips — wiki-links + backlinks
+The missing zettelkasten piece, and the highest-leverage structural add. A slip
+can reference another with `[[slip]]`; the Detail pane shows a "linked from"
+backlinks list. Turns the *kasten* from a folder tree into a linked knowledge
+base, and composes with the Markdown plan (links land in item 7). Render flow:
+`[[…]]` resolves to the target slip in the View/exports; an unresolved link is
+left visible (a stub worth filling, not an error), mirroring how memory links
+work. Design alongside the typed-capture-log direction so link storage stays
+inspectable.
+
+### 10. Board (kanban) mode
+An alternative project surface for organizing and triage: **buckets become
+columns, slips become cards.** A mode toggle in the top bar swaps the center
+between the List/Outline layout and the Board.
+- **Costs almost no new model.** Buckets already serve as the columns/statuses;
+  dragging a card across columns is `MoveSlip`, reordering within a column is
+  `ReorderSlip` — both existing, sole-writer through Zetl. The Board is the most
+  natural home for the planned drag-and-drop (build-workflow step 5).
+- **Card:** title/preview, picture thumbnail, capture-origin line, and the
+  include eye-toggle; excluded cards dim like the tree.
+- **Column:** bucket name + count header, a `+ card` to add a slip there;
+  adding a column = adding a bucket.
+- **Detail pane stays docked** on the right, so clicking a card still edits it
+  in the Editor — you don't lose authoring when you switch to the Board.
+- **Open questions:** nested buckets (leaf buckets as columns, or top-level
+  columns with sub-buckets as collapsible swimlanes); whether a Trash column
+  ties into Phase 3 soft-delete.
+- Pure projection over slips — no new persisted board state beyond bucket
+  membership and order, which already exist.
+
+### Parked ideas (captured, not yet scheduled)
+From the brainstorm, worth keeping but not yet sized:
+- **Tags / labels** — cross-bucket faceting; design with the typed-capture-log.
+- **Publishing:** auto table of contents (from the outline), front matter
+  (title/subtitle/date/author), page setup (size/margins/base font), footnotes,
+  Markdown tables, figure numbering + image width/alignment.
+- **Frictionless output:** Copy as Markdown / Copy as HTML; direct Print.
+- **Editor:** live raw/rendered preview toggle; word/character count;
+  find & replace across slips.
+- **View/reading:** per-view document styling (font/accent/headings) like the
+  theme system; comfortable reading width + font size for the View.
+- **Structural slips:** divider / heading-only slips to shape a document.
+- Trivial Markdown later-adds (free once the parser is in): headings,
+  blockquotes, code blocks, horizontal rules.
+
 ## Reconciliation with the build workflow
 
 The earlier Phase 2 step list still holds for the remaining mechanics; this
