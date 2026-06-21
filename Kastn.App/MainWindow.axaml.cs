@@ -740,7 +740,6 @@ internal partial class MainWindow : Window
                 slipList.SelectedItem = null;
             }
 
-            UpdateSlipCountText();
             RefreshViewer();
             RefreshDestinationBuckets();
         }
@@ -1444,7 +1443,6 @@ internal partial class MainWindow : Window
             editorState.Select(null);
             UpdateEditorFromState();
             RefreshDestinationBuckets();
-            UpdateSlipCountText();
             return;
         }
 
@@ -1460,7 +1458,6 @@ internal partial class MainWindow : Window
         editorState.Select(selected.Slip);
         UpdateEditorFromState();
         RefreshDestinationBuckets();
-        UpdateSlipCountText();
     }
 
     private void OnEditorTextChanged()
@@ -4072,20 +4069,6 @@ internal partial class MainWindow : Window
         parentBucketHintText.Text = parent is null
             ? "Current parent: missing"
             : $"Current parent: {KastnWorkbench.BucketPathLabel(currentProject, parent)}";
-    }
-
-    private void UpdateSlipCountText()
-    {
-        if (currentProject is null)
-        {
-            slipCountText.Text = "No slips";
-            return;
-        }
-
-        var selectedCount = SelectedSlipItems().Count;
-        slipCountText.Text = selectedCount > 1
-            ? $"{slips.Count} of {currentProject.Slips.Count} slips | {selectedCount} selected"
-            : $"{slips.Count} of {currentProject.Slips.Count} slips";
     }
 
     private static string BatchStatus(params string?[] parts)

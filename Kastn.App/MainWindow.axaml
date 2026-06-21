@@ -601,7 +601,6 @@
                   <ListBox x:Name="slipList"
                            IsVisible="False"
                            SelectionMode="Multiple" />
-                  <TextBlock x:Name="slipCountText" IsVisible="False" />
                 </Grid>
               </Border>
             </Grid>
