@@ -67,6 +67,33 @@ With the View always visible, selecting a slip in the tree should scroll/
 highlight it in the rendered View, and clicking it in the View selects it in
 the tree. This is the step-6 "bridge" from the build workflow, now natural.
 
+### 7. Light slip formatting for publishing
+A small formatting toolbar above the Editor — **bold**, *italic*, and
+left / center / right alignment — so a slip can be dressed up enough to drop
+into a shareable PDF or HTML without leaving Kastn. Intentionally modest, not a
+word processor.
+
+This is a larger item than the rest because it touches the data model and the
+renderer, so it lands as its own phase, after the layout polish.
+
+Approach (proposal, to confirm):
+- **Inline emphasis → Markdown.** Bold/italic wrap the selection in `**…**` /
+  `*…*`. Slip text becomes Markdown-capable on the authoring side; **capture in
+  Zetl stays plain text**, and the change is opt-in per slip (plain text is
+  valid Markdown). Avalonia has no native rich-text editor, so this is a
+  plain `TextBox` whose toolbar inserts Markdown around the selection, not a
+  WYSIWYG surface.
+- **Alignment → slip metadata, not inline markup.** Markdown has no alignment,
+  and alignment is almost always whole-slip, so carry it as a per-slip `Align`
+  field (left/center/right, default left) the same way `ExcludedFromViews`
+  rides along. The renderer applies it as a block style when emitting HTML/PDF.
+- **Render flow.** The Markdown / HTML / PDF views parse slip text as Markdown
+  (today they treat it as literal/escaped) and honor `Align`. The literal
+  views — Formatted / Plain / TSV, which mirror Zetl's compile — keep text
+  verbatim and ignore formatting, so the fast path is unchanged.
+- **Open question:** whether to pull in a small Markdown→inline parser or hand-
+  roll the limited subset (bold/italic/escape) we need. Lean hand-rolled first.
+
 ## Reconciliation with the build workflow
 
 The earlier Phase 2 step list still holds for the remaining mechanics; this
@@ -86,5 +113,7 @@ roadmap re-skins where they live:
 3. Tree icons + count badges + expander-glyph fix (item 5).
 4. Filters drive the tree (workflow step 4) + Tree ⇄ View link (item 6).
 5. Drag-and-drop (workflow step 5).
+6. Slip formatting for publishing (item 7) — its own phase: data model
+   (`Align` + Markdown-aware render) first, then the editor toolbar.
 
 Each lands as its own buildable, GUI-verified commit.
