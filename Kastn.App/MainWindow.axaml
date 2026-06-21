@@ -23,8 +23,6 @@
         <MenuItem x:Name="focusSearchMenuItem" Header="_Find" InputGesture="Ctrl+F" />
       </MenuItem>
       <MenuItem Header="_View">
-        <MenuItem x:Name="viewerModeMenuItem" Header="_Edit View" InputGesture="Ctrl+Shift+E" />
-        <Separator />
         <MenuItem x:Name="focusProjectsMenuItem" Header="Focus Project _Cards" />
         <MenuItem x:Name="focusBucketsMenuItem" Header="Focus _Buckets" />
         <MenuItem x:Name="focusSlipsMenuItem" Header="Focus _Main View" />
@@ -520,8 +518,8 @@
                     </Grid>
                   </Grid>
                   <Grid x:Name="viewerPanel"
-                        RowDefinitions="Auto,Auto,Auto,*">
-                    <Grid Grid.Row="0" ColumnDefinitions="*,190,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                        RowDefinitions="Auto,Auto,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
                       <StackPanel Grid.Column="0"
                                   Orientation="Horizontal"
                                   Spacing="8"
@@ -544,45 +542,18 @@
                           </Button.Flyout>
                         </Button>
                       </StackPanel>
-                      <ComboBox Grid.Column="1"
-                                x:Name="editViewMoveBucketBox"
-                                IsVisible="False">
-                        <ComboBox.ItemTemplate>
-                          <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-                        </ComboBox.ItemTemplate>
-                      </ComboBox>
-                      <Button Grid.Column="2"
-                              x:Name="moveSelectedViewButton"
-                              Content="Move Selected"
-                              Padding="12,3" />
-                      <Button Grid.Column="3"
+                      <Button Grid.Column="1"
                               x:Name="newSlipButton"
-                              Content="New"
-                              Padding="12,3" />
-                      <Button Grid.Column="4"
-                              x:Name="editViewButton"
-                              Content="Edit View"
-                              Padding="12,3" />
-                      <Button Grid.Column="5"
-                              x:Name="saveViewButton"
-                              Content="Save All"
-                              Padding="12,3" />
-                      <Button Grid.Column="6"
-                              x:Name="cancelViewButton"
-                              Content="Cancel"
-                              Padding="12,3" />
+                              Content="New slip"
+                              Padding="12,3"
+                              VerticalAlignment="Center" />
                     </Grid>
                     <TextBlock Grid.Row="1"
                                x:Name="viewerSummaryText"
                                Classes="muted"
                                FontSize="12"
                                Margin="0,2,0,8" />
-                    <TextBlock Grid.Row="2"
-                               x:Name="editViewStatusText"
-                               Classes="muted"
-                               FontSize="12"
-                               Margin="0,0,0,8" />
-                    <Grid Grid.Row="3" ColumnDefinitions="*,8,310">
+                    <Grid Grid.Row="2" ColumnDefinitions="*,8,310">
                       <Grid Grid.Column="0">
                         <TextBox x:Name="viewerTextBox"
                                  AcceptsReturn="True"
@@ -593,11 +564,6 @@
                                       IsVisible="False"
                                       VerticalScrollBarVisibility="Auto">
                           <StackPanel x:Name="viewerDocumentPanel" Spacing="12" Margin="8" />
-                        </ScrollViewer>
-                        <ScrollViewer x:Name="editViewScroll"
-                                      IsVisible="False"
-                                      VerticalScrollBarVisibility="Auto">
-                          <StackPanel x:Name="editableBlocksPanel" Spacing="10" />
                         </ScrollViewer>
                       </Grid>
                       <GridSplitter Grid.Column="1"

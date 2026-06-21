@@ -81,7 +81,6 @@ internal partial class MainWindow : Window
     private readonly ObservableCollection<KastnBucketItem> moveBuckets = [];
     private readonly ObservableCollection<InspectorSlipItem> inspectorSlips = [];
     private readonly KastnEditorState editorState = new();
-    private readonly List<EditableSlipBlock> editableViewBlocks = [];
     private readonly Dictionary<string, ZetlPictureContent> pictureCache = new(StringComparer.Ordinal);
     private readonly Queue<string> pictureCacheOrder = [];
     private readonly Dictionary<string, Task<ZetlPictureContent?>> pictureLoads = new(StringComparer.Ordinal);
@@ -91,15 +90,12 @@ internal partial class MainWindow : Window
     private bool refreshing;
     private bool editorUpdating;
     private bool saving;
-    private bool savingEditableView;
     private bool addingSlip;
     private string? pendingSaveText;
     private string? pendingBucketSelectionId;
     private string? pendingSlipSelectionId;
-    private string? pendingEditableBlockFocusId;
     private bool pendingSlipFocus;
     private bool viewerMode = true;
-    private bool editableViewMode;
     private bool landingShowingTemplates;
     private bool landingShowingConsumable;
     private bool suppressLandingProjectSelection;
@@ -128,7 +124,6 @@ internal partial class MainWindow : Window
         dateFilterBox.ItemsSource = dates;
         parentBucketBox.ItemsSource = parentBuckets;
         moveBucketBox.ItemsSource = moveBuckets;
-        editViewMoveBucketBox.ItemsSource = moveBuckets;
         inspectorSlipBox.ItemsSource = inspectorSlips;
 
         dates.Add(new DateFilterItem(KastnDateFilter.All, "All time"));
@@ -183,7 +178,6 @@ internal partial class MainWindow : Window
         newSlipMenuItem.Click += async (_, _) => await AddSlipAsync();
         saveSlipMenuItem.Click += async (_, _) => await SaveEditorAsync();
         deleteSlipMenuItem.Click += async (_, _) => await DeleteSlipAsync();
-        viewerModeMenuItem.Click += async (_, _) => await ToggleEditableViewAsync();
         focusSearchMenuItem.Click += (_, _) => searchBox.Focus();
         focusProjectsMenuItem.Click += (_, _) => landingProjectList.Focus();
         focusBucketsMenuItem.Click += (_, _) => projectTree.Focus();
@@ -193,10 +187,6 @@ internal partial class MainWindow : Window
         saveBucketButton.Click += async (_, _) => await SaveBucketAsync();
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
         closeProjectButton.Click += async (_, _) => await CloseProjectAsync();
-        editViewButton.Click += async (_, _) => await ToggleEditableViewAsync();
-        saveViewButton.Click += async (_, _) => await SaveEditableViewAsync();
-        cancelViewButton.Click += (_, _) => CancelEditableView();
-        moveSelectedViewButton.Click += async (_, _) => await MoveSelectedEditableBlocksAsync();
         newSlipButton.Click += async (_, _) => await AddSlipAsync();
         loadedViews = viewStore.LoadAll();
         viewPickerBox.ItemsSource = loadedViews;
@@ -663,9 +653,6 @@ internal partial class MainWindow : Window
                     StringComparison.OrdinalIgnoreCase))
                 ?? moveBuckets.FirstOrDefault()
             : moveBuckets.FirstOrDefault();
-        editViewMoveBucketBox.SelectedItem = moveBuckets.FirstOrDefault(
-                item => item.Id != SelectedBucketId)
-            ?? moveBuckets.FirstOrDefault();
         SetEditingEnabled();
     }
 
@@ -1406,18 +1393,12 @@ internal partial class MainWindow : Window
             return;
         }
 
-        if (!CanLeaveEditableView())
-        {
-            return;
-        }
-
         if (!await SaveEditorAsync())
         {
             statusText.Text = "Save or resolve the current slip before closing the project.";
             return;
         }
 
-        ExitEditableView(clearBlocks: true);
         editorState.Select(null);
         UpdateEditorFromState();
         pendingBucketSelectionId = null;
@@ -1677,16 +1658,14 @@ internal partial class MainWindow : Window
                 bucket => bucket.Id == slip.BucketId)));
         if (existingDraft is not null)
         {
-            pendingEditableBlockFocusId = existingDraft.Id;
+            // Reuse the existing untitled draft rather than stacking another:
+            // select it in the tree and open it in the slip editor.
             ResetSlipFilters();
-            if (!editableViewMode)
-            {
-                EnterEditableView();
-            }
-            else
-            {
-                BuildEditableViewBlocks(CurrentFilteredSlips());
-            }
+            pendingBucketSelectionId = existingDraft.BucketId;
+            pendingSlipSelectionId = existingDraft.Id;
+            pendingSlipFocus = true;
+            await connection.RefreshAsync();
+            SetRightPaneMode(viewer: false);
             statusText.Text = "Finish the current untitled slip before creating another.";
             return;
         }
@@ -1733,15 +1712,10 @@ internal partial class MainWindow : Window
                 {
                     pendingBucketSelectionId = created.BucketId;
                     pendingSlipSelectionId = created.Id;
-                    pendingSlipFocus = false;
-                    pendingEditableBlockFocusId = created.Id;
+                    pendingSlipFocus = true;
                     ResetSlipFilters();
                     await connection.RefreshAsync();
-                    if (viewerMode)
-                    {
-                        EnterEditableView();
-                    }
-
+                    SetRightPaneMode(viewer: false);
                     statusText.Text = "Slip created.";
                     return;
                 }
@@ -2103,13 +2077,14 @@ internal partial class MainWindow : Window
 
     private void FocusMainView()
     {
-        if (editableViewMode)
+        if (viewerMode)
         {
-            editableViewBlocks.FirstOrDefault()?.Editor?.Focus();
-            return;
+            viewerTextBox.Focus();
         }
-
-        viewerTextBox.Focus();
+        else
+        {
+            slipEditor.Focus();
+        }
     }
 
     private void UpdateEditorFromState()
@@ -2183,11 +2158,8 @@ internal partial class MainWindow : Window
         moveBucketBox.IsEnabled = moveSlipButton.IsEnabled || restoreSlipButton.IsEnabled;
         addBucketButton.IsEnabled = IsOnline && currentProject is not null;
         closeProjectButton.IsEnabled = currentProject is not null;
-        newSlipButton.IsEnabled = canCreateSlip && !savingEditableView;
+        newSlipButton.IsEnabled = canCreateSlip;
         newSlipMenuItem.IsEnabled = newSlipButton.IsEnabled;
-        viewerModeMenuItem.IsEnabled = currentProject is not null;
-        viewerModeMenuItem.Header = editableViewMode ? "_Read View" : "_Edit View";
-        RefreshEditableViewStatus();
     }
 
     private void SetConnectionState(KastnSessionSnapshot snapshot)
@@ -2288,13 +2260,6 @@ internal partial class MainWindow : Window
         {
             args.Handled = true;
             await CloseProjectAsync();
-        }
-        else if (args.KeyModifiers.HasFlag(KeyModifiers.Control)
-            && args.KeyModifiers.HasFlag(KeyModifiers.Shift)
-            && args.Key == Key.E)
-        {
-            args.Handled = true;
-            await ToggleEditableViewAsync();
         }
         else if (args.Key == Key.F2 && SelectedBucket is not null)
         {
@@ -2455,7 +2420,6 @@ internal partial class MainWindow : Window
             viewerTextBox.Text = "";
             ClearPictureDocument();
             RefreshSlipInspector([]);
-            ExitEditableView(clearBlocks: true);
             return;
         }
 
@@ -2465,22 +2429,6 @@ internal partial class MainWindow : Window
         viewerSummaryText.Text = visible.Count == 0
             ? "No slips match the current filters."
             : $"{visible.Count} of {currentProject.Slips.Count} slips in the current view.";
-        if (editableViewMode)
-        {
-            // Read and edit surfaces share the same grid. Keep the read layers
-            // explicitly hidden even when a live refresh arrives mid-session.
-            viewerTextBox.IsVisible = false;
-            viewerDocumentScroll.IsVisible = false;
-            editViewScroll.IsVisible = true;
-            if (!savingEditableView && !HasDirtyEditableBlocks())
-            {
-                BuildEditableViewBlocks(visible);
-            }
-
-            RefreshEditableViewStatus();
-            return;
-        }
-
         viewerTextBox.IsVisible = !hasPictures;
         viewerDocumentScroll.IsVisible = hasPictures;
         if (hasPictures)
@@ -2515,7 +2463,6 @@ internal partial class MainWindow : Window
         }
 
         deleteViewMenuItem.IsEnabled = !ZetlViewDefaults.IsBuiltIn(SelectedView.Id);
-        RefreshEditableViewStatus();
     }
 
     private void RefreshSlipInspector(IReadOnlyList<ZetlSlipSnapshot> visible)
@@ -3459,684 +3406,6 @@ internal partial class MainWindow : Window
         }
     }
 
-    private async Task ToggleEditableViewAsync()
-    {
-        if (!viewerMode || currentProject is null)
-        {
-            return;
-        }
-
-        if (!editableViewMode)
-        {
-            if (!await SaveEditorAsync())
-            {
-                statusText.Text = "Save or resolve the current slip before opening edit view.";
-                return;
-            }
-
-            EnterEditableView();
-            editableBlocksPanel.Focus();
-            return;
-        }
-
-        if (HasDirtyEditableBlocks())
-        {
-            statusText.Text = "Save All or Cancel before leaving edit view.";
-            RefreshEditableViewStatus();
-            return;
-        }
-
-        ExitEditableView(clearBlocks: true);
-        RefreshViewer();
-    }
-
-    private void EnterEditableView()
-    {
-        editableViewMode = true;
-        // The read document and editable cards occupy stacked layers. Clear the
-        // read picture layer before revealing cards so it cannot remain visible
-        // behind them through alternate entry paths such as New Slip.
-        ClearPictureDocument();
-        viewerTextBox.IsVisible = false;
-        viewerDocumentScroll.IsVisible = false;
-        editViewScroll.IsVisible = true;
-        BuildEditableViewBlocks(CurrentFilteredSlips());
-    }
-
-    private async Task SaveEditableViewAsync()
-    {
-        if (!editableViewMode || !IsOnline || currentProject is null || savingEditableView)
-        {
-            return;
-        }
-
-        var dirty = editableViewBlocks
-            .Where(block => block.IsDirty)
-            .ToList();
-        if (dirty.Count == 0)
-        {
-            statusText.Text = "Edit view has no unsaved slips.";
-            RefreshEditableViewStatus();
-            return;
-        }
-
-        savingEditableView = true;
-        SetEditingEnabled();
-        try
-        {
-            var saved = 0;
-            var failed = 0;
-            var projectId = currentProject.Id;
-            foreach (var block in dirty)
-            {
-                var text = block.DraftText.Trim();
-                var title = block.DraftTitle.Trim();
-                if (text.Length == 0 && title.Length == 0 && !block.IsPicture)
-                {
-                    block.Status = "A title or note is required.";
-                    failed++;
-                    continue;
-                }
-
-                var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
-                    Guid.NewGuid().ToString("N"),
-                    ZetlCommandKind.UpdateSlip,
-                    new UpdateSlipCommand { Title = title, Text = text },
-                    projectId,
-                    block.SlipId,
-                    block.Revision));
-                if (response.Status == ZetlResponseStatus.Success)
-                {
-                    var savedSlip = response.Payload?.Deserialize<ZetlSlipSnapshot>(
-                        ZetlProtocolJson.Options);
-                    if (savedSlip is not null)
-                    {
-                        block.Accept(savedSlip);
-                    }
-
-                    block.Status = "Saved.";
-                    saved++;
-                    continue;
-                }
-
-                if (response.Status == ZetlResponseStatus.Conflict)
-                {
-                    var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
-                        ZetlProtocolJson.Options);
-                    block.ConflictText = current?.Text;
-                    block.Status = "Conflict: reload the project or copy your draft before retrying.";
-                }
-                else
-                {
-                    block.Status = response.Error?.Message ?? $"Save failed: {response.Status}.";
-                }
-
-                failed++;
-            }
-
-            RenderEditableViewBlocks();
-            statusText.Text = BatchStatus(
-                saved > 0 ? $"{saved} slip{Plural(saved)} saved" : null,
-                failed > 0 ? $"{failed} failed" : null);
-            await connection.RefreshAsync();
-        }
-        finally
-        {
-            savingEditableView = false;
-            SetEditingEnabled();
-            RefreshEditableViewStatus();
-        }
-    }
-
-    private async Task MoveSelectedEditableBlocksAsync()
-    {
-        if (!editableViewMode
-            || !IsOnline
-            || currentProject is null
-            || editViewMoveBucketBox.SelectedItem is not KastnBucketItem destination
-            || destination.Id is null)
-        {
-            return;
-        }
-
-        if (HasDirtyEditableBlocks())
-        {
-            statusText.Text = "Save All or Cancel before moving edit blocks.";
-            RefreshEditableViewStatus();
-            return;
-        }
-
-        var selected = editableViewBlocks
-            .Where(block => block.IsSelected)
-            .ToList();
-        if (selected.Count == 0)
-        {
-            statusText.Text = "Select one or more edit blocks to move.";
-            return;
-        }
-
-        var moved = 0;
-        var failed = 0;
-        var projectId = currentProject.Id;
-        pendingBucketSelectionId = destination.Id;
-        savingEditableView = true;
-        SetEditingEnabled();
-        try
-        {
-            foreach (var block in selected)
-            {
-                var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
-                    Guid.NewGuid().ToString("N"),
-                    ZetlCommandKind.MoveSlip,
-                    new MoveSlipCommand { DestinationBucketId = destination.Id },
-                    projectId,
-                    block.SlipId,
-                    block.Revision));
-                if (response.Status == ZetlResponseStatus.Success)
-                {
-                    moved++;
-                }
-                else
-                {
-                    block.Status = response.Error?.Message ?? $"Move failed: {response.Status}.";
-                    failed++;
-                }
-            }
-
-            await connection.RefreshAsync();
-            statusText.Text = BatchStatus(
-                moved > 0 ? $"{moved} slip{Plural(moved)} moved to {destination.Bucket?.Name}" : null,
-                failed > 0 ? $"{failed} failed" : null);
-        }
-        finally
-        {
-            savingEditableView = false;
-            SetEditingEnabled();
-            RefreshEditableViewStatus();
-        }
-    }
-
-    private void CancelEditableView()
-    {
-        if (!editableViewMode)
-        {
-            return;
-        }
-
-        ExitEditableView(clearBlocks: true);
-        RefreshViewer();
-        statusText.Text = "Edit view canceled.";
-    }
-
-    private void BuildEditableViewBlocks(IReadOnlyList<ZetlSlipSnapshot> visible)
-    {
-        editableViewBlocks.Clear();
-        if (currentProject is not null)
-        {
-            foreach (var slip in visible)
-            {
-                var bucket = currentProject.Buckets.FirstOrDefault(
-                    bucket => bucket.Id == slip.BucketId);
-                editableViewBlocks.Add(new EditableSlipBlock(
-                    slip,
-                    bucket is null
-                        ? "Unknown bucket"
-                        : KastnWorkbench.BucketPathLabel(currentProject, bucket)));
-            }
-        }
-
-        RenderEditableViewBlocks();
-        RefreshEditableViewStatus();
-    }
-
-    private void RenderEditableViewBlocks()
-    {
-        var pictureGeneration = ++pictureRenderGeneration;
-        DisposeDisplayedPictures();
-        editableBlocksPanel.Children.Clear();
-        var total = editableViewBlocks.Count;
-        var reorderable = total > 1 && EditViewBlocksShareBucket();
-        for (var index = 0; index < editableViewBlocks.Count; index++)
-        {
-            var block = editableViewBlocks[index];
-            var statusTextBlock = new TextBlock
-            {
-                FontSize = 13,
-                Text = EditableBlockStatus(block)
-            };
-            block.StatusText = statusTextBlock;
-
-            var titleBox = new TextBox
-            {
-                Text = block.DisplayTitle,
-                Watermark = "Title defaults to note text",
-                FontWeight = FontWeight.SemiBold,
-                FontSize = 16,
-                IsEnabled = IsOnline && block.ConflictText is null
-            };
-            block.TitleEditor = titleBox;
-            titleBox.TextChanged += (_, _) =>
-            {
-                block.DraftTitle = titleBox.Text?.Trim() ?? "";
-                block.Status = block.IsDirty ? "Unsaved." : "Unchanged.";
-                statusTextBlock.Text = EditableBlockStatus(block);
-                RefreshEditableViewStatus();
-            };
-            var headingPanel = new StackPanel
-            {
-                [Grid.ColumnProperty] = 1,
-                Spacing = 2,
-                Children = { titleBox, statusTextBlock }
-            };
-
-            var detailsButton = new Button
-            {
-                [Grid.ColumnProperty] = 2,
-                Content = "Details",
-                Padding = new Avalonia.Thickness(10, 3),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            detailsButton.Click += (_, _) => InspectSlip(block.SlipId);
-
-            var selectionBox = new CheckBox
-            {
-                IsChecked = block.IsSelected,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            selectionBox.IsCheckedChanged += (_, _) =>
-            {
-                block.IsSelected = selectionBox.IsChecked == true;
-                RefreshEditableViewStatus();
-            };
-
-            var textBox = new TextBox
-            {
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.Wrap,
-                MinHeight = 90,
-                Text = block.DraftText,
-                IsEnabled = IsOnline && block.ConflictText is null
-            };
-            block.Editor = textBox;
-            textBox.TextChanged += (_, _) =>
-            {
-                block.DraftText = textBox.Text ?? "";
-                block.Status = block.IsDirty ? "Unsaved." : "Unchanged.";
-                statusTextBlock.Text = EditableBlockStatus(block);
-                RefreshEditableViewStatus();
-            };
-
-            Control editorContent = textBox;
-            if (block.IsPicture)
-            {
-                var image = new Avalonia.Controls.Image
-                {
-                    Stretch = Stretch.Uniform,
-                    MaxHeight = 420,
-                    HorizontalAlignment = HorizontalAlignment.Left
-                };
-                var loading = new TextBlock
-                {
-                    Text = "Loading picture…",
-                    Classes = { "muted" },
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                editorContent = new StackPanel
-                {
-                    Spacing = 8,
-                    Children =
-                    {
-                        new Border
-                        {
-                            Classes = { "surface" },
-                            MinHeight = 150,
-                            Padding = new Avalonia.Thickness(8),
-                            Child = new Grid { Children = { image, loading } }
-                        },
-                        new TextBlock { Text = "Caption", Classes = { "muted" }, FontSize = 12 },
-                        textBox
-                    }
-                };
-                _ = LoadEditablePictureAsync(block, image, loading, pictureGeneration);
-            }
-
-            var border = new Border
-            {
-                Classes = { "surface" },
-                Padding = new Avalonia.Thickness(12),
-                Child = new Grid
-                {
-                    RowDefinitions = new RowDefinitions("Auto,*"),
-                    Children =
-                    {
-                        new Grid
-                        {
-                            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"),
-                            ColumnSpacing = 10,
-                            Children =
-                            {
-                                selectionBox,
-                                headingPanel,
-                                detailsButton,
-                                BuildOrderBadge(block, index, total, reorderable)
-                            }
-                        },
-                        editorContent
-                    }
-                }
-            };
-            Grid.SetRow(editorContent, 1);
-            editableBlocksPanel.Children.Add(border);
-
-            if (block.SlipId == pendingEditableBlockFocusId)
-            {
-                pendingEditableBlockFocusId = null;
-                Dispatcher.UIThread.Post(() =>
-                {
-                    var focusTarget = block.TitleEditor ?? textBox;
-                    focusTarget.BringIntoView();
-                    focusTarget.Focus();
-                    if (string.Equals(block.DraftTitle, UntitledSlipTitle, StringComparison.Ordinal)
-                        && block.TitleEditor is not null)
-                    {
-                        block.TitleEditor.SelectAll();
-                    }
-                    else
-                    {
-                        textBox.CaretIndex = textBox.Text?.Length ?? 0;
-                    }
-                }, DispatcherPriority.Loaded);
-            }
-        }
-    }
-
-    private async Task LoadEditablePictureAsync(
-        EditableSlipBlock block,
-        Avalonia.Controls.Image image,
-        TextBlock status,
-        int generation)
-    {
-        var slip = currentProject?.Slips.FirstOrDefault(item => item.Id == block.SlipId);
-        if (slip is null)
-        {
-            status.Text = "Picture unavailable.";
-            return;
-        }
-
-        try
-        {
-            var content = await GetPictureContentAsync(slip);
-            if (generation != pictureRenderGeneration
-                || !editableViewBlocks.Contains(block)
-                || content is null)
-            {
-                if (generation == pictureRenderGeneration)
-                {
-                    status.Text = "Picture unavailable.";
-                }
-                return;
-            }
-
-            using var stream = new MemoryStream(content.Bytes, writable: false);
-            var bitmap = Bitmap.DecodeToWidth(stream, 1000);
-            if (generation != pictureRenderGeneration || !editableViewBlocks.Contains(block))
-            {
-                bitmap.Dispose();
-                return;
-            }
-
-            displayedPictureBitmaps.Add(bitmap);
-            image.Source = bitmap;
-            status.IsVisible = false;
-        }
-        catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or OperationCanceledException)
-        {
-            if (generation == pictureRenderGeneration)
-            {
-                status.Text = "Picture unavailable.";
-            }
-        }
-    }
-
-    private Control BuildOrderBadge(EditableSlipBlock block, int index, int total, bool reorderable)
-    {
-        if (!reorderable)
-        {
-            return new TextBlock
-            {
-                [Grid.ColumnProperty] = 3,
-                Classes = { "muted" },
-                FontSize = 18,
-                FontWeight = FontWeight.SemiBold,
-                Text = $"{index + 1}/{total}",
-                VerticalAlignment = VerticalAlignment.Center
-            };
-        }
-
-        var orderBox = new TextBox
-        {
-            Text = (index + 1).ToString(),
-            Width = 52,
-            FontSize = 16,
-            FontWeight = FontWeight.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-            VerticalContentAlignment = VerticalAlignment.Center,
-            IsEnabled = IsOnline && !savingEditableView && block.ConflictText is null,
-            [ToolTip.TipProperty] =
-                "Type a position and press Enter to reorder this slip within its bucket."
-        };
-        orderBox.KeyDown += async (_, keyArgs) =>
-        {
-            if (keyArgs.Key == Key.Enter)
-            {
-                keyArgs.Handled = true;
-                if (int.TryParse(orderBox.Text, out var position))
-                {
-                    await ReorderEditableBlockAsync(block, position);
-                }
-                else
-                {
-                    orderBox.Text = (index + 1).ToString();
-                }
-            }
-            else if (keyArgs.Key == Key.Escape)
-            {
-                keyArgs.Handled = true;
-                orderBox.Text = (index + 1).ToString();
-                editableBlocksPanel.Focus();
-            }
-        };
-
-        return new StackPanel
-        {
-            [Grid.ColumnProperty] = 3,
-            Orientation = Orientation.Horizontal,
-            Spacing = 2,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children =
-            {
-                orderBox,
-                new TextBlock
-                {
-                    Classes = { "muted" },
-                    FontSize = 16,
-                    FontWeight = FontWeight.SemiBold,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Text = $"/{total}"
-                }
-            }
-        };
-    }
-
-    private async Task ReorderEditableBlockAsync(EditableSlipBlock block, int targetOneBased)
-    {
-        if (!editableViewMode || !IsOnline || currentProject is null || savingEditableView)
-        {
-            return;
-        }
-
-        if (HasDirtyEditableBlocks())
-        {
-            statusText.Text = "Save All or Cancel before reordering edit blocks.";
-            RenderEditableViewBlocks();
-            return;
-        }
-
-        var total = editableViewBlocks.Count;
-        var currentIndex = editableViewBlocks.IndexOf(block);
-        if (currentIndex < 0 || total <= 1)
-        {
-            return;
-        }
-
-        var targetIndex = Math.Clamp(targetOneBased - 1, 0, total - 1);
-        if (targetIndex == currentIndex)
-        {
-            RenderEditableViewBlocks();
-            return;
-        }
-
-        var others = editableViewBlocks.Where(item => item != block).ToList();
-        var beforeSlipId = targetIndex < others.Count ? others[targetIndex].SlipId : null;
-
-        savingEditableView = true;
-        SetEditingEnabled();
-        RefreshEditableViewStatus();
-        try
-        {
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.ReorderSlip,
-                new ReorderSlipCommand { BeforeSlipId = beforeSlipId },
-                currentProject.Id,
-                block.SlipId,
-                block.Revision));
-            if (response.Status == ZetlResponseStatus.Success)
-            {
-                statusText.Text = $"Slip moved to position {targetIndex + 1} of {total}.";
-            }
-            else if (response.Status == ZetlResponseStatus.Conflict)
-            {
-                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
-                    ZetlProtocolJson.Options);
-                block.ConflictText = current?.Text;
-                statusText.Text = "Reorder conflict; the slip changed elsewhere.";
-            }
-            else
-            {
-                statusText.Text = response.Error?.Message ?? $"Reorder failed: {response.Status}.";
-            }
-
-            await connection.RefreshAsync();
-        }
-        finally
-        {
-            savingEditableView = false;
-            SetEditingEnabled();
-            RefreshEditableViewStatus();
-        }
-    }
-
-    private bool EditViewBlocksShareBucket()
-    {
-        return editableViewBlocks.Count > 0
-            && editableViewBlocks
-                .Select(block => block.BucketId)
-                .Distinct(StringComparer.Ordinal)
-                .Count() == 1;
-    }
-
-    private string EditableReorderHint()
-    {
-        if (editableViewBlocks.Count <= 1)
-        {
-            return "";
-        }
-
-        return EditViewBlocksShareBucket()
-            ? " Type a slip's number to reorder it within the bucket."
-            : " Filter to one bucket to reorder slips by number.";
-    }
-
-    private void RefreshEditableViewStatus()
-    {
-        editViewButton.Content = editableViewMode ? "Read View" : "Edit View";
-        editViewMoveBucketBox.IsVisible = editableViewMode;
-        // The view picker and its export/copy belong to the read view only.
-        viewPickerBox.IsVisible = !editableViewMode;
-        copyViewButton.IsVisible = !editableViewMode;
-        exportViewButton.IsVisible = !editableViewMode;
-        moveSelectedViewButton.IsVisible = editableViewMode;
-        saveViewButton.IsVisible = editableViewMode;
-        cancelViewButton.IsVisible = editableViewMode;
-        saveViewButton.IsEnabled = editableViewMode
-            && IsOnline
-            && !savingEditableView
-            && HasDirtyEditableBlocks();
-        moveSelectedViewButton.IsEnabled = editableViewMode
-            && IsOnline
-            && !savingEditableView
-            && !HasDirtyEditableBlocks()
-            && editableViewBlocks.Any(block => block.IsSelected)
-            && editViewMoveBucketBox.SelectedItem is KastnBucketItem { Id: not null };
-        cancelViewButton.IsEnabled = editableViewMode && !savingEditableView;
-        editViewButton.IsEnabled = viewerMode && currentProject is not null && !savingEditableView;
-        editViewStatusText.Text = editableViewMode
-            ? EditableSessionStatus() + EditableReorderHint()
-            : "Read-only view. Edit View turns each visible slip into a tracked block.";
-    }
-
-    private string EditableSessionStatus()
-    {
-        var dirty = editableViewBlocks.Count(block => block.IsDirty);
-        var conflicts = editableViewBlocks.Count(block => block.ConflictText is not null);
-        var selected = editableViewBlocks.Count(block => block.IsSelected);
-        return BatchStatus(
-            $"{editableViewBlocks.Count} editable block{Plural(editableViewBlocks.Count)}",
-            selected > 0 ? $"{selected} selected" : null,
-            dirty > 0 ? $"{dirty} unsaved" : "no unsaved changes",
-            conflicts > 0 ? $"{conflicts} conflict{Plural(conflicts)}" : null);
-    }
-
-    private static string EditableBlockStatus(EditableSlipBlock block)
-    {
-        var status = string.IsNullOrWhiteSpace(block.Status) ? "Unchanged." : block.Status;
-        return $"{block.BucketLabel} | {block.Source} | {block.CapturedAtUtc.LocalDateTime:g} | {status}";
-    }
-
-    private bool HasDirtyEditableBlocks()
-    {
-        return editableViewBlocks.Any(block => block.IsDirty);
-    }
-
-    private bool CanLeaveEditableView()
-    {
-        if (!editableViewMode || !HasDirtyEditableBlocks())
-        {
-            return true;
-        }
-
-        statusText.Text = "Save All or Cancel before leaving edit view.";
-        RefreshEditableViewStatus();
-        return false;
-    }
-
-    private void ExitEditableView(bool clearBlocks)
-    {
-        editableViewMode = false;
-        viewerTextBox.IsVisible = true;
-        editViewScroll.IsVisible = false;
-        if (clearBlocks)
-        {
-            editableViewBlocks.Clear();
-            editableBlocksPanel.Children.Clear();
-        }
-
-        RefreshEditableViewStatus();
-    }
-
     private ZetlSlipSnapshot? SelectedSlip
     {
         get
@@ -4364,70 +3633,4 @@ internal partial class MainWindow : Window
         ZetlSlipSnapshot Slip);
     private sealed record FilterItem(string? Value, string Label);
     private sealed record DateFilterItem(KastnDateFilter Value, string Label);
-
-    private sealed class EditableSlipBlock
-    {
-        public EditableSlipBlock(ZetlSlipSnapshot slip, string bucketLabel)
-        {
-            SlipId = slip.Id;
-            Revision = slip.Revision;
-            BucketId = slip.BucketId;
-            BucketLabel = bucketLabel;
-            Source = slip.Source;
-            CapturedAtUtc = slip.CapturedAtUtc;
-            IsPicture = slip.Type == ZetlSlipType.Picture;
-            BaselineTitle = slip.Title;
-            DraftTitle = slip.Title;
-            BaselineText = slip.Text;
-            DraftText = slip.Text;
-            Title = SlipPreviewText(slip);
-        }
-
-        public string SlipId { get; }
-        public long Revision { get; private set; }
-        public string BucketId { get; }
-        public string BucketLabel { get; }
-        public string Source { get; }
-        public DateTimeOffset CapturedAtUtc { get; }
-        public bool IsPicture { get; }
-        public string BaselineTitle { get; private set; }
-        public string DraftTitle { get; set; }
-        public string BaselineText { get; private set; }
-        public string DraftText { get; set; }
-        public string Title { get; private set; }
-        public string? Status { get; set; }
-        public string? ConflictText { get; set; }
-        public TextBlock? StatusText { get; set; }
-        public TextBox? TitleEditor { get; set; }
-        public TextBox? Editor { get; set; }
-        public bool IsSelected { get; set; }
-
-        public bool IsDirty =>
-            !string.Equals(DraftTitle, BaselineTitle, StringComparison.Ordinal)
-            || !string.Equals(DraftText, BaselineText, StringComparison.Ordinal);
-
-        public string DisplayTitle => string.IsNullOrWhiteSpace(DraftTitle)
-            ? SlipPreview(DraftText)
-            : DraftTitle;
-
-        public void Accept(ZetlSlipSnapshot slip)
-        {
-            Revision = slip.Revision;
-            BaselineTitle = slip.Title;
-            DraftTitle = slip.Title;
-            BaselineText = slip.Text;
-            DraftText = slip.Text;
-            Title = SlipPreviewText(slip);
-            ConflictText = null;
-        }
-
-        private static string SlipPreview(string text)
-        {
-            var words = text
-                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Take(5)
-                .ToList();
-            return words.Count == 0 ? "Untitled" : string.Join(' ', words);
-        }
-    }
 }
