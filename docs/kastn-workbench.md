@@ -23,6 +23,11 @@ The workbench also filters by:
 
 Filters compose and do not mutate project state.
 
+Picture slips render inline in Read View. Kastn requests their normalized PNG
+content from Zetl through the read-only IPC picture command and keeps a bounded
+in-memory cache; it never opens project asset paths directly. Edit View shows
+the picture above its editable caption.
+
 ## Editing
 
 Selecting a slip opens it in the editor. Text changes autosave after a short
@@ -56,6 +61,15 @@ Slip commands support:
 
 All commands pass through Zetl's sole-writer service. Successful responses mean
 the project JSON write is already durable.
+
+## Picture-aware views and exports
+
+Markdown and HTML views embed pictures as self-contained PNG data URIs. PDF
+views embed the PNG data in the document. Formatted, Plain, and TSV remain text
+formats, so they retain each picture as a readable caption marker rather than
+silently dropping it. Export fetches only the picture slips visible under the
+current bucket, source, session, date, and search filters; unavailable assets
+produce a readable placeholder while the rest of the export continues.
 
 ## Keyboard
 

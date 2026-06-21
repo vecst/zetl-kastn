@@ -302,6 +302,46 @@ internal static class ZetlViewTests
             "Sections should rename, reorder, and omit buckets.");
     }
 
+    public static void RendererEmbedsPictures()
+    {
+        var picture = PictureSlip("b1", "Diagram", "picture-1", "hash-1");
+        var project = Project("Demo", [Bucket("b1", "Ideas")], [picture]);
+        var content = new ZetlPictureContent
+        {
+            SlipId = picture.Id,
+            Sha256 = "hash-1",
+            Width = 1,
+            Height = 1,
+            Bytes = [1, 2, 3]
+        };
+        var pictures = new Dictionary<string, ZetlPictureContent> { [picture.Id] = content };
+
+        var markdown = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "md", Name = "Markdown", Kind = ZetlViewKinds.Markdown },
+            pictures);
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "html", Name = "HTML", Kind = ZetlViewKinds.Html },
+            pictures);
+        var formatted = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "text", Name = "Text", Kind = ZetlViewKinds.Formatted });
+
+        AssertTrue(
+            markdown.Contains("![Diagram](data:image/png;base64,AQID)", StringComparison.Ordinal),
+            "Markdown should embed picture bytes as a self-contained data URI.");
+        AssertTrue(
+            html.Contains("<img src=\"data:image/png;base64,AQID\" alt=\"Diagram\"", StringComparison.Ordinal),
+            "HTML should embed picture bytes as a self-contained image.");
+        AssertTrue(
+            formatted.Contains("[Picture: Diagram]", StringComparison.Ordinal),
+            "Text-only views should retain a readable picture marker.");
+    }
+
     public static void PdfRendererProducesAPdfDocument()
     {
         var project = Project(
@@ -317,6 +357,36 @@ internal static class ZetlViewTests
         AssertTrue(pdf.Length > 0, "PDF render should produce bytes.");
         var header = System.Text.Encoding.ASCII.GetString(pdf, 0, 5);
         AssertEqual("%PDF-", header, "Output should be a PDF document.");
+    }
+
+    public static void PdfRendererEmbedsPictures()
+    {
+        var png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+        var picture = PictureSlip("b1", "Diagram", "picture-pdf", "hash-pdf");
+        var project = Project("Demo", [Bucket("b1", "Ideas")], [picture]);
+        var pdf = KASTN.KastnPdfRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "v", Name = "V", Kind = ZetlViewKinds.Pdf },
+            new Dictionary<string, ZetlPictureContent>
+            {
+                [picture.Id] = new ZetlPictureContent
+                {
+                    SlipId = picture.Id,
+                    Sha256 = "hash-pdf",
+                    Width = 1,
+                    Height = 1,
+                    Bytes = png
+                }
+            });
+
+        var pdfText = System.Text.Encoding.ASCII.GetString(pdf);
+        AssertTrue(pdfText.StartsWith("%PDF-", StringComparison.Ordinal), "Picture PDF should be valid.");
+        AssertTrue(
+            pdfText.Contains("/Subtype/Image", StringComparison.Ordinal)
+                || pdfText.Contains("/Subtype /Image", StringComparison.Ordinal),
+            "Picture PDF should contain an embedded image object.");
     }
 
     private static void AssertRender(ZetlProjectSnapshot project, string kind, string expected)
@@ -359,6 +429,29 @@ internal static class ZetlViewTests
         Type = ZetlSlipType.Text,
         BucketId = bucketId,
         Text = text,
+        Source = "copy",
+        CapturedAtUtc = DateTimeOffset.UnixEpoch
+    };
+
+    private static ZetlSlipSnapshot PictureSlip(
+        string bucketId,
+        string caption,
+        string id,
+        string hash) => new()
+    {
+        Id = id,
+        Revision = 1,
+        Type = ZetlSlipType.Picture,
+        BucketId = bucketId,
+        Text = caption,
+        Picture = new ZetlPictureSnapshot
+        {
+            MimeType = "image/png",
+            Width = 1,
+            Height = 1,
+            ByteLength = 3,
+            Sha256 = hash
+        },
         Source = "copy",
         CapturedAtUtc = DateTimeOffset.UnixEpoch
     };

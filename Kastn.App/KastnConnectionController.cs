@@ -103,6 +103,20 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         return response;
     }
 
+    public async Task<ZetlResponseEnvelope> QueryAsync(
+        ZetlCommandEnvelope command,
+        CancellationToken cancellationToken = default)
+    {
+        var connected = client;
+        if (connected is null || !connected.IsConnected)
+        {
+            throw new InvalidOperationException("Zetl is offline.");
+        }
+
+        return await connected.ExecuteAsync(command, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask DisposeAsync()
     {
         cancellation.Cancel();

@@ -7,7 +7,7 @@ application operations.
 ## Endpoint
 
 - The default pipe name is derived from the current protocol version, user
-  identity, and login session.
+identity, and login session.
 - The pipe uses the operating system's current-user-only restriction.
 - Tests and diagnostic hosts may override the pipe name with `--ipc-pipe=`.
 - A Zetl process hosts multiple simultaneous clients.
@@ -15,7 +15,9 @@ application operations.
 ## Framing
 
 Each message is UTF-8 JSON preceded by a four-byte little-endian payload
-length. Frames must be between 1 byte and 16 MiB. An invalid length closes that
+length. Frames must be between 1 byte and 36 MiB. The larger ceiling carries
+one base64-encoded image asset while image capture itself remains capped at 25
+MiB. An invalid length closes that
 client connection without stopping Zetl.
 
 The outer message contains:
@@ -45,6 +47,12 @@ Commands and responses use the contracts in `Zetl.Contracts`. The correlation
 ID is the command ID. Zetl executes commands through `ZetlProjectService`, so
 IPC mutations share the same writer monitor, validation, revision checks, and
 deduplication as Zetl's own operations.
+
+`GetSlipPicture` is a read-only exception to mutation-response caching. It
+requires a project and picture-slip ID and returns the normalized bytes,
+dimensions, MIME type, and content hash without exposing an asset path,
+advancing revisions, or publishing a `projectChanged` event. Kastn uses it for
+onscreen previews and picture-aware exports.
 
 Subscribed clients receive `projectChanged` events after a durable write. Each
 project has a monotonically increasing change sequence. Events are queued and

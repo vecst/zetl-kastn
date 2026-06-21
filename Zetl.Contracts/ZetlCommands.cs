@@ -4,6 +4,8 @@ public sealed record ListProjectsCommand;
 
 public sealed record GetProjectCommand;
 
+public sealed record GetSlipPictureCommand;
+
 public sealed record CreateProjectCommand
 {
     public required string Name { get; init; }

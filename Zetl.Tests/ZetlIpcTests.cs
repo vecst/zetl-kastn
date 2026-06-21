@@ -52,6 +52,35 @@ internal static class ZetlIpcTests
         });
     }
 
+    public static void ClientRetrievesPictureContent()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new IpcFixture();
+            var bytes = new byte[] { 9, 8, 7, 6 };
+            var picture = fixture.Store.AddImageNote(
+                fixture.Project,
+                fixture.Bucket,
+                new ZetlClipboardImage(bytes, 12, 8),
+                "copy");
+            await using var client = await fixture.ConnectClientAsync("picture-client");
+
+            var response = await client.ExecuteAsync(new ZetlCommandEnvelope
+            {
+                CommandId = "ipc-picture",
+                Kind = ZetlCommandKind.GetSlipPicture,
+                ProjectId = fixture.Project.Id,
+                TargetId = picture.Id
+            });
+            var content = response.Payload?.Deserialize<ZetlPictureContent>(
+                ZetlProtocolJson.Options);
+
+            AssertEqual(ZetlResponseStatus.Success, response.Status, "Picture query should succeed over IPC.");
+            AssertTrue(content?.Bytes.SequenceEqual(bytes) == true, "IPC should return the stored picture bytes.");
+            AssertEqual(picture.Image?.Sha256, content?.Sha256, "IPC picture content should identify its hash.");
+        });
+    }
+
     public static void TwoClientsReceiveOrderedChanges()
     {
         RunAsync(async () =>

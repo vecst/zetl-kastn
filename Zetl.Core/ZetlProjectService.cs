@@ -40,9 +40,14 @@ internal sealed class ZetlProjectService
             var validation = ZetlContractRules.Validate(command);
             if (!validation.IsValid)
             {
-                return Remember(
-                    command.CommandId,
-                    ErrorResponse(command, validation.Status, validation.Code!, validation.Message!));
+                var error = ErrorResponse(
+                    command,
+                    validation.Status,
+                    validation.Code!,
+                    validation.Message!);
+                return command.Kind == ZetlCommandKind.GetSlipPicture
+                    ? error
+                    : Remember(command.CommandId, error);
             }
 
             ZetlResponseEnvelope response;
@@ -75,7 +80,9 @@ internal sealed class ZetlProjectService
                     ex.Message);
             }
 
-            return Remember(command.CommandId, response);
+            return command.Kind == ZetlCommandKind.GetSlipPicture
+                ? response
+                : Remember(command.CommandId, response);
         }
     }
 
@@ -103,6 +110,7 @@ internal sealed class ZetlProjectService
         {
             ZetlCommandKind.ListProjects => ListProjects(command),
             ZetlCommandKind.GetProject => GetProject(command),
+            ZetlCommandKind.GetSlipPicture => GetSlipPicture(command),
             ZetlCommandKind.CreateProject => CreateProject(command),
             ZetlCommandKind.RenameProject => RenameProject(command),
             ZetlCommandKind.SetProjectView => SetProjectView(command),
@@ -142,6 +150,47 @@ internal sealed class ZetlProjectService
         return project is null
             ? NotFound(command, ZetlEntityKind.Project, command.ProjectId!)
             : Success(command, project, ZetlProjectSnapshotMapper.ToSnapshot(project));
+    }
+
+    private ZetlResponseEnvelope GetSlipPicture(ZetlCommandEnvelope command)
+    {
+        var found = FindNote(command.ProjectId!, command.TargetId!);
+        if (found is null)
+        {
+            return NotFound(command, ZetlEntityKind.Slip, command.TargetId!);
+        }
+
+        var (project, _, note) = found.Value;
+        if (!note.IsImage || note.Image is null)
+        {
+            return ValidationError(
+                command,
+                "slip_not_picture",
+                "The requested slip does not contain a picture.");
+        }
+
+        var bytes = store.ReadImageAsset(project, note);
+        if (bytes is null)
+        {
+            return ErrorResponse(
+                command,
+                ZetlResponseStatus.Failure,
+                "picture_unavailable",
+                "The picture asset is unavailable.");
+        }
+
+        return Success(
+            command,
+            project,
+            new ZetlPictureContent
+            {
+                SlipId = note.Id,
+                Sha256 = note.Image.Sha256,
+                MimeType = "image/png",
+                Width = note.Image.Width,
+                Height = note.Image.Height,
+                Bytes = bytes
+            });
     }
 
     private ZetlResponseEnvelope CreateProject(ZetlCommandEnvelope command)
@@ -453,7 +502,7 @@ internal sealed class ZetlProjectService
         }
 
         var payload = Payload<UpdateSlipCommand>(command);
-        if (string.IsNullOrWhiteSpace(payload.Text))
+        if (string.IsNullOrWhiteSpace(payload.Text) && !note.IsImage)
         {
             return ValidationError(command, "slip_text_required", "Slip text is required.");
         }

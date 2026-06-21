@@ -570,6 +570,51 @@ internal static class ZetlProjectServiceTests
             "A null anchor should move the slip to the end of its bucket.");
     }
 
+    public static void PictureContentIsReadOnly()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var imageBytes = new byte[] { 1, 2, 3, 4, 5 };
+        var picture = store.AddImageNote(
+            project,
+            bucket,
+            new ZetlClipboardImage(imageBytes, 20, 10),
+            "copy",
+            caption: "Diagram");
+        var text = store.AddNote(bucket, "ordinary", "copy");
+        var service = new ZetlProjectService(store);
+        var changes = new List<ZetlProjectChangedEvent>();
+        service.ProjectChanged += (_, change) => changes.Add(change);
+        var command = new ZetlCommandEnvelope
+        {
+            CommandId = "picture-content",
+            Kind = ZetlCommandKind.GetSlipPicture,
+            ProjectId = project.Id,
+            TargetId = picture.Id
+        };
+
+        var first = service.Execute(command);
+        var second = service.Execute(command);
+        var content = first.Payload?.Deserialize<ZetlPictureContent>(ZetlProtocolJson.Options);
+        var textResponse = service.Execute(new ZetlCommandEnvelope
+        {
+            CommandId = "text-picture-content",
+            Kind = ZetlCommandKind.GetSlipPicture,
+            ProjectId = project.Id,
+            TargetId = text.Id
+        });
+
+        AssertEqual(ZetlResponseStatus.Success, first.Status, "Picture content should be readable.");
+        AssertTrue(content?.Bytes.SequenceEqual(imageBytes) == true, "Picture content should preserve stored bytes.");
+        AssertEqual(20, content?.Width, "Picture content should include dimensions.");
+        AssertTrue(!ReferenceEquals(first, second), "Large picture responses should not be retained in retry memory.");
+        AssertEqual(0, changes.Count, "Reading picture content must not publish a project mutation.");
+        AssertEqual(
+            ZetlResponseStatus.ValidationError,
+            textResponse.Status,
+            "A text slip should not be exposed as picture content.");
+    }
+
     private static ZetlStateStore CreateStoreWithProject(
         TempStateDirectory temp,
         out ZetlProject project,

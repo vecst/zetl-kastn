@@ -82,13 +82,22 @@ public sealed record ZetlSlipSnapshot
 
 public sealed record ZetlPictureSnapshot
 {
-    public required string RelativePath { get; init; }
     public string? SourceUrl { get; init; }
     public string MimeType { get; init; } = "image/png";
     public int Width { get; init; }
     public int Height { get; init; }
     public long ByteLength { get; init; }
     public required string Sha256 { get; init; }
+}
+
+public sealed record ZetlPictureContent
+{
+    public required string SlipId { get; init; }
+    public required string Sha256 { get; init; }
+    public string MimeType { get; init; } = "image/png";
+    public int Width { get; init; }
+    public int Height { get; init; }
+    public required byte[] Bytes { get; init; }
 }
 
 public sealed record ZetlCaptureOriginSnapshot

@@ -88,6 +88,7 @@ public static class ZetlContractRules
     {
         return kind is ZetlCommandKind.UpdateBucket
             or ZetlCommandKind.DeleteBucket
+            or ZetlCommandKind.GetSlipPicture
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip
             or ZetlCommandKind.ReorderSlip

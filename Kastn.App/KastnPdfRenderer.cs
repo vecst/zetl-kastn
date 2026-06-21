@@ -17,17 +17,28 @@ internal static class KastnPdfRenderer
     public static byte[] Render(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlSlipSnapshot> slips,
-        ZetlViewDocument view)
+        ZetlViewDocument view,
+        IReadOnlyDictionary<string, ZetlPictureContent>? pictures = null)
     {
         EnsureFonts();
+        var imageDirectory = Path.Combine(Path.GetTempPath(), $"kastn-pdf-{Guid.NewGuid():N}");
+        try
+        {
+            var document = BuildDocument(project, slips, view, pictures, imageDirectory);
+            var renderer = new PdfDocumentRenderer { Document = document };
+            renderer.RenderDocument();
 
-        var document = BuildDocument(project, slips, view);
-        var renderer = new PdfDocumentRenderer { Document = document };
-        renderer.RenderDocument();
-
-        using var stream = new MemoryStream();
-        renderer.PdfDocument.Save(stream, closeStream: false);
-        return stream.ToArray();
+            using var stream = new MemoryStream();
+            renderer.PdfDocument.Save(stream, closeStream: false);
+            return stream.ToArray();
+        }
+        finally
+        {
+            if (Directory.Exists(imageDirectory))
+            {
+                Directory.Delete(imageDirectory, recursive: true);
+            }
+        }
     }
 
     private static bool fontsReady;
@@ -46,7 +57,9 @@ internal static class KastnPdfRenderer
     private static Document BuildDocument(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlSlipSnapshot> slips,
-        ZetlViewDocument view)
+        ZetlViewDocument view,
+        IReadOnlyDictionary<string, ZetlPictureContent>? pictures,
+        string imageDirectory)
     {
         var document = new Document();
         var normal = document.Styles["Normal"]!;
@@ -74,6 +87,44 @@ internal static class KastnPdfRenderer
 
             foreach (var slip in group.Slips)
             {
+                if (slip.Type == ZetlSlipType.Picture)
+                {
+                    if (pictures?.TryGetValue(slip.Id, out var picture) == true)
+                    {
+                        Directory.CreateDirectory(imageDirectory);
+                        var safeHash = Convert.ToHexString(
+                            System.Security.Cryptography.SHA256.HashData(picture.Bytes))
+                            .ToLowerInvariant();
+                        var imagePath = Path.Combine(imageDirectory, $"{safeHash}.png");
+                        if (!File.Exists(imagePath))
+                        {
+                            File.WriteAllBytes(imagePath, picture.Bytes);
+                        }
+
+                        var renderedImage = section.AddImage(imagePath);
+                        renderedImage.LockAspectRatio = true;
+                        renderedImage.Width = Unit.FromInch(Math.Clamp(picture.Width / 96d, 1, 6.25));
+                        var caption = slip.Text.Trim();
+                        if (caption.Length > 0)
+                        {
+                            var captionParagraph = section.AddParagraph(caption);
+                            captionParagraph.Format.Font.Size = 9;
+                            captionParagraph.Format.Font.Italic = true;
+                            captionParagraph.Format.SpaceAfter = Unit.FromPoint(6);
+                        }
+                    }
+                    else
+                    {
+                        var unavailable = section.AddParagraph(
+                            string.IsNullOrWhiteSpace(slip.Text)
+                                ? "[Picture unavailable]"
+                                : $"[Picture unavailable: {slip.Text.Trim()}]");
+                        unavailable.Format.LeftIndent = Unit.FromPoint((group.Depth + 1) * 14);
+                    }
+
+                    continue;
+                }
+
                 var lines = slip.Text
                     .ReplaceLineEndings("\n")
                     .Split('\n')

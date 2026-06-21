@@ -6,7 +6,9 @@ namespace ZETL;
 
 internal static class ZetlIpcFraming
 {
-    public const int MaxMessageBytes = 16 * 1024 * 1024;
+    // Image assets are capped at 25 MiB before storage. JSON represents byte[]
+    // as base64, so reserve enough room for that expansion plus the envelope.
+    public const int MaxMessageBytes = 36 * 1024 * 1024;
 
     public static async Task WriteAsync(
         Stream stream,

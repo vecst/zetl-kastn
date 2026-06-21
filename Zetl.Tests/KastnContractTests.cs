@@ -162,7 +162,7 @@ internal static class KastnContractTests
         AssertEqual("newer text", conflictSlip?.Text, "Conflict should contain the current record.");
     }
 
-    public static void MutationContractsExposeNoStoragePaths()
+    public static void ContractsExposeNoStoragePaths()
     {
         var mutationTypes = new[]
         {
@@ -176,7 +176,9 @@ internal static class KastnContractTests
             typeof(UpdateSlipCommand),
             typeof(MoveSlipCommand),
             typeof(ReorderSlipCommand),
-            typeof(DeleteSlipCommand)
+            typeof(DeleteSlipCommand),
+            typeof(ZetlPictureSnapshot),
+            typeof(ZetlPictureContent)
         };
 
         var pathProperties = mutationTypes
@@ -184,7 +186,7 @@ internal static class KastnContractTests
             .Where(name => name.Contains("Path", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        AssertEqual(0, pathProperties.Count, "Version 1 mutations must use domain values, not client-provided storage paths.");
+        AssertEqual(0, pathProperties.Count, "Kastn contracts must use domain values and content, not storage paths.");
     }
 
     private static void AssertTrue(bool condition, string message)

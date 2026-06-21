@@ -299,6 +299,12 @@ the protected built-ins plus versioned user template JSON files from:
 The menu refreshes when the Board regains focus, so a template saved in kastn
 becomes available without restarting Zetl.
 
+Kastn reads picture content through Zetl's local IPC service rather than opening
+project asset paths itself. Picture slips render inline in Read View and above
+their editable captions in Edit View. Markdown and HTML exports embed PNG data
+as self-contained data URIs, PDF embeds the pictures directly, and text/TSV
+views retain readable picture-caption markers.
+
 ## Quick Notes
 
 Held `Ctrl+X` is the quick-note path.
@@ -677,6 +683,5 @@ The code is split around the product distinction:
 The A7 hands-on pass is documented in
 [`docs/windows-parity-checklist.md`](docs/windows-parity-checklist.md).
 
-The longer-term direction — splitting the deliberate workbench into a separate
-application, `kastn` — is sketched in [`docs/kastn.md`](docs/kastn.md). It is
-forward-looking and not scheduled against A7.
+The deliberate workbench is the separate `kastn` application. Its architecture
+and remaining direction are documented in [`docs/kastn.md`](docs/kastn.md).

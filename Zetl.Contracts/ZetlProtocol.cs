@@ -34,6 +34,7 @@ public enum ZetlCommandKind
 {
     ListProjects,
     GetProject,
+    GetSlipPicture,
     CreateProject,
     RenameProject,
     SetProjectView,

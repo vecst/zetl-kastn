@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -23,6 +24,7 @@ internal partial class MainWindow : Window
     private const double LandingCardMargin = 8;
     private const int LandingMaxColumns = 6;
     private const int LandingMaxRows = 5;
+    private const long MaximumPictureCacheBytes = 128L * 1024 * 1024;
 
     private readonly KastnConnectionController connection;
     // Built-ins plus user templates; corrupt/invalid user files are skipped with a
@@ -77,6 +79,10 @@ internal partial class MainWindow : Window
     private readonly ObservableCollection<KastnBucketItem> moveBuckets = [];
     private readonly KastnEditorState editorState = new();
     private readonly List<EditableSlipBlock> editableViewBlocks = [];
+    private readonly Dictionary<string, ZetlPictureContent> pictureCache = new(StringComparer.Ordinal);
+    private readonly Queue<string> pictureCacheOrder = [];
+    private readonly Dictionary<string, Task<ZetlPictureContent?>> pictureLoads = new(StringComparer.Ordinal);
+    private readonly List<Bitmap> displayedPictureBitmaps = [];
     private readonly DispatcherTimer autosaveTimer;
     private ZetlProjectSnapshot? currentProject;
     private bool refreshing;
@@ -93,6 +99,8 @@ internal partial class MainWindow : Window
     private bool landingShowingTemplates;
     private bool landingShowingConsumable;
     private bool suppressLandingProjectSelection;
+    private int pictureRenderGeneration;
+    private long pictureCacheBytes;
 
     public MainWindow()
     {
@@ -219,6 +227,7 @@ internal partial class MainWindow : Window
         {
             autosaveTimer.Stop();
             connection.SnapshotChanged -= OnSnapshotChanged;
+            DisposeDisplayedPictures();
         };
         ApplySnapshot(connection.Current);
     }
@@ -1379,7 +1388,7 @@ internal partial class MainWindow : Window
         }
 
         var text = editorState.DraftText.Trim();
-        if (text.Length == 0)
+        if (text.Length == 0 && SelectedSlip?.Type != ZetlSlipType.Picture)
         {
             if (SelectedSlip?.Source == "kastn")
             {
@@ -2143,11 +2152,13 @@ internal partial class MainWindow : Window
         {
             viewerSummaryText.Text = "No project selected.";
             viewerTextBox.Text = "";
+            ClearPictureDocument();
             ExitEditableView(clearBlocks: true);
             return;
         }
 
         var visible = CurrentFilteredSlips();
+        var hasPictures = visible.Any(slip => slip.Type == ZetlSlipType.Picture);
         viewerSummaryText.Text = visible.Count == 0
             ? "No slips match the current filters."
             : $"{visible.Count} of {currentProject.Slips.Count} slips in the current view.";
@@ -2160,6 +2171,17 @@ internal partial class MainWindow : Window
 
             RefreshEditableViewStatus();
             return;
+        }
+
+        viewerTextBox.IsVisible = !hasPictures;
+        viewerDocumentScroll.IsVisible = hasPictures;
+        if (hasPictures)
+        {
+            BuildPictureDocument(visible);
+        }
+        else
+        {
+            ClearPictureDocument();
         }
 
         if (SelectedView.Kind == ZetlViewKinds.Pdf)
@@ -2188,6 +2210,246 @@ internal partial class MainWindow : Window
         RefreshEditableViewStatus();
     }
 
+    private void BuildPictureDocument(IReadOnlyList<ZetlSlipSnapshot> visible)
+    {
+        var generation = ++pictureRenderGeneration;
+        DisposeDisplayedPictures();
+        viewerDocumentPanel.Children.Clear();
+        if (currentProject is null)
+        {
+            return;
+        }
+
+        foreach (var group in ZetlViewRenderer.BuildGroups(currentProject, visible, SelectedView))
+        {
+            viewerDocumentPanel.Children.Add(new TextBlock
+            {
+                Text = group.Heading,
+                FontSize = Math.Max(15, 21 - group.Depth),
+                FontWeight = FontWeight.SemiBold,
+                Margin = new Avalonia.Thickness(group.Depth * 14, 8, 0, 2)
+            });
+
+            foreach (var slip in group.Slips)
+            {
+                if (slip.Type != ZetlSlipType.Picture)
+                {
+                    viewerDocumentPanel.Children.Add(new TextBlock
+                    {
+                        Text = $"• {slip.Text}",
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Avalonia.Thickness((group.Depth + 1) * 14, 0, 0, 0)
+                    });
+                    continue;
+                }
+
+                var image = new Avalonia.Controls.Image
+                {
+                    Stretch = Stretch.Uniform,
+                    MaxHeight = 520,
+                    HorizontalAlignment = HorizontalAlignment.Left
+                };
+                var loading = new TextBlock
+                {
+                    Text = "Loading picture…",
+                    Classes = { "muted" },
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                var preview = new Grid
+                {
+                    MinHeight = 150,
+                    Children = { image, loading }
+                };
+                var picturePanel = new StackPanel
+                {
+                    Spacing = 5,
+                    Margin = new Avalonia.Thickness((group.Depth + 1) * 14, 0, 0, 6),
+                    Children =
+                    {
+                        new Border
+                        {
+                            Classes = { "surface" },
+                            Padding = new Avalonia.Thickness(8),
+                            Child = preview
+                        }
+                    }
+                };
+                if (!string.IsNullOrWhiteSpace(slip.Text))
+                {
+                    picturePanel.Children.Add(new TextBlock
+                    {
+                        Text = slip.Text.Trim(),
+                        Classes = { "muted" },
+                        FontStyle = FontStyle.Italic,
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                }
+
+                viewerDocumentPanel.Children.Add(picturePanel);
+                _ = LoadPicturePreviewAsync(slip, image, loading, generation);
+            }
+        }
+    }
+
+    private async Task LoadPicturePreviewAsync(
+        ZetlSlipSnapshot slip,
+        Avalonia.Controls.Image image,
+        TextBlock status,
+        int generation)
+    {
+        try
+        {
+            var content = await GetPictureContentAsync(slip);
+            if (generation != pictureRenderGeneration || content is null)
+            {
+                if (generation == pictureRenderGeneration)
+                {
+                    status.Text = "Picture unavailable.";
+                }
+                return;
+            }
+
+            using var stream = new MemoryStream(content.Bytes, writable: false);
+            var bitmap = Bitmap.DecodeToWidth(stream, 1100);
+            if (generation != pictureRenderGeneration)
+            {
+                bitmap.Dispose();
+                return;
+            }
+
+            displayedPictureBitmaps.Add(bitmap);
+            image.Source = bitmap;
+            status.IsVisible = false;
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            if (generation == pictureRenderGeneration)
+            {
+                status.Text = "Picture unavailable.";
+            }
+        }
+    }
+
+    private async Task<ZetlPictureContent?> GetPictureContentAsync(ZetlSlipSnapshot slip)
+    {
+        if (currentProject is null || slip.Picture is null)
+        {
+            return null;
+        }
+
+        var cacheKey = slip.Picture.Sha256;
+        if (pictureCache.TryGetValue(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
+        if (!pictureLoads.TryGetValue(cacheKey, out var loading))
+        {
+            loading = FetchPictureContentAsync(currentProject.Id, slip, cacheKey);
+            pictureLoads[cacheKey] = loading;
+        }
+
+        try
+        {
+            return await loading;
+        }
+        finally
+        {
+            pictureLoads.Remove(cacheKey);
+        }
+    }
+
+    private async Task<ZetlPictureContent?> FetchPictureContentAsync(
+        string projectId,
+        ZetlSlipSnapshot slip,
+        string cacheKey)
+    {
+        var response = await connection.QueryAsync(new ZetlCommandEnvelope
+        {
+            CommandId = Guid.NewGuid().ToString("N"),
+            Kind = ZetlCommandKind.GetSlipPicture,
+            ProjectId = projectId,
+            TargetId = slip.Id
+        });
+        var content = response.Status == ZetlResponseStatus.Success
+            ? response.Payload?.Deserialize<ZetlPictureContent>(ZetlProtocolJson.Options)
+            : null;
+        if (content is null
+            || content.Bytes.Length == 0
+            || !string.Equals(content.Sha256, cacheKey, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        CachePicture(cacheKey, content);
+        return content;
+    }
+
+    private void CachePicture(string cacheKey, ZetlPictureContent content)
+    {
+        if (content.Bytes.LongLength > MaximumPictureCacheBytes)
+        {
+            return;
+        }
+
+        while (pictureCacheBytes + content.Bytes.LongLength > MaximumPictureCacheBytes
+            && pictureCacheOrder.TryDequeue(out var expired))
+        {
+            if (pictureCache.Remove(expired, out var removed))
+            {
+                pictureCacheBytes -= removed.Bytes.LongLength;
+            }
+        }
+
+        if (pictureCache.TryAdd(cacheKey, content))
+        {
+            pictureCacheOrder.Enqueue(cacheKey);
+            pictureCacheBytes += content.Bytes.LongLength;
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<string, ZetlPictureContent>> LoadPictureContentsAsync(
+        IReadOnlyList<ZetlSlipSnapshot> slips)
+    {
+        var result = new Dictionary<string, ZetlPictureContent>(StringComparer.Ordinal);
+        foreach (var slip in slips.Where(slip => slip.Type == ZetlSlipType.Picture))
+        {
+            try
+            {
+                if (await GetPictureContentAsync(slip) is { } content)
+                {
+                    result[slip.Id] = content;
+                }
+            }
+            catch (Exception ex) when (
+                ex is IOException or InvalidOperationException or OperationCanceledException)
+            {
+                // Keep rendering the rest; unavailable pictures get a readable placeholder.
+            }
+        }
+
+        return result;
+    }
+
+    private void ClearPictureDocument()
+    {
+        pictureRenderGeneration++;
+        viewerDocumentPanel.Children.Clear();
+        viewerDocumentScroll.IsVisible = false;
+        DisposeDisplayedPictures();
+    }
+
+    private void DisposeDisplayedPictures()
+    {
+        foreach (var bitmap in displayedPictureBitmaps)
+        {
+            bitmap.Dispose();
+        }
+        displayedPictureBitmaps.Clear();
+    }
+
     private ZetlViewDocument SelectedView =>
         viewPickerBox.SelectedItem as ZetlViewDocument
         ?? (loadedViews.Count > 0 ? loadedViews[0] : ZetlViewDefaults.CreateAll()[0]);
@@ -2202,12 +2464,17 @@ internal partial class MainWindow : Window
 
     private async Task CopyRenderedViewAsync()
     {
-        if (lastRenderedViewText.Length == 0 || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+        if (currentProject is null
+            || lastRenderedViewText.Length == 0
+            || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
         {
             return;
         }
 
-        await clipboard.SetTextAsync(lastRenderedViewText);
+        var visible = CurrentFilteredSlips();
+        var pictures = await LoadPictureContentsAsync(visible);
+        var rendered = ZetlViewRenderer.Render(currentProject, visible, SelectedView, pictures);
+        await clipboard.SetTextAsync(rendered);
         statusText.Text = $"Copied the {SelectedView.Name} view to the clipboard.";
     }
 
@@ -2239,19 +2506,23 @@ internal partial class MainWindow : Window
 
         try
         {
+            var visible = CurrentFilteredSlips();
+            var pictures = await LoadPictureContentsAsync(visible);
             await using var stream = await file.OpenWriteAsync();
             if (isPdf)
             {
-                var pdf = KastnPdfRenderer.Render(currentProject, CurrentFilteredSlips(), view);
+                var pdf = KastnPdfRenderer.Render(currentProject, visible, view, pictures);
                 await stream.WriteAsync(pdf);
             }
             else
             {
+                var rendered = ZetlViewRenderer.Render(currentProject, visible, view, pictures);
                 await using var writer = new StreamWriter(stream);
-                await writer.WriteAsync(lastRenderedViewText);
+                await writer.WriteAsync(rendered);
             }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             statusText.Text = $"Could not export the view: {ex.Message}";
             return;
@@ -2789,6 +3060,7 @@ internal partial class MainWindow : Window
             }
 
             editableViewMode = true;
+            ClearPictureDocument();
             viewerTextBox.IsVisible = false;
             editViewScroll.IsVisible = true;
             BuildEditableViewBlocks(CurrentFilteredSlips());
@@ -2834,7 +3106,7 @@ internal partial class MainWindow : Window
             foreach (var block in dirty)
             {
                 var text = block.DraftText.Trim();
-                if (text.Length == 0)
+                if (text.Length == 0 && !block.IsPicture)
                 {
                     block.Status = "Text is required.";
                     failed++;
@@ -2994,6 +3266,8 @@ internal partial class MainWindow : Window
 
     private void RenderEditableViewBlocks()
     {
+        var pictureGeneration = ++pictureRenderGeneration;
+        DisposeDisplayedPictures();
         editableBlocksPanel.Children.Clear();
         var total = editableViewBlocks.Count;
         var reorderable = total > 1 && EditViewBlocksShareBucket();
@@ -3036,6 +3310,41 @@ internal partial class MainWindow : Window
                 RefreshEditableViewStatus();
             };
 
+            Control editorContent = textBox;
+            if (block.IsPicture)
+            {
+                var image = new Avalonia.Controls.Image
+                {
+                    Stretch = Stretch.Uniform,
+                    MaxHeight = 420,
+                    HorizontalAlignment = HorizontalAlignment.Left
+                };
+                var loading = new TextBlock
+                {
+                    Text = "Loading picture…",
+                    Classes = { "muted" },
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                editorContent = new StackPanel
+                {
+                    Spacing = 8,
+                    Children =
+                    {
+                        new Border
+                        {
+                            Classes = { "surface" },
+                            MinHeight = 150,
+                            Padding = new Avalonia.Thickness(8),
+                            Child = new Grid { Children = { image, loading } }
+                        },
+                        new TextBlock { Text = "Caption", Classes = { "muted" }, FontSize = 12 },
+                        textBox
+                    }
+                };
+                _ = LoadEditablePictureAsync(block, image, loading, pictureGeneration);
+            }
+
             var border = new Border
             {
                 Classes = { "surface" },
@@ -3056,11 +3365,11 @@ internal partial class MainWindow : Window
                                 BuildOrderBadge(block, index, total, reorderable)
                             }
                         },
-                        textBox
+                        editorContent
                     }
                 }
             };
-            Grid.SetRow(textBox, 1);
+            Grid.SetRow(editorContent, 1);
             editableBlocksPanel.Children.Add(border);
 
             if (block.SlipId == pendingEditableBlockFocusId)
@@ -3078,6 +3387,55 @@ internal partial class MainWindow : Window
                         textBox.CaretIndex = textBox.Text?.Length ?? 0;
                     }
                 }, DispatcherPriority.Loaded);
+            }
+        }
+    }
+
+    private async Task LoadEditablePictureAsync(
+        EditableSlipBlock block,
+        Avalonia.Controls.Image image,
+        TextBlock status,
+        int generation)
+    {
+        var slip = currentProject?.Slips.FirstOrDefault(item => item.Id == block.SlipId);
+        if (slip is null)
+        {
+            status.Text = "Picture unavailable.";
+            return;
+        }
+
+        try
+        {
+            var content = await GetPictureContentAsync(slip);
+            if (generation != pictureRenderGeneration
+                || !editableViewBlocks.Contains(block)
+                || content is null)
+            {
+                if (generation == pictureRenderGeneration)
+                {
+                    status.Text = "Picture unavailable.";
+                }
+                return;
+            }
+
+            using var stream = new MemoryStream(content.Bytes, writable: false);
+            var bitmap = Bitmap.DecodeToWidth(stream, 1000);
+            if (generation != pictureRenderGeneration || !editableViewBlocks.Contains(block))
+            {
+                bitmap.Dispose();
+                return;
+            }
+
+            displayedPictureBitmaps.Add(bitmap);
+            image.Source = bitmap;
+            status.IsVisible = false;
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            if (generation == pictureRenderGeneration)
+            {
+                status.Text = "Picture unavailable.";
             }
         }
     }
@@ -3565,6 +3923,7 @@ internal partial class MainWindow : Window
             BucketLabel = bucketLabel;
             Source = slip.Source;
             CapturedAtUtc = slip.CapturedAtUtc;
+            IsPicture = slip.Type == ZetlSlipType.Picture;
             BaselineText = slip.Text;
             DraftText = slip.Text;
             Title = SlipPreviewText(slip);
@@ -3576,6 +3935,7 @@ internal partial class MainWindow : Window
         public string BucketLabel { get; }
         public string Source { get; }
         public DateTimeOffset CapturedAtUtc { get; }
+        public bool IsPicture { get; }
         public string BaselineText { get; private set; }
         public string DraftText { get; set; }
         public string Title { get; private set; }

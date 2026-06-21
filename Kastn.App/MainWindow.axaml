@@ -557,6 +557,11 @@
                                IsReadOnly="True"
                                TextWrapping="Wrap"
                                ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                      <ScrollViewer x:Name="viewerDocumentScroll"
+                                    IsVisible="False"
+                                    VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="viewerDocumentPanel" Spacing="12" Margin="8" />
+                      </ScrollViewer>
                       <ScrollViewer x:Name="editViewScroll"
                                     IsVisible="False"
                                     VerticalScrollBarVisibility="Auto">
