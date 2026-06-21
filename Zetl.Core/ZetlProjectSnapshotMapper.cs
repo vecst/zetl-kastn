@@ -107,7 +107,8 @@ internal static class ZetlProjectSnapshotMapper
             DeletedAtUtc = note.DeletedAtUtc is null
                 ? null
                 : new DateTimeOffset(
-                    DateTime.SpecifyKind(note.DeletedAtUtc.Value, DateTimeKind.Utc))
+                    DateTime.SpecifyKind(note.DeletedAtUtc.Value, DateTimeKind.Utc)),
+            ExcludedFromViews = note.ExcludedFromViews
         };
     }
 

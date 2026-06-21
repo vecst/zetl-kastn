@@ -157,6 +157,52 @@ internal static class ZetlProjectServiceTests
             "The shared writer monitor should make every mixed mutation durable.");
     }
 
+    public static void SlipInclusionToggleRoundTrips()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "keepable", "copy");
+        var service = new ZetlProjectService(store);
+
+        var exclude = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-exclude",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = note.Text, ExcludedFromViews = true },
+            project.Id,
+            note.Id,
+            note.Revision));
+        var excluded = exclude.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Exclude update did not return a slip.");
+        AssertEqual(ZetlResponseStatus.Success, exclude.Status, "Toggling inclusion should succeed.");
+        AssertTrue(excluded.ExcludedFromViews, "The snapshot should report the slip excluded.");
+        AssertTrue(note.ExcludedFromViews, "The stored note should be excluded.");
+
+        // A later text edit that omits the flag preserves the exclusion.
+        var editText = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-edit-text",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = "edited" },
+            project.Id,
+            note.Id,
+            excluded.Revision));
+        var afterEdit = editText.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Text edit did not return a slip.");
+        AssertTrue(afterEdit.ExcludedFromViews, "Omitting the flag should preserve exclusion.");
+
+        // Re-including clears it.
+        var include = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-include",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = afterEdit.Text, ExcludedFromViews = false },
+            project.Id,
+            note.Id,
+            afterEdit.Revision));
+        var included = include.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Include update did not return a slip.");
+        AssertTrue(!included.ExcludedFromViews, "Re-including should clear exclusion.");
+        AssertTrue(!note.ExcludedFromViews, "The stored note should be included again.");
+    }
+
     public static void BucketAndSlipCommandsRoundTrip()
     {
         using var temp = new TempStateDirectory();

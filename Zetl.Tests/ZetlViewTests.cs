@@ -30,6 +30,23 @@ internal static class ZetlViewTests
             "View kind should serialize as a readable word.");
     }
 
+    public static void RendererOmitsSlipsExcludedFromViews()
+    {
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Ideas"), Bucket("b2", "Drafts")],
+            [
+                Slip("b1", "kept idea"),
+                Slip("b1", "hidden idea") with { ExcludedFromViews = true },
+                Slip("b2", "hidden draft") with { ExcludedFromViews = true },
+            ]);
+
+        // The excluded idea drops out; the Drafts bucket, left with only an
+        // excluded slip, is omitted entirely like any empty group.
+        AssertRender(project, ZetlViewKinds.Formatted, "Demo\n\nIdeas\n\tkept idea");
+        AssertRender(project, ZetlViewKinds.Plain, "kept idea");
+    }
+
     public static void InvalidViewsReportErrors()
     {
         AssertTrue(ZetlViewValidator.Validate(null).Count > 0, "Null view is invalid.");

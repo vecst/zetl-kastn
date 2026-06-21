@@ -57,7 +57,7 @@ internal static class ZetlViewRenderer
     {
         var bucketsById = project.Buckets.ToDictionary(bucket => bucket.Id);
         var slipsByBucketId = slips
-            .Where(slip => bucketsById.ContainsKey(slip.BucketId))
+            .Where(slip => bucketsById.ContainsKey(slip.BucketId) && !slip.ExcludedFromViews)
             .GroupBy(slip => slip.BucketId)
             .ToDictionary(
                 group => group.Key,

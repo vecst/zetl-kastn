@@ -73,6 +73,11 @@ internal sealed class ZetlNote
     public string? DeletedFromBucketId { get; set; }
     public DateTime? DeletedAtUtc { get; set; }
 
+    // Kastn-only: when true, this slip is held out of rendered views and exports
+    // (a deliberate-workbench choice). It still appears in the tree and in Zetl's
+    // fast compile; default false so existing slips load as included.
+    public bool ExcludedFromViews { get; set; }
+
     public ZetlCaptureOrigin? CaptureOrigin { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
@@ -636,13 +641,23 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public void UpdateNote(ZetlNote note, string text, string? title = null)
+    public void UpdateNote(
+        ZetlNote note,
+        string text,
+        string? title = null,
+        bool? excludedFromViews = null)
     {
         note.Text = text.Trim();
         if (title is not null)
         {
             note.Title = title.Trim();
         }
+
+        if (excludedFromViews is { } excluded)
+        {
+            note.ExcludedFromViews = excluded;
+        }
+
         note.Revision++;
         PersistNote(note);
     }

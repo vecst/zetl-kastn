@@ -63,6 +63,10 @@ public sealed record UpdateSlipCommand
     // Null preserves the current title; empty clears an explicit title.
     public string? Title { get; init; }
     public required string Text { get; init; }
+
+    // Null preserves the current value; true holds the slip out of Kastn's
+    // rendered views and exports, false includes it.
+    public bool? ExcludedFromViews { get; init; }
 }
 
 public sealed record MoveSlipCommand

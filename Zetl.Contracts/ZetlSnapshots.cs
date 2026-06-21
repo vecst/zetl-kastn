@@ -79,6 +79,9 @@ public sealed record ZetlSlipSnapshot
     public required DateTimeOffset CapturedAtUtc { get; init; }
     public string? DeletedFromBucketId { get; init; }
     public DateTimeOffset? DeletedAtUtc { get; init; }
+
+    // Kastn-only: true holds the slip out of rendered views and exports.
+    public bool ExcludedFromViews { get; init; }
 }
 
 public sealed record ZetlPictureSnapshot
