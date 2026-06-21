@@ -52,6 +52,33 @@ internal static class ZetlWindowsSelfTests
                 && System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(
                     outputDib.AsSpan(14, 2)) == 32);
 
+            using var resolverClient = new HttpClient(new StubHttpHandler(request =>
+            {
+                var isImage = request.RequestUri?.AbsolutePath == "/image";
+                var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    RequestMessage = request,
+                    Content = new ByteArrayContent(isImage
+                        ? png
+                        : "<html>not an image</html>"u8.ToArray())
+                };
+                response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    isImage ? "image/png" : "text/html");
+                return response;
+            }));
+            var resolver = new ZetlImageUrlResolver(resolverClient);
+            var resolvedImage = resolver.TryResolveAsync("https://example.test/image")
+                .GetAwaiter().GetResult();
+            failures += Check(
+                "image URL resolver downloads and normalizes image content",
+                resolvedImage?.Image is { Width: 1, Height: 1 }
+                && resolvedImage.Image.PngBytes.Length > 0
+                && resolvedImage.SourceUrl == "https://example.test/image");
+            failures += Check(
+                "image URL resolver rejects HTML content",
+                resolver.TryResolveAsync("https://example.test/page")
+                    .GetAwaiter().GetResult() is null);
+
             var sample = $"zetl-selftest-{Guid.NewGuid():N}";
             failures += Check("clipboard write reports success", clipboard.SetText(sample));
             failures += Check("clipboard round-trips written text", clipboard.TryGetText() == sample);
@@ -108,5 +135,14 @@ internal static class ZetlWindowsSelfTests
     {
         Console.WriteLine($"{(passed ? "PASS" : "FAIL")} {name}");
         return passed ? 0 : 1;
+    }
+
+    private sealed class StubHttpHandler(
+        Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(responseFactory(request));
     }
 }

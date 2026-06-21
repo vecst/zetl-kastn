@@ -84,6 +84,7 @@ internal static class ZetlProjectSnapshotMapper
                 : new ZetlPictureSnapshot
                 {
                     RelativePath = note.Image.RelativePath,
+                    SourceUrl = note.Image.SourceUrl,
                     MimeType = note.Image.MimeType,
                     Width = note.Image.Width,
                     Height = note.Image.Height,

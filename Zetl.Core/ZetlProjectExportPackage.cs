@@ -19,6 +19,8 @@ internal sealed class ZetlProjectExportManifest
 
     public bool CaptureOriginsIncluded { get; set; }
 
+    public bool SourceUrlsIncluded { get; set; }
+
     public string ProjectEntry { get; set; } = "project.json";
 
     public int AssetCount { get; set; }
@@ -65,6 +67,7 @@ internal static class ZetlProjectExportPackage
             ProjectName = snapshot.Name,
             ExportedAtUtc = exportedAtUtc ?? DateTime.UtcNow,
             CaptureOriginsIncluded = includeCaptureOrigins,
+            SourceUrlsIncluded = includeCaptureOrigins,
             AssetCount = includedAssets.Count
         };
         var tempPath = $"{fullPath}.{Guid.NewGuid():N}.tmp";

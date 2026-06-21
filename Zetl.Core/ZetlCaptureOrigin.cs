@@ -109,6 +109,10 @@ internal static class ZetlProjectExportSnapshot
             foreach (var note in snapshot.Buckets.SelectMany(bucket => bucket.Notes))
             {
                 note.CaptureOrigin = null;
+                if (note.Image is not null)
+                {
+                    note.Image.SourceUrl = null;
+                }
             }
         }
 

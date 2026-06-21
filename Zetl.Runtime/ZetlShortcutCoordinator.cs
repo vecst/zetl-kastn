@@ -26,6 +26,7 @@ internal sealed class ZetlShortcutCoordinator
     private readonly Func<bool> quickNoteToClipboard;
     private readonly Action<string> log;
     private readonly TimeSpan holdDelay;
+    private readonly IImageUrlResolver? imageUrlResolver;
 
     public ZetlShortcutCoordinator(
         ZetlStateStore store,
@@ -38,7 +39,8 @@ internal sealed class ZetlShortcutCoordinator
         Func<bool> autoCaptureOnCopy,
         Func<bool> quickNoteToClipboard,
         Action<string> log,
-        TimeSpan holdDelay)
+        TimeSpan holdDelay,
+        IImageUrlResolver? imageUrlResolver = null)
     {
         this.store = store;
         this.keyboard = keyboard;
@@ -51,6 +53,7 @@ internal sealed class ZetlShortcutCoordinator
         this.quickNoteToClipboard = quickNoteToClipboard;
         this.log = log;
         this.holdDelay = holdDelay;
+        this.imageUrlResolver = imageUrlResolver;
     }
 
     public async Task OnPhysicalShortcutPassedThroughAsync(
@@ -132,17 +135,14 @@ internal sealed class ZetlShortcutCoordinator
             ClaimPendingForHold(context));
     }
 
-    // Hold handling is fully synchronous now that the clipboard is observed
-    // ahead of time into the pending shortcut; the Task return type is kept so
-    // the UI-thread callers can keep awaiting it.
-    public Task<ZetlShortcutRequest?> HandleClaimedHoldAsync(
+    public async Task<ZetlShortcutRequest?> HandleClaimedHoldAsync(
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
-        ZetlShortcutRequest? request = context.KeyCode switch
+        return context.KeyCode switch
         {
             VK_B => new ZetlBoardRequest(context.ShiftLane),
-            VK_C => CreateCopyHoldRequest(context, pending),
+            VK_C => await CreateCopyHoldRequestAsync(context, pending),
             VK_P => HandlePopToggle(context.ShiftLane),
             VK_R => HandleReplayToggle(context.ShiftLane),
             VK_T => new ZetlTemplatePickerRequest(context.ShiftLane, FromCompileFallback: false),
@@ -151,7 +151,6 @@ internal sealed class ZetlShortcutCoordinator
             VK_Z => HandleUndo(context.ShiftLane),
             _ => null
         };
-        return Task.FromResult(request);
     }
 
     public ZetlNoteCaptureOutcome CompleteNoteCapture(
@@ -215,7 +214,8 @@ internal sealed class ZetlShortcutCoordinator
                 request.Image,
                 request.Source,
                 request.CaptureOrigin,
-                result.NoteText)
+                result.NoteText,
+                request.ImageSourceUrl)
             : store.AddNote(
                 bucket,
                 result.NoteText,
@@ -378,7 +378,7 @@ internal sealed class ZetlShortcutCoordinator
         replayInjectedClipboard[index] = null;
     }
 
-    private ZetlShortcutRequest? CreateCopyHoldRequest(
+    private async Task<ZetlShortcutRequest?> CreateCopyHoldRequestAsync(
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
@@ -412,6 +412,28 @@ internal sealed class ZetlShortcutCoordinator
         if (string.IsNullOrWhiteSpace(text))
         {
             return new ZetlBoardRequest(context.ShiftLane);
+        }
+
+        var resolvedUrl = await TryResolveImageUrlAsync(text);
+        if (resolvedUrl is not null)
+        {
+            var imageBucket = store.GetActiveBucket(context.ShiftLane)
+                ?? store.GetScratchBucket(project);
+            return new ZetlNoteCaptureRequest(
+                context.ShiftLane,
+                project,
+                imageBucket,
+                "",
+                "copy",
+                ShowStartProjectToggle: !hadActiveProject,
+                StartProjectDefault: true,
+                ScratchOnlyUntilProjectStarted: false,
+                CreateNewProjectToggle: false,
+                ProjectToggleText: null,
+                ProjectNameDefault: null,
+                CaptureOrigin: pending?.CaptureOrigin,
+                Image: resolvedUrl.Image,
+                ImageSourceUrl: resolvedUrl.SourceUrl);
         }
 
         // Held copy capture shares the quick-note dialog: same project selector,
@@ -647,6 +669,23 @@ internal sealed class ZetlShortcutCoordinator
             return;
         }
 
+        string? imageSourceUrl = null;
+        if (image is null && text is not null)
+        {
+            var resolvedUrl = await TryResolveImageUrlAsync(text);
+            if (resolvedUrl is not null)
+            {
+                image = resolvedUrl.Image;
+                imageSourceUrl = resolvedUrl.SourceUrl;
+                text = null;
+            }
+        }
+
+        if (pending.Cancelled)
+        {
+            return;
+        }
+
         dispatcher.Post(() =>
         {
             if (pending.Cancelled)
@@ -672,7 +711,8 @@ internal sealed class ZetlShortcutCoordinator
                     bucket,
                     image,
                     "copy",
-                    pending.CaptureOrigin)
+                    pending.CaptureOrigin,
+                    sourceUrl: imageSourceUrl)
                 : store.AddNote(
                     bucket,
                     text!,
@@ -688,6 +728,24 @@ internal sealed class ZetlShortcutCoordinator
                 ? $"Captured image to {ZetlRuntimeLabels.Destination(project, bucket)}."
                 : $"Captured to {ZetlRuntimeLabels.Destination(project, bucket)}.");
         });
+    }
+
+    private async Task<ZetlResolvedImageUrl?> TryResolveImageUrlAsync(string text)
+    {
+        if (imageUrlResolver is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await imageUrlResolver.TryResolveAsync(text);
+        }
+        catch (Exception ex)
+        {
+            log($"Image URL resolver failed: {ex.Message}");
+            return null;
+        }
     }
 
     // Runs on the dispatcher thread (enqueued from OnTapDispatched), never on the

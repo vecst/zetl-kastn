@@ -98,6 +98,7 @@ internal sealed class ZetlNote
 internal sealed class ZetlImageAsset
 {
     public string RelativePath { get; set; } = "";
+    public string? SourceUrl { get; set; }
     public string MimeType { get; set; } = "image/png";
     public int Width { get; set; }
     public int Height { get; set; }
@@ -454,7 +455,8 @@ internal sealed class ZetlStateStore
         ZetlClipboardImage image,
         string source,
         ZetlCaptureOrigin? captureOrigin = null,
-        string? caption = null)
+        string? caption = null,
+        string? sourceUrl = null)
     {
         if (!project.Buckets.Any(item => item.Id == bucket.Id))
         {
@@ -478,6 +480,7 @@ internal sealed class ZetlStateStore
             Image = new ZetlImageAsset
             {
                 RelativePath = relativePath,
+                SourceUrl = sourceUrl,
                 Width = image.Width,
                 Height = image.Height,
                 ByteLength = image.PngBytes.LongLength,
@@ -1083,6 +1086,7 @@ internal sealed class ZetlStateStore
                     : new ZetlImageAsset
                     {
                         RelativePath = note.Image.RelativePath,
+                        SourceUrl = note.Image.SourceUrl,
                         MimeType = note.Image.MimeType,
                         Width = note.Image.Width,
                         Height = note.Image.Height,

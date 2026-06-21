@@ -34,6 +34,9 @@ this pass is complete.
 - [ ] Held `Ctrl+C` captures copied text and click-away commits the note.
 - [ ] Plain `Ctrl+C` captures clipboard images into the active bucket; verify
       Board thumbnail, full preview, provenance, deduplication, and ZIP export.
+- [ ] Copy a direct image URL; verify Zetl downloads it into the project's
+      `assets` folder, retains the final URL privately, and keeps HTML/non-image
+      URLs as text slips.
 - [ ] Held `Ctrl+C` with an image opens the image capture dialog; verify its
       preview, optional caption, project/bucket routing, and click-away commit.
 - [ ] Held `Ctrl+X` opens quick note capture and respects the clipboard setting.

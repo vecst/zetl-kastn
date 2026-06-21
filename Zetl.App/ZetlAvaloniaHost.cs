@@ -30,6 +30,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly DispatcherTimer logFlushTimer;
     private readonly IKeyboardBackend keyboard;
     private readonly IClipboard clipboard;
+    private readonly IImageUrlResolver imageUrlResolver;
     private readonly ZetlShortcutCoordinator coordinator;
     private readonly ChordlProcessor? processor;
     private readonly TrayIcon trayIcon;
@@ -107,6 +108,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         notifications = new AvaloniaNotificationService(activityLog);
         keyboard = ZetlPlatformServices.CreateKeyboard(Log);
         clipboard = ZetlPlatformServices.CreateClipboard(Log);
+        imageUrlResolver = new ZetlImageUrlResolver(Log);
         var config = LoadChordlConfiguration(out var configMessage);
         coordinator = new ZetlShortcutCoordinator(
             store,
@@ -119,7 +121,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             () => settingsStore.Settings.AutoCaptureOnCopy,
             () => settingsStore.Settings.QuickNoteToClipboard,
             Log,
-            config.HoldDelay);
+            config.HoldDelay,
+            imageUrlResolver);
 
         ApplySettings();
         store.ConsolidateDefaultProject();

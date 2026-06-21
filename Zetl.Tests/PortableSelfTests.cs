@@ -100,7 +100,10 @@ internal static class PortableSelfTests
                 ("Runtime activity log buffer drains safely", RuntimeActivityLogBufferDrainsSafely),
                 ("Runtime auto-captures copied text", RuntimeAutoCapturesCopiedText),
                 ("Runtime auto-captures copied images", RuntimeAutoCapturesCopiedImages),
+                ("Runtime downloads copied image URLs", RuntimeAutoCapturesCopiedImageUrls),
+                ("Runtime keeps non-image URLs as text", RuntimeKeepsNonImageUrlsAsText),
                 ("Runtime held copy opens image capture and saves captions", RuntimeHeldCopyCapturesImagesDirectly),
+                ("Runtime held copy opens downloaded image URLs", RuntimeHeldCopyCapturesImageUrls),
                 ("Runtime hold cancellation prevents auto-capture", RuntimeHoldCancellationPreventsAutoCapture),
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
                 ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
@@ -853,7 +856,8 @@ internal static class PortableSelfTests
                 project,
                 project.Buckets.Single(item => item.Name == "Inbox"),
                 new ZetlClipboardImage(bytes, 2, 2),
-                "copy");
+                "copy",
+                sourceUrl: "https://private.example/image.png?token=secret");
             var exportPath = System.IO.Path.Combine(root, "images.zetl.zip");
 
             ZetlProjectExportPackage.Write(
@@ -877,6 +881,18 @@ internal static class PortableSelfTests
                 manifestStream,
                 JsonFile.Options)!;
             AssertEqual(1, manifest.AssetCount, "The package manifest should report included assets.");
+            AssertFalse(manifest.SourceUrlsIncluded, "A clean package should declare stripped image source URLs.");
+
+            var projectEntry = archive.GetEntry(ZetlProjectExportPackage.ProjectEntryName)!;
+            using var projectStream = projectEntry.Open();
+            var packagedProject = System.Text.Json.JsonSerializer.Deserialize<ZetlProject>(
+                projectStream,
+                JsonFile.Options)!;
+            AssertEqual<string?>(
+                null,
+                packagedProject.Buckets.SelectMany(bucket => bucket.Notes).Single().Image?.SourceUrl,
+                "A clean package should strip private image source URLs.");
+            AssertTrue(note.Image?.SourceUrl is not null, "Clean export must not modify the live image source URL.");
         }
 
         private static void StateCreatesDatedDefaultProject()
@@ -2315,6 +2331,86 @@ internal static class PortableSelfTests
                 "Committed image capture should report its destination.");
         }
 
+        private static void RuntimeAutoCapturesCopiedImageUrls()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("https://images.example/photo", changeToken: 2),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                imageUrlResolver: new FakeImageUrlResolver(
+                    new ZetlResolvedImageUrl(
+                        new ZetlClipboardImage([4, 5, 6], 40, 30),
+                        "https://cdn.example/photo.png")));
+
+            coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1))
+                .GetAwaiter().GetResult();
+
+            var note = store.GetActiveBucket()!.Notes.Single();
+            AssertTrue(note.IsImage, "An image URL should become an image slip.");
+            AssertEqual(
+                "https://cdn.example/photo.png",
+                note.Image?.SourceUrl,
+                "The final downloaded image URL should remain attached to the asset descriptor.");
+            AssertEqual(1, store.GetProjectAssets(project).Count, "A downloaded image URL should write one asset.");
+        }
+
+        private static void RuntimeKeepsNonImageUrlsAsText()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Inbox"], "Inbox");
+            const string url = "https://example.com/article";
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(url, changeToken: 2),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                imageUrlResolver: new FakeImageUrlResolver(null));
+
+            coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1))
+                .GetAwaiter().GetResult();
+
+            var note = store.GetActiveBucket()!.Notes.Single();
+            AssertFalse(note.IsImage, "A URL that does not resolve as an image should remain text.");
+            AssertEqual(url, note.Text, "Failed image resolution must preserve the copied URL.");
+        }
+
+        private static void RuntimeHeldCopyCapturesImageUrls()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("https://images.example/photo", changeToken: 2),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                imageUrlResolver: new FakeImageUrlResolver(
+                    new ZetlResolvedImageUrl(
+                        new ZetlClipboardImage([7, 8, 9], 3, 2),
+                        "https://images.example/photo.png")));
+            var context = ShortcutContext(VK_C, clipboardSequenceNumber: 1);
+            var pending = new ZetlPendingShortcut(VK_C, false, 1);
+            pending.SetObservedClipboardContent("https://images.example/photo", null);
+
+            var request = coordinator.HandleClaimedHoldAsync(context, pending)
+                .GetAwaiter().GetResult() as ZetlNoteCaptureRequest;
+
+            AssertTrue(request?.Image is not null, "Held copy should preview a downloaded image URL.");
+            AssertEqual(
+                "https://images.example/photo.png",
+                request?.ImageSourceUrl,
+                "Held capture should retain the downloaded image URL.");
+        }
+
         private static void RuntimeHoldCancellationPreventsAutoCapture()
         {
             using var temp = new TempStateFile();
@@ -3393,7 +3489,8 @@ internal static class PortableSelfTests
             out ZetlUndoStack undo,
             IZetlDelay? delay = null,
             bool quickNoteToClipboard = false,
-            IZetlDispatcher? dispatcher = null)
+            IZetlDispatcher? dispatcher = null,
+            IImageUrlResolver? imageUrlResolver = null)
         {
             keyboard = new FakeKeyboardBackend();
             undo = new ZetlUndoStack(100);
@@ -3408,7 +3505,8 @@ internal static class PortableSelfTests
                 () => true,
                 () => quickNoteToClipboard,
                 _ => { },
-                TimeSpan.FromMilliseconds(60));
+                TimeSpan.FromMilliseconds(60),
+                imageUrlResolver);
         }
 
         private static ChordlEventContext ShortcutContext(
@@ -3678,4 +3776,10 @@ internal static class PortableSelfTests
                 ChangeToken = changeToken;
             }
         }
-}
+
+        private sealed class FakeImageUrlResolver(ZetlResolvedImageUrl? result) : IImageUrlResolver
+        {
+            public Task<ZetlResolvedImageUrl?> TryResolveAsync(string text) =>
+                Task.FromResult(result);
+        }
+    }

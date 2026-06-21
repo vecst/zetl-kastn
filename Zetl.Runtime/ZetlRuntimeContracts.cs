@@ -59,7 +59,8 @@ internal sealed record ZetlNoteCaptureRequest(
     string? ProjectToggleText,
     string? ProjectNameDefault,
     ZetlCaptureOrigin? CaptureOrigin = null,
-    ZetlClipboardImage? Image = null) : ZetlShortcutRequest(Shifted);
+    ZetlClipboardImage? Image = null,
+    string? ImageSourceUrl = null) : ZetlShortcutRequest(Shifted);
 
 internal sealed record ZetlNoteCaptureResult(
     bool Committed,

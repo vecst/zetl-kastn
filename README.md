@@ -373,12 +373,21 @@ relative asset descriptor:
 - MIME type
 - pixel width and height
 - byte length
+- original image URL, when the image was downloaded from a copied URL
 
 The SHA-256 content hash is also the filename, so copying the same image more
 than once reuses one asset file. The Board shows a thumbnail in the note list
 and a larger selected-image preview. Image slips can have an optional caption,
 which is editable beside the Board preview and becomes the slip's list label.
 Capture-origin metadata works the same way for text and images.
+
+If copied text is a single `http` or `https` URL, Zetl requests that URL to test
+whether it is an image. A successful image response is decoded, normalized to
+PNG, and saved through the same asset pipeline; redirects are followed and the
+final URL is retained as private image metadata. Downloads time out after 10
+seconds and are limited to 25 MB. A failed request, non-image response, or
+undecodable body falls back to the original URL as a normal text slip. This
+means copying a URL while capture is active contacts that URL's server.
 
 Held `Ctrl+C` on an image opens the capture dialog with an image preview and an
 optional caption. It uses the same project, bucket, inline bucket-creation, and
@@ -400,8 +409,8 @@ Current v1 boundaries:
 Use `Export` on the Board to write the selected project as a self-contained
 `.zetl.zip` package. The export dialog offers:
 
-- `Clean copy for sharing` (the default), which strips application, process, and
-  window-title metadata.
+- `Clean copy for sharing` (the default), which strips application, process,
+  window-title, and downloaded-image source URL metadata.
 - `Archive copy`, which retains capture provenance for private backup or transfer.
 
 Both modes preserve project and bucket structure, note content, settings, and

@@ -31,3 +31,17 @@ internal interface IClipboard
 }
 
 internal sealed record ZetlClipboardImage(byte[] PngBytes, int Width, int Height);
+
+/// <summary>
+/// Resolves an explicitly copied HTTP(S) URL into a normalized image. The
+/// platform implementation owns networking and image decoding so the portable
+/// shortcut runtime remains UI- and codec-agnostic.
+/// </summary>
+internal interface IImageUrlResolver
+{
+    Task<ZetlResolvedImageUrl?> TryResolveAsync(string text);
+}
+
+internal sealed record ZetlResolvedImageUrl(
+    ZetlClipboardImage Image,
+    string SourceUrl);
