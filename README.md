@@ -402,6 +402,16 @@ seconds and are limited to 25 MB. A failed request, non-image response, or
 undecodable body falls back to the original URL as a normal text slip. This
 means copying a URL while capture is active contacts that URL's server.
 
+Some image hosts (Cloudflare-fronted forum attachments and CDNs) block Zetl's
+in-process request on its TLS handshake and answer `403` no matter the request
+headers, while serving the image to a browser. When the in-process fetch hits
+such a bot-challenge response, Zetl retries once through the system `curl`
+(present on Windows 10 1803+ and Windows 11), which negotiates a handshake those
+hosts accept, then normalizes the result through the same pipeline. The retry
+runs only for those blocked responses — an ordinary copied link never spawns a
+process — contacts the same URL with the same 10-second and 25 MB limits, and
+falls back to a text slip if `curl` is unavailable or also blocked.
+
 Held `Ctrl+C` on an image opens the capture dialog with an image preview and an
 optional caption. It uses the same project, bucket, inline bucket-creation, and
 click-away behavior as text capture. Saving creates a new image slip; it does
