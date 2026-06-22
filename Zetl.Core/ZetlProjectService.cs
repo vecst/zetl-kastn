@@ -114,6 +114,8 @@ internal sealed class ZetlProjectService
             ZetlCommandKind.CreateProject => CreateProject(command),
             ZetlCommandKind.RenameProject => RenameProject(command),
             ZetlCommandKind.SetProjectView => SetProjectView(command),
+            ZetlCommandKind.SaveProjectView => SaveProjectView(command),
+            ZetlCommandKind.DeleteProjectView => DeleteProjectView(command),
             ZetlCommandKind.DeleteProject => DeleteProject(command),
             ZetlCommandKind.AddBucket => AddBucket(command),
             ZetlCommandKind.UpdateBucket => UpdateBucket(command),
@@ -287,6 +289,91 @@ internal sealed class ZetlProjectService
 
         var payload = Payload<SetProjectViewCommand>(command);
         store.SetProjectDefaultView(project, payload.ViewId);
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Project, project.Id, project.MetadataRevision);
+        return Success(command, project, snapshot);
+    }
+
+    private ZetlResponseEnvelope SaveProjectView(ZetlCommandEnvelope command)
+    {
+        var project = FindProject(command.ProjectId!);
+        if (project is null)
+        {
+            return NotFound(command, ZetlEntityKind.Project, command.ProjectId!);
+        }
+
+        var conflict = CheckRevision(
+            command,
+            ZetlEntityKind.Project,
+            project.Id,
+            project.MetadataRevision,
+            ZetlProjectSnapshotMapper.ToSnapshot(project));
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        var payload = Payload<SaveProjectViewCommand>(command);
+        var view = ZetlProjectSnapshotMapper.ToDocument(payload.View);
+        if (view.Sections.Count == 0)
+        {
+            return ValidationError(
+                command,
+                "project_view_sections_required",
+                "Project-scoped views require at least one custom section.");
+        }
+
+        if (ZetlViewDefaults.IsBuiltIn(view.Id))
+        {
+            return ValidationError(
+                command,
+                "project_view_id_reserved",
+                "Built-in view IDs cannot be used for project-scoped views.");
+        }
+
+        var errors = ZetlViewValidator.Validate(view);
+        if (errors.Count > 0)
+        {
+            return ValidationError(command, "project_view_invalid", string.Join("; ", errors));
+        }
+
+        store.SaveProjectView(project, view);
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Project, project.Id, project.MetadataRevision);
+        return Success(command, project, snapshot);
+    }
+
+    private ZetlResponseEnvelope DeleteProjectView(ZetlCommandEnvelope command)
+    {
+        var project = FindProject(command.ProjectId!);
+        if (project is null)
+        {
+            return NotFound(command, ZetlEntityKind.Project, command.ProjectId!);
+        }
+
+        var conflict = CheckRevision(
+            command,
+            ZetlEntityKind.Project,
+            project.Id,
+            project.MetadataRevision,
+            ZetlProjectSnapshotMapper.ToSnapshot(project));
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        var payload = Payload<DeleteProjectViewCommand>(command);
+        if (string.IsNullOrWhiteSpace(payload.ViewId))
+        {
+            return ValidationError(command, "project_view_id_required", "A project view ID is required.");
+        }
+
+        if (!project.Views.Any(view => string.Equals(view.Id, payload.ViewId, StringComparison.Ordinal)))
+        {
+            return ValidationError(command, "project_view_not_found", "That project view no longer exists.");
+        }
+
+        store.DeleteProjectView(project, payload.ViewId);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Project, project.Id, project.MetadataRevision);
         return Success(command, project, snapshot);

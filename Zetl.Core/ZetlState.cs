@@ -21,6 +21,9 @@ internal sealed class ZetlProject
     // The view document this project renders with by default (set by a creation
     // type, or chosen in Kastn). Null falls back to the first view.
     public string? DefaultViewId { get; set; }
+    // Structured views are project-owned so project export/backup carries them.
+    // Universal views remain in the global view catalog.
+    public List<ZetlViewDocument> Views { get; set; } = [];
     public List<ZetlBucket> Buckets { get; set; } = new();
 }
 
@@ -300,6 +303,37 @@ internal sealed class ZetlStateStore
     public void SetProjectDefaultView(ZetlProject project, string? viewId)
     {
         project.DefaultViewId = string.IsNullOrWhiteSpace(viewId) ? null : viewId.Trim();
+        project.MetadataRevision++;
+        PersistProject(project);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void SaveProjectView(ZetlProject project, ZetlViewDocument view)
+    {
+        var index = project.Views.FindIndex(item =>
+            string.Equals(item.Id, view.Id, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            project.Views[index] = ZetlViewDefaults.Clone(view);
+        }
+        else
+        {
+            project.Views.Add(ZetlViewDefaults.Clone(view));
+        }
+
+        project.MetadataRevision++;
+        PersistProject(project);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void DeleteProjectView(ZetlProject project, string viewId)
+    {
+        project.Views.RemoveAll(view => string.Equals(view.Id, viewId, StringComparison.Ordinal));
+        if (string.Equals(project.DefaultViewId, viewId, StringComparison.Ordinal))
+        {
+            project.DefaultViewId = null;
+        }
+
         project.MetadataRevision++;
         PersistProject(project);
     }
@@ -1532,6 +1566,15 @@ internal sealed class ZetlStateStore
         project.Name = NormalizeName(project.Name, DefaultProjectName());
         project.MetadataRevision = Math.Max(project.MetadataRevision, 1);
         project.ChangeSequence = Math.Max(project.ChangeSequence, 0);
+        project.Views ??= [];
+        foreach (var view in project.Views)
+        {
+            view.Sections ??= [];
+            foreach (var section in view.Sections)
+            {
+                section.Buckets ??= [];
+            }
+        }
         project.Buckets ??= new List<ZetlBucket>();
         EnsureScratchBucket(project.Buckets);
         foreach (var bucket in project.Buckets)

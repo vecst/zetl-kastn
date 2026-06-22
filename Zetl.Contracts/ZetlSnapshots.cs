@@ -40,8 +40,32 @@ public sealed record ZetlProjectSnapshot
     // The view document id this project renders with by default (null = first view).
     public string? DefaultViewId { get; init; }
 
+    // Structured views authored specifically for this project. Universal views
+    // remain in Kastn's global catalog and are not duplicated here.
+    public IReadOnlyList<ZetlProjectViewSnapshot> Views { get; init; } = [];
+
     public IReadOnlyList<ZetlBucketSnapshot> Buckets { get; init; } = [];
     public IReadOnlyList<ZetlSlipSnapshot> Slips { get; init; } = [];
+}
+
+public sealed record ZetlProjectViewSnapshot
+{
+    public int Version { get; init; } = 1;
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public string Category { get; init; } = "Custom";
+    public string Description { get; init; } = "";
+    public string Kind { get; init; } = "Formatted";
+    public int TsvRowLength { get; init; } = 5;
+    public IReadOnlyList<ZetlProjectViewSectionSnapshot> Sections { get; init; } = [];
+    public string ListStyle { get; init; } = "bullet";
+    public bool NumberHeadings { get; init; }
+}
+
+public sealed record ZetlProjectViewSectionSnapshot
+{
+    public required string Title { get; init; }
+    public IReadOnlyList<string> Buckets { get; init; } = [];
 }
 
 public sealed record ZetlBucketSnapshot

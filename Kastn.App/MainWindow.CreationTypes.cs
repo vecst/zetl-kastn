@@ -36,7 +36,7 @@ internal partial class MainWindow
                 ? t.Name
                 : creation.TemplateId;
             var viewName = creation.PrimaryViewId is { } viewId
-                ? loadedViews.FirstOrDefault(v => v.Id == viewId)?.Name ?? viewId
+                ? globalViews.FirstOrDefault(v => v.Id == viewId)?.Name ?? viewId
                 : "no view";
             creations.Add(new CreationListItem(
                 creation.Category,

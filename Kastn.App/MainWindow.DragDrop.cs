@@ -16,7 +16,8 @@ namespace KASTN;
 // — no new persisted state, and the protected Deleted bucket is never dragged or hit.
 internal partial class MainWindow
 {
-    private const string DragNodeFormat = "application/x-kastn-tree-node";
+    private static readonly DataFormat<string> DragNodeFormat =
+        DataFormat.CreateStringApplicationFormat("kastn-tree-node");
     private const double DragThreshold = 4;
 
     private KastnTreeNode? dragCandidate;
@@ -77,9 +78,9 @@ internal partial class MainWindow
         dragInProgress = true;
         try
         {
-            var data = new DataObject();
-            data.Set(DragNodeFormat, node.Id);
-            await DragDrop.DoDragDrop(args, data, DragDropEffects.Move);
+            var data = new DataTransfer();
+            data.Add(DataTransferItem.Create(DragNodeFormat, node.Id));
+            await DragDrop.DoDragDropAsync(args, data, DragDropEffects.Move);
         }
         finally
         {
@@ -127,7 +128,7 @@ internal partial class MainWindow
         if (draggingNode is not { } source
             || currentProject is not { } project
             || !IsOnline
-            || !args.Data.Contains(DragNodeFormat))
+            || !args.DataTransfer.Contains(DragNodeFormat))
         {
             return null;
         }

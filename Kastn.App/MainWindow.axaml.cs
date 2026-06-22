@@ -35,6 +35,7 @@ internal partial class MainWindow : Window
     private IReadOnlyList<ZetlTemplateDocument> loadedTemplates = [];
     // Built-in plus user views for the read-view renderer.
     private readonly ZetlViewStore viewStore = new(log: Console.Error.WriteLine);
+    private IReadOnlyList<ZetlViewDocument> globalViews = ZetlViewDefaults.CreateAll();
     private IReadOnlyList<ZetlViewDocument> loadedViews = ZetlViewDefaults.CreateAll();
     private string lastRenderedViewText = "";
     private static readonly string[] ViewKindChoices =
@@ -47,6 +48,7 @@ internal partial class MainWindow : Window
         ZetlViewKinds.Pdf
     ];
     private ZetlViewDocument? editingView;
+    private bool editingProjectScopedView;
     private bool viewEditorUpdating;
     private string viewBaselineJson = "";
     // Creation types: bundle a template with a default view.
@@ -186,10 +188,12 @@ internal partial class MainWindow : Window
         strikeButton.Click += (_, _) => WrapEditorSelection("~~", "~~", "strike");
         codeButton.Click += (_, _) => WrapEditorSelection("`", "`", "code");
         linkButton.Click += (_, _) => InsertEditorLink();
+        wikiLinkButton.Click += async (_, _) => await InsertSlipLinkAsync();
         bulletListButton.Click += (_, _) => PrefixSelectedLines(_ => "- ");
         numberListButton.Click += (_, _) => PrefixSelectedLines(index => $"{index + 1}. ");
         taskListButton.Click += (_, _) => PrefixSelectedLines(_ => "- [ ] ");
-        loadedViews = viewStore.LoadAll();
+        globalViews = viewStore.LoadAll();
+        loadedViews = globalViews;
         viewPickerBox.ItemsSource = loadedViews;
         viewPickerBox.SelectedIndex = 0;
         viewPickerBox.SelectionChanged += (_, _) =>
@@ -203,13 +207,27 @@ internal partial class MainWindow : Window
         exportViewButton.Click += async (_, _) => await ExportRenderedViewAsync();
         viewKindBox.ItemsSource = ViewKindChoices;
         viewListStyleBox.ItemsSource = ZetlViewListStyles.All;
-        saveViewSettingsButton.Click += (_, _) => SaveView();
+        viewFormattedKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Formatted);
+        viewPlainKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Plain);
+        viewTsvKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Tsv);
+        viewMarkdownKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Markdown);
+        viewHtmlKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Html);
+        viewPdfKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Pdf);
+        viewAllBucketsButton.Click += (_, _) => SetViewStructureMode(custom: false);
+        viewCustomSectionsButton.Click += (_, _) => SetViewStructureMode(custom: true);
+        addViewSectionButton.Click += (_, _) => AddViewSection();
+        viewNameBox.TextChanged += (_, _) => RefreshViewLivePreview();
+        viewDescriptionBox.TextChanged += (_, _) => RefreshViewLivePreview();
+        viewListStyleBox.SelectionChanged += (_, _) => RefreshViewLivePreview();
+        viewNumberHeadingsCheck.IsCheckedChanged += (_, _) => RefreshViewLivePreview();
+        viewTsvRowBox.ValueChanged += (_, _) => RefreshViewLivePreview();
+        saveViewSettingsButton.Click += async (_, _) => await SaveViewAsync();
         cancelViewSettingsButton.Click += async (_, _) => await CancelViewEditAsync();
         viewKindBox.SelectionChanged += (_, _) =>
         {
             if (!viewEditorUpdating)
             {
-                ApplyViewKindTsvVisibility();
+                ApplyViewKindSettingsVisibility();
             }
         };
         newViewMenuItem.Click += (_, _) => OpenViewEditor(
@@ -357,6 +375,10 @@ internal partial class MainWindow : Window
             currentProject = snapshot.Project;
             if (currentProject is { } projectSnapshot)
             {
+                var selectedViewId = string.Equals(priorProjectId, projectSnapshot.Id, StringComparison.Ordinal)
+                    ? (viewPickerBox.SelectedItem as ZetlViewDocument)?.Id
+                    : projectSnapshot.DefaultViewId;
+                RefreshViewCatalog(projectSnapshot, selectedViewId);
                 if (!string.Equals(priorProjectId, projectSnapshot.Id, StringComparison.Ordinal))
                 {
                     selectedBucketId = null;

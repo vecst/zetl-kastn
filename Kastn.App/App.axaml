@@ -48,6 +48,11 @@
       <Setter Property="Foreground" Value="{DynamicResource ZetlTextBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource ZetlBorderBrush}" />
     </Style>
+    <Style Selector="Button.view-format-active">
+      <Setter Property="Background" Value="{DynamicResource ZetlAccentBrush}" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ZetlAccentBrush}" />
+    </Style>
     <Style Selector="ListBox">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />

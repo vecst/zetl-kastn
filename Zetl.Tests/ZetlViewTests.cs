@@ -381,6 +381,111 @@ internal static class ZetlViewTests
         }
     }
 
+    public static void ProjectScopedViewsPersistAndStayIsolated()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ZetlProjectViewTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var statePath = Path.Combine(dir, "state.json");
+        try
+        {
+            var service = new ZetlProjectService(new ZetlStateStore(statePath, "project-view-tests"));
+            var first = service.Execute(ZetlCommandEnvelope.Create(
+                    "create-first",
+                    ZetlCommandKind.CreateProject,
+                    new CreateProjectCommand { Name = "First" }))
+                .Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException("First project was not created.");
+            var second = service.Execute(ZetlCommandEnvelope.Create(
+                    "create-second",
+                    ZetlCommandKind.CreateProject,
+                    new CreateProjectCommand { Name = "Second" }))
+                .Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException("Second project was not created.");
+
+            var view = new ZetlProjectViewSnapshot
+            {
+                Id = "first-report",
+                Name = "First report",
+                Kind = "Markdown",
+                Sections =
+                [
+                    new ZetlProjectViewSectionSnapshot
+                    {
+                        Title = "Report",
+                        Buckets = ["Inbox"]
+                    }
+                ],
+                NumberHeadings = true
+            };
+            var savedResponse = service.Execute(ZetlCommandEnvelope.Create(
+                "save-view",
+                ZetlCommandKind.SaveProjectView,
+                new SaveProjectViewCommand { View = view },
+                first.Id,
+                expectedTargetRevision: first.MetadataRevision));
+            AssertEqual(ZetlResponseStatus.Success, savedResponse.Status, "Project view save should succeed.");
+            var saved = savedResponse.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException("SaveProjectView returned no snapshot.");
+            AssertEqual(1, saved.Views.Count, "The owning project should expose its structured view.");
+            AssertEqual("first-report", saved.Views[0].Id, "The view id should round-trip through the snapshot.");
+
+            var stale = service.Execute(ZetlCommandEnvelope.Create(
+                "save-view-stale",
+                ZetlCommandKind.SaveProjectView,
+                new SaveProjectViewCommand { View = view },
+                first.Id,
+                expectedTargetRevision: first.MetadataRevision));
+            AssertEqual(ZetlResponseStatus.Conflict, stale.Status, "A stale project-view save should conflict.");
+
+            var other = service.Execute(new ZetlCommandEnvelope
+            {
+                CommandId = "get-second",
+                Kind = ZetlCommandKind.GetProject,
+                ProjectId = second.Id
+            }).Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException("Second project could not be fetched.");
+            AssertEqual(0, other.Views.Count, "A project view must not leak into another project.");
+
+            var defaultResponse = service.Execute(ZetlCommandEnvelope.Create(
+                "set-project-view",
+                ZetlCommandKind.SetProjectView,
+                new SetProjectViewCommand { ViewId = view.Id },
+                first.Id,
+                expectedTargetRevision: saved.MetadataRevision));
+            var withDefault = defaultResponse.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException("SetProjectView returned no snapshot.");
+
+            var reloaded = new ZetlProjectService(new ZetlStateStore(statePath, "project-view-tests"));
+            var fetched = reloaded.Execute(new ZetlCommandEnvelope
+            {
+                CommandId = "get-reloaded",
+                Kind = ZetlCommandKind.GetProject,
+                ProjectId = first.Id
+            }).Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException("Reloaded project could not be fetched.");
+            AssertEqual(1, fetched.Views.Count, "The project view should persist in project.json.");
+            AssertEqual(view.Id, fetched.DefaultViewId, "The project-scoped default should persist.");
+
+            var deletedResponse = reloaded.Execute(ZetlCommandEnvelope.Create(
+                "delete-project-view",
+                ZetlCommandKind.DeleteProjectView,
+                new DeleteProjectViewCommand { ViewId = view.Id },
+                first.Id,
+                expectedTargetRevision: withDefault.MetadataRevision));
+            var deleted = deletedResponse.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException("DeleteProjectView returned no snapshot.");
+            AssertEqual(0, deleted.Views.Count, "Deleting should remove the project view.");
+            AssertEqual<string?>(null, deleted.DefaultViewId, "Deleting the default view should clear the pointer.");
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+    }
+
     public static void CreationTypeStoreLoadsSavesAndDeletes()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ZetlCreationTypeTests", Guid.NewGuid().ToString("N"));

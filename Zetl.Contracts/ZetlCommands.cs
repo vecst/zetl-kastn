@@ -30,6 +30,16 @@ public sealed record SetProjectViewCommand
     public string? ViewId { get; init; }
 }
 
+public sealed record SaveProjectViewCommand
+{
+    public required ZetlProjectViewSnapshot View { get; init; }
+}
+
+public sealed record DeleteProjectViewCommand
+{
+    public required string ViewId { get; init; }
+}
+
 public sealed record DeleteProjectCommand;
 
 public sealed record AddBucketCommand

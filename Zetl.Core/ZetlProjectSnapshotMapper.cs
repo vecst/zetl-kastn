@@ -42,10 +42,53 @@ internal static class ZetlProjectSnapshotMapper
             ChangeSequence = project.ChangeSequence,
             ActiveBucketId = project.ActiveBucketId,
             DefaultViewId = project.DefaultViewId,
+            Views = project.Views.Select(ToSnapshot).ToList(),
             Buckets = project.Buckets.Select(ToSnapshot).ToList(),
             Slips = project.Buckets
                 .SelectMany(bucket => bucket.Notes.Select(note => ToSnapshot(bucket, note)))
                 .ToList()
+        };
+    }
+
+    public static ZetlProjectViewSnapshot ToSnapshot(ZetlViewDocument view)
+    {
+        return new ZetlProjectViewSnapshot
+        {
+            Version = view.Version,
+            Id = view.Id,
+            Name = view.Name,
+            Category = view.Category,
+            Description = view.Description,
+            Kind = view.Kind,
+            TsvRowLength = view.TsvRowLength,
+            Sections = view.Sections.Select(section => new ZetlProjectViewSectionSnapshot
+            {
+                Title = section.Title,
+                Buckets = section.Buckets.ToList()
+            }).ToList(),
+            ListStyle = view.ListStyle,
+            NumberHeadings = view.NumberHeadings
+        };
+    }
+
+    public static ZetlViewDocument ToDocument(ZetlProjectViewSnapshot view)
+    {
+        return new ZetlViewDocument
+        {
+            Version = view.Version,
+            Id = view.Id,
+            Name = view.Name,
+            Category = view.Category,
+            Description = view.Description,
+            Kind = view.Kind,
+            TsvRowLength = view.TsvRowLength,
+            Sections = view.Sections.Select(section => new ZetlViewSection
+            {
+                Title = section.Title,
+                Buckets = section.Buckets.ToList()
+            }).ToList(),
+            ListStyle = view.ListStyle,
+            NumberHeadings = view.NumberHeadings
         };
     }
 

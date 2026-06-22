@@ -204,7 +204,7 @@ internal partial class MainWindow
             return false;
         }
 
-        var text = editorState.DraftText.Trim();
+        var text = ZetlSlipLinks.RefreshCachedTitles(editorState.DraftText, currentProject).Trim();
         if (text.Length == 0
             && string.IsNullOrWhiteSpace(SelectedSlip?.Title)
             && SelectedSlip?.Type != ZetlSlipType.Picture)
@@ -439,6 +439,42 @@ internal partial class MainWindow
             slipEditor.SelectionEnd = urlStart + 3;
         }
 
+        slipEditor.Focus();
+    }
+
+    private async Task InsertSlipLinkAsync()
+    {
+        if (!slipEditor.IsEnabled || currentProject is null)
+        {
+            return;
+        }
+
+        var text = slipEditor.Text ?? "";
+        var selectionStart = Math.Clamp(
+            Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        var selectionEnd = Math.Clamp(
+            Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        var existing = ZetlSlipLinks.FindAt(text, selectionStart);
+        var query = existing?.CachedTitle
+            ?? (selectionEnd > selectionStart ? text[selectionStart..selectionEnd] : "");
+        var candidates = currentProject.Slips
+            .Where(slip => slip.Id != editorState.SlipId && !IsSlipInDeleted(slip))
+            .ToList();
+        var target = await KastnDialogs.PickSlipAsync(this, candidates, query);
+        if (target is null)
+        {
+            slipEditor.Focus();
+            return;
+        }
+
+        var token = ZetlSlipLinks.Format(target.Id, ZetlSlipLinks.TitleFor(target));
+        var replaceStart = existing?.Start ?? selectionStart;
+        var replaceEnd = existing is null
+            ? selectionEnd
+            : existing.Start + existing.Length;
+        slipEditor.Text = text[..replaceStart] + token + text[replaceEnd..];
+        slipEditor.SelectionStart = replaceStart + token.Length;
+        slipEditor.SelectionEnd = replaceStart + token.Length;
         slipEditor.Focus();
     }
 
@@ -981,6 +1017,7 @@ internal partial class MainWindow
         strikeButton.IsEnabled = canFormat;
         codeButton.IsEnabled = canFormat;
         linkButton.IsEnabled = canFormat;
+        wikiLinkButton.IsEnabled = canFormat;
         bulletListButton.IsEnabled = canFormat;
         numberListButton.IsEnabled = canFormat;
         taskListButton.IsEnabled = canFormat;

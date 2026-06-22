@@ -182,6 +182,22 @@ can reference another with `[[…]]`; the Detail pane shows a "linked from"
 backlinks list. Turns the *kasten* from a folder tree into a linked knowledge
 base, and composes with the Markdown plan (links land in item 7).
 
+**Shipped — core link engine:** `ZetlSlipLinks` parses `[[id|Title]]` tokens as a
+pure projection over project snapshots, resolves by stable slip id, derives the
+current display title, refreshes stale cached titles without touching unresolved
+or malformed text, and computes a deduplicated backlink index from forward links.
+Links survive bucket moves because organization is never part of identity; absent
+targets retain their readable cached title. Export rendering and clickable
+View/backlink UI remain.
+
+**Shipped — Editor link picker:** the formatting toolbar now has a dedicated
+`[[ Link ]]` action. Its searchable picker lists the current project's live,
+non-deleted slips and inserts the canonical `[[id|Current title]]` token. Invoking
+it with the cursor inside an existing wiki-link re-points the whole token instead
+of nesting markup. Normal editor saves refresh every resolved cached title before
+the revision-checked update; unresolved caches stay untouched. Export rendering
+and clickable View/backlink UI remain.
+
 Link model (decided): **anchor on the slip id, cache the title for readability.**
 - The stored token is `[[id|Title]]`. The **id is authoritative**; the title
   after `|` keeps the raw Markdown human-readable/inspectable.
@@ -246,7 +262,42 @@ selected with the editor/inspector/View re-synced through the canonical tree
 path. GUI-verified. Still pending: a live drop-indicator affordance and removing
 the now-redundant Move dropdown / parent combo (kept for now as a fallback).
 
-### 12. View authoring: redesigned editor + scoping
+### 12. View authoring: redesigned editor + scoping — Done
+
+**In progress:** the editor now leads with two explicit format families — Quick
+compile (Formatted / Plain / TSV) and Document (Markdown / HTML / PDF) — and
+explains the literal-versus-rich distinction before settings are shown. TSV row
+length appears only for TSV; slip style and heading numbering appear only for
+Document formats. `Category` has been removed from the form while existing values
+remain preserved in storage.
+
+**Shipped — visual structure builder:** the Sections text DSL has been removed
+from the editor. `All buckets` keeps the universal empty-section model; `Custom
+sections` presents reorderable section cards backed by the current project's
+actual buckets. Authors can rename sections, merge buckets with removable chips,
+reorder sections, omit buckets, and add sections without remembering syntax.
+Existing structured views open in the builder without migration.
+
+**Shipped — live preview:** the editor is now a split workspace with the form on
+the left and a readable, scrollable document preview on the right. It renders the
+unsaved view through the same grouping, heading-numbering, list-style, Markdown,
+alignment, and section rules as the main View, and refreshes as format or structure
+controls change. Picture slips use a dimension-aware placeholder so preview stays
+local and responsive; very large projects are bounded to the first 100 slips.
+
+**Shipped — universal/project scoping:** views with no custom sections continue
+to live in the global `%AppData%\Zetl\views` catalog. Views with custom sections
+are now embedded in their owning project's `project.json`, exposed in project
+snapshots, and saved/deleted through revision-checked Zetl IPC commands. Kastn's
+picker composes universal views with only the open project's structured views;
+switching the structure toggle moves a view between scopes. Project backup and
+export therefore carry project-specific view behavior without shadow storage.
+
+**Shipped — section drag ordering:** every custom-section card now has a
+dedicated drag handle. Dragging over another card shows an accent edge above or
+below it for the exact insertion point; dropping reorders the draft and live
+preview immediately. The up/down buttons remain as keyboard-accessible fallback
+controls. Item 12 is complete.
 The current "New view" form is a flat field dump, and views are **global** — so a
 structured view (one with sections) appears for projects whose buckets it does
 not match and renders nonsense there. Two coupled changes, built together; the

@@ -61,6 +61,10 @@ protocols. A transient transport failure may retry the same command ID.
 
 - `ListProjects` returns project summaries.
 - `GetProject` returns one complete project snapshot.
+- A project snapshot includes its project-scoped structured view documents.
+- `SaveProjectView` and `DeleteProjectView` mutate those documents against the
+  project's metadata revision; successful responses mean the containing
+  `project.json` write is durable. Universal views remain outside project state.
 - `GetSlipPicture` returns normalized picture bytes for one picture slip without
   exposing storage paths or changing project state.
 - A snapshot includes project metadata revision, project change sequence,

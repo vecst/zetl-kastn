@@ -612,6 +612,7 @@
                         <Button x:Name="strikeButton" Content="S" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Strikethrough (~~…~~)" />
                         <Button x:Name="codeButton" Content="&lt;/&gt;" Padding="9,3" Focusable="False" ToolTip.Tip="Inline code (`…`)" />
                         <Button x:Name="linkButton" Content="Link" Padding="9,3" Focusable="False" ToolTip.Tip="Link ([text](url))" />
+                        <Button x:Name="wikiLinkButton" Content="[[ Link ]]" Padding="9,3" Focusable="False" ToolTip.Tip="Link to another slip" />
                         <Border Width="1" Background="{DynamicResource ZetlBorderBrush}" Margin="4,2" />
                         <Button x:Name="bulletListButton" Content="•" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Bullet list (- )" />
                         <Button x:Name="numberListButton" Content="1." Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Numbered list (1. )" />
@@ -846,7 +847,7 @@
 
           <Grid x:Name="viewEditorView"
                 IsVisible="False"
-                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
+                RowDefinitions="Auto,*">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
               <TextBlock Grid.Column="0"
                          x:Name="viewEditorTitle"
@@ -856,71 +857,116 @@
               <Button Grid.Column="2" x:Name="cancelViewSettingsButton" Content="Cancel" Padding="14,5" />
             </Grid>
 
-            <StackPanel Grid.Row="1" Spacing="4" Margin="0,8,0,0">
-              <TextBlock Text="View name" Classes="muted" FontSize="12" />
-              <TextBox x:Name="viewNameBox" />
-            </StackPanel>
+            <Grid Grid.Row="1" Margin="0,10,0,0" ColumnDefinitions="3*,18,2*">
+              <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="14" Margin="0,0,8,8">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="View name" Classes="muted" FontSize="12" />
+                  <TextBox x:Name="viewNameBox" />
+                </StackPanel>
 
-            <Grid Grid.Row="2" ColumnDefinitions="*,12,*" Margin="0,8,0,0">
-              <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="Category" Classes="muted" FontSize="12" />
-                <TextBox x:Name="viewCategoryBox" />
-              </StackPanel>
-              <StackPanel Grid.Column="2" Spacing="4">
-                <TextBlock Text="Kind" Classes="muted" FontSize="12" />
-                <ComboBox x:Name="viewKindBox" HorizontalAlignment="Stretch" />
-              </StackPanel>
+                <StackPanel Spacing="8">
+                  <TextBlock Text="Choose an output format" Classes="heading" />
+                  <TextBlock Text="Quick compile keeps captured text literal. Document formats render Markdown and pictures for sharing."
+                             Classes="muted" TextWrapping="Wrap" />
+
+                  <Border Classes="surface" Padding="12">
+                    <Grid ColumnDefinitions="150,*" ColumnSpacing="12">
+                      <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Text="Quick compile" FontWeight="SemiBold" />
+                        <TextBlock Text="Fast, literal output for pasting and data entry."
+                                   Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <Grid Grid.Column="1" ColumnDefinitions="*,8,*,8,*">
+                        <Button Grid.Column="0" x:Name="viewFormattedKindButton" Content="Formatted" Padding="12,8" />
+                        <Button Grid.Column="2" x:Name="viewPlainKindButton" Content="Plain" Padding="12,8" />
+                        <Button Grid.Column="4" x:Name="viewTsvKindButton" Content="TSV" Padding="12,8" />
+                      </Grid>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="surface" Padding="12">
+                    <Grid ColumnDefinitions="150,*" ColumnSpacing="12">
+                      <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Text="Document" FontWeight="SemiBold" />
+                        <TextBlock Text="Rich output with formatting, links, lists, and pictures."
+                                   Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <Grid Grid.Column="1" ColumnDefinitions="*,8,*,8,*">
+                        <Button Grid.Column="0" x:Name="viewMarkdownKindButton" Content="Markdown" Padding="12,8" />
+                        <Button Grid.Column="2" x:Name="viewHtmlKindButton" Content="HTML" Padding="12,8" />
+                        <Button Grid.Column="4" x:Name="viewPdfKindButton" Content="PDF" Padding="12,8" />
+                      </Grid>
+                    </Grid>
+                  </Border>
+                  <ComboBox x:Name="viewKindBox" IsVisible="False" />
+                </StackPanel>
+
+                <Grid x:Name="viewDocumentSettingsPanel" ColumnDefinitions="*,16,Auto">
+                  <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Text="Slip style" Classes="muted" FontSize="12" />
+                    <ComboBox x:Name="viewListStyleBox" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                  <CheckBox Grid.Column="2"
+                            x:Name="viewNumberHeadingsCheck"
+                            Content="Number headings (1, 1.1)"
+                            VerticalAlignment="Bottom" />
+                </Grid>
+
+                <StackPanel x:Name="viewTsvPanel" Spacing="4">
+                  <TextBlock Text="Items per TSV row" Classes="muted" FontSize="12" />
+                  <NumericUpDown x:Name="viewTsvRowBox"
+                                 Minimum="1" Maximum="100" Increment="1" FormatString="0"
+                                 Width="160" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Description" Classes="muted" FontSize="12" />
+                  <TextBox x:Name="viewDescriptionBox" AcceptsReturn="True" TextWrapping="Wrap" Height="60" />
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Structure" Classes="heading" />
+                  <TextBlock Text="Choose whether this view follows the project as-is or assembles named sections from its buckets."
+                             Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                    <Button x:Name="viewAllBucketsButton" Content="All buckets" Padding="14,6" />
+                    <Button x:Name="viewCustomSectionsButton" Content="Custom sections" Padding="14,6" />
+                  </StackPanel>
+                  <Border x:Name="viewAllBucketsPanel" Classes="surface" Padding="12" Margin="0,4,0,0">
+                    <TextBlock Text="Every bucket renders under its own name and in its project order. This view can be used with any project."
+                               Classes="muted" TextWrapping="Wrap" />
+                  </Border>
+                  <StackPanel x:Name="viewCustomSectionsPanel" Spacing="8" Margin="0,4,0,0">
+                    <TextBlock Text="Rename, merge, reorder, or omit buckets. This structure belongs to the current project."
+                               Classes="muted" TextWrapping="Wrap" />
+                    <StackPanel x:Name="viewSectionEditorPanel" Spacing="8" />
+                    <Button x:Name="addViewSectionButton" Content="+ Add section"
+                            Padding="12,5" HorizontalAlignment="Left" />
+                  </StackPanel>
+                </StackPanel>
+
+                <TextBlock x:Name="viewErrorText" Foreground="#E5484D"
+                           TextWrapping="Wrap" IsVisible="False" />
+                <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                           Text="Views render the current project's slips. Slips stay the source of truth; a view never changes them." />
+                </StackPanel>
+              </ScrollViewer>
+
+              <Border Grid.Column="2" Classes="surface" Padding="14">
+                <Grid RowDefinitions="Auto,10,*">
+                  <StackPanel Grid.Row="0" Spacing="3">
+                    <TextBlock Text="Live preview" Classes="heading" />
+                    <TextBlock x:Name="viewLivePreviewSummary" Classes="muted" FontSize="12"
+                               Text="Current project · unsaved view" />
+                  </StackPanel>
+                  <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="viewLivePreviewPanel" Spacing="5" Margin="0,0,6,0" />
+                  </ScrollViewer>
+                </Grid>
+              </Border>
             </Grid>
-
-            <Grid Grid.Row="3" ColumnDefinitions="*,16,Auto" Margin="0,8,0,0">
-              <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="List style" Classes="muted" FontSize="12" />
-                <ComboBox x:Name="viewListStyleBox" HorizontalAlignment="Stretch" />
-              </StackPanel>
-              <CheckBox Grid.Column="2"
-                        x:Name="viewNumberHeadingsCheck"
-                        Content="Number headings (1, 1.1)"
-                        VerticalAlignment="Bottom" />
-            </Grid>
-
-            <StackPanel Grid.Row="4" x:Name="viewTsvPanel" Spacing="4" Margin="0,8,0,0">
-              <TextBlock Text="TSV rows per line" Classes="muted" FontSize="12" />
-              <NumericUpDown x:Name="viewTsvRowBox"
-                             Minimum="1"
-                             Maximum="100"
-                             Increment="1"
-                             FormatString="0"
-                             Width="160"
-                             HorizontalAlignment="Left" />
-            </StackPanel>
-
-            <StackPanel Grid.Row="5" Spacing="4" Margin="0,8,0,0">
-              <TextBlock Text="Description" Classes="muted" FontSize="12" />
-              <TextBox x:Name="viewDescriptionBox" AcceptsReturn="True" TextWrapping="Wrap" Height="60" />
-            </StackPanel>
-
-            <StackPanel Grid.Row="6" Spacing="4" Margin="0,8,0,0">
-              <TextBlock Text="Sections (optional)" Classes="muted" FontSize="12" />
-              <TextBox x:Name="viewSectionsBox"
-                       AcceptsReturn="True"
-                       TextWrapping="Wrap"
-                       Height="96"
-                       Watermark="One per line:  Heading = Bucket, Bucket. Leave empty to render every bucket." />
-            </StackPanel>
-
-            <TextBlock Grid.Row="7"
-                       x:Name="viewErrorText"
-                       Foreground="#E5484D"
-                       TextWrapping="Wrap"
-                       Margin="0,8,0,0"
-                       IsVisible="False" />
-
-            <TextBlock Grid.Row="8"
-                       Classes="muted"
-                       FontSize="12"
-                       Margin="0,8,0,0"
-                       TextWrapping="Wrap"
-                       Text="Views render the current project's slips. Slips stay the source of truth; a view never changes them." />
           </Grid>
 
           <Grid x:Name="creationEditorView"

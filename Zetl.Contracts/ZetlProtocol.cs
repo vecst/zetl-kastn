@@ -38,6 +38,8 @@ public enum ZetlCommandKind
     CreateProject,
     RenameProject,
     SetProjectView,
+    SaveProjectView,
+    DeleteProjectView,
     DeleteProject,
     AddBucket,
     UpdateBucket,
