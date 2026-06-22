@@ -246,6 +246,53 @@ selected with the editor/inspector/View re-synced through the canonical tree
 path. GUI-verified. Still pending: a live drop-indicator affordance and removing
 the now-redundant Move dropdown / parent combo (kept for now as a fallback).
 
+### 12. View authoring: redesigned editor + scoping
+The current "New view" form is a flat field dump, and views are **global** — so a
+structured view (one with sections) appears for projects whose buckets it does
+not match and renders nonsense there. Two coupled changes, built together; the
+mockup walked through in design is the target.
+
+**Scoping — a view's reach follows its bucket structure:**
+- **Universal (no sections).** Sets only format + slip style + numbering, which
+  apply to any project. Stays in the global catalog (`%AppData%\Zetl\views`); all
+  built-ins are universal.
+- **Project (has sections).** Section bucket names only mean something in the
+  project (or template) they were authored against, so a structured view is
+  scoped to its project. The picker for project P then shows **universal + P's
+  own** views — nothing irrelevant.
+- **Template-scope is deferred and, when it lands, is live** (decided): structured
+  views shared across every project from one template live at the creation-type
+  level and update everywhere on edit — not copy-on-create. The **MVP ships
+  universal + project only**; creation types seed nothing yet.
+- **Save infers scope** from the structure toggle: "All buckets" → universal/
+  global; "Custom sections" → this project. (Storage fork for build time:
+  project-local views in the project folder must route through Zetl's sole-writer
+  — new IPC — or live Kastn-side keyed by project id, which skips IPC but will not
+  export with the project.)
+
+**Editor redesign:**
+- **Format first, in two families.** "Quick compile" (Formatted / Plain / TSV —
+  literal) vs "Document" (Markdown / HTML / PDF — rich), each with a one-line
+  description, so the literal-vs-rich expectation is set before any styling field.
+- **Only relevant settings show.** Slip style + number headings appear for
+  Document formats; TSV row length only for TSV; literal formats show neither
+  (today they show and silently no-op).
+- **The Sections text DSL becomes a visual structure builder.** A toggle "All
+  buckets" / "Custom sections"; custom reveals heading → bucket-chip rows whose
+  `+ bucket` chips are populated from the **current project's actual buckets**.
+  Rename, merge, reorder (drag), and omit become visible actions instead of
+  remembered `Heading = Bucket, Bucket` syntax. Still stores bucket names, so a
+  view stays portable across projects with the same vocabulary.
+- **Live preview** of the rendered document, updating as you edit.
+- **Drop `Category`** (stored today but never surfaced in the flat picker), or
+  repurpose it to group the picker.
+
+Builds on existing pieces: `ZetlViewDocument` / `ZetlViewStore`, per-project
+`DefaultViewId`, creation types (template + view ids), and the self-contained
+project folder + export. The temporary-consumable Kastn "Use" flow that came up
+in the same discussion is tracked in
+[`kastn-templates-roadmap.md`](kastn-templates-roadmap.md) (K8.8).
+
 ### Parked ideas (captured, not yet scheduled)
 From the brainstorm, worth keeping but not yet sized:
 - **Tags / labels** — cross-bucket faceting; design with the typed-capture-log.

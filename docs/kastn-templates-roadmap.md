@@ -241,6 +241,67 @@ Done when:
 - [x] Re-rendering uses current slips, not stale generated output (views are live
   projections).
 
+## K8.8 Temporary Consumable Templates
+
+Goal: make a consumable template a one-tap, throwaway "snippet set" you fire into
+replay across apps/browsers — common info you paste in multiple places — with no
+project clutter left behind.
+
+Consumable templates already seed an ordered Replay queue (see Template Types). A
+**temporary** consumable adds a disposable-instance lifecycle plus a Kastn launch
+flow. Decisions made in design:
+
+- **The template persists; the instance disposes.** Using a temporary consumable
+  instantiates a fresh project from it, loads the Replay queue, and activates it.
+  That project is ephemeral; the template is the durable, reusable source.
+- **Disposed the moment it stops being active in its lane**, by any route:
+  - its Replay queue empties (the natural *finish*),
+  - the lane is cleared, or
+  - the lane is switched to another project.
+  In every case the temp project is **deleted outright**; on finish the lane is
+  left with **no active project**.
+- **Reuse = re-fire.** Replay still consumes (no peek/cycle mode); to paste the
+  same set into another target, fire the template again for a fresh queue. The
+  loop leans on existing behavior — holding `Ctrl+V` with no active project opens
+  the template picker defaulting to Consumable — so the cycle is *Use → consume →
+  finish → no active project → hold `Ctrl+V` → pick it again.*
+- **Kastn "Use" flow.** Use on a temporary consumable **asks the lane** (normal /
+  Shift), starts the temp project there with the queue loaded, and **minimizes
+  Kastn** so you go straight to pasting.
+- **Behavior change, temp-only.** Today an emptied Replay bucket flips back to
+  Standard and keeps the project active; a temp project instead clears the lane
+  and disposes itself. Normal (non-temp) replay is unchanged.
+- **Lane on the chord path.** Holding `Ctrl+T` vs `Ctrl+Shift+T` already encodes
+  the lane, so the chord wins there (no extra prompt); the lane prompt is for
+  Kastn's Use button only.
+
+Where it touches:
+
+- A `Temporary` flag on the consumable template document (forward-compatible add
+  via the existing version + `[JsonExtensionData]`).
+- The disposable lifecycle (instantiate → activate → dispose-on-deactivate) is
+  **Zetl's** — it owns replay, lanes, and project storage as sole writer.
+- **Kastn** owns the Use action, the lane prompt, and auto-minimize.
+- Temp projects stay out of clutter surfaces (like `Zetl Logs`): not offered in
+  compile/source pickers, and they vanish on dispose.
+
+Done when:
+
+- Using a temporary consumable from Kastn starts its replay in the chosen lane and
+  minimizes Kastn; the user can immediately paste through the queue.
+- Finishing the queue (or clearing/switching the lane) deletes the temp project
+  and leaves the lane with no active project — no leftover projects accumulate.
+- The same template can be re-fired for a fresh queue without re-authoring.
+
+Open / decide at build:
+
+- Exact ordering of the dispose hook against the existing empty-Replay→Standard
+  flip.
+- Whether a temp project is visible at all in Kastn's project list while active.
+
+Cross-link: the Kastn-side launch UX sits alongside the view-authoring redesign in
+[`kastn-ui-roadmap.md`](kastn-ui-roadmap.md) (item 12).
+
 ## First Build Slice
 
 The next implementation slice should be **K8.1 plus the smallest part of
