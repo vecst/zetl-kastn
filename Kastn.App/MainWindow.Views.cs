@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -264,12 +265,25 @@ internal partial class MainWindow
         else
         {
             var text = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-            content.Children.Add(new TextBlock
+            var textBlock = new TextBlock
             {
-                Text = text.Trim(),
                 TextWrapping = TextWrapping.Wrap,
                 TextAlignment = SlipTextAlignment(slip)
-            });
+            };
+            // Slip text is Markdown; render each line's inline formatting, with an
+            // explicit break between lines (a Run's newline does not wrap).
+            var lines = text.Trim().ReplaceLineEndings("\n").Split('\n');
+            for (var line = 0; line < lines.Length; line++)
+            {
+                if (line > 0)
+                {
+                    textBlock.Inlines!.Add(new LineBreak());
+                }
+
+                AppendInlines(textBlock.Inlines!, ZetlMarkdown.ParseInlines(lines[line]));
+            }
+
+            content.Children.Add(textBlock);
         }
 
         var block = new Border
@@ -345,6 +359,58 @@ internal partial class MainWindow
             "right" => TextAlignment.Right,
             _ => TextAlignment.Left
         };
+
+    // Walk the Markdown inline AST into Avalonia inlines. Links render as accent
+    // underlined text (visual only on-screen; exported HTML/PDF carry the href).
+    private void AppendInlines(InlineCollection target, IReadOnlyList<ZetlInline> inlines)
+    {
+        foreach (var inline in inlines)
+        {
+            switch (inline)
+            {
+                case ZetlTextRun run:
+                    target.Add(new Run(run.Text));
+                    break;
+                case ZetlCodeRun code:
+                    var codeRun = new Run(code.Text);
+                    if (ThemeFont("ZetlMonoFontFamily") is { } mono)
+                    {
+                        codeRun.FontFamily = mono;
+                    }
+                    target.Add(codeRun);
+                    break;
+                case ZetlEmphasis emphasis:
+                    var span = new Span();
+                    AppendInlines(span.Inlines, emphasis.Children);
+                    switch (emphasis.Kind)
+                    {
+                        case "bold":
+                            span.FontWeight = FontWeight.Bold;
+                            break;
+                        case "italic":
+                            span.FontStyle = FontStyle.Italic;
+                            break;
+                        case "strike":
+                            span.TextDecorations = TextDecorations.Strikethrough;
+                            break;
+                    }
+                    target.Add(span);
+                    break;
+                case ZetlLink link:
+                    var linkSpan = new Span { TextDecorations = TextDecorations.Underline };
+                    if (ThemeBrush("ZetlAccentBrush") is { } accent)
+                    {
+                        linkSpan.Foreground = accent;
+                    }
+                    AppendInlines(linkSpan.Inlines, link.Children);
+                    target.Add(linkSpan);
+                    break;
+            }
+        }
+    }
+
+    private FontFamily? ThemeFont(string key) =>
+        this.TryFindResource(key, out var value) && value is FontFamily font ? font : null;
 
     private async Task LoadPicturePreviewAsync(
         ZetlSlipSnapshot slip,

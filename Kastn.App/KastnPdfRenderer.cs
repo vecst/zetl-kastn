@@ -145,16 +145,56 @@ internal static class KastnPdfRenderer
                     "right" => ParagraphAlignment.Right,
                     _ => ParagraphAlignment.Left
                 };
-                paragraph.AddText($"• {lines[0].TrimStart()}");
+                paragraph.AddText("• ");
+                AppendInlines(paragraph.AddFormattedText(), ZetlMarkdown.ParseInlines(lines[0].TrimStart()));
                 foreach (var line in lines.Skip(1))
                 {
                     paragraph.AddLineBreak();
-                    paragraph.AddText($"   {line}");
+                    paragraph.AddText("   ");
+                    AppendInlines(paragraph.AddFormattedText(), ZetlMarkdown.ParseInlines(line));
                 }
             }
         }
 
         return document;
+    }
+
+    // Walk the Markdown inline AST into MigraDoc formatted text. Bold/italic and web
+    // hyperlinks are honored; inline code and strikethrough have no MigraDoc face, so
+    // they render as plain text (their content is preserved).
+    private static void AppendInlines(FormattedText target, IReadOnlyList<ZetlInline> inlines)
+    {
+        foreach (var inline in inlines)
+        {
+            switch (inline)
+            {
+                case ZetlTextRun run:
+                    target.AddText(run.Text);
+                    break;
+                case ZetlCodeRun code:
+                    target.AddText(code.Text);
+                    break;
+                case ZetlEmphasis emphasis:
+                    var formatted = target.AddFormattedText();
+                    if (emphasis.Kind == "bold")
+                    {
+                        formatted.Bold = true;
+                    }
+                    else if (emphasis.Kind == "italic")
+                    {
+                        formatted.Italic = true;
+                    }
+                    AppendInlines(formatted, emphasis.Children);
+                    break;
+                case ZetlLink link:
+                    var hyperlink = target.AddHyperlink(link.Url, HyperlinkType.Web);
+                    var linkText = hyperlink.AddFormattedText();
+                    linkText.Font.Underline = Underline.Single;
+                    linkText.Font.Color = Colors.Blue;
+                    AppendInlines(linkText, link.Children);
+                    break;
+            }
+        }
     }
 }
 

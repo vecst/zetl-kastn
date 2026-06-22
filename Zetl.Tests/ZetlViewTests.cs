@@ -198,6 +198,40 @@ internal static class ZetlViewTests
             "# Demo\n\n## Ideas\n\n- left one\n- middle one\n- right one");
     }
 
+    public static void MarkdownInlineFormattingRendersToHtml()
+    {
+        AssertEqual("<strong>bold</strong>", ZetlMarkdown.InlinesToHtml("**bold**"), "Bold.");
+        AssertEqual("<em>it</em>", ZetlMarkdown.InlinesToHtml("*it*"), "Italic.");
+        AssertEqual("<del>no</del>", ZetlMarkdown.InlinesToHtml("~~no~~"), "Strikethrough.");
+        AssertEqual(
+            "<code>x &lt; y</code>",
+            ZetlMarkdown.InlinesToHtml("`x < y`"),
+            "Inline code is literal and escaped.");
+        AssertEqual(
+            "<a href=\"https://e.com\">site</a>",
+            ZetlMarkdown.InlinesToHtml("[site](https://e.com)"),
+            "Link with text and URL.");
+        AssertEqual(
+            "<strong>a <em>b</em> c</strong>",
+            ZetlMarkdown.InlinesToHtml("**a *b* c**"),
+            "Bold wrapping italic should nest.");
+
+        // Unmatched delimiters stay literal (and escaped), so plain text is safe.
+        AssertEqual("a * b &amp; c", ZetlMarkdown.InlinesToHtml("a * b & c"), "Unmatched star is literal.");
+        AssertEqual("2 ** 3", ZetlMarkdown.InlinesToHtml("2 ** 3"), "Unmatched double star is literal.");
+
+        // The HTML view applies inline formatting inside its list items.
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Ideas")],
+            [Slip("b1", "see **this** and [x](http://h)")]);
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
+        AssertContains(html, "<li>see <strong>this</strong> and <a href=\"http://h\">x</a></li>");
+    }
+
     private static void AssertContains(string text, string expected)
     {
         if (!text.Contains(expected, StringComparison.Ordinal))

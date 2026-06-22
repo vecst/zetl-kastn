@@ -362,6 +362,59 @@ internal partial class MainWindow
         alignRightButton.FontWeight = canAlign && active == "right" ? FontWeight.Bold : FontWeight.Normal;
     }
 
+    // Wrap the editor selection (or insert a placeholder) in Markdown delimiters, then
+    // reselect the inner text. Setting Text raises TextChanged, so the draft updates and
+    // autosaves like normal typing.
+    private void WrapEditorSelection(string prefix, string suffix, string placeholder)
+    {
+        if (!slipEditor.IsEnabled)
+        {
+            return;
+        }
+
+        var text = slipEditor.Text ?? "";
+        var start = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        var end = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        var selected = text[start..end];
+        var inner = selected.Length == 0 ? placeholder : selected;
+
+        slipEditor.Text = text[..start] + prefix + inner + suffix + text[end..];
+        slipEditor.SelectionStart = start + prefix.Length;
+        slipEditor.SelectionEnd = start + prefix.Length + inner.Length;
+        slipEditor.Focus();
+    }
+
+    private void InsertEditorLink()
+    {
+        if (!slipEditor.IsEnabled)
+        {
+            return;
+        }
+
+        var text = slipEditor.Text ?? "";
+        var start = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        var end = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        var selected = text[start..end];
+
+        if (selected.Length == 0)
+        {
+            // No selection: drop in [text](url) and select "text" to type the label.
+            slipEditor.Text = text[..start] + "[text](url)" + text[end..];
+            slipEditor.SelectionStart = start + 1;
+            slipEditor.SelectionEnd = start + 5;
+        }
+        else
+        {
+            // Selection becomes the link label; select the "url" placeholder.
+            slipEditor.Text = text[..start] + $"[{selected}](url)" + text[end..];
+            var urlStart = start + 1 + selected.Length + 2;
+            slipEditor.SelectionStart = urlStart;
+            slipEditor.SelectionEnd = urlStart + 3;
+        }
+
+        slipEditor.Focus();
+    }
+
     private async Task AddBucketAsync()
     {
         if (!IsOnline || currentProject is null)
@@ -895,6 +948,12 @@ internal partial class MainWindow
             && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
             && !addingSlip;
         slipEditor.IsEnabled = canEdit && editorState.ConflictCurrent is null;
+        var canFormat = slipEditor.IsEnabled;
+        boldButton.IsEnabled = canFormat;
+        italicButton.IsEnabled = canFormat;
+        strikeButton.IsEnabled = canFormat;
+        codeButton.IsEnabled = canFormat;
+        linkButton.IsEnabled = canFormat;
         saveSlipButton.IsEnabled = canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = false;
         deleteSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive;

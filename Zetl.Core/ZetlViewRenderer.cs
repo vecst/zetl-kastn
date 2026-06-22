@@ -298,10 +298,12 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
+                // Slip text is Markdown; parse each line to inline HTML (the parser
+                // escapes its own literal runs). Literal views still render verbatim.
                 var lines = text
                     .ReplaceLineEndings("\n")
                     .Split('\n')
-                    .Select(line => Escape(line.Trim()));
+                    .Select(line => ZetlMarkdown.InlinesToHtml(line.Trim()));
                 var align = SlipAlignment(slip);
                 var style = align == "left" ? "" : $" style=\"text-align:{align}\"";
                 parts.Add($"<li{style}>{string.Join("<br />", lines)}</li>");

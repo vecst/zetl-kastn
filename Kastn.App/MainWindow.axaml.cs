@@ -181,6 +181,11 @@ internal partial class MainWindow : Window
         alignLeftButton.Click += async (_, _) => await SetSlipAlignAsync("left");
         alignCenterButton.Click += async (_, _) => await SetSlipAlignAsync("center");
         alignRightButton.Click += async (_, _) => await SetSlipAlignAsync("right");
+        boldButton.Click += (_, _) => WrapEditorSelection("**", "**", "bold");
+        italicButton.Click += (_, _) => WrapEditorSelection("*", "*", "italic");
+        strikeButton.Click += (_, _) => WrapEditorSelection("~~", "~~", "strike");
+        codeButton.Click += (_, _) => WrapEditorSelection("`", "`", "code");
+        linkButton.Click += (_, _) => InsertEditorLink();
         loadedViews = viewStore.LoadAll();
         viewPickerBox.ItemsSource = loadedViews;
         viewPickerBox.SelectedIndex = 0;

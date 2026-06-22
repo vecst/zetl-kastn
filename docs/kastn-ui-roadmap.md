@@ -99,8 +99,19 @@ modest — Markdown under the hood, not a word processor.
 snapshot mapper. Honored as a block style by the on-screen View, HTML, and PDF
 (the literal and Markdown renderers ignore it). The Editor gains a `Left /
 Center / Right` toolbar (the first toolbar element), with the active state
-reflected. GUI-verified. **Still pending:** the Markdown-aware render + parser
-and the inline-emphasis / link / list toolbar buttons (next increment).
+reflected. GUI-verified.
+
+**Shipped — inline Markdown:** a hand-rolled subset parser (`ZetlMarkdown`)
+turns slip text into one inline AST — bold (`**`), italic (`*`), strikethrough
+(`~~`), inline code (`` ` ``), and links (`[text](url)`) — that every renderer
+walks: HTML (`<strong>`/`<em>`/`<del>`/`<code>`/`<a>`), PDF (MigraDoc formatted
+text + web hyperlinks; code/strike fall back to plain), and the on-screen View
+(Avalonia `Run`/`Span` inlines; links show as accent + underline). Unmatched
+delimiters stay literal, so plain text is always valid and the literal
+Formatted/Plain/TSV views still render verbatim. The Editor toolbar gains
+non-focusable **B / I / S / `</>` / Link** buttons that wrap the selection (or
+drop a placeholder). GUI-verified. **Still pending:** block-level lists
+(bullet / numbered / checkbox) and their toolbar buttons (item 8 territory).
 
 Capabilities:
 - **Inline emphasis:** bold (`**…**`), italic (`*…*`), strikethrough
