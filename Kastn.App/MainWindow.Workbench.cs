@@ -384,6 +384,33 @@ internal partial class MainWindow
         slipEditor.Focus();
     }
 
+    // Prefix every line the selection touches with a list marker (incrementing for
+    // numbered lists), then reselect the modified block. A collapsed selection prefixes
+    // just the current line.
+    private void PrefixSelectedLines(Func<int, string> marker)
+    {
+        if (!slipEditor.IsEnabled)
+        {
+            return;
+        }
+
+        var text = slipEditor.Text ?? "";
+        var selStart = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        var selEnd = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+
+        var blockStart = selStart == 0 ? 0 : text.LastIndexOf('\n', selStart - 1) + 1;
+        var nextNewline = text.IndexOf('\n', selEnd);
+        var blockEnd = nextNewline < 0 ? text.Length : nextNewline;
+
+        var lines = text[blockStart..blockEnd].Split('\n');
+        var rebuilt = string.Join("\n", lines.Select((line, index) => marker(index) + line));
+
+        slipEditor.Text = text[..blockStart] + rebuilt + text[blockEnd..];
+        slipEditor.SelectionStart = blockStart;
+        slipEditor.SelectionEnd = blockStart + rebuilt.Length;
+        slipEditor.Focus();
+    }
+
     private void InsertEditorLink()
     {
         if (!slipEditor.IsEnabled)
@@ -954,6 +981,9 @@ internal partial class MainWindow
         strikeButton.IsEnabled = canFormat;
         codeButton.IsEnabled = canFormat;
         linkButton.IsEnabled = canFormat;
+        bulletListButton.IsEnabled = canFormat;
+        numberListButton.IsEnabled = canFormat;
+        taskListButton.IsEnabled = canFormat;
         saveSlipButton.IsEnabled = canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = false;
         deleteSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive;

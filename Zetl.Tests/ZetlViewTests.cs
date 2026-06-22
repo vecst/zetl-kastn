@@ -232,6 +232,29 @@ internal static class ZetlViewTests
         AssertContains(html, "<li>see <strong>this</strong> and <a href=\"http://h\">x</a></li>");
     }
 
+    public static void MarkdownBlockListsRenderToHtml()
+    {
+        AssertEqual(
+            "<ul><li>one</li><li>two</li></ul>",
+            ZetlMarkdown.BlocksToHtml("- one\n- two"),
+            "Bullet list.");
+        AssertEqual(
+            "<ol><li>a</li><li>b</li></ol>",
+            ZetlMarkdown.BlocksToHtml("1. a\n2. b"),
+            "Ordered list.");
+        AssertEqual(
+            "<ul style=\"list-style:none;padding-left:1.1em\"><li>☐ todo</li><li>☑ done</li></ul>",
+            ZetlMarkdown.BlocksToHtml("- [ ] todo\n- [x] done"),
+            "Task list with checkbox glyphs.");
+        AssertEqual(
+            "intro <strong>x</strong><ul><li>item</li></ul>",
+            ZetlMarkdown.BlocksToHtml("intro **x**\n- item"),
+            "A paragraph then a list, carrying inline formatting.");
+
+        // A plain (no-list) slip stays one paragraph with a line break — unchanged.
+        AssertEqual("a<br />b", ZetlMarkdown.BlocksToHtml("a\nb"), "Plain text stays a paragraph.");
+    }
+
     private static void AssertContains(string text, string expected)
     {
         if (!text.Contains(expected, StringComparison.Ordinal))

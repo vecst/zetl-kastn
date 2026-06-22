@@ -19,6 +19,18 @@ internal sealed record ZetlEmphasis(string Kind, IReadOnlyList<ZetlInline> Child
 
 internal sealed record ZetlLink(string Url, IReadOnlyList<ZetlInline> Children) : ZetlInline;
 
+// Block-level structure within one slip: consecutive plain lines form a paragraph,
+// consecutive same-kind list lines form a list. Lists are flat (no nesting inside a
+// slip — bucket nesting is the renderer's job).
+internal abstract record ZetlBlock;
+
+internal sealed record ZetlParagraphBlock(IReadOnlyList<IReadOnlyList<ZetlInline>> Lines) : ZetlBlock;
+
+internal sealed record ZetlListItem(IReadOnlyList<ZetlInline> Inlines, bool Checked);
+
+// Kind is "bullet", "ordered", or "task".
+internal sealed record ZetlListBlock(string Kind, IReadOnlyList<ZetlListItem> Items) : ZetlBlock;
+
 internal static class ZetlMarkdown
 {
     public static IReadOnlyList<ZetlInline> ParseInlines(string text) =>
@@ -135,6 +147,158 @@ internal static class ZetlMarkdown
         }
 
         return -1;
+    }
+
+    // Split slip text into paragraph and list blocks. Consecutive plain lines join a
+    // paragraph; consecutive list lines of one kind join a list; a kind change or a
+    // plain line ends the run.
+    public static IReadOnlyList<ZetlBlock> ParseBlocks(string text)
+    {
+        var blocks = new List<ZetlBlock>();
+        var lines = (text ?? "").ReplaceLineEndings("\n").Split('\n');
+
+        List<IReadOnlyList<ZetlInline>>? paragraph = null;
+        string? listKind = null;
+        List<ZetlListItem>? items = null;
+
+        void FlushParagraph()
+        {
+            if (paragraph is { Count: > 0 })
+            {
+                blocks.Add(new ZetlParagraphBlock(paragraph));
+            }
+
+            paragraph = null;
+        }
+
+        void FlushList()
+        {
+            if (items is { Count: > 0 })
+            {
+                blocks.Add(new ZetlListBlock(listKind!, items));
+            }
+
+            items = null;
+            listKind = null;
+        }
+
+        foreach (var line in lines)
+        {
+            if (TryClassifyListLine(line, out var kind, out var content, out var isChecked))
+            {
+                FlushParagraph();
+                if (items is null || listKind != kind)
+                {
+                    FlushList();
+                    listKind = kind;
+                    items = [];
+                }
+
+                items.Add(new ZetlListItem(ParseInlines(content), isChecked));
+            }
+            else
+            {
+                FlushList();
+                paragraph ??= [];
+                paragraph.Add(ParseInlines(line));
+            }
+        }
+
+        FlushParagraph();
+        FlushList();
+        return blocks;
+    }
+
+    private static bool TryClassifyListLine(
+        string line,
+        out string kind,
+        out string content,
+        out bool isChecked)
+    {
+        kind = "";
+        content = "";
+        isChecked = false;
+        var trimmed = line.TrimStart();
+
+        // Task: "- [ ] …" or "- [x] …" (checked first so the bullet rule does not win).
+        if (trimmed.Length >= 5
+            && (trimmed[0] == '-' || trimmed[0] == '*')
+            && trimmed[1] == ' '
+            && trimmed[2] == '['
+            && trimmed[4] == ']'
+            && (trimmed[3] is ' ' or 'x' or 'X')
+            && (trimmed.Length == 5 || trimmed[5] == ' '))
+        {
+            kind = "task";
+            isChecked = trimmed[3] is 'x' or 'X';
+            content = trimmed.Length > 6 ? trimmed[6..] : "";
+            return true;
+        }
+
+        // Bullet: "- …" or "* …".
+        if (trimmed.StartsWith("- ", StringComparison.Ordinal)
+            || trimmed.StartsWith("* ", StringComparison.Ordinal))
+        {
+            kind = "bullet";
+            content = trimmed[2..];
+            return true;
+        }
+
+        // Ordered: "12. …".
+        var dot = trimmed.IndexOf(". ", StringComparison.Ordinal);
+        if (dot > 0 && trimmed[..dot].All(char.IsAsciiDigit))
+        {
+            kind = "ordered";
+            content = trimmed[(dot + 2)..];
+            return true;
+        }
+
+        return false;
+    }
+
+    // Render a slip's blocks to the inner HTML of its list item: paragraphs as text
+    // with line breaks, lists as <ul>/<ol> (task lists use checkbox glyphs).
+    public static string BlocksToHtml(string text)
+    {
+        var builder = new StringBuilder();
+        foreach (var block in ParseBlocks(text))
+        {
+            switch (block)
+            {
+                case ZetlParagraphBlock paragraph:
+                    builder.Append(string.Join("<br />", paragraph.Lines.Select(InlinesToHtml)));
+                    break;
+                case ZetlListBlock { Kind: "ordered" } ordered:
+                    builder.Append("<ol>");
+                    foreach (var item in ordered.Items)
+                    {
+                        builder.Append("<li>").Append(InlinesToHtml(item.Inlines)).Append("</li>");
+                    }
+                    builder.Append("</ol>");
+                    break;
+                case ZetlListBlock { Kind: "task" } task:
+                    builder.Append("<ul style=\"list-style:none;padding-left:1.1em\">");
+                    foreach (var item in task.Items)
+                    {
+                        builder.Append("<li>")
+                            .Append(item.Checked ? "☑ " : "☐ ")
+                            .Append(InlinesToHtml(item.Inlines))
+                            .Append("</li>");
+                    }
+                    builder.Append("</ul>");
+                    break;
+                case ZetlListBlock bullet:
+                    builder.Append("<ul>");
+                    foreach (var item in bullet.Items)
+                    {
+                        builder.Append("<li>").Append(InlinesToHtml(item.Inlines)).Append("</li>");
+                    }
+                    builder.Append("</ul>");
+                    break;
+            }
+        }
+
+        return builder.ToString();
     }
 
     public static string InlinesToHtml(IReadOnlyList<ZetlInline> inlines)

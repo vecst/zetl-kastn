@@ -613,6 +613,10 @@
                         <Button x:Name="codeButton" Content="&lt;/&gt;" Padding="9,3" Focusable="False" ToolTip.Tip="Inline code (`…`)" />
                         <Button x:Name="linkButton" Content="Link" Padding="9,3" Focusable="False" ToolTip.Tip="Link ([text](url))" />
                         <Border Width="1" Background="{DynamicResource ZetlBorderBrush}" Margin="4,2" />
+                        <Button x:Name="bulletListButton" Content="•" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Bullet list (- )" />
+                        <Button x:Name="numberListButton" Content="1." Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Numbered list (1. )" />
+                        <Button x:Name="taskListButton" Content="☑" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Checklist (- [ ] )" />
+                        <Border Width="1" Background="{DynamicResource ZetlBorderBrush}" Margin="4,2" />
                         <TextBlock Text="Align" Classes="muted" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <Button x:Name="alignLeftButton" Content="Left" Padding="9,3" ToolTip.Tip="Align left" />
                         <Button x:Name="alignCenterButton" Content="Center" Padding="9,3" ToolTip.Tip="Align center" />

@@ -186,6 +186,9 @@ internal partial class MainWindow : Window
         strikeButton.Click += (_, _) => WrapEditorSelection("~~", "~~", "strike");
         codeButton.Click += (_, _) => WrapEditorSelection("`", "`", "code");
         linkButton.Click += (_, _) => InsertEditorLink();
+        bulletListButton.Click += (_, _) => PrefixSelectedLines(_ => "- ");
+        numberListButton.Click += (_, _) => PrefixSelectedLines(index => $"{index + 1}. ");
+        taskListButton.Click += (_, _) => PrefixSelectedLines(_ => "- [ ] ");
         loadedViews = viewStore.LoadAll();
         viewPickerBox.ItemsSource = loadedViews;
         viewPickerBox.SelectedIndex = 0;

@@ -126,37 +126,77 @@ internal static class KastnPdfRenderer
                 }
 
                 var displayText = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-                var lines = displayText
-                    .ReplaceLineEndings("\n")
-                    .Split('\n')
-                    .Select(line => line.TrimEnd())
-                    .ToList();
-                if (lines.All(line => line.Length == 0))
+                if (string.IsNullOrWhiteSpace(displayText))
                 {
                     continue;
                 }
 
-                var paragraph = section.AddParagraph();
-                paragraph.Format.LeftIndent = Unit.FromPoint((group.Depth + 1) * 14);
-                paragraph.Format.SpaceAfter = Unit.FromPoint(4);
-                paragraph.Format.Alignment = ZetlViewRenderer.SlipAlignment(slip) switch
-                {
-                    "center" => ParagraphAlignment.Center,
-                    "right" => ParagraphAlignment.Right,
-                    _ => ParagraphAlignment.Left
-                };
-                paragraph.AddText("• ");
-                AppendInlines(paragraph.AddFormattedText(), ZetlMarkdown.ParseInlines(lines[0].TrimStart()));
-                foreach (var line in lines.Skip(1))
-                {
-                    paragraph.AddLineBreak();
-                    paragraph.AddText("   ");
-                    AppendInlines(paragraph.AddFormattedText(), ZetlMarkdown.ParseInlines(line));
-                }
+                AppendSlipBlocks(section, slip, displayText, group.Depth);
             }
         }
 
         return document;
+    }
+
+    // Render a slip's Markdown blocks into the section: paragraphs (the first line
+    // carries the slip's "•" bucket bullet) and list items (their own marker, deeper
+    // indent). Alignment from the slip's Align rides on every paragraph.
+    private static void AppendSlipBlocks(Section section, ZetlSlipSnapshot slip, string text, int depth)
+    {
+        var alignment = ZetlViewRenderer.SlipAlignment(slip) switch
+        {
+            "center" => ParagraphAlignment.Center,
+            "right" => ParagraphAlignment.Right,
+            _ => ParagraphAlignment.Left
+        };
+        var placedSlipBullet = false;
+
+        foreach (var block in ZetlMarkdown.ParseBlocks(text))
+        {
+            if (block is ZetlParagraphBlock paragraphBlock)
+            {
+                var paragraph = section.AddParagraph();
+                paragraph.Format.LeftIndent = Unit.FromPoint((depth + 1) * 14);
+                paragraph.Format.SpaceAfter = Unit.FromPoint(4);
+                paragraph.Format.Alignment = alignment;
+                for (var line = 0; line < paragraphBlock.Lines.Count; line++)
+                {
+                    if (line > 0)
+                    {
+                        paragraph.AddLineBreak();
+                    }
+
+                    if (!placedSlipBullet)
+                    {
+                        paragraph.AddText("• ");
+                        placedSlipBullet = true;
+                    }
+
+                    AppendInlines(paragraph.AddFormattedText(), paragraphBlock.Lines[line]);
+                }
+            }
+            else if (block is ZetlListBlock listBlock)
+            {
+                var number = 1;
+                foreach (var item in listBlock.Items)
+                {
+                    var paragraph = section.AddParagraph();
+                    paragraph.Format.LeftIndent = Unit.FromPoint((depth + 2) * 14);
+                    paragraph.Format.SpaceAfter = Unit.FromPoint(2);
+                    paragraph.Format.Alignment = alignment;
+                    var marker = listBlock.Kind switch
+                    {
+                        "ordered" => $"{number++}. ",
+                        "task" => item.Checked ? "☑ " : "☐ ",
+                        _ => "• "
+                    };
+                    paragraph.AddText(marker);
+                    AppendInlines(paragraph.AddFormattedText(), item.Inlines);
+                }
+
+                placedSlipBullet = true;
+            }
+        }
     }
 
     // Walk the Markdown inline AST into MigraDoc formatted text. Bold/italic and web

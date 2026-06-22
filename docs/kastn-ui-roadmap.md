@@ -88,7 +88,7 @@ readable document). GUI-verified.
   (unifying today's text-`TextBox` and picture-`StackPanel` paths), where each
   slip is its own selectable, clickable, scroll-target element.
 
-### 7. Slip text formatting (the Editor toolbar) — In progress
+### 7. Slip text formatting (the Editor toolbar) — Done
 A small formatting toolbar above the Editor so a slip can be dressed up enough
 to drop into a shareable PDF or HTML without leaving Kastn. Intentionally
 modest — Markdown under the hood, not a word processor.
@@ -110,8 +110,18 @@ text + web hyperlinks; code/strike fall back to plain), and the on-screen View
 delimiters stay literal, so plain text is always valid and the literal
 Formatted/Plain/TSV views still render verbatim. The Editor toolbar gains
 non-focusable **B / I / S / `</>` / Link** buttons that wrap the selection (or
-drop a placeholder). GUI-verified. **Still pending:** block-level lists
-(bullet / numbered / checkbox) and their toolbar buttons (item 8 territory).
+drop a placeholder). GUI-verified.
+
+**Shipped — slip-level lists:** a block layer on the parser (`ParseBlocks`)
+splits slip text into paragraph and list blocks — bullet (`- `), numbered
+(`1. `), and checkbox (`- [ ]` / `- [x]`). Rendered with real structure by HTML
+(`<ul>`/`<ol>`, task lists as checkbox glyphs), PDF (marker + hanging indent;
+the slip's bucket bullet stays on its leading paragraph), and the on-screen View
+(marker + content rows). The toolbar gains **• / 1. / ☑** buttons that prefix
+the selected lines (numbered increments). Inline formatting carries through list
+items; literal views still render verbatim. GUI-verified. Item 7 complete; the
+remaining list work (per-view list *style* and bucket outline numbering) is
+item 8.
 
 Capabilities:
 - **Inline emphasis:** bold (`**…**`), italic (`*…*`), strikethrough

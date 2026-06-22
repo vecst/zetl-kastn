@@ -173,6 +173,7 @@ internal static class PortableSelfTests
                 ("View renderer builds escaped HTML", ZetlViewTests.RendererBuildsEscapedHtml),
                 ("View renderer honors slip alignment", ZetlViewTests.RendererHonorsSlipAlignment),
                 ("Markdown inline formatting renders to HTML", ZetlViewTests.MarkdownInlineFormattingRendersToHtml),
+                ("Markdown block lists render to HTML", ZetlViewTests.MarkdownBlockListsRenderToHtml),
                 ("View renderer embeds pictures in Markdown and HTML", ZetlViewTests.RendererEmbedsPictures),
                 ("View store loads, saves, and deletes user views", ZetlViewTests.StoreLoadsSavesAndDeletesUserViews),
                 ("View sections rename, reorder, and omit buckets", ZetlViewTests.SectionsRenameReorderAndOmitBuckets),

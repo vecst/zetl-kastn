@@ -265,25 +265,7 @@ internal partial class MainWindow
         else
         {
             var text = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-            var textBlock = new TextBlock
-            {
-                TextWrapping = TextWrapping.Wrap,
-                TextAlignment = SlipTextAlignment(slip)
-            };
-            // Slip text is Markdown; render each line's inline formatting, with an
-            // explicit break between lines (a Run's newline does not wrap).
-            var lines = text.Trim().ReplaceLineEndings("\n").Split('\n');
-            for (var line = 0; line < lines.Length; line++)
-            {
-                if (line > 0)
-                {
-                    textBlock.Inlines!.Add(new LineBreak());
-                }
-
-                AppendInlines(textBlock.Inlines!, ZetlMarkdown.ParseInlines(lines[line]));
-            }
-
-            content.Children.Add(textBlock);
+            AppendSlipBlocks(content, slip, text.Trim());
         }
 
         var block = new Border
@@ -359,6 +341,66 @@ internal partial class MainWindow
             "right" => TextAlignment.Right,
             _ => TextAlignment.Left
         };
+
+    // Render a slip's Markdown blocks into the slip block: paragraphs as wrapped text
+    // (honoring alignment) and lists as marker + content rows with a hanging indent.
+    private void AppendSlipBlocks(StackPanel content, ZetlSlipSnapshot slip, string text)
+    {
+        var alignment = SlipTextAlignment(slip);
+        foreach (var block in ZetlMarkdown.ParseBlocks(text))
+        {
+            if (block is ZetlParagraphBlock paragraph)
+            {
+                var textBlock = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    TextAlignment = alignment
+                };
+                for (var line = 0; line < paragraph.Lines.Count; line++)
+                {
+                    if (line > 0)
+                    {
+                        textBlock.Inlines!.Add(new LineBreak());
+                    }
+
+                    AppendInlines(textBlock.Inlines!, paragraph.Lines[line]);
+                }
+
+                content.Children.Add(textBlock);
+            }
+            else if (block is ZetlListBlock list)
+            {
+                var number = 1;
+                foreach (var item in list.Items)
+                {
+                    var marker = list.Kind switch
+                    {
+                        "ordered" => $"{number++}.",
+                        "task" => item.Checked ? "☑" : "☐",
+                        _ => "•"
+                    };
+                    var row = new Grid
+                    {
+                        ColumnDefinitions = new ColumnDefinitions("Auto,*"),
+                        Margin = new Avalonia.Thickness(8, 1, 0, 1)
+                    };
+                    var markerBlock = new TextBlock
+                    {
+                        Text = marker,
+                        MinWidth = 16,
+                        Margin = new Avalonia.Thickness(0, 0, 6, 0)
+                    };
+                    Grid.SetColumn(markerBlock, 0);
+                    var itemBlock = new TextBlock { TextWrapping = TextWrapping.Wrap };
+                    AppendInlines(itemBlock.Inlines!, item.Inlines);
+                    Grid.SetColumn(itemBlock, 1);
+                    row.Children.Add(markerBlock);
+                    row.Children.Add(itemBlock);
+                    content.Children.Add(row);
+                }
+            }
+        }
+    }
 
     // Walk the Markdown inline AST into Avalonia inlines. Links render as accent
     // underlined text (visual only on-screen; exported HTML/PDF carry the href).
