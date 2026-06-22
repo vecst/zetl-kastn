@@ -65,10 +65,28 @@ right. Recovers a band of vertical space and removes the empty gaps.
 - Per-bucket count badge (`12 · 2 hidden`) — pairs with step 4 of the build
   workflow.
 
-### 6. Tree ⇄ View link (falls out of the persistent View)
+### 6. Tree ⇄ View link (falls out of the persistent View) — Done
 With the View always visible, selecting a slip in the tree should scroll/
 highlight it in the rendered View, and clicking it in the View selects it in
 the tree. This is the step-6 "bridge" from the build workflow, now natural.
+Shipped: the center View is one whole-project per-slip document
+(`BuildViewDocument`); a bucket click no longer scopes it; selecting a slip
+scrolls to + accent-highlights its block; clicking a block selects the slip in
+the tree. The view kind now governs Copy/Export only (on-screen stays the
+readable document). GUI-verified.
+
+- **The View always renders the whole project.** Today a bucket click scopes
+  `CurrentFilteredSlips()`, so selecting a bucket narrows the center View. That
+  has to stop: the View is the constant whole-project document; the tree is for
+  navigation, selection, and management, and a bucket selection only moves the
+  highlight/scroll position in the View — it never trims what the View renders.
+  (Filters and search remain the explicit ways to narrow the rendered set.)
+- **Prerequisite: an addressable, element-based View.** The flat read-only
+  `TextBox` can't host per-slip click/scroll/highlight, and items 7–9
+  (formatting, nested outline, clickable wiki-links) all need the same thing.
+  So this step re-bases the center View onto a single per-slip element document
+  (unifying today's text-`TextBox` and picture-`StackPanel` paths), where each
+  slip is its own selectable, clickable, scroll-target element.
 
 ### 7. Slip text formatting (the Editor toolbar)
 A small formatting toolbar above the Editor so a slip can be dressed up enough
@@ -161,6 +179,31 @@ between the List/Outline layout and the Board.
 - Pure projection over slips — no new persisted board state beyond bucket
   membership and order, which already exist.
 
+### 11. Drag-and-drop in the side pane (build-workflow step 5) — Done
+The tree is currently button/picker-driven (Move dropdown, parent-bucket combo).
+Promote it to direct manipulation in the side pane:
+- **Drag a slip** onto a bucket to move it (`MoveSlip`), or within a bucket to
+  reorder it (`ReorderSlip`) — both already exist and stay sole-writer through
+  Zetl.
+- **Drag a bucket** onto another bucket to re-parent it, or to the root strip to
+  promote it to top level (`UpdateBucket` parent change, cycle-guarded), with a
+  clear drop affordance for parent/child vs. reorder.
+- Respect the protected `Deleted` bucket: it is never a drop target for re-parent
+  and never gets dragged.
+- Keep selection, editor state, and the View highlight stable across the move,
+  the same way the button-based commands already do.
+- Once this lands it deletes the Move dropdown (workflow step 5 note); the Board
+  (item 10) reuses the same drag plumbing for cards/columns.
+
+Shipped (`MainWindow.DragDrop.cs`): drag a slip onto a bucket (move/append) or
+onto a slip (reorder/move-before); drag a bucket onto a bucket to re-parent, or
+onto empty tree space to promote to top level; `Deleted` is never dragged or a
+drop target; cycles (a bucket onto its own descendant) are rejected. Each drop is
+one of `MoveSlip` / `ReorderSlip` / `UpdateBucket`, and the moved slip stays
+selected with the editor/inspector/View re-synced through the canonical tree
+path. GUI-verified. Still pending: a live drop-indicator affordance and removing
+the now-redundant Move dropdown / parent combo (kept for now as a fallback).
+
 ### Parked ideas (captured, not yet scheduled)
 From the brainstorm, worth keeping but not yet sized:
 - **Tags / labels** — cross-bucket faceting; design with the typed-capture-log.
@@ -193,8 +236,11 @@ roadmap re-skins where they live:
    the Slip/View toggle; drop the inspector dropdown (items 1–2).
 2. Top-bar streamline + relocate New slip (items 3–4).
 3. Tree icons + count badges + expander-glyph fix (item 5).
-4. Filters drive the tree (workflow step 4) + Tree ⇄ View link (item 6).
-5. Drag-and-drop (workflow step 5).
+4. Filters drive the tree (workflow step 4) + Tree ⇄ View link (item 6),
+   including the whole-project View re-base (bucket clicks stop scoping the
+   View) and the element-based addressable View it depends on.
+5. Drag-and-drop in the side pane (item 11 / workflow step 5): slips move and
+   reorder, buckets re-parent; retire the Move dropdown.
 6. Publishing phase (items 7–8): Markdown-aware render + `Align` data model
    first, then the Editor formatting toolbar, then view structure (outline
    numbering + list style).

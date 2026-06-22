@@ -151,6 +151,7 @@ internal partial class MainWindow : Window
         connection.SnapshotChanged += OnSnapshotChanged;
         landingProjectList.SelectionChanged += OnProjectSelectionChanged;
         projectTree.SelectionChanged += OnTreeSelectionChanged;
+        SetupTreeDragDrop();
         detailEditorButton.Click += (_, _) => SetDetailPaneMode(showDetails: false);
         detailDetailsButton.Click += (_, _) => SetDetailPaneMode(showDetails: true);
         slipList.SelectionChanged += OnSlipSelectionChanged;
