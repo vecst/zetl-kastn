@@ -25,37 +25,38 @@ internal partial class MainWindow
         if (currentProject is null)
         {
             viewerSummaryText.Text = "No project selected.";
-            viewerTextBox.Text = "";
-            ClearPictureDocument();
+            lastRenderedViewText = "";
+            lastViewSignature = "";
+            ClearViewDocument();
             RefreshSlipInspector([]);
+            copyViewButton.IsEnabled = false;
+            exportViewButton.IsEnabled = false;
             return;
         }
 
-        var visible = CurrentFilteredSlips();
+        var visible = CurrentViewSlips();
         RefreshSlipInspector(visible);
-        var hasPictures = visible.Any(slip => slip.Type == ZetlSlipType.Picture);
         viewerSummaryText.Text = visible.Count == 0
             ? "No slips match the current filters."
             : $"{visible.Count} of {currentProject.Slips.Count} slips in the current view.";
-        viewerTextBox.IsVisible = !hasPictures;
-        viewerDocumentScroll.IsVisible = hasPictures;
-        if (hasPictures)
+
+        // The on-screen View is always the readable per-slip document; the view kind
+        // governs only the Copy/Export artifact. Rebuild only when the rendered content
+        // could have changed (a project mutation, the filters, or the chosen view) — a
+        // pure selection change just re-highlights, so picture blocks never reload.
+        var signature = ViewSignature(visible);
+        if (signature != lastViewSignature || viewSlipBlocks.Count == 0)
         {
-            BuildPictureDocument(visible);
+            BuildViewDocument(visible);
+            lastViewSignature = signature;
         }
-        else
-        {
-            ClearPictureDocument();
-        }
+
+        UpdateViewSelectionHighlight();
 
         if (SelectedView.Kind == ZetlViewKinds.Pdf)
         {
-            // PDF is binary — there is no inline text to show or copy; the preview
-            // explains how to get it, and Export writes the .pdf.
+            // PDF is binary — there is no text to copy; Export writes the .pdf.
             lastRenderedViewText = "";
-            viewerTextBox.Text = visible.Count == 0
-                ? ""
-                : "PDF view — use Export to save a .pdf of the current slips.";
             copyViewButton.IsEnabled = false;
             exportViewButton.IsEnabled = visible.Count > 0;
         }
@@ -64,7 +65,6 @@ internal partial class MainWindow
             lastRenderedViewText = visible.Count == 0
                 ? ""
                 : ZetlViewRenderer.Render(currentProject, visible, SelectedView);
-            viewerTextBox.Text = lastRenderedViewText;
             var hasOutput = lastRenderedViewText.Length > 0;
             copyViewButton.IsEnabled = hasOutput;
             exportViewButton.IsEnabled = hasOutput;
@@ -73,10 +73,23 @@ internal partial class MainWindow
         deleteViewMenuItem.IsEnabled = !ZetlViewDefaults.IsBuiltIn(SelectedView.Id);
     }
 
+    private string ViewSignature(IReadOnlyList<ZetlSlipSnapshot> visible)
+    {
+        // Bumps on any durable mutation (ChangeSequence), filter change (the id set),
+        // or chosen view — the cases where the rendered document actually differs.
+        return $"{SelectedView.Id}|{currentProject?.ChangeSequence}|"
+            + string.Join(',', visible.Select(slip => slip.Id));
+    }
+
     private void RefreshSlipInspector(IReadOnlyList<ZetlSlipSnapshot> visible)
     {
+        // The inspector follows the tree selection, which can be any slip in the
+        // project — including a deleted or filtered-out one the whole-project View
+        // does not render. Keep it as long as the slip still exists in the project.
+        _ = visible;
         var selected = SelectedTreeNode?.Slip;
-        if (selected is not null && visible.All(slip => slip.Id != selected.Id))
+        if (selected is not null
+            && currentProject?.Slips.All(slip => slip.Id != selected.Id) != false)
         {
             selected = null;
         }
@@ -160,17 +173,35 @@ internal partial class MainWindow
         }
     }
 
-    private void BuildPictureDocument(IReadOnlyList<ZetlSlipSnapshot> visible)
+    // Build the whole-project readable document: one addressable block per slip,
+    // grouped/nested by the chosen view's BuildGroups (which drops excluded slips).
+    private void BuildViewDocument(IReadOnlyList<ZetlSlipSnapshot> visible)
     {
         var generation = ++pictureRenderGeneration;
         DisposeDisplayedPictures();
         viewerDocumentPanel.Children.Clear();
+        viewSlipBlocks.Clear();
+        highlightedViewSlipId = null;
         if (currentProject is null)
         {
             return;
         }
 
-        foreach (var group in ZetlViewRenderer.BuildGroups(currentProject, visible, SelectedView))
+        var groups = ZetlViewRenderer.BuildGroups(currentProject, visible, SelectedView);
+        if (groups.Count == 0)
+        {
+            viewerDocumentPanel.Children.Add(new TextBlock
+            {
+                Text = visible.Count == 0
+                    ? "No slips match the current filters."
+                    : "Every slip in view is hidden from views.",
+                Classes = { "muted" },
+                TextWrapping = TextWrapping.Wrap
+            });
+            return;
+        }
+
+        foreach (var group in groups)
         {
             viewerDocumentPanel.Children.Add(new TextBlock
             {
@@ -182,66 +213,129 @@ internal partial class MainWindow
 
             foreach (var slip in group.Slips)
             {
-                if (slip.Type != ZetlSlipType.Picture)
-                {
-                    viewerDocumentPanel.Children.Add(new TextBlock
-                    {
-                        Text = $"• {(string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text)}",
-                        TextWrapping = TextWrapping.Wrap,
-                        Margin = new Avalonia.Thickness((group.Depth + 1) * 14, 0, 0, 0)
-                    });
-                    continue;
-                }
-
-                var image = new Avalonia.Controls.Image
-                {
-                    Stretch = Stretch.Uniform,
-                    MaxHeight = 520,
-                    HorizontalAlignment = HorizontalAlignment.Left
-                };
-                var loading = new TextBlock
-                {
-                    Text = "Loading picture…",
-                    Classes = { "muted" },
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                var preview = new Grid
-                {
-                    MinHeight = 150,
-                    Children = { image, loading }
-                };
-                var picturePanel = new StackPanel
-                {
-                    Spacing = 5,
-                    Margin = new Avalonia.Thickness((group.Depth + 1) * 14, 0, 0, 6),
-                    Children =
-                    {
-                        new Border
-                        {
-                            Classes = { "surface" },
-                            Padding = new Avalonia.Thickness(8),
-                            Child = preview
-                        }
-                    }
-                };
-                var pictureLabel = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-                if (!string.IsNullOrWhiteSpace(pictureLabel))
-                {
-                    picturePanel.Children.Add(new TextBlock
-                    {
-                        Text = pictureLabel.Trim(),
-                        Classes = { "muted" },
-                        FontStyle = FontStyle.Italic,
-                        TextWrapping = TextWrapping.Wrap
-                    });
-                }
-
-                viewerDocumentPanel.Children.Add(picturePanel);
-                _ = LoadPicturePreviewAsync(slip, image, loading, generation);
+                viewerDocumentPanel.Children.Add(BuildSlipBlock(slip, group.Depth, generation));
             }
         }
     }
+
+    private Border BuildSlipBlock(ZetlSlipSnapshot slip, int depth, int generation)
+    {
+        var content = new StackPanel { Spacing = 5 };
+        if (slip.Type == ZetlSlipType.Picture)
+        {
+            var image = new Avalonia.Controls.Image
+            {
+                Stretch = Stretch.Uniform,
+                MaxHeight = 520,
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+            var loading = new TextBlock
+            {
+                Text = "Loading picture…",
+                Classes = { "muted" },
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var preview = new Grid
+            {
+                MinHeight = 150,
+                Children = { image, loading }
+            };
+            content.Children.Add(new Border
+            {
+                Classes = { "surface" },
+                Padding = new Avalonia.Thickness(8),
+                Child = preview
+            });
+            var caption = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
+            if (!string.IsNullOrWhiteSpace(caption))
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = caption.Trim(),
+                    Classes = { "muted" },
+                    FontStyle = FontStyle.Italic,
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
+
+            _ = LoadPicturePreviewAsync(slip, image, loading, generation);
+        }
+        else
+        {
+            var text = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
+            content.Children.Add(new TextBlock
+            {
+                Text = text.Trim(),
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        var block = new Border
+        {
+            Tag = slip.Id,
+            Child = content,
+            Padding = new Avalonia.Thickness(8, 6),
+            Margin = new Avalonia.Thickness((depth + 1) * 14, 0, 0, 4),
+            CornerRadius = new Avalonia.CornerRadius(4),
+            BorderThickness = new Avalonia.Thickness(1),
+            BorderBrush = Brushes.Transparent,
+            Background = Brushes.Transparent,
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+        block.PointerPressed += OnViewSlipBlockPressed;
+        viewSlipBlocks[slip.Id] = block;
+        return block;
+    }
+
+    // A block click selects that slip in the tree, which drives the editor, inspector,
+    // and (back through RefreshViewer) the View highlight — the View ⇄ tree bridge.
+    private void OnViewSlipBlockPressed(object? sender, PointerPressedEventArgs args)
+    {
+        if ((sender as Control)?.Tag is not string slipId)
+        {
+            return;
+        }
+
+        var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, slipId);
+        if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
+        {
+            projectTree.SelectedItem = node;
+        }
+    }
+
+    // Highlight the tree-selected slip's block and scroll it into view (the tree → View
+    // half of the bridge). A pure selection change reaches here without a rebuild.
+    private void UpdateViewSelectionHighlight()
+    {
+        if (highlightedViewSlipId is not null
+            && viewSlipBlocks.TryGetValue(highlightedViewSlipId, out var previous))
+        {
+            ApplyBlockHighlight(previous, on: false);
+        }
+
+        highlightedViewSlipId = null;
+        var selectedId = SelectedTreeNode?.Slip?.Id ?? editorState.SlipId;
+        if (selectedId is null || !viewSlipBlocks.TryGetValue(selectedId, out var block))
+        {
+            return;
+        }
+
+        ApplyBlockHighlight(block, on: true);
+        highlightedViewSlipId = selectedId;
+        block.BringIntoView();
+        // A freshly rebuilt block may not be laid out yet; retry after layout.
+        Dispatcher.UIThread.Post(block.BringIntoView, DispatcherPriority.Background);
+    }
+
+    private void ApplyBlockHighlight(Border block, bool on)
+    {
+        block.BorderBrush = on ? ThemeBrush("ZetlAccentBrush") ?? Brushes.Transparent : Brushes.Transparent;
+        block.Background = on ? ThemeBrush("ZetlSurfaceBrush") ?? Brushes.Transparent : Brushes.Transparent;
+    }
+
+    private IBrush? ThemeBrush(string key) =>
+        this.TryFindResource(key, out var value) && value is IBrush brush ? brush : null;
 
     private async Task LoadPicturePreviewAsync(
         ZetlSlipSnapshot slip,
@@ -384,11 +478,12 @@ internal partial class MainWindow
         return result;
     }
 
-    private void ClearPictureDocument()
+    private void ClearViewDocument()
     {
         pictureRenderGeneration++;
         viewerDocumentPanel.Children.Clear();
-        viewerDocumentScroll.IsVisible = false;
+        viewSlipBlocks.Clear();
+        highlightedViewSlipId = null;
         DisposeDisplayedPictures();
     }
 
@@ -422,7 +517,7 @@ internal partial class MainWindow
             return;
         }
 
-        var visible = CurrentFilteredSlips();
+        var visible = CurrentViewSlips();
         var pictures = await LoadPictureContentsAsync(visible);
         var rendered = ZetlViewRenderer.Render(currentProject, visible, SelectedView, pictures);
         await clipboard.SetTextAsync(rendered);
@@ -457,7 +552,7 @@ internal partial class MainWindow
 
         try
         {
-            var visible = CurrentFilteredSlips();
+            var visible = CurrentViewSlips();
             var pictures = await LoadPictureContentsAsync(visible);
             await using var stream = await file.OpenWriteAsync();
             if (isPdf)

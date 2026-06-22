@@ -102,6 +102,13 @@ internal partial class MainWindow : Window
     private string? inspectedSlipId;
     private int pictureRenderGeneration;
     private long pictureCacheBytes;
+    // The center View is one addressable per-slip document: each slip id maps to its
+    // rendered block so the tree can scroll/highlight it and a block click can select
+    // it back in the tree. The signature lets a pure selection change skip a rebuild
+    // (so picture blocks don't reload) while content changes still re-render.
+    private readonly Dictionary<string, Border> viewSlipBlocks = new(StringComparer.Ordinal);
+    private string lastViewSignature = "";
+    private string? highlightedViewSlipId;
 
     public MainWindow()
     {

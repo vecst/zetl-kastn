@@ -570,15 +570,9 @@
                                FontSize="12"
                                Margin="0,2,0,8" />
                     <Grid Grid.Row="2">
-                        <TextBox x:Name="viewerTextBox"
-                                 AcceptsReturn="True"
-                                 IsReadOnly="True"
-                                 TextWrapping="Wrap"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
                         <ScrollViewer x:Name="viewerDocumentScroll"
-                                      IsVisible="False"
                                       VerticalScrollBarVisibility="Auto">
-                          <StackPanel x:Name="viewerDocumentPanel" Spacing="12" Margin="8" />
+                          <StackPanel x:Name="viewerDocumentPanel" Spacing="6" Margin="8" />
                         </ScrollViewer>
                     </Grid>
                   </Grid>
