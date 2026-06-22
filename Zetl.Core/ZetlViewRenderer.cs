@@ -302,7 +302,9 @@ internal static class ZetlViewRenderer
                     .ReplaceLineEndings("\n")
                     .Split('\n')
                     .Select(line => Escape(line.Trim()));
-                parts.Add($"<li>{string.Join("<br />", lines)}</li>");
+                var align = SlipAlignment(slip);
+                var style = align == "left" ? "" : $" style=\"text-align:{align}\"";
+                parts.Add($"<li{style}>{string.Join("<br />", lines)}</li>");
             }
 
             parts.Add("</ul>");
@@ -321,6 +323,15 @@ internal static class ZetlViewRenderer
 
     private static string EscapeMarkdownAlt(string text) =>
         text.Replace("[", "\\[").Replace("]", "\\]");
+
+    // Per-slip block alignment, normalized to one of left/center/right. Honored as
+    // a block style by the HTML/PDF renderers and the on-screen View; the literal
+    // and Markdown renderers ignore it (Markdown has no alignment).
+    public static string SlipAlignment(ZetlSlipSnapshot slip)
+    {
+        var value = slip.Align?.Trim().ToLowerInvariant();
+        return value is "center" or "right" ? value : "left";
+    }
 
     private static string SlipText(ZetlSlipSnapshot slip) =>
         slip.Type == ZetlSlipType.Picture

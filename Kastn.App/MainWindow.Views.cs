@@ -267,7 +267,8 @@ internal partial class MainWindow
             content.Children.Add(new TextBlock
             {
                 Text = text.Trim(),
-                TextWrapping = TextWrapping.Wrap
+                TextWrapping = TextWrapping.Wrap,
+                TextAlignment = SlipTextAlignment(slip)
             });
         }
 
@@ -336,6 +337,14 @@ internal partial class MainWindow
 
     private IBrush? ThemeBrush(string key) =>
         this.TryFindResource(key, out var value) && value is IBrush brush ? brush : null;
+
+    private static TextAlignment SlipTextAlignment(ZetlSlipSnapshot slip) =>
+        ZetlViewRenderer.SlipAlignment(slip) switch
+        {
+            "center" => TextAlignment.Center,
+            "right" => TextAlignment.Right,
+            _ => TextAlignment.Left
+        };
 
     private async Task LoadPicturePreviewAsync(
         ZetlSlipSnapshot slip,

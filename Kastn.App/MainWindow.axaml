@@ -595,21 +595,31 @@
                   </StackPanel>
                   <Grid Grid.Row="2">
                     <Grid x:Name="editorPanel"
-                          RowDefinitions="Auto,*,Auto,Auto">
+                          RowDefinitions="Auto,Auto,*,Auto,Auto">
                       <TextBlock Grid.Row="0"
                                  x:Name="slipMetadataText"
                                  Classes="muted"
                                  FontSize="12"
                                  TextWrapping="Wrap"
                                  Margin="0,0,0,8" />
-                      <TextBox Grid.Row="1"
+                      <StackPanel Grid.Row="1"
+                                  x:Name="formatToolbar"
+                                  Orientation="Horizontal"
+                                  Spacing="4"
+                                  Margin="0,0,0,6">
+                        <TextBlock Text="Align" Classes="muted" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Button x:Name="alignLeftButton" Content="Left" Padding="9,3" ToolTip.Tip="Align left" />
+                        <Button x:Name="alignCenterButton" Content="Center" Padding="9,3" ToolTip.Tip="Align center" />
+                        <Button x:Name="alignRightButton" Content="Right" Padding="9,3" ToolTip.Tip="Align right" />
+                      </StackPanel>
+                      <TextBox Grid.Row="2"
                                x:Name="slipEditor"
                                MinHeight="180"
                                AcceptsReturn="True"
                                TextWrapping="Wrap"
                                ScrollViewer.VerticalScrollBarVisibility="Auto"
                                IsEnabled="False" />
-                      <Border Grid.Row="2"
+                      <Border Grid.Row="3"
                               x:Name="conflictPanel"
                               IsVisible="False"
                               BorderBrush="{DynamicResource KastnOfflineBrush}"
@@ -644,7 +654,7 @@
                           </StackPanel>
                         </Grid>
                       </Border>
-                      <Grid Grid.Row="3"
+                      <Grid Grid.Row="4"
                             RowDefinitions="Auto,Auto"
                             Margin="0,10,0,0">
                         <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">

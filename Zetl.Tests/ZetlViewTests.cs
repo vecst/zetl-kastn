@@ -172,6 +172,32 @@ internal static class ZetlViewTests
         AssertContains(html, "<li>do this</li>");
     }
 
+    public static void RendererHonorsSlipAlignment()
+    {
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Ideas")],
+            [
+                Slip("b1", "left one"),
+                Slip("b1", "middle one") with { Align = "center" },
+                Slip("b1", "right one") with { Align = "right" },
+            ]);
+
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
+        AssertContains(html, "<li>left one</li>");
+        AssertContains(html, "<li style=\"text-align:center\">middle one</li>");
+        AssertContains(html, "<li style=\"text-align:right\">right one</li>");
+
+        // Markdown has no alignment, so the list renders plain regardless of Align.
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# Demo\n\n## Ideas\n\n- left one\n- middle one\n- right one");
+    }
+
     private static void AssertContains(string text, string expected)
     {
         if (!text.Contains(expected, StringComparison.Ordinal))

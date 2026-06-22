@@ -203,6 +203,52 @@ internal static class ZetlProjectServiceTests
         AssertTrue(!note.ExcludedFromViews, "The stored note should be included again.");
     }
 
+    public static void SlipAlignmentRoundTrips()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "centerable", "copy");
+        var service = new ZetlProjectService(store);
+
+        var center = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-center",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = note.Text, Align = "center" },
+            project.Id,
+            note.Id,
+            note.Revision));
+        var centered = center.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Align update did not return a slip.");
+        AssertEqual(ZetlResponseStatus.Success, center.Status, "Setting alignment should succeed.");
+        AssertEqual("center", centered.Align, "The snapshot should report the alignment.");
+        AssertEqual("center", note.Align, "The stored note should carry the alignment.");
+
+        // A later text edit that omits alignment preserves it.
+        var editText = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-edit-text",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = "edited" },
+            project.Id,
+            note.Id,
+            centered.Revision));
+        var afterEdit = editText.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Text edit did not return a slip.");
+        AssertEqual("center", afterEdit.Align, "Omitting alignment should preserve it.");
+
+        // Left normalizes back to the default (null), keeping the JSON clean.
+        var left = service.Execute(ZetlCommandEnvelope.Create(
+            "slip-left",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = afterEdit.Text, Align = "left" },
+            project.Id,
+            note.Id,
+            afterEdit.Revision));
+        var lefted = left.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Left update did not return a slip.");
+        AssertTrue(lefted.Align is null, "Left should normalize to the default (no alignment).");
+        AssertTrue(note.Align is null, "The stored note should carry no alignment for left.");
+    }
+
     public static void BucketAndSlipCommandsRoundTrip()
     {
         using var temp = new TempStateDirectory();

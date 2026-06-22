@@ -78,6 +78,11 @@ internal sealed class ZetlNote
     // fast compile; default false so existing slips load as included.
     public bool ExcludedFromViews { get; set; }
 
+    // Kastn-only: per-slip block alignment for rendered views — "center" or
+    // "right". Null/absent means left (the default), so existing slips load
+    // unchanged and a left slip writes no field.
+    public string? Align { get; set; }
+
     public ZetlCaptureOrigin? CaptureOrigin { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
@@ -645,7 +650,8 @@ internal sealed class ZetlStateStore
         ZetlNote note,
         string text,
         string? title = null,
-        bool? excludedFromViews = null)
+        bool? excludedFromViews = null,
+        string? align = null)
     {
         note.Text = text.Trim();
         if (title is not null)
@@ -656,6 +662,13 @@ internal sealed class ZetlStateStore
         if (excludedFromViews is { } excluded)
         {
             note.ExcludedFromViews = excluded;
+        }
+
+        if (align is not null)
+        {
+            // Normalize to keep JSON clean: left is the implicit default (null).
+            var normalized = align.Trim().ToLowerInvariant();
+            note.Align = normalized is "center" or "right" ? normalized : null;
         }
 
         note.Revision++;

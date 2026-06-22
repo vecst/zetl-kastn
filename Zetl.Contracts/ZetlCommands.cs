@@ -67,6 +67,9 @@ public sealed record UpdateSlipCommand
     // Null preserves the current value; true holds the slip out of Kastn's
     // rendered views and exports, false includes it.
     public bool? ExcludedFromViews { get; init; }
+
+    // Null preserves the current alignment; "left" / "center" / "right" sets it.
+    public string? Align { get; init; }
 }
 
 public sealed record MoveSlipCommand

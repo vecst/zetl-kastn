@@ -178,6 +178,9 @@ internal partial class MainWindow : Window
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
         closeProjectButton.Click += async (_, _) => await CloseProjectAsync();
         newSlipButton.Click += async (_, _) => await AddSlipAsync();
+        alignLeftButton.Click += async (_, _) => await SetSlipAlignAsync("left");
+        alignCenterButton.Click += async (_, _) => await SetSlipAlignAsync("center");
+        alignRightButton.Click += async (_, _) => await SetSlipAlignAsync("right");
         loadedViews = viewStore.LoadAll();
         viewPickerBox.ItemsSource = loadedViews;
         viewPickerBox.SelectedIndex = 0;

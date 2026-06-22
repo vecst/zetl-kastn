@@ -82,6 +82,10 @@ public sealed record ZetlSlipSnapshot
 
     // Kastn-only: true holds the slip out of rendered views and exports.
     public bool ExcludedFromViews { get; init; }
+
+    // Kastn-only: per-slip block alignment for rendered views — "center" or
+    // "right"; null/absent = left.
+    public string? Align { get; init; }
 }
 
 public sealed record ZetlPictureSnapshot

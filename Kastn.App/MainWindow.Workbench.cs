@@ -269,6 +269,99 @@ internal partial class MainWindow
         }
     }
 
+    // Set the selected text slip's block alignment (left/center/right). Carries the
+    // current editor draft along like the eye-toggle does, so it also commits any
+    // pending text edit; the renderer and on-screen View honor Align.
+    private async Task SetSlipAlignAsync(string align)
+    {
+        if (!IsOnline || saving || currentProject is null
+            || editorState.ConflictCurrent is not null)
+        {
+            return;
+        }
+
+        var selected = SelectedSlips();
+        if (selected.Count != 1
+            || selected[0].Type != ZetlSlipType.Text
+            || IsSlipInDeleted(selected[0]))
+        {
+            return;
+        }
+
+        var slip = selected[0];
+        var isEditing = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal);
+        var revision = isEditing ? editorState.Revision : slip.Revision;
+        var text = isEditing ? editorState.DraftText.Trim() : slip.Text;
+
+        saving = true;
+        SetEditingEnabled();
+        try
+        {
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.UpdateSlip,
+                new UpdateSlipCommand { Text = text, Align = align },
+                currentProject.Id,
+                slip.Id,
+                revision));
+            if (response.Status == ZetlResponseStatus.Conflict)
+            {
+                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
+                    ZetlProtocolJson.Options);
+                if (current is not null)
+                {
+                    editorState.Reconcile(current);
+                    ShowConflict();
+                }
+
+                return;
+            }
+
+            if (response.Status != ZetlResponseStatus.Success)
+            {
+                statusText.Text = response.Error?.Message ?? $"Align failed: {response.Status}.";
+                return;
+            }
+
+            if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
+                && isEditing)
+            {
+                editorState.AcceptSaved(saved);
+            }
+
+            await connection.RefreshAsync();
+            statusText.Text = $"Slip aligned {align}.";
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            statusText.Text = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+            SetEditingEnabled();
+        }
+    }
+
+    private void UpdateAlignButtons()
+    {
+        var selected = SelectedSlips();
+        var slip = selected.Count == 1 ? selected[0] : null;
+        var canAlign = IsOnline
+            && !saving
+            && slip is { Type: ZetlSlipType.Text }
+            && !IsSlipInDeleted(slip);
+        alignLeftButton.IsEnabled = canAlign;
+        alignCenterButton.IsEnabled = canAlign;
+        alignRightButton.IsEnabled = canAlign;
+
+        var active = slip is null ? "left" : ZetlViewRenderer.SlipAlignment(slip);
+        alignLeftButton.FontWeight = canAlign && active == "left" ? FontWeight.Bold : FontWeight.Normal;
+        alignCenterButton.FontWeight = canAlign && active == "center" ? FontWeight.Bold : FontWeight.Normal;
+        alignRightButton.FontWeight = canAlign && active == "right" ? FontWeight.Bold : FontWeight.Normal;
+    }
+
     private async Task AddBucketAsync()
     {
         if (!IsOnline || currentProject is null)
@@ -814,6 +907,7 @@ internal partial class MainWindow
         saveAsTemplateMenuItem.IsEnabled = currentProject is not null;
         newSlipButton.IsEnabled = canCreateSlip;
         newSlipMenuItem.IsEnabled = newSlipButton.IsEnabled;
+        UpdateAlignButtons();
     }
 
     private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)

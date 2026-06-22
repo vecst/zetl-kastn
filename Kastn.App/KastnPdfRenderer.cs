@@ -139,6 +139,12 @@ internal static class KastnPdfRenderer
                 var paragraph = section.AddParagraph();
                 paragraph.Format.LeftIndent = Unit.FromPoint((group.Depth + 1) * 14);
                 paragraph.Format.SpaceAfter = Unit.FromPoint(4);
+                paragraph.Format.Alignment = ZetlViewRenderer.SlipAlignment(slip) switch
+                {
+                    "center" => ParagraphAlignment.Center,
+                    "right" => ParagraphAlignment.Right,
+                    _ => ParagraphAlignment.Left
+                };
                 paragraph.AddText($"• {lines[0].TrimStart()}");
                 foreach (var line in lines.Skip(1))
                 {

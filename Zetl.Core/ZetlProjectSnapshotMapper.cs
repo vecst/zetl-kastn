@@ -108,7 +108,8 @@ internal static class ZetlProjectSnapshotMapper
                 ? null
                 : new DateTimeOffset(
                     DateTime.SpecifyKind(note.DeletedAtUtc.Value, DateTimeKind.Utc)),
-            ExcludedFromViews = note.ExcludedFromViews
+            ExcludedFromViews = note.ExcludedFromViews,
+            Align = note.Align
         };
     }
 

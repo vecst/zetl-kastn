@@ -88,10 +88,19 @@ readable document). GUI-verified.
   (unifying today's text-`TextBox` and picture-`StackPanel` paths), where each
   slip is its own selectable, clickable, scroll-target element.
 
-### 7. Slip text formatting (the Editor toolbar)
+### 7. Slip text formatting (the Editor toolbar) — In progress
 A small formatting toolbar above the Editor so a slip can be dressed up enough
 to drop into a shareable PDF or HTML without leaving Kastn. Intentionally
 modest — Markdown under the hood, not a word processor.
+
+**Shipped — alignment (the `Align` data model):** a per-slip `Align` ("center" /
+"right"; null = left) rides along like `ExcludedFromViews` through the model
+(`ZetlState`), contract (`ZetlSlipSnapshot` / `UpdateSlipCommand`), service, and
+snapshot mapper. Honored as a block style by the on-screen View, HTML, and PDF
+(the literal and Markdown renderers ignore it). The Editor gains a `Left /
+Center / Right` toolbar (the first toolbar element), with the active state
+reflected. GUI-verified. **Still pending:** the Markdown-aware render + parser
+and the inline-emphasis / link / list toolbar buttons (next increment).
 
 Capabilities:
 - **Inline emphasis:** bold (`**…**`), italic (`*…*`), strikethrough
