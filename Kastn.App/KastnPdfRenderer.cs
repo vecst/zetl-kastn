@@ -76,15 +76,17 @@ internal static class KastnPdfRenderer
 
         // Reuse the shared grouping so the PDF honors view sections and bucket order
         // exactly like the text/Markdown/HTML renderers.
+        var listStyle = ZetlViewListStyles.Normalize(view.ListStyle);
         foreach (var group in ZetlViewRenderer.BuildGroups(project, slips, view))
         {
-            var heading = section.AddParagraph(group.Heading);
+            var heading = section.AddParagraph(ZetlViewRenderer.HeadingText(group, view));
             heading.Format.Font.Size = Math.Max(12, 16 - group.Depth);
             heading.Format.Font.Bold = true;
             heading.Format.SpaceBefore = Unit.FromPoint(10);
             heading.Format.SpaceAfter = Unit.FromPoint(4);
             heading.Format.LeftIndent = Unit.FromPoint(group.Depth * 14);
 
+            var itemNumber = 1;
             foreach (var slip in group.Slips)
             {
                 if (slip.Type == ZetlSlipType.Picture)
@@ -131,7 +133,14 @@ internal static class KastnPdfRenderer
                     continue;
                 }
 
-                AppendSlipBlocks(section, slip, displayText, group.Depth);
+                var slipMarker = listStyle switch
+                {
+                    ZetlViewListStyles.Ordered => $"{itemNumber++}. ",
+                    ZetlViewListStyles.Task => "☐ ",
+                    ZetlViewListStyles.Paragraph => "",
+                    _ => "• "
+                };
+                AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker);
             }
         }
 
@@ -141,7 +150,12 @@ internal static class KastnPdfRenderer
     // Render a slip's Markdown blocks into the section: paragraphs (the first line
     // carries the slip's "•" bucket bullet) and list items (their own marker, deeper
     // indent). Alignment from the slip's Align rides on every paragraph.
-    private static void AppendSlipBlocks(Section section, ZetlSlipSnapshot slip, string text, int depth)
+    private static void AppendSlipBlocks(
+        Section section,
+        ZetlSlipSnapshot slip,
+        string text,
+        int depth,
+        string slipMarker)
     {
         var alignment = ZetlViewRenderer.SlipAlignment(slip) switch
         {
@@ -149,7 +163,7 @@ internal static class KastnPdfRenderer
             "right" => ParagraphAlignment.Right,
             _ => ParagraphAlignment.Left
         };
-        var placedSlipBullet = false;
+        var placedSlipMarker = false;
 
         foreach (var block in ZetlMarkdown.ParseBlocks(text))
         {
@@ -166,10 +180,14 @@ internal static class KastnPdfRenderer
                         paragraph.AddLineBreak();
                     }
 
-                    if (!placedSlipBullet)
+                    if (!placedSlipMarker)
                     {
-                        paragraph.AddText("• ");
-                        placedSlipBullet = true;
+                        if (slipMarker.Length > 0)
+                        {
+                            paragraph.AddText(slipMarker);
+                        }
+
+                        placedSlipMarker = true;
                     }
 
                     AppendInlines(paragraph.AddFormattedText(), paragraphBlock.Lines[line]);
@@ -194,7 +212,7 @@ internal static class KastnPdfRenderer
                     AppendInlines(paragraph.AddFormattedText(), item.Inlines);
                 }
 
-                placedSlipBullet = true;
+                placedSlipMarker = true;
             }
         }
     }

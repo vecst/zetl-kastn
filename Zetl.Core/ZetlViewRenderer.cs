@@ -11,7 +11,45 @@ internal sealed record ZetlViewGroup(
     string Heading,
     int Depth,
     ZetlBucketSnapshot? HeaderBucket,
-    IReadOnlyList<ZetlSlipSnapshot> Slips);
+    IReadOnlyList<ZetlSlipSnapshot> Slips)
+{
+    // Cascading outline number for this group (e.g. "1", "1.1", "2"), assigned in
+    // document order by BuildGroups. Renderers prefix the heading with it only when
+    // the view sets NumberHeadings.
+    public string OutlineNumber { get; init; } = "";
+}
+
+// Assigns cascading outline numbers (1, 1.1, 1.1.1) to groups in document order. A
+// shallower level that was skipped (an empty parent bucket) is treated as 1 rather
+// than 0, so a deep-first group never reads as "0.1".
+internal sealed class ZetlOutlineNumberer
+{
+    private readonly List<int> counters = [];
+
+    public string Next(int depth)
+    {
+        while (counters.Count <= depth)
+        {
+            counters.Add(0);
+        }
+
+        if (counters.Count > depth + 1)
+        {
+            counters.RemoveRange(depth + 1, counters.Count - (depth + 1));
+        }
+
+        counters[depth]++;
+        for (var i = 0; i < counters.Count; i++)
+        {
+            if (counters[i] == 0)
+            {
+                counters[i] = 1;
+            }
+        }
+
+        return string.Join('.', counters);
+    }
+}
 
 /// <summary>
 /// Renders a project's slips through a <see cref="ZetlViewDocument"/>. A pure
@@ -34,8 +72,8 @@ internal static class ZetlViewRenderer
         {
             ZetlViewKinds.Plain => RenderPlain(groups),
             ZetlViewKinds.Tsv => RenderTsv(project, groups, view.TsvRowLength),
-            ZetlViewKinds.Markdown => RenderMarkdown(project, groups, pictures),
-            ZetlViewKinds.Html => RenderHtml(project, groups, pictures),
+            ZetlViewKinds.Markdown => RenderMarkdown(project, groups, view, pictures),
+            ZetlViewKinds.Html => RenderHtml(project, groups, view, pictures),
             // PDF is binary; the head renders it from BuildGroups. Return a note so
             // any text surface (e.g. a preview) explains how to get the PDF.
             ZetlViewKinds.Pdf => "This is a PDF view — use Export to save a .pdf file.",
@@ -70,15 +108,16 @@ internal static class ZetlViewRenderer
         }
 
         var groups = new List<ZetlViewGroup>();
+        var numberer = new ZetlOutlineNumberer();
         foreach (var bucket in project.Buckets)
         {
             if (slipsByBucketId.TryGetValue(bucket.Id, out var bucketSlips) && bucketSlips.Count > 0)
             {
-                groups.Add(new ZetlViewGroup(
-                    bucket.Name.Trim(),
-                    BucketDepth(bucket, bucketsById),
-                    bucket,
-                    bucketSlips));
+                var depth = BucketDepth(bucket, bucketsById);
+                groups.Add(new ZetlViewGroup(bucket.Name.Trim(), depth, bucket, bucketSlips)
+                {
+                    OutlineNumber = numberer.Next(depth)
+                });
             }
         }
 
@@ -95,6 +134,7 @@ internal static class ZetlViewRenderer
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 
         var groups = new List<ZetlViewGroup>();
+        var numberer = new ZetlOutlineNumberer();
         foreach (var section in view.Sections)
         {
             var sectionSlips = new List<ZetlSlipSnapshot>();
@@ -119,7 +159,10 @@ internal static class ZetlViewRenderer
             if (sectionSlips.Count > 0)
             {
                 // Sections are flat (depth 0); the section title is the heading.
-                groups.Add(new ZetlViewGroup(section.Title.Trim(), 0, headerBucket, sectionSlips));
+                groups.Add(new ZetlViewGroup(section.Title.Trim(), 0, headerBucket, sectionSlips)
+                {
+                    OutlineNumber = numberer.Next(0)
+                });
             }
         }
 
@@ -180,17 +223,27 @@ internal static class ZetlViewRenderer
         return string.Join(Environment.NewLine, parts).TrimEnd();
     }
 
+    // Heading text, optionally prefixed with the group's cascading outline number.
+    // Public so the head's PDF and on-screen renderers number headings consistently.
+    public static string HeadingText(ZetlViewGroup group, ZetlViewDocument view) =>
+        view.NumberHeadings && group.OutlineNumber.Length > 0
+            ? $"{group.OutlineNumber} {group.Heading}"
+            : group.Heading;
+
     private static string RenderMarkdown(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlViewGroup> groups,
+        ZetlViewDocument view,
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures)
     {
+        var listStyle = ZetlViewListStyles.Normalize(view.ListStyle);
         var parts = new List<string> { $"# {project.Name.Trim()}", "" };
         foreach (var group in groups)
         {
             var level = Math.Min(6, 2 + group.Depth);
-            parts.Add($"{new string('#', level)} {group.Heading}");
+            parts.Add($"{new string('#', level)} {HeadingText(group, view)}");
             parts.Add("");
+            var itemNumber = 1;
             foreach (var slip in group.Slips)
             {
                 if (slip.Type == ZetlSlipType.Picture)
@@ -222,8 +275,22 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                parts.Add($"- {lines[0].TrimStart()}");
-                parts.AddRange(lines.Skip(1).Select(line => $"  {line}"));
+                if (listStyle == ZetlViewListStyles.Paragraph)
+                {
+                    parts.AddRange(lines);
+                    parts.Add("");
+                    continue;
+                }
+
+                var marker = listStyle switch
+                {
+                    ZetlViewListStyles.Ordered => $"{itemNumber++}. ",
+                    ZetlViewListStyles.Task => "- [ ] ",
+                    _ => "- "
+                };
+                var indent = new string(' ', marker.Length);
+                parts.Add($"{marker}{lines[0].TrimStart()}");
+                parts.AddRange(lines.Skip(1).Select(line => $"{indent}{line}"));
             }
 
             parts.Add("");
@@ -235,8 +302,10 @@ internal static class ZetlViewRenderer
     private static string RenderHtml(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlViewGroup> groups,
+        ZetlViewDocument view,
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures)
     {
+        var listStyle = ZetlViewListStyles.Normalize(view.ListStyle);
         var title = Escape(project.Name.Trim());
         var parts = new List<string>
         {
@@ -257,22 +326,36 @@ internal static class ZetlViewRenderer
             $"<h1>{title}</h1>"
         };
 
+        var isList = listStyle != ZetlViewListStyles.Paragraph;
+        var openTag = listStyle switch
+        {
+            ZetlViewListStyles.Ordered => "<ol>",
+            ZetlViewListStyles.Task => "<ul style=\"list-style:none;padding-left:1.1em\">",
+            _ => "<ul>"
+        };
+        var closeTag = listStyle == ZetlViewListStyles.Ordered ? "</ol>" : "</ul>";
+
         foreach (var group in groups)
         {
             var level = Math.Min(6, 2 + group.Depth);
-            parts.Add($"<h{level}>{Escape(group.Heading)}</h{level}>");
+            parts.Add($"<h{level}>{Escape(HeadingText(group, view))}</h{level}>");
 
             if (group.Slips.Count == 0)
             {
                 continue;
             }
 
-            parts.Add("<ul>");
+            var listOpen = false;
             foreach (var slip in group.Slips)
             {
                 if (slip.Type == ZetlSlipType.Picture)
                 {
-                    parts.Add("</ul>");
+                    if (listOpen)
+                    {
+                        parts.Add(closeTag);
+                        listOpen = false;
+                    }
+
                     var caption = PictureCaption(slip);
                     if (pictures?.TryGetValue(slip.Id, out var picture) == true)
                     {
@@ -288,7 +371,7 @@ internal static class ZetlViewRenderer
                     {
                         parts.Add($"<p>[Picture: {Escape(caption)}]</p>");
                     }
-                    parts.Add("<ul>");
+
                     continue;
                 }
 
@@ -302,10 +385,28 @@ internal static class ZetlViewRenderer
                 // HTML (the parser escapes literal runs). Literal views stay verbatim.
                 var align = SlipAlignment(slip);
                 var style = align == "left" ? "" : $" style=\"text-align:{align}\"";
-                parts.Add($"<li{style}>{ZetlMarkdown.BlocksToHtml(text)}</li>");
+                var inner = ZetlMarkdown.BlocksToHtml(text);
+                if (isList)
+                {
+                    if (!listOpen)
+                    {
+                        parts.Add(openTag);
+                        listOpen = true;
+                    }
+
+                    var glyph = listStyle == ZetlViewListStyles.Task ? "☐ " : "";
+                    parts.Add($"<li{style}>{glyph}{inner}</li>");
+                }
+                else
+                {
+                    parts.Add($"<div{style}>{inner}</div>");
+                }
             }
 
-            parts.Add("</ul>");
+            if (listOpen)
+            {
+                parts.Add(closeTag);
+            }
         }
 
         parts.Add("</body>");

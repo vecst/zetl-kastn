@@ -846,7 +846,7 @@
 
           <Grid x:Name="viewEditorView"
                 IsVisible="False"
-                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
+                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
               <TextBlock Grid.Column="0"
                          x:Name="viewEditorTitle"
@@ -872,7 +872,18 @@
               </StackPanel>
             </Grid>
 
-            <StackPanel Grid.Row="3" x:Name="viewTsvPanel" Spacing="4" Margin="0,8,0,0">
+            <Grid Grid.Row="3" ColumnDefinitions="*,16,Auto" Margin="0,8,0,0">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="List style" Classes="muted" FontSize="12" />
+                <ComboBox x:Name="viewListStyleBox" HorizontalAlignment="Stretch" />
+              </StackPanel>
+              <CheckBox Grid.Column="2"
+                        x:Name="viewNumberHeadingsCheck"
+                        Content="Number headings (1, 1.1)"
+                        VerticalAlignment="Bottom" />
+            </Grid>
+
+            <StackPanel Grid.Row="4" x:Name="viewTsvPanel" Spacing="4" Margin="0,8,0,0">
               <TextBlock Text="TSV rows per line" Classes="muted" FontSize="12" />
               <NumericUpDown x:Name="viewTsvRowBox"
                              Minimum="1"
@@ -883,12 +894,12 @@
                              HorizontalAlignment="Left" />
             </StackPanel>
 
-            <StackPanel Grid.Row="4" Spacing="4" Margin="0,8,0,0">
+            <StackPanel Grid.Row="5" Spacing="4" Margin="0,8,0,0">
               <TextBlock Text="Description" Classes="muted" FontSize="12" />
               <TextBox x:Name="viewDescriptionBox" AcceptsReturn="True" TextWrapping="Wrap" Height="60" />
             </StackPanel>
 
-            <StackPanel Grid.Row="5" Spacing="4" Margin="0,8,0,0">
+            <StackPanel Grid.Row="6" Spacing="4" Margin="0,8,0,0">
               <TextBlock Text="Sections (optional)" Classes="muted" FontSize="12" />
               <TextBox x:Name="viewSectionsBox"
                        AcceptsReturn="True"
@@ -897,14 +908,14 @@
                        Watermark="One per line:  Heading = Bucket, Bucket. Leave empty to render every bucket." />
             </StackPanel>
 
-            <TextBlock Grid.Row="6"
+            <TextBlock Grid.Row="7"
                        x:Name="viewErrorText"
                        Foreground="#E5484D"
                        TextWrapping="Wrap"
                        Margin="0,8,0,0"
                        IsVisible="False" />
 
-            <TextBlock Grid.Row="7"
+            <TextBlock Grid.Row="8"
                        Classes="muted"
                        FontSize="12"
                        Margin="0,8,0,0"

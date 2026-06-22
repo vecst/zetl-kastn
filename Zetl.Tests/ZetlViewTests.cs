@@ -255,6 +255,68 @@ internal static class ZetlViewTests
         AssertEqual("a<br />b", ZetlMarkdown.BlocksToHtml("a\nb"), "Plain text stays a paragraph.");
     }
 
+    public static void ViewListStyleAndHeadingNumbersRender()
+    {
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Ideas"), Bucket("b2", "Steps", parent: "b1")],
+            [Slip("b1", "first"), Slip("b2", "second")]);
+
+        // Ordered list style + cascading numbered headings (HTML).
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument
+            {
+                Id = "v",
+                Name = "V",
+                Kind = ZetlViewKinds.Html,
+                ListStyle = ZetlViewListStyles.Ordered,
+                NumberHeadings = true
+            });
+        AssertContains(html, "<h2>1 Ideas</h2>");
+        AssertContains(html, "<ol>");
+        AssertContains(html, "<li>first</li>");
+        AssertContains(html, "<h3>1.1 Steps</h3>");
+        AssertContains(html, "<li>second</li>");
+
+        // Task style: checkbox glyphs in an unmarked list.
+        var taskHtml = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "t", Name = "T", Kind = ZetlViewKinds.Html, ListStyle = ZetlViewListStyles.Task });
+        AssertContains(taskHtml, "<ul style=\"list-style:none;padding-left:1.1em\">");
+        AssertContains(taskHtml, "<li>☐ first</li>");
+
+        // Paragraph style: no list wrapper at all.
+        var paragraphHtml = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "p", Name = "P", Kind = ZetlViewKinds.Html, ListStyle = ZetlViewListStyles.Paragraph });
+        AssertContains(paragraphHtml, "<div>first</div>");
+        AssertTrue(
+            !paragraphHtml.Contains("<ul", StringComparison.Ordinal)
+                && !paragraphHtml.Contains("<ol>", StringComparison.Ordinal),
+            "Paragraph style should emit no list element.");
+
+        // Markdown ordered list + numbered headings.
+        var markdown = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument
+            {
+                Id = "m",
+                Name = "M",
+                Kind = ZetlViewKinds.Markdown,
+                ListStyle = ZetlViewListStyles.Ordered,
+                NumberHeadings = true
+            }).ReplaceLineEndings("\n");
+        AssertEqual(
+            "# Demo\n\n## 1 Ideas\n\n1. first\n\n### 1.1 Steps\n\n1. second",
+            markdown,
+            "Markdown ordered list with cascading numbered headings.");
+    }
+
     private static void AssertContains(string text, string expected)
     {
         if (!text.Contains(expected, StringComparison.Ordinal))

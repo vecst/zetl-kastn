@@ -152,7 +152,7 @@ Approach (proposal, to confirm):
 - **Open question:** pull in a small Markdown library or hand-roll the limited
   subset we need. Lean hand-rolled first, library if it gets fiddly.
 
-### 8. View document structure (the renderer)
+### 8. View document structure (the renderer) — Done
 How a view projects the whole bucket tree into a document — distinct from
 item 7, which formats a single slip's text.
 - **Nested buckets → nested lists.** Sub-buckets render as nested lists with
@@ -163,6 +163,18 @@ item 7, which formats a single slip's text.
   the existing section mapping.
 - Renderer-side only, on the Markdown / HTML / PDF views; the literal
   Formatted / Plain / TSV views are untouched.
+
+**Shipped:** two view-document settings ride alongside `Sections` —
+`ListStyle` (bullet / ordered / task / paragraph) and `NumberHeadings` (bool).
+A bucket's slips render in the chosen style (ordered increments, task shows
+checkbox glyphs, paragraph drops the list wrapper) and headings can carry a
+cascading outline number (`ZetlOutlineNumberer`: 1, 1.1, 1.1.1, robust to
+skipped/empty parents). Honored by Markdown, HTML, PDF, **and** the on-screen
+reading view (marker + hanging-indent rows; the slip's own item-7 lists nest
+inside); the literal Formatted/Plain/TSV kinds ignore both. Authored in the
+Kastn view editor (list-style picker + number-headings checkbox) and validated.
+GUI-verified on-screen (ordered + numbered headings) and test-covered for
+Markdown/HTML. Plain (bullet, no numbers) views render exactly as before.
 
 ### 9. Linked slips — wiki-links + backlinks
 The missing zettelkasten piece, and the highest-leverage structural add. A slip

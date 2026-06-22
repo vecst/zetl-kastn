@@ -202,24 +202,35 @@ internal partial class MainWindow
             return;
         }
 
+        var listStyle = ZetlViewListStyles.Normalize(SelectedView.ListStyle);
         foreach (var group in groups)
         {
             viewerDocumentPanel.Children.Add(new TextBlock
             {
-                Text = group.Heading,
+                Text = ZetlViewRenderer.HeadingText(group, SelectedView),
                 FontSize = Math.Max(15, 21 - group.Depth),
                 FontWeight = FontWeight.SemiBold,
                 Margin = new Avalonia.Thickness(group.Depth * 14, 8, 0, 2)
             });
 
+            var itemNumber = 1;
             foreach (var slip in group.Slips)
             {
-                viewerDocumentPanel.Children.Add(BuildSlipBlock(slip, group.Depth, generation));
+                var marker = slip.Type == ZetlSlipType.Picture
+                    ? ""
+                    : listStyle switch
+                    {
+                        ZetlViewListStyles.Ordered => $"{itemNumber++}.",
+                        ZetlViewListStyles.Task => "☐",
+                        ZetlViewListStyles.Paragraph => "",
+                        _ => "•"
+                    };
+                viewerDocumentPanel.Children.Add(BuildSlipBlock(slip, group.Depth, generation, marker));
             }
         }
     }
 
-    private Border BuildSlipBlock(ZetlSlipSnapshot slip, int depth, int generation)
+    private Border BuildSlipBlock(ZetlSlipSnapshot slip, int depth, int generation, string marker)
     {
         var content = new StackPanel { Spacing = 5 };
         if (slip.Type == ZetlSlipType.Picture)
@@ -268,10 +279,33 @@ internal partial class MainWindow
             AppendSlipBlocks(content, slip, text.Trim());
         }
 
+        // The view's list style puts a marker beside each slip (the slip's content may
+        // still hold its own item-7 lists). A hanging-indent grid keeps wraps aligned.
+        Control child = content;
+        if (marker.Length > 0)
+        {
+            var grid = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("Auto,*"),
+                ColumnSpacing = 6
+            };
+            var markerBlock = new TextBlock
+            {
+                Text = marker,
+                MinWidth = 18,
+                VerticalAlignment = VerticalAlignment.Top
+            };
+            Grid.SetColumn(markerBlock, 0);
+            Grid.SetColumn(content, 1);
+            grid.Children.Add(markerBlock);
+            grid.Children.Add(content);
+            child = grid;
+        }
+
         var block = new Border
         {
             Tag = slip.Id,
-            Child = content,
+            Child = child,
             Padding = new Avalonia.Thickness(8, 6),
             Margin = new Avalonia.Thickness((depth + 1) * 14, 0, 0, 4),
             CornerRadius = new Avalonia.CornerRadius(4),
@@ -740,6 +774,8 @@ internal partial class MainWindow
             ? working.Kind
             : ZetlViewKinds.Formatted;
         viewTsvRowBox.Value = Math.Clamp(working.TsvRowLength, 1, 100);
+        viewListStyleBox.SelectedItem = ZetlViewListStyles.Normalize(working.ListStyle);
+        viewNumberHeadingsCheck.IsChecked = working.NumberHeadings;
         viewSectionsBox.Text = SectionsToText(working.Sections);
         viewEditorUpdating = false;
 
@@ -772,6 +808,8 @@ internal partial class MainWindow
         doc.Description = viewDescriptionBox.Text?.Trim() ?? "";
         doc.Kind = viewKindBox.SelectedItem as string ?? ZetlViewKinds.Formatted;
         doc.TsvRowLength = (int)(viewTsvRowBox.Value ?? 5);
+        doc.ListStyle = viewListStyleBox.SelectedItem as string ?? ZetlViewListStyles.Bullet;
+        doc.NumberHeadings = viewNumberHeadingsCheck.IsChecked == true;
         doc.Sections = ParseSections(viewSectionsBox.Text);
         return JsonSerializer.Serialize(doc, JsonFile.Options);
     }
@@ -810,6 +848,8 @@ internal partial class MainWindow
         view.Description = viewDescriptionBox.Text?.Trim() ?? "";
         view.Kind = viewKindBox.SelectedItem as string ?? ZetlViewKinds.Formatted;
         view.TsvRowLength = (int)(viewTsvRowBox.Value ?? 5);
+        view.ListStyle = viewListStyleBox.SelectedItem as string ?? ZetlViewListStyles.Bullet;
+        view.NumberHeadings = viewNumberHeadingsCheck.IsChecked == true;
         view.Sections = ParseSections(viewSectionsBox.Text);
         if (string.IsNullOrEmpty(view.Id))
         {

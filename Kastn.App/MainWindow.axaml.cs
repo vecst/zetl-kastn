@@ -202,6 +202,7 @@ internal partial class MainWindow : Window
         copyViewButton.Click += async (_, _) => await CopyRenderedViewAsync();
         exportViewButton.Click += async (_, _) => await ExportRenderedViewAsync();
         viewKindBox.ItemsSource = ViewKindChoices;
+        viewListStyleBox.ItemsSource = ZetlViewListStyles.All;
         saveViewSettingsButton.Click += (_, _) => SaveView();
         cancelViewSettingsButton.Click += async (_, _) => await CancelViewEditAsync();
         viewKindBox.SelectionChanged += (_, _) =>

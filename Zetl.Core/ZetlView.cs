@@ -21,6 +21,24 @@ internal static class ZetlViewKinds
     public const string Pdf = "PDF";
 }
 
+// How a view arranges each bucket's slips in the document kinds. Stored as readable
+// text like the other view settings.
+internal static class ZetlViewListStyles
+{
+    public const string Bullet = "bullet";
+    public const string Ordered = "ordered";
+    public const string Task = "task";
+    public const string Paragraph = "paragraph";
+
+    public static readonly string[] All = [Bullet, Ordered, Task, Paragraph];
+
+    public static string Normalize(string? value)
+    {
+        var lowered = value?.Trim().ToLowerInvariant();
+        return All.Contains(lowered) ? lowered! : Bullet;
+    }
+}
+
 /// <summary>
 /// A versioned, human-readable view document: a named renderer that projects an
 /// existing project's slips into an artifact. This is the output-side counterpart
@@ -56,6 +74,15 @@ internal sealed class ZetlViewDocument
     // the view renders exactly these sections, in order — letting a view rename,
     // reorder, merge, or omit buckets.
     public List<ZetlViewSection> Sections { get; set; } = [];
+
+    // How each bucket's slips are arranged in the document kinds (Markdown / HTML /
+    // PDF) and the on-screen reading view. One of ZetlViewListStyles; default bullet.
+    // The literal Formatted / Plain / TSV kinds ignore it.
+    public string ListStyle { get; set; } = ZetlViewListStyles.Bullet;
+
+    // When true, document views prefix each bucket/section heading with a cascading
+    // outline number (1, 1.1, 1.1.1). The literal kinds ignore it.
+    public bool NumberHeadings { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
@@ -226,6 +253,11 @@ internal static class ZetlViewValidator
         if (view.TsvRowLength < 1)
         {
             errors.Add("TSV row length must be at least 1.");
+        }
+
+        if (!ZetlViewListStyles.All.Contains(view.ListStyle, StringComparer.OrdinalIgnoreCase))
+        {
+            errors.Add($"View list style must be one of: {string.Join(", ", ZetlViewListStyles.All)}.");
         }
 
         foreach (var section in view.Sections)
