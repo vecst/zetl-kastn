@@ -2,13 +2,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="KASTN.MainWindow"
         Width="1380" Height="820"
-        MinWidth="1020" MinHeight="620"
+        MinWidth="1180" MinHeight="620"
         WindowStartupLocation="CenterScreen"
         Title="Kastn">
   <Grid RowDefinitions="Auto,Auto,*,Auto">
     <Menu Grid.Row="0">
       <MenuItem Header="_File">
         <MenuItem x:Name="refreshMenuItem" Header="_Refresh" InputGesture="F5" />
+        <MenuItem x:Name="saveAsTemplateMenuItem" Header="Save as _Template…" />
         <MenuItem x:Name="closeProjectMenuItem" Header="_Close Project" InputGesture="Ctrl+W" />
         <MenuItem x:Name="deleteProjectMenuItem" Header="_Delete Project" />
         <Separator />
@@ -321,89 +322,188 @@
 
           <Grid x:Name="projectView"
                 IsVisible="False"
-                RowDefinitions="Auto,Auto,14,Auto,14,*">
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
-              <TextBlock Grid.Column="0"
-                         x:Name="projectTitle"
-                         Classes="title"
-                         TextTrimming="CharacterEllipsis" />
-              <Button Grid.Column="1"
-                      x:Name="saveAsTemplateButton"
-                      Content="Save as Template"
-                      Padding="14,5" />
-              <Button Grid.Column="2"
+                RowDefinitions="Auto,14,*">
+            <Grid Grid.Row="0"
+                  ColumnDefinitions="Auto,*,260,Auto,Auto"
+                  ColumnSpacing="10">
+              <StackPanel Grid.Column="0"
+                          MaxWidth="430"
+                          Orientation="Horizontal"
+                          Spacing="10"
+                          VerticalAlignment="Center">
+                <TextBlock x:Name="projectTitle"
+                           Classes="title"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
+                <TextBlock x:Name="projectSummary"
+                           Classes="muted"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+              <TextBox Grid.Column="2"
+                       x:Name="searchBox"
+                       Watermark="Search slips"
+                       VerticalAlignment="Center" />
+              <Button Grid.Column="3"
+                      x:Name="filtersButton"
+                      Content="Filters ▾"
+                      Padding="14,5"
+                      VerticalAlignment="Center">
+                <Button.Flyout>
+                  <Flyout>
+                    <Border Classes="surface" Padding="14" Width="280">
+                      <StackPanel Spacing="10">
+                        <TextBlock Text="Filter slips" Classes="heading" />
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="Source" Classes="muted" FontSize="12" />
+                          <ComboBox x:Name="sourceFilterBox">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="Session" Classes="muted" FontSize="12" />
+                          <ComboBox x:Name="sessionFilterBox">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="Captured" Classes="muted" FontSize="12" />
+                          <ComboBox x:Name="dateFilterBox">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+                  </Flyout>
+                </Button.Flyout>
+              </Button>
+              <Button Grid.Column="4"
                       x:Name="closeProjectButton"
                       Content="Close Project"
-                      Padding="14,5" />
-            </Grid>
-            <TextBlock Grid.Row="1"
-                       x:Name="projectSummary"
-                       Classes="muted"
-                       Margin="0,4,0,0" />
-
-            <Grid Grid.Row="3" ColumnDefinitions="2*,12,*,12,*,12,*">
-              <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="Search" Classes="muted" FontSize="12" />
-                <TextBox x:Name="searchBox" Watermark="Search slip text" />
-              </StackPanel>
-              <StackPanel Grid.Column="2" Spacing="4">
-                <TextBlock Text="Source" Classes="muted" FontSize="12" />
-                <ComboBox x:Name="sourceFilterBox">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
-              <StackPanel Grid.Column="4" Spacing="4">
-                <TextBlock Text="Session" Classes="muted" FontSize="12" />
-                <ComboBox x:Name="sessionFilterBox">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
-              <StackPanel Grid.Column="6" Spacing="4">
-                <TextBlock Text="Captured" Classes="muted" FontSize="12" />
-                <ComboBox x:Name="dateFilterBox">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
+                      Padding="14,5"
+                      VerticalAlignment="Center" />
             </Grid>
 
-            <Grid Grid.Row="5" ColumnDefinitions="300,8,*">
+            <Grid Grid.Row="2" ColumnDefinitions="300,8,*,8,360">
               <Border Grid.Column="0"
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">
                 <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto">
-                  <TextBlock Grid.Row="0" Text="Buckets &amp; slips" Classes="heading" Margin="0,0,0,8" />
+                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                    <TextBlock Grid.Column="0"
+                               Text="Buckets &amp; slips"
+                               Classes="heading"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="1"
+                            x:Name="newSlipButton"
+                            Content="+ Slip"
+                            Padding="10,3" />
+                  </Grid>
                   <TreeView Grid.Row="1" x:Name="projectTree">
                     <TreeView.Styles>
                       <Style Selector="TreeViewItem">
                         <Setter Property="IsExpanded" Value="True" />
                       </Style>
+                      <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
+                        <Setter Property="Content" Value="›" />
+                        <Setter Property="FontFamily" Value="{DynamicResource ZetlMonoFontFamily}" />
+                        <Setter Property="FontSize" Value="15" />
+                      </Style>
+                      <Style Selector="TreeViewItem:expanded /template/ ToggleButton#PART_ExpandCollapseChevron">
+                        <Setter Property="Content" Value="⌄" />
+                      </Style>
                     </TreeView.Styles>
                     <TreeView.ItemTemplate>
                       <TreeDataTemplate ItemsSource="{Binding Children}">
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="5"
-                                    Opacity="{Binding NodeOpacity}">
-                          <Viewbox Width="13"
-                                   Height="13"
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto"
+                              ColumnSpacing="6"
+                              MinWidth="225"
+                              Opacity="{Binding NodeOpacity}">
+                          <Viewbox Grid.Column="0"
+                                   Width="15"
+                                   Height="15"
                                    VerticalAlignment="Center"
-                                   IsVisible="{Binding IsExcluded}"
-                                   ToolTip.Tip="Hidden from views and exports">
-                            <Path Stroke="{DynamicResource ZetlMutedTextBrush}"
-                                  StrokeThickness="2"
-                                  Data="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61M2 2l20 20" />
+                                   IsVisible="{Binding IsBucket}"
+                                   ToolTip.Tip="Bucket">
+                            <Path Stroke="{DynamicResource ZetlAccentBrush}"
+                                  StrokeThickness="1.7"
+                                  Data="M2 5h7l2 2h11v12H2z" />
                           </Viewbox>
-                          <TextBlock Text="{Binding Label}"
+                          <Viewbox Grid.Column="0"
+                                   Width="15"
+                                   Height="15"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsText}"
+                                   ToolTip.Tip="Text slip">
+                            <Path Stroke="{DynamicResource ZetlMutedTextBrush}"
+                                  StrokeThickness="1.7"
+                                  Data="M5 2h10l4 4v16H5z M15 2v5h4 M8 11h8 M8 15h8" />
+                          </Viewbox>
+                          <Viewbox Grid.Column="0"
+                                   Width="15"
+                                   Height="15"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsPicture}"
+                                   ToolTip.Tip="Picture slip">
+                            <Path Stroke="{DynamicResource ZetlMutedTextBrush}"
+                                  StrokeThickness="1.7"
+                                  Data="M3 4h18v16H3z M6 16l4-4 3 3 2-2 3 3 M16 8h.01" />
+                          </Viewbox>
+                          <Button Grid.Column="1"
+                                  Width="26"
+                                  Height="24"
+                                  Padding="4"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  IsEnabled="{Binding CanToggleVisibility}"
+                                  ToolTip.Tip="{Binding VisibilityToolTip}"
+                                  Click="OnTreeVisibilityClick">
+                            <Grid>
+                              <Viewbox Width="16"
+                                       Height="16"
+                                       IsVisible="{Binding ShowOpenEye}">
+                                <Path Stroke="{DynamicResource ZetlMutedTextBrush}"
+                                      StrokeThickness="1.8"
+                                      Data="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0" />
+                              </Viewbox>
+                              <Viewbox Width="16"
+                                       Height="16"
+                                       IsVisible="{Binding ShowClosedEye}">
+                                <Path Stroke="{DynamicResource ZetlMutedTextBrush}"
+                                      StrokeThickness="1.8"
+                                      Data="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61M2 2l20 20" />
+                              </Viewbox>
+                              <Ellipse Width="5"
+                                       Height="5"
+                                       Fill="{DynamicResource ZetlAccentBrush}"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Bottom"
+                                       IsVisible="{Binding IsVisibilityMixed}"
+                                       ToolTip.Tip="Some slips are hidden" />
+                            </Grid>
+                          </Button>
+                          <TextBlock Grid.Column="2"
+                                     Text="{Binding Label}"
                                      Margin="0,3"
                                      TextTrimming="CharacterEllipsis"
                                      VerticalAlignment="Center" />
-                        </StackPanel>
+                          <Border Grid.Column="3"
+                                  IsVisible="{Binding IsBucket}"
+                                  Background="{DynamicResource ZetlSurfaceBrush}"
+                                  CornerRadius="8"
+                                  Padding="7,2"
+                                  VerticalAlignment="Center">
+                            <TextBlock Text="{Binding CountLabel}"
+                                       Classes="muted"
+                                       FontSize="10" />
+                          </Border>
+                        </Grid>
                       </TreeDataTemplate>
                     </TreeView.ItemTemplate>
                   </TreeView>
@@ -427,7 +527,7 @@
                         ColumnDefinitions="*,*,*"
                         ColumnSpacing="6"
                         Margin="0,8,0,0">
-                    <Button Grid.Column="0" x:Name="addBucketButton" Content="Add" />
+                    <Button Grid.Column="0" x:Name="addBucketButton" Content="+ Bucket" />
                     <Button Grid.Column="1" x:Name="saveBucketButton" Content="Save" />
                     <Button Grid.Column="2" x:Name="deleteBucketButton" Content="Delete" />
                   </Grid>
@@ -440,90 +540,12 @@
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">
-                <Grid RowDefinitions="Auto,*">
-                  <StackPanel Grid.Row="0"
-                              Orientation="Horizontal"
-                              Spacing="6"
-                              Margin="0,0,0,10">
-                    <Button x:Name="slipModeButton" Content="Slip" Padding="18,4" />
-                    <Button x:Name="viewModeButton" Content="View" Padding="18,4" />
-                  </StackPanel>
-                  <Grid Grid.Row="1">
-                  <Grid x:Name="editorPanel"
-                        IsVisible="False"
-                        RowDefinitions="Auto,Auto,*,Auto,Auto,Auto">
-                    <TextBlock Grid.Row="0" Text="Editor" Classes="heading" />
-                    <TextBlock Grid.Row="1"
-                               x:Name="slipMetadataText"
-                               Classes="muted"
-                               FontSize="12"
-                               Margin="0,2,0,8" />
-                    <TextBox Grid.Row="2"
-                             x:Name="slipEditor"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                             IsEnabled="False" />
-                    <CheckBox Grid.Row="3"
-                              x:Name="includeInViewsCheck"
-                              Content="Include in views &amp; exports"
-                              Margin="0,10,0,0" />
-                    <Border Grid.Row="4"
-                            x:Name="conflictPanel"
-                            IsVisible="False"
-                            BorderBrush="{DynamicResource KastnOfflineBrush}"
-                            BorderThickness="1"
-                            CornerRadius="5"
-                            Padding="10"
-                            Margin="0,10,0,0">
-                      <Grid RowDefinitions="Auto,Auto,90,Auto,90,Auto">
-                        <TextBlock Grid.Row="0"
-                                   Text="This slip changed in Zetl while you were editing."
-                                   FontWeight="SemiBold" />
-                        <TextBlock Grid.Row="1" Text="Your version" Classes="muted" Margin="0,8,0,3" />
-                        <TextBox Grid.Row="2"
-                                 x:Name="localConflictText"
-                                 IsReadOnly="True"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap" />
-                        <TextBlock Grid.Row="3" Text="Current Zetl version" Classes="muted" Margin="0,8,0,3" />
-                        <TextBox Grid.Row="4"
-                                 x:Name="remoteConflictText"
-                                 IsReadOnly="True"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap" />
-                        <StackPanel Grid.Row="5"
-                                    Orientation="Horizontal"
-                                    HorizontalAlignment="Right"
-                                    Spacing="8"
-                                    Margin="0,8,0,0">
-                          <Button x:Name="useZetlButton" Content="Use Zetl Version" />
-                          <Button x:Name="keepMineButton" Content="Keep Mine" />
-                        </StackPanel>
-                      </Grid>
-                    </Border>
-                    <Grid Grid.Row="5"
-                          ColumnDefinitions="*,Auto,Auto,Auto,Auto"
-                          ColumnSpacing="8"
-                          Margin="0,10,0,0">
-                      <ComboBox Grid.Column="0" x:Name="moveBucketBox">
-                        <ComboBox.ItemTemplate>
-                          <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-                        </ComboBox.ItemTemplate>
-                      </ComboBox>
-                      <Button Grid.Column="1" x:Name="moveSlipButton" Content="Move" />
-                      <Button Grid.Column="2" x:Name="restoreSlipButton" Content="Restore" />
-                      <Button Grid.Column="3" x:Name="deleteSlipButton" Content="Delete" />
-                      <Button Grid.Column="4" x:Name="saveSlipButton" Content="Save" />
-                    </Grid>
-                  </Grid>
                   <Grid x:Name="viewerPanel"
                         RowDefinitions="Auto,Auto,*">
-                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                      <StackPanel Grid.Column="0"
-                                  Orientation="Horizontal"
-                                  Spacing="8"
-                                  VerticalAlignment="Center">
+                    <StackPanel Grid.Row="0"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
                         <TextBlock Text="View" Classes="heading" VerticalAlignment="Center" />
                         <ComboBox x:Name="viewPickerBox" Width="150" VerticalAlignment="Center">
                           <ComboBox.ItemTemplate>
@@ -541,20 +563,13 @@
                             </MenuFlyout>
                           </Button.Flyout>
                         </Button>
-                      </StackPanel>
-                      <Button Grid.Column="1"
-                              x:Name="newSlipButton"
-                              Content="New slip"
-                              Padding="12,3"
-                              VerticalAlignment="Center" />
-                    </Grid>
+                    </StackPanel>
                     <TextBlock Grid.Row="1"
                                x:Name="viewerSummaryText"
                                Classes="muted"
                                FontSize="12"
                                Margin="0,2,0,8" />
-                    <Grid Grid.Row="2" ColumnDefinitions="*,8,310">
-                      <Grid Grid.Column="0">
+                    <Grid Grid.Row="2">
                         <TextBox x:Name="viewerTextBox"
                                  AcceptsReturn="True"
                                  IsReadOnly="True"
@@ -565,39 +580,108 @@
                                       VerticalScrollBarVisibility="Auto">
                           <StackPanel x:Name="viewerDocumentPanel" Spacing="12" Margin="8" />
                         </ScrollViewer>
-                      </Grid>
-                      <GridSplitter Grid.Column="1"
-                                    Width="8"
-                                    ResizeDirection="Columns" />
-                      <Border Grid.Column="2"
-                              Classes="surface"
-                              Padding="12">
-                        <Grid RowDefinitions="Auto,Auto,*">
-                          <TextBlock Grid.Row="0"
-                                     Text="Slip details"
-                                     Classes="heading" />
-                          <ComboBox Grid.Row="1"
-                                    x:Name="inspectorSlipBox"
-                                    Margin="0,8,0,10">
-                            <ComboBox.ItemTemplate>
-                              <DataTemplate>
-                                <TextBlock Text="{Binding Label}"
-                                           TextTrimming="CharacterEllipsis" />
-                              </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                          </ComboBox>
-                          <ScrollViewer Grid.Row="2"
-                                        VerticalScrollBarVisibility="Auto">
-                            <StackPanel x:Name="slipInspectorFieldsPanel"
-                                        Spacing="8" />
-                          </ScrollViewer>
-                        </Grid>
-                      </Border>
                     </Grid>
                   </Grid>
-                  <ListBox x:Name="slipList"
-                           IsVisible="False"
-                           SelectionMode="Multiple" />
+              </Border>
+
+              <GridSplitter Grid.Column="3" Width="8" ResizeDirection="Columns" />
+
+              <Border Grid.Column="4"
+                      Background="{DynamicResource ZetlSurfaceAltBrush}"
+                      CornerRadius="5"
+                      Padding="12">
+                <Grid RowDefinitions="Auto,Auto,*">
+                  <TextBlock Grid.Row="0" Text="Detail" Classes="heading" />
+                  <StackPanel Grid.Row="1"
+                              Orientation="Horizontal"
+                              Spacing="6"
+                              Margin="0,8,0,10">
+                    <Button x:Name="detailEditorButton" Content="Editor" Padding="16,4" />
+                    <Button x:Name="detailDetailsButton" Content="Details" Padding="16,4" />
+                  </StackPanel>
+                  <Grid Grid.Row="2">
+                    <Grid x:Name="editorPanel"
+                          RowDefinitions="Auto,*,Auto,Auto">
+                      <TextBlock Grid.Row="0"
+                                 x:Name="slipMetadataText"
+                                 Classes="muted"
+                                 FontSize="12"
+                                 TextWrapping="Wrap"
+                                 Margin="0,0,0,8" />
+                      <TextBox Grid.Row="1"
+                               x:Name="slipEditor"
+                               MinHeight="180"
+                               AcceptsReturn="True"
+                               TextWrapping="Wrap"
+                               ScrollViewer.VerticalScrollBarVisibility="Auto"
+                               IsEnabled="False" />
+                      <Border Grid.Row="2"
+                              x:Name="conflictPanel"
+                              IsVisible="False"
+                              BorderBrush="{DynamicResource KastnOfflineBrush}"
+                              BorderThickness="1"
+                              CornerRadius="5"
+                              Padding="10"
+                              Margin="0,10,0,0">
+                        <Grid RowDefinitions="Auto,Auto,90,Auto,90,Auto">
+                          <TextBlock Grid.Row="0"
+                                     Text="This slip changed in Zetl while you were editing."
+                                     FontWeight="SemiBold"
+                                     TextWrapping="Wrap" />
+                          <TextBlock Grid.Row="1" Text="Your version" Classes="muted" Margin="0,8,0,3" />
+                          <TextBox Grid.Row="2"
+                                   x:Name="localConflictText"
+                                   IsReadOnly="True"
+                                   AcceptsReturn="True"
+                                   TextWrapping="Wrap" />
+                          <TextBlock Grid.Row="3" Text="Current Zetl version" Classes="muted" Margin="0,8,0,3" />
+                          <TextBox Grid.Row="4"
+                                   x:Name="remoteConflictText"
+                                   IsReadOnly="True"
+                                   AcceptsReturn="True"
+                                   TextWrapping="Wrap" />
+                          <StackPanel Grid.Row="5"
+                                      Orientation="Horizontal"
+                                      HorizontalAlignment="Right"
+                                      Spacing="8"
+                                      Margin="0,8,0,0">
+                            <Button x:Name="useZetlButton" Content="Use Zetl Version" />
+                            <Button x:Name="keepMineButton" Content="Keep Mine" />
+                          </StackPanel>
+                        </Grid>
+                      </Border>
+                      <Grid Grid.Row="3"
+                            RowDefinitions="Auto,Auto"
+                            Margin="0,10,0,0">
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                          <ComboBox Grid.Column="0" x:Name="moveBucketBox">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                          <Button Grid.Column="1" x:Name="moveSlipButton" Content="Move" />
+                          <Button Grid.Column="2" x:Name="restoreSlipButton" Content="Restore" />
+                        </Grid>
+                        <StackPanel Grid.Row="1"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="6"
+                                    Margin="0,8,0,0">
+                          <Button x:Name="deleteSlipButton" Content="Delete" />
+                          <Button x:Name="saveSlipButton" Content="Save" />
+                        </StackPanel>
+                      </Grid>
+                    </Grid>
+
+                    <ScrollViewer x:Name="inspectorPanel"
+                                  IsVisible="False"
+                                  VerticalScrollBarVisibility="Auto">
+                      <StackPanel x:Name="slipInspectorFieldsPanel" Spacing="8" />
+                    </ScrollViewer>
+
+                    <ListBox x:Name="slipList"
+                             IsVisible="False"
+                             SelectionMode="Multiple" />
                   </Grid>
                 </Grid>
               </Border>

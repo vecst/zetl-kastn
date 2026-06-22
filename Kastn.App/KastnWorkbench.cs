@@ -33,15 +33,32 @@ internal sealed class KastnTreeNode
     public required string Label { get; init; }
     public ZetlBucketSnapshot? Bucket { get; init; }
     public ZetlSlipSnapshot? Slip { get; init; }
+    public bool IsBucket => Kind == KastnTreeNodeKind.Bucket;
+    public bool IsText => Kind == KastnTreeNodeKind.Slip && !IsPicture;
     public bool IsPicture { get; init; }
     public bool IsExcluded { get; init; }
     public bool IsDeletedBucket { get; init; }
 
-    // Dim slips held out of views so they read as present-but-inactive.
-    public double NodeOpacity => IsExcluded ? 0.5 : 1.0;
-    // Bucket nodes: counts of this bucket's own (direct) slips.
+    // Dim hidden slips and fully hidden buckets so they read as present-but-inactive.
+    public double NodeOpacity => IsVisibilityHidden ? 0.5 : 1.0;
+    // Bucket nodes aggregate their complete subtree so one eye controls the same scope
+    // represented by the badge.
     public int IncludedCount { get; init; }
     public int HiddenCount { get; init; }
+    public int TotalSlipCount => IncludedCount + HiddenCount;
+    public bool CanToggleVisibility => IsBucket ? TotalSlipCount > 0 : Slip is not null;
+    public bool IsVisibilityHidden => IsBucket
+        ? TotalSlipCount > 0 && IncludedCount == 0
+        : IsExcluded;
+    public bool IsVisibilityMixed => IsBucket && IncludedCount > 0 && HiddenCount > 0;
+    public bool ShowOpenEye => !IsVisibilityHidden;
+    public bool ShowClosedEye => IsVisibilityHidden;
+    public string VisibilityToolTip => IsBucket
+        ? IsVisibilityHidden ? "Show all slips in this bucket" : "Hide all slips in this bucket"
+        : IsVisibilityHidden ? "Show in views and exports" : "Hide from views and exports";
+    public string CountLabel => HiddenCount == 0
+        ? IncludedCount.ToString()
+        : $"{IncludedCount} · {HiddenCount} hidden";
     public IReadOnlyList<KastnTreeNode> Children { get; init; } = [];
 }
 
@@ -147,6 +164,11 @@ internal static class KastnWorkbench
                 var bucketSlips = slipsByBucket.TryGetValue(bucket.Id, out var found)
                     ? found
                     : [];
+                var childNodes = BuildLevel(bucket.Id);
+                var includedCount = bucketSlips.Count(slip => !slip.ExcludedFromViews)
+                    + childNodes.Sum(child => child.IncludedCount);
+                var hiddenCount = bucketSlips.Count(slip => slip.ExcludedFromViews)
+                    + childNodes.Sum(child => child.HiddenCount);
                 nodes.Add(new KastnTreeNode
                 {
                     Kind = KastnTreeNodeKind.Bucket,
@@ -154,9 +176,9 @@ internal static class KastnWorkbench
                     Label = bucket.Name,
                     Bucket = bucket,
                     IsDeletedBucket = IsDeletedBucket(bucket),
-                    IncludedCount = bucketSlips.Count(slip => !slip.ExcludedFromViews),
-                    HiddenCount = bucketSlips.Count(slip => slip.ExcludedFromViews),
-                    Children = BuildLevel(bucket.Id)
+                    IncludedCount = includedCount,
+                    HiddenCount = hiddenCount,
+                    Children = childNodes
                         .Concat(bucketSlips.Select(SlipNode))
                         .ToList()
                 });

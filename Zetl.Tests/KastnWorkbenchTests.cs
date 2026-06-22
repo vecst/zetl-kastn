@@ -150,8 +150,12 @@ internal static class KastnWorkbenchTests
         AssertEqual(1, tree.Count, "Only the top-level Root bucket is a root node.");
         var root = tree[0];
         AssertEqual(KastnTreeNodeKind.Bucket, root.Kind, "The top node is a bucket.");
-        AssertEqual(1, root.IncludedCount, "Root counts one included slip.");
+        AssertTrue(root.IsBucket, "Bucket nodes should expose their presentation kind.");
+        AssertEqual(2, root.IncludedCount, "Root counts included slips in its complete subtree.");
         AssertEqual(1, root.HiddenCount, "Root counts one excluded slip.");
+        AssertEqual("2 · 1 hidden", root.CountLabel, "Bucket badges should summarize hidden slips.");
+        AssertTrue(root.IsVisibilityMixed, "A partly hidden bucket should expose mixed visibility.");
+        AssertTrue(root.CanToggleVisibility, "A non-empty bucket should expose its visibility action.");
 
         AssertEqual(KastnTreeNodeKind.Bucket, root.Children[0].Kind, "Sub-buckets precede slips.");
         AssertEqual("child", root.Children[0].Id, "The Child bucket nests under Root.");
@@ -162,9 +166,14 @@ internal static class KastnWorkbenchTests
         AssertTrue(
             rootSlips.Single(node => node.Id == "s2").IsExcluded,
             "Excluded slips stay in the tree and are flagged.");
+        AssertTrue(
+            rootSlips.Single(node => node.Id == "s2").ShowClosedEye,
+            "Excluded slips should display the closed eye action.");
 
         var pictureLeaf = root.Children[0].Children.Single(node => node.Kind == KastnTreeNodeKind.Slip);
         AssertTrue(pictureLeaf.IsPicture, "Picture slips are flagged.");
+        AssertTrue(!pictureLeaf.IsText, "Picture slips should not use the text icon.");
+        AssertTrue(pictureLeaf.ShowOpenEye, "Included slips should display the open eye.");
         AssertEqual("Picture", pictureLeaf.Label, "A textless picture labels as Picture.");
     }
 

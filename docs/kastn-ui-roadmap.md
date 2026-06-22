@@ -28,7 +28,7 @@ center out.
 
 ## Enhancements
 
-### 1. Persistent View + Detail pane (the structural change)
+### 1. Persistent View + Detail pane (the structural change) — Done
 - The View (rendered text / picture document) is always shown in the center,
   read-only.
 - The right Detail pane carries a **`Editor | Details`** segmented toggle:
@@ -39,26 +39,29 @@ center out.
 - Removes the whole-pane Slip/View swap from step 1; the editor "lives in the
   right pane" at Detail width rather than filling the region.
 
-### 2. Drop the inspector's slip dropdown
+### 2. Drop the inspector's slip dropdown — Done
 The "Slip details" inspector has a slip-picker `ComboBox` — redundant now that
 the tree drives selection. Remove it; metadata follows the tree.
 
-### 3. Relocate "New slip"
+### 3. Relocate "New slip" — Done
 It sits awkwardly in the View toolbar. Move it to the tree's bottom toolbar as
 `+ Slip` (adds to the selected bucket), beside `+ Bucket`. The View toolbar is
 then purely about output.
 
-### 4. Streamline the top bar
+### 4. Streamline the top bar — Done
 Today: a title row (title · Save as Template · Close Project) plus a wide
 filter row (Search 2★ · Source · Session · Captured) with lots of dead space.
 Collapse to **one row**: title + counts on the left; an inline search box, a
 single **Filters ▾** popover (source / session / captured), and Close on the
 right. Recovers a band of vertical space and removes the empty gaps.
 
-### 5. Tree visual polish
+### 5. Tree visual polish — Done
 - Proper type icons: folder (bucket), text (text slip), photo (picture) —
   replacing the bare label and the occasional stray `✓` expander glyph.
 - Keep the excluded-slip treatment (dim + eye-off) already shipped.
+- Make the eye directly clickable on every slip. Bucket eyes recursively hide or
+  show every slip in that bucket and its descendants; mixed buckets keep an open
+  eye with a small accent indicator.
 - Per-bucket count badge (`12 · 2 hidden`) — pairs with step 4 of the build
   workflow.
 
