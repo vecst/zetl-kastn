@@ -775,6 +775,44 @@ internal static class ZetlProjectServiceTests
             "Lifecycle status should persist across reload.");
     }
 
+    public static void BucketHeadingRoundTripsAcrossReload()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "set-heading",
+            ZetlCommandKind.SetBucketHeading,
+            new SetBucketHeadingCommand { Align = "center", Bold = true, Level = 1 },
+            project.Id,
+            bucket.Id,
+            bucket.Revision));
+        var snapshot = response.Payload?.Deserialize<ZetlBucketSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("SetBucketHeading returned no snapshot.");
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Setting a bucket heading should succeed.");
+        AssertEqual("center", snapshot.HeadingAlign, "The snapshot should report the heading align.");
+        AssertTrue(snapshot.HeadingBold, "The snapshot should report bold.");
+        AssertEqual(1, snapshot.HeadingLevel, "The snapshot should report the heading level.");
+
+        // A stale revision conflicts.
+        var stale = service.Execute(ZetlCommandEnvelope.Create(
+            "set-heading-stale",
+            ZetlCommandKind.SetBucketHeading,
+            new SetBucketHeadingCommand { Align = "right" },
+            project.Id,
+            bucket.Id,
+            bucket.Revision - 1));
+        AssertEqual(ZetlResponseStatus.Conflict, stale.Status, "A stale heading edit should conflict.");
+
+        // Persists across reload.
+        var reloaded = new ZetlStateStore(temp.StatePath);
+        var loaded = reloaded.State.Projects.Single(item => item.Id == project.Id)
+            .Buckets.Single(item => item.Id == bucket.Id);
+        AssertEqual("center", loaded.HeadingAlign, "Heading align should persist across reload.");
+        AssertEqual(1, loaded.HeadingLevel, "Heading level should persist across reload.");
+    }
+
     private static ZetlCommandEnvelope SetStatusCommand(
         string commandId,
         string projectId,

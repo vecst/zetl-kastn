@@ -44,6 +44,7 @@ public enum ZetlCommandKind
     DeleteProject,
     AddBucket,
     UpdateBucket,
+    SetBucketHeading,
     DeleteBucket,
     AddSlip,
     UpdateSlip,

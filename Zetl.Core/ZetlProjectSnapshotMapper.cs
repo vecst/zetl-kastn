@@ -121,7 +121,10 @@ internal static class ZetlProjectSnapshotMapper
                 DefaultTsvRowLength = bucket.DefaultTsvRowLength,
                 PopMode = bucket.PopMode,
                 ReplayReviewBucketId = bucket.FifoReviewBucketId
-            }
+            },
+            HeadingAlign = bucket.HeadingAlign,
+            HeadingBold = bucket.HeadingBold,
+            HeadingLevel = bucket.HeadingLevel
         };
     }
 

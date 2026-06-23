@@ -93,6 +93,13 @@ public sealed record ZetlBucketSnapshot
     public required string Name { get; init; }
     public string? ParentBucketId { get; init; }
     public ZetlBucketSettings Settings { get; init; } = new();
+
+    // Per-bucket heading styling for rendered views: align ("" / "center" / "right"),
+    // bold, and level (1/2/3 size; 0 = automatic). HTML/PDF/on-screen honor all
+    // three; Markdown uses only the level. Set through SetBucketHeading.
+    public string HeadingAlign { get; init; } = "";
+    public bool HeadingBold { get; init; }
+    public int HeadingLevel { get; init; }
 }
 
 public sealed record ZetlBucketSettings

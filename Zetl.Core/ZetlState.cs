@@ -52,6 +52,13 @@ internal sealed class ZetlBucket
     public int DefaultTsvRowLength { get; set; } = 5;
     public bool PopMode { get; set; }
     public string? FifoReviewBucketId { get; set; }
+    // Per-bucket heading styling for rendered views (the bucket's title in the
+    // all-buckets layouts). Align "" (left) / "center" / "right"; Bold; Level 1/2/3
+    // sizes the heading (0 = automatic). Honored by HTML/PDF/on-screen; Markdown
+    // uses only the level. A custom view section can still override these.
+    public string HeadingAlign { get; set; } = "";
+    public bool HeadingBold { get; set; }
+    public int HeadingLevel { get; set; }
     public List<ZetlNote> Notes { get; set; } = new();
 }
 
@@ -501,6 +508,22 @@ internal sealed class ZetlStateStore
         }
 
         return AddBucket(project, normalizedName, setActive: setActive);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void SetBucketHeading(ZetlBucket bucket, string align, bool bold, int level)
+    {
+        if (IsDeletedBucket(bucket))
+        {
+            return;
+        }
+
+        var normalized = ZetlViewRenderer.NormalizeHeadingAlign(align);
+        bucket.HeadingAlign = normalized == "left" ? "" : normalized;
+        bucket.HeadingBold = bold;
+        bucket.HeadingLevel = Math.Clamp(level, 0, 6);
+        bucket.Revision++;
+        PersistBucket(bucket);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -1680,6 +1703,9 @@ internal sealed class ZetlStateStore
             bucket.DefaultCompileMode = NormalizeCompileMode(bucket.DefaultCompileMode);
             bucket.DefaultStartingText ??= "";
             bucket.DefaultTsvRowLength = bucket.DefaultTsvRowLength <= 0 ? 5 : bucket.DefaultTsvRowLength;
+            var headingAlign = ZetlViewRenderer.NormalizeHeadingAlign(bucket.HeadingAlign);
+            bucket.HeadingAlign = headingAlign == "left" ? "" : headingAlign;
+            bucket.HeadingLevel = Math.Clamp(bucket.HeadingLevel, 0, 6);
             if (IsDeletedBucket(bucket) || IsDeletedBucketName(bucket.Name))
             {
                 EnsureDeletedBucketShape(bucket);

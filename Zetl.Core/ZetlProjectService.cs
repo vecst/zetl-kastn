@@ -120,6 +120,7 @@ internal sealed class ZetlProjectService
             ZetlCommandKind.DeleteProject => DeleteProject(command),
             ZetlCommandKind.AddBucket => AddBucket(command),
             ZetlCommandKind.UpdateBucket => UpdateBucket(command),
+            ZetlCommandKind.SetBucketHeading => SetBucketHeading(command),
             ZetlCommandKind.DeleteBucket => DeleteBucket(command),
             ZetlCommandKind.AddSlip => AddSlip(command),
             ZetlCommandKind.UpdateSlip => UpdateSlip(command),
@@ -525,6 +526,38 @@ internal sealed class ZetlProjectService
             settings.DefaultTsvRowLength,
             settings.PopMode,
             settings.ReplayReviewBucketId);
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Bucket, bucket.Id, bucket.Revision);
+        return Success(command, project, snapshot);
+    }
+
+    private ZetlResponseEnvelope SetBucketHeading(ZetlCommandEnvelope command)
+    {
+        var found = FindBucket(command.ProjectId!, command.TargetId!);
+        if (found is null)
+        {
+            return NotFound(command, ZetlEntityKind.Bucket, command.TargetId!);
+        }
+
+        var (project, bucket) = found.Value;
+        var conflict = CheckRevision(
+            command,
+            ZetlEntityKind.Bucket,
+            bucket.Id,
+            bucket.Revision,
+            ZetlProjectSnapshotMapper.ToSnapshot(bucket));
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        if (ZetlStateStore.IsDeletedBucket(bucket))
+        {
+            return ValidationError(command, "deleted_bucket_protected", "The Deleted bucket has no heading.");
+        }
+
+        var payload = Payload<SetBucketHeadingCommand>(command);
+        store.SetBucketHeading(bucket, payload.Align, payload.Bold, payload.Level);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Bucket, bucket.Id, bucket.Revision);
         return Success(command, project, snapshot);

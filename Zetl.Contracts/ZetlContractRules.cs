@@ -87,6 +87,7 @@ public static class ZetlContractRules
     public static bool RequiresTarget(ZetlCommandKind kind)
     {
         return kind is ZetlCommandKind.UpdateBucket
+            or ZetlCommandKind.SetBucketHeading
             or ZetlCommandKind.DeleteBucket
             or ZetlCommandKind.GetSlipPicture
             or ZetlCommandKind.UpdateSlip
@@ -104,6 +105,7 @@ public static class ZetlContractRules
             or ZetlCommandKind.DeleteProjectView
             or ZetlCommandKind.DeleteProject
             or ZetlCommandKind.UpdateBucket
+            or ZetlCommandKind.SetBucketHeading
             or ZetlCommandKind.DeleteBucket
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip
@@ -121,6 +123,7 @@ public static class ZetlContractRules
             or ZetlCommandKind.DeleteProjectView
             or ZetlCommandKind.AddBucket
             or ZetlCommandKind.UpdateBucket
+            or ZetlCommandKind.SetBucketHeading
             or ZetlCommandKind.AddSlip
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip

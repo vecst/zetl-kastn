@@ -62,6 +62,14 @@ public sealed record UpdateBucketCommand
     public ZetlBucketSettings Settings { get; init; } = new();
 }
 
+public sealed record SetBucketHeadingCommand
+{
+    // Heading styling for the bucket's title in rendered views.
+    public string Align { get; init; } = "";
+    public bool Bold { get; init; }
+    public int Level { get; init; }
+}
+
 public sealed record DeleteBucketCommand;
 
 public sealed record AddSlipCommand

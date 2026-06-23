@@ -437,6 +437,22 @@ internal static class ZetlViewTests
         AssertEqual("# Big Centered\n\n- one", markdown, "Markdown uses only the section level.");
     }
 
+    public static void BucketHeadingStyleRendersInAllBucketsView()
+    {
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Ideas") with { HeadingAlign = "center", HeadingBold = true, HeadingLevel = 1 }],
+            [Slip("b1", "one")]);
+
+        // The default all-buckets view renders the bucket name as a heading and
+        // honors the bucket's own heading styling in HTML.
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html, ShowTitle = false });
+        AssertContains(html, "<h1 style=\"text-align:center;font-weight:700\">Ideas</h1>");
+    }
+
     private static void AssertContains(string text, string expected)
     {
         if (!text.Contains(expected, StringComparison.Ordinal))

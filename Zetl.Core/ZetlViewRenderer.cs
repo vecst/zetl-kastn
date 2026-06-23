@@ -131,7 +131,10 @@ internal static class ZetlViewRenderer
                 var depth = BucketDepth(bucket, bucketsById);
                 groups.Add(new ZetlViewGroup(bucket.Name.Trim(), depth, bucket, bucketSlips)
                 {
-                    OutlineNumber = numberer.Next(depth)
+                    OutlineNumber = numberer.Next(depth),
+                    HeadingAlign = bucket.HeadingAlign,
+                    HeadingBold = bucket.HeadingBold,
+                    HeadingLevel = bucket.HeadingLevel
                 });
             }
         }
