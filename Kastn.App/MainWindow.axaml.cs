@@ -182,6 +182,12 @@ internal partial class MainWindow : Window
         // Save when the editor loses focus rather than on a keystroke timer, so
         // typing is never interrupted by a mid-edit save + refresh.
         slipEditor.LostFocus += async (_, _) => await SaveEditorAsync();
+        // Tunnel so Ctrl+Enter saves before the editor's AcceptsReturn turns it into a
+        // newline; the explicit save keeps the caret so typing can continue.
+        slipEditor.AddHandler(
+            InputElement.KeyDownEvent,
+            OnSlipEditorPreviewKeyDown,
+            RoutingStrategies.Tunnel);
 
         refreshMenuItem.Click += async (_, _) => await RefreshAsync();
         closeProjectMenuItem.Click += async (_, _) => await CloseProjectAsync();
@@ -1145,6 +1151,42 @@ internal partial class MainWindow : Window
         dateFilterBox.SelectedItem = dates.FirstOrDefault();
     }
 
+    private async void OnSlipEditorPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key is Key.Enter or Key.S)
+        {
+            e.Handled = true;
+            await SaveEditorKeepingFocusAsync();
+        }
+    }
+
+    // Save the current slip without losing the editor: a save can trigger a snapshot
+    // refresh that re-selects the tree and steals focus, so restore focus and the
+    // caret afterward so the user can keep typing.
+    private async Task SaveEditorKeepingFocusAsync()
+    {
+        var hadFocus = slipEditor.IsFocused;
+        var caret = slipEditor.CaretIndex;
+        await SaveEditorAsync();
+        if (!hadFocus)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (editorState.SlipId is null)
+                {
+                    return;
+                }
+
+                slipEditor.Focus();
+                slipEditor.CaretIndex = Math.Min(caret, slipEditor.Text?.Length ?? 0);
+            },
+            DispatcherPriority.Background);
+    }
+
     private async void OnKeyDown(object? sender, KeyEventArgs args)
     {
         if (args.Key == Key.F5)
@@ -1162,9 +1204,10 @@ internal partial class MainWindow : Window
             && args.Key is Key.S or Key.Enter)
         {
             // Ctrl+S or Ctrl+Enter saves the current slip (Enter alone inserts a
-            // newline in the editor).
+            // newline in the editor). The editor's own preview handler catches these
+            // when it is focused; this covers a save from elsewhere.
             args.Handled = true;
-            await SaveEditorAsync();
+            await SaveEditorKeepingFocusAsync();
         }
         else if (args.KeyModifiers.HasFlag(KeyModifiers.Control) && args.Key == Key.W)
         {
