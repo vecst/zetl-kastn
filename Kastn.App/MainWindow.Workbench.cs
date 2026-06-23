@@ -19,45 +19,7 @@ using ZETL.Contracts;
 namespace KASTN;
 
 internal partial class MainWindow
-{    private async void OnSlipSelectionChanged(object? sender, SelectionChangedEventArgs args)
-    {
-        if (refreshing)
-        {
-            return;
-        }
-
-        var oldId = editorState.SlipId;
-        var selectedItems = SelectedSlipItems();
-        if (selectedItems.Count != 1)
-        {
-            if (!await SaveEditorAsync())
-            {
-                refreshing = true;
-                slipList.SelectedItem = slips.FirstOrDefault(item => item.Id == oldId);
-                refreshing = false;
-                return;
-            }
-
-            editorState.Select(null);
-            UpdateEditorFromState();
-            RefreshDestinationBuckets();
-            return;
-        }
-
-        var selected = selectedItems[0];
-        if (oldId != selected.Id && !await SaveEditorAsync())
-        {
-            refreshing = true;
-            slipList.SelectedItem = slips.FirstOrDefault(item => item.Id == oldId);
-            refreshing = false;
-            return;
-        }
-
-        editorState.Select(selected.Slip);
-        UpdateEditorFromState();
-        RefreshDestinationBuckets();
-    }
-
+{
     private void OnEditorTextChanged()
     {
         if (editorUpdating || editorState.SlipId is null)
@@ -1341,20 +1303,6 @@ internal partial class MainWindow
         return editorState.SlipId is { } editingId
             && currentProject.Slips.FirstOrDefault(slip => slip.Id == editingId) is { } slip
             ? [slip]
-            : [];
-    }
-
-    private IReadOnlyList<SlipListItem> SelectedSlipItems()
-    {
-        if (slipList.SelectedItems is { Count: > 0 } selectedItems)
-        {
-            return selectedItems
-                .OfType<SlipListItem>()
-                .ToList();
-        }
-
-        return slipList.SelectedItem is SlipListItem selected
-            ? [selected]
             : [];
     }
 

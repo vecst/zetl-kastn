@@ -141,7 +141,6 @@ internal partial class MainWindow : Window
         Icon = KastnIcon.Create();
         landingProjectList.ItemsSource = projects;
         landingTemplateItems.ItemsSource = templates;
-        slipList.ItemsSource = slips;
         sourceFilterBox.ItemsSource = sources;
         sessionFilterBox.ItemsSource = sessions;
         dateFilterBox.ItemsSource = dates;
@@ -173,7 +172,6 @@ internal partial class MainWindow : Window
         bucketHeadingSizeBox.SelectionChanged += async (_, _) => await OnBucketHeadingChangedAsync();
         bucketHeadingAlignBox.SelectionChanged += async (_, _) => await OnBucketHeadingChangedAsync();
         bucketHeadingBoldCheck.IsCheckedChanged += async (_, _) => await OnBucketHeadingChangedAsync();
-        slipList.SelectionChanged += OnSlipSelectionChanged;
         searchBox.TextChanged += (_, _) => RefreshSlipView();
         sourceFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
         sessionFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
@@ -879,9 +877,6 @@ internal partial class MainWindow : Window
 
         UpdateFilterButton();
         var selectedId = pendingSlipSelectionId ?? editorState.SlipId;
-        var selectedIds = SelectedSlipItems()
-            .Select(item => item.Id)
-            .ToHashSet(StringComparer.Ordinal);
         var filtered = CurrentFilteredSlips();
 
         var wasRefreshing = refreshing;
@@ -900,21 +895,18 @@ internal partial class MainWindow : Window
                     slip));
             }
 
+            // Bind the editor from the explicit selection: a batch clears it; a
+            // pending/just-created or surviving single slip loads it; otherwise (and
+            // not in title mode) default to the first slip.
             var selected = slips.FirstOrDefault(item => item.Id == selectedId);
-            if (pendingSlipSelectionId is null && selectedIds.Count > 1)
+            if (pendingSlipSelectionId is null
+                && CurrentSelection() is KastnSelection.Slips { SlipIds.Count: > 1 })
             {
-                slipList.SelectedItems?.Clear();
-                foreach (var item in slips.Where(item => selectedIds.Contains(item.Id)))
-                {
-                    slipList.SelectedItems?.Add(item);
-                }
-
                 editorState.Select(null);
                 UpdateEditorFromState();
             }
             else if (selected is not null)
             {
-                slipList.SelectedItem = selected;
                 if (pendingSlipSelectionId == selected.Id)
                 {
                     pendingSlipSelectionId = null;
@@ -937,15 +929,8 @@ internal partial class MainWindow : Window
             }
             else if (!editorState.IsDirty && editorState.ConflictCurrent is null && TitleModeBucket() is null)
             {
-                slipList.SelectedItem = slips.FirstOrDefault();
-                editorState.Select((slipList.SelectedItem as SlipListItem)?.Slip);
+                editorState.Select(slips.FirstOrDefault()?.Slip);
                 UpdateEditorFromState();
-            }
-            else
-            {
-                // Keep the editor empty when a bucket is in title mode, so a refresh
-                // does not pull a slip in under the heading controls.
-                slipList.SelectedItem = null;
             }
 
             RefreshViewer();
