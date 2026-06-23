@@ -1103,14 +1103,17 @@ internal partial class MainWindow
             return;
         }
 
+        // A genuine selection change is a "first click": collapse any expanded bucket
+        // so the tap handler treats a later re-click on it as the "second click".
+        treeSelectionChangedThisClick = true;
+        expandedBucketId = null;
+
         var node = SelectedTreeNode;
         if (node is null)
         {
             return;
         }
 
-        // The slips the selection acts on: each selected slip node, plus every slip
-        // under a selected bucket node (selecting a bucket = batch-edit its slips).
         var slipIds = SelectedTreeSlipIds();
         var singleSlipId = slipIds.Count == 1 ? slipIds[0] : null;
 
@@ -1128,11 +1131,24 @@ internal partial class MainWindow
             return;
         }
 
+        UpdateTreeSelectionUi();
+    }
+
+    // The selection -> editor/batch logic, shared by a fresh selection and a tap that
+    // toggles a bucket between its title (heading) and its slips.
+    private void UpdateTreeSelectionUi()
+    {
+        var node = SelectedTreeNode;
+        if (node is null)
+        {
+            return;
+        }
+
         lastSelectedNodeId = node.Id;
+        var slipIds = SelectedTreeSlipIds();
+        var singleSlipId = slipIds.Count == 1 ? slipIds[0] : null;
         if (singleSlipId is not null)
         {
-            // Exactly one slip: load it into the editor and scope the view to its
-            // bucket, then show the Slip pane.
             pendingSlipSelectionId = singleSlipId;
             RefreshBucketEditor();
             RefreshSlipView(force: true);
@@ -1141,8 +1157,8 @@ internal partial class MainWindow
         }
         else
         {
-            // Zero slips (an empty bucket) or several: the batch count comes from the
-            // tree via SelectedSlips, so just refresh and clear the single-slip editor.
+            // Zero slips: a title-mode/empty bucket or several selected. The batch
+            // count comes from the tree via SelectedSlips; clear the single-slip editor.
             pendingSlipSelectionId = null;
             RefreshBucketEditor();
             RefreshSlipView(force: true);
@@ -1154,19 +1170,54 @@ internal partial class MainWindow
         }
     }
 
+    // A bucket's "second click": a tap that did not change the selection toggles the
+    // already-selected bucket between editing its title and selecting its slips.
+    private void OnTreeNodeTapped(object? sender, Avalonia.Input.TappedEventArgs args)
+    {
+        if (treeSelectionChangedThisClick)
+        {
+            treeSelectionChangedThisClick = false;
+            return;
+        }
+
+        if ((sender as Control)?.DataContext is not KastnTreeNode node
+            || node.Kind != KastnTreeNodeKind.Bucket
+            || node.Bucket is not { } bucket
+            || KastnWorkbench.IsDeletedBucket(bucket)
+            || !string.Equals(SelectedTreeNode?.Id, node.Id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        expandedBucketId = string.Equals(expandedBucketId, node.Id, StringComparison.Ordinal)
+            ? null
+            : node.Id;
+        UpdateTreeSelectionUi();
+    }
+
     // The distinct slip ids the current tree selection targets: each selected slip
-    // node plus every slip beneath a selected bucket node, de-duplicated.
+    // node, plus every slip beneath a selected bucket only once that bucket is
+    // expanded (its second click). De-duplicated.
     private IReadOnlyList<string> SelectedTreeSlipIds()
     {
         var nodes = projectTree.SelectedItems?.OfType<KastnTreeNode>().ToList()
             ?? (SelectedTreeNode is { } single ? [single] : []);
         var ids = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var slip in nodes.SelectMany(TreeSlips))
+        foreach (var node in nodes)
         {
-            if (seen.Add(slip.Id))
+            if (node.Kind == KastnTreeNodeKind.Bucket
+                && !string.Equals(expandedBucketId, node.Id, StringComparison.Ordinal))
             {
-                ids.Add(slip.Id);
+                continue;
+            }
+
+            foreach (var slip in TreeSlips(node))
+            {
+                if (seen.Add(slip.Id))
+                {
+                    ids.Add(slip.Id);
+                }
             }
         }
 

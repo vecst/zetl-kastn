@@ -104,6 +104,12 @@ internal partial class MainWindow : Window
     // When true the project tree shows only the Deleted bucket's slips (browse +
     // restore), instead of the normal working tree.
     private bool showingDeleted;
+    // The bucket whose slips are "expanded" (second click). When null, a selected
+    // bucket is in title mode: its slips are not batch-selected and the heading
+    // controls edit the bucket's title. Reset on any fresh selection.
+    private string? expandedBucketId;
+    private bool treeSelectionChangedThisClick;
+    private bool bucketHeadingUpdating;
     private bool landingShowingTemplates;
     private bool landingShowingConsumable;
     private bool landingShowArchived;
@@ -157,6 +163,11 @@ internal partial class MainWindow : Window
         detailEditorButton.Click += (_, _) => SetDetailPaneMode(showDetails: false);
         detailDetailsButton.Click += (_, _) => SetDetailPaneMode(showDetails: true);
         viewDeletedButton.IsCheckedChanged += (_, _) => OnViewDeletedToggled();
+        bucketHeadingSizeBox.ItemsSource = new[] { "Normal size", "Large", "Small" };
+        bucketHeadingAlignBox.ItemsSource = new[] { "Left", "Center", "Right" };
+        bucketHeadingSizeBox.SelectionChanged += async (_, _) => await OnBucketHeadingChangedAsync();
+        bucketHeadingAlignBox.SelectionChanged += async (_, _) => await OnBucketHeadingChangedAsync();
+        bucketHeadingBoldCheck.IsCheckedChanged += async (_, _) => await OnBucketHeadingChangedAsync();
         slipList.SelectionChanged += OnSlipSelectionChanged;
         searchBox.TextChanged += (_, _) => RefreshSlipView();
         sourceFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
@@ -730,6 +741,63 @@ internal partial class MainWindow : Window
             ?? parentBuckets[0];
         parentBucketBox.IsEnabled = selected is not null && !isDeleted && IsOnline;
         RefreshParentBucketHint(selected);
+
+        // The heading-style controls appear when a (non-deleted) bucket node is the
+        // tree selection — that's where you style the bucket's title.
+        var headingBucket = SelectedTreeNode is { Kind: KastnTreeNodeKind.Bucket, Bucket: { } hb }
+            && !KastnWorkbench.IsDeletedBucket(hb)
+            ? hb
+            : null;
+        bucketHeadingPanel.IsVisible = headingBucket is not null;
+        if (headingBucket is not null)
+        {
+            PopulateBucketHeadingControls(headingBucket);
+        }
+    }
+
+    private void PopulateBucketHeadingControls(ZetlBucketSnapshot bucket)
+    {
+        bucketHeadingUpdating = true;
+        bucketHeadingSizeBox.SelectedIndex = bucket.HeadingLevel switch { 1 => 1, 3 => 2, _ => 0 };
+        bucketHeadingAlignBox.SelectedIndex = bucket.HeadingAlign switch { "center" => 1, "right" => 2, _ => 0 };
+        bucketHeadingBoldCheck.IsChecked = bucket.HeadingBold;
+        bucketHeadingSizeBox.IsEnabled = IsOnline;
+        bucketHeadingAlignBox.IsEnabled = IsOnline;
+        bucketHeadingBoldCheck.IsEnabled = IsOnline;
+        bucketHeadingUpdating = false;
+    }
+
+    private async Task OnBucketHeadingChangedAsync()
+    {
+        if (bucketHeadingUpdating || !IsOnline || saving || currentProject is null)
+        {
+            return;
+        }
+
+        if (SelectedTreeNode is not { Kind: KastnTreeNodeKind.Bucket, Bucket: { } bucket }
+            || KastnWorkbench.IsDeletedBucket(bucket))
+        {
+            return;
+        }
+
+        var align = bucketHeadingAlignBox.SelectedIndex switch { 1 => "center", 2 => "right", _ => "" };
+        var level = bucketHeadingSizeBox.SelectedIndex switch { 1 => 1, 2 => 3, _ => 2 };
+        var bold = bucketHeadingBoldCheck.IsChecked == true;
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.SetBucketHeading,
+            new SetBucketHeadingCommand { Align = align, Bold = bold, Level = level },
+            currentProject.Id,
+            bucket.Id,
+            bucket.Revision));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            await connection.RefreshAsync();
+        }
+        else if (response.Status != ZetlResponseStatus.Conflict)
+        {
+            statusText.Text = response.Error?.Message ?? "Heading update failed.";
+        }
     }
 
     private void RefreshDestinationBuckets()

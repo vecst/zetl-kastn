@@ -417,7 +417,7 @@
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">
-                <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+                <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
                   <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" Margin="0,0,0,8">
                     <TextBlock Grid.Column="0"
                                Text="Buckets &amp; slips"
@@ -452,6 +452,8 @@
                         <Grid ColumnDefinitions="Auto,Auto,*,Auto"
                               ColumnSpacing="6"
                               MinWidth="225"
+                              Background="Transparent"
+                              Tapped="OnTreeNodeTapped"
                               Opacity="{Binding NodeOpacity}">
                           <Viewbox Grid.Column="0"
                                    Width="15"
@@ -551,7 +553,21 @@
                              Classes="muted"
                              FontSize="12"
                              Margin="0,4,0,0" />
-                  <Grid Grid.Row="5"
+                  <StackPanel Grid.Row="5"
+                              x:Name="bucketHeadingPanel"
+                              Spacing="4"
+                              Margin="0,8,0,0"
+                              IsVisible="False">
+                    <TextBlock Text="Heading style" Classes="muted" FontSize="12" />
+                    <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+                      <ComboBox x:Name="bucketHeadingSizeBox" MinWidth="110" />
+                      <ComboBox x:Name="bucketHeadingAlignBox" MinWidth="95" />
+                      <CheckBox x:Name="bucketHeadingBoldCheck"
+                                Content="Bold"
+                                VerticalAlignment="Center" />
+                    </WrapPanel>
+                  </StackPanel>
+                  <Grid Grid.Row="6"
                         ColumnDefinitions="*,*,*"
                         ColumnSpacing="6"
                         Margin="0,8,0,0">
