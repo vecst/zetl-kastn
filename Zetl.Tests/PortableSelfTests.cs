@@ -180,6 +180,7 @@ internal static class PortableSelfTests
                 ("View list style and heading numbers render", ZetlViewTests.ViewListStyleAndHeadingNumbersRender),
                 ("Markdown preserves a slip's own list markup", ZetlViewTests.MarkdownPreservesSlipOwnListMarkup),
                 ("Document title hides or overrides the project name", ZetlViewTests.DocumentTitleHidesOrOverridesProjectName),
+                ("Section heading style renders across kinds", ZetlViewTests.SectionHeadingStyleRendersAcrossKinds),
                 ("Slip links parse and resolve stable ids", ZetlSlipLinkTests.ParsesAndResolvesStableIdLinks),
                 ("Slip links refresh caches safely", ZetlSlipLinkTests.RefreshesCachesWithoutDamagingUnresolvedOrMalformedText),
                 ("Slip backlinks are computed from forward links", ZetlSlipLinkTests.ComputesBacklinksWithoutPersistedReverseEdges),

@@ -107,6 +107,16 @@ internal sealed class ZetlViewSection
 
     public List<string> Buckets { get; set; } = [];
 
+    // Heading styling for the rich kinds (HTML / PDF) and the on-screen view. Align
+    // is "left" (default) / "center" / "right"; Bold makes the heading heavier; Level
+    // 1/2/3 sizes it large/normal/small (0 = automatic from depth). Markdown honors
+    // the level (heading depth) but ignores align/bold, which it cannot express.
+    public string HeadingAlign { get; set; } = "";
+
+    public bool HeadingBold { get; set; }
+
+    public int HeadingLevel { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }

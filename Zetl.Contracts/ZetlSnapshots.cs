@@ -78,6 +78,12 @@ public sealed record ZetlProjectViewSectionSnapshot
 {
     public required string Title { get; init; }
     public IReadOnlyList<string> Buckets { get; init; } = [];
+
+    // Heading styling: align ("" / "center" / "right"), bold, and level (1/2/3 size;
+    // 0 = automatic). Honored by HTML / PDF / on-screen; Markdown uses only the level.
+    public string HeadingAlign { get; init; } = "";
+    public bool HeadingBold { get; init; }
+    public int HeadingLevel { get; init; }
 }
 
 public sealed record ZetlBucketSnapshot

@@ -220,8 +220,15 @@ internal partial class MainWindow
             viewerDocumentPanel.Children.Add(new TextBlock
             {
                 Text = ZetlViewRenderer.HeadingText(group, SelectedView),
-                FontSize = Math.Max(15, 21 - group.Depth),
-                FontWeight = FontWeight.SemiBold,
+                FontSize = Math.Max(14, 27 - (3 * group.EffectiveLevel)),
+                FontWeight = group.HeadingBold ? FontWeight.Bold : FontWeight.SemiBold,
+                TextAlignment = ZetlViewRenderer.NormalizeHeadingAlign(group.HeadingAlign) switch
+                {
+                    "center" => TextAlignment.Center,
+                    "right" => TextAlignment.Right,
+                    _ => TextAlignment.Left,
+                },
+                TextWrapping = TextWrapping.Wrap,
                 Margin = new Avalonia.Thickness(group.Depth * 14, 8, 0, 2)
             });
 

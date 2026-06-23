@@ -83,8 +83,14 @@ internal static class KastnPdfRenderer
         foreach (var group in ZetlViewRenderer.BuildGroups(project, slips, view))
         {
             var heading = section.AddParagraph(ZetlViewRenderer.HeadingText(group, view));
-            heading.Format.Font.Size = Math.Max(12, 16 - group.Depth);
+            heading.Format.Font.Size = Math.Max(11, 20 - (2 * group.EffectiveLevel));
             heading.Format.Font.Bold = true;
+            heading.Format.Alignment = ZetlViewRenderer.NormalizeHeadingAlign(group.HeadingAlign) switch
+            {
+                "center" => ParagraphAlignment.Center,
+                "right" => ParagraphAlignment.Right,
+                _ => ParagraphAlignment.Left,
+            };
             heading.Format.SpaceBefore = Unit.FromPoint(10);
             heading.Format.SpaceAfter = Unit.FromPoint(4);
             heading.Format.LeftIndent = Unit.FromPoint(group.Depth * 14);

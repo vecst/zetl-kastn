@@ -17,6 +17,21 @@ internal sealed record ZetlViewGroup(
     // document order by BuildGroups. Renderers prefix the heading with it only when
     // the view sets NumberHeadings.
     public string OutlineNumber { get; init; } = "";
+
+    // Optional per-section heading styling (custom-section views only). Align is
+    // "" / "center" / "right"; HeadingLevel 1/2/3 overrides the depth-based level
+    // (0 = automatic). Honored by HTML / PDF / on-screen; Markdown uses only the level.
+    public string HeadingAlign { get; init; } = "";
+
+    public bool HeadingBold { get; init; }
+
+    public int HeadingLevel { get; init; }
+
+    // The heading level the renderers use: an explicit per-section level, else the
+    // depth-based default (h2 for top level).
+    public int EffectiveLevel => HeadingLevel > 0
+        ? Math.Clamp(HeadingLevel, 1, 6)
+        : Math.Min(6, 2 + Depth);
 }
 
 // Assigns cascading outline numbers (1, 1.1, 1.1.1) to groups in document order. A
@@ -158,10 +173,14 @@ internal static class ZetlViewRenderer
 
             if (sectionSlips.Count > 0)
             {
-                // Sections are flat (depth 0); the section title is the heading.
+                // Sections are flat (depth 0); the section title is the heading, with
+                // the section's optional heading styling carried onto the group.
                 groups.Add(new ZetlViewGroup(section.Title.Trim(), 0, headerBucket, sectionSlips)
                 {
-                    OutlineNumber = numberer.Next(0)
+                    OutlineNumber = numberer.Next(0),
+                    HeadingAlign = section.HeadingAlign,
+                    HeadingBold = section.HeadingBold,
+                    HeadingLevel = section.HeadingLevel
                 });
             }
         }
@@ -230,6 +249,31 @@ internal static class ZetlViewRenderer
             ? $"{group.OutlineNumber} {group.Heading}"
             : group.Heading;
 
+    public static string NormalizeHeadingAlign(string? align)
+    {
+        var value = (align ?? "").Trim().ToLowerInvariant();
+        return value is "center" or "right" ? value : "left";
+    }
+
+    // Inline CSS for a section heading's align/bold (the heading level handles size).
+    // Returns "" when there is nothing to style.
+    private static string HeadingStyleAttribute(ZetlViewGroup group)
+    {
+        var rules = new List<string>();
+        var align = NormalizeHeadingAlign(group.HeadingAlign);
+        if (align is "center" or "right")
+        {
+            rules.Add($"text-align:{align}");
+        }
+
+        if (group.HeadingBold)
+        {
+            rules.Add("font-weight:700");
+        }
+
+        return rules.Count == 0 ? "" : $" style=\"{string.Join(';', rules)}\"";
+    }
+
     // The effective document title for the rich kinds (Markdown / HTML / PDF), or
     // null when the view hides it. A non-empty view Title overrides the project name.
     public static string? DocumentTitle(ZetlProjectSnapshot project, ZetlViewDocument view)
@@ -256,7 +300,7 @@ internal static class ZetlViewRenderer
             : new List<string> { $"# {documentTitle}", "" };
         foreach (var group in groups)
         {
-            var level = Math.Min(6, 2 + group.Depth);
+            var level = group.EffectiveLevel;
             parts.Add($"{new string('#', level)} {HeadingText(group, view)}");
             parts.Add("");
             var itemNumber = 1;
@@ -370,8 +414,8 @@ internal static class ZetlViewRenderer
 
         foreach (var group in groups)
         {
-            var level = Math.Min(6, 2 + group.Depth);
-            parts.Add($"<h{level}>{Escape(HeadingText(group, view))}</h{level}>");
+            var level = group.EffectiveLevel;
+            parts.Add($"<h{level}{HeadingStyleAttribute(group)}>{Escape(HeadingText(group, view))}</h{level}>");
 
             if (group.Slips.Count == 0)
             {

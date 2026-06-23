@@ -17,6 +17,13 @@ internal partial class MainWindow
         public string Title { get; set; } = "";
 
         public List<string> Buckets { get; } = [];
+
+        public string HeadingAlign { get; set; } = "";
+
+        public bool HeadingBold { get; set; }
+
+        // 0 = automatic; 1/2/3 = large/normal/small.
+        public int HeadingLevel { get; set; }
     }
 
     private readonly List<ViewSectionDraft> viewSectionDrafts = [];
@@ -33,7 +40,13 @@ internal partial class MainWindow
         viewSectionDrafts.Clear();
         foreach (var section in sections)
         {
-            var draft = new ViewSectionDraft { Title = section.Title };
+            var draft = new ViewSectionDraft
+            {
+                Title = section.Title,
+                HeadingAlign = section.HeadingAlign,
+                HeadingBold = section.HeadingBold,
+                HeadingLevel = section.HeadingLevel
+            };
             draft.Buckets.AddRange(section.Buckets);
             viewSectionDrafts.Add(draft);
         }
@@ -208,6 +221,7 @@ internal partial class MainWindow
         var content = new StackPanel { Spacing = 8 };
         content.Children.Add(heading);
         content.Children.Add(bucketRow);
+        content.Children.Add(BuildSectionHeadingStyleRow(draft));
         var card = new Border
         {
             Classes = { "surface" },
@@ -219,6 +233,69 @@ internal partial class MainWindow
         card.AddHandler(DragDrop.DragLeaveEvent, (_, _) => ClearViewSectionDropIndicator(card));
         card.AddHandler(DragDrop.DropEvent, (_, args) => OnViewSectionDrop(draft, card, args));
         return card;
+    }
+
+    // Heading styling for a custom section: size (level), alignment, and bold. These
+    // make the section title "look nicer" in the HTML / PDF / on-screen document
+    // (Markdown keeps a plain heading, honoring only the size as its heading depth).
+    private Control BuildSectionHeadingStyleRow(ViewSectionDraft draft)
+    {
+        var sizeBox = new ComboBox
+        {
+            ItemsSource = new[] { "Normal size", "Large", "Small" },
+            MinWidth = 120,
+            SelectedIndex = draft.HeadingLevel switch { 1 => 1, 3 => 2, _ => 0 }
+        };
+        ToolTip.SetTip(sizeBox, "Heading size");
+        sizeBox.SelectionChanged += (_, _) =>
+        {
+            draft.HeadingLevel = sizeBox.SelectedIndex switch { 1 => 1, 2 => 3, _ => 2 };
+            RefreshViewLivePreview();
+        };
+
+        var alignBox = new ComboBox
+        {
+            ItemsSource = new[] { "Left", "Center", "Right" },
+            MinWidth = 95,
+            SelectedIndex = draft.HeadingAlign switch { "center" => 1, "right" => 2, _ => 0 }
+        };
+        ToolTip.SetTip(alignBox, "Heading alignment");
+        alignBox.SelectionChanged += (_, _) =>
+        {
+            draft.HeadingAlign = alignBox.SelectedIndex switch { 1 => "center", 2 => "right", _ => "" };
+            RefreshViewLivePreview();
+        };
+
+        var boldCheck = new CheckBox
+        {
+            Content = "Bold",
+            IsChecked = draft.HeadingBold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        boldCheck.IsCheckedChanged += (_, _) =>
+        {
+            draft.HeadingBold = boldCheck.IsChecked == true;
+            RefreshViewLivePreview();
+        };
+
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Heading",
+                    Classes = { "muted" },
+                    FontSize = 12,
+                    VerticalAlignment = VerticalAlignment.Center
+                },
+                sizeBox,
+                alignBox,
+                boldCheck
+            }
+        };
     }
 
     private void BeginViewSectionDragCandidate(
@@ -372,7 +449,10 @@ internal partial class MainWindow
         return viewSectionDrafts.Select(draft => new ZetlViewSection
         {
             Title = draft.Title.Trim(),
-            Buckets = draft.Buckets.ToList()
+            Buckets = draft.Buckets.ToList(),
+            HeadingAlign = draft.HeadingAlign,
+            HeadingBold = draft.HeadingBold,
+            HeadingLevel = draft.HeadingLevel
         }).ToList();
     }
 
@@ -429,8 +509,14 @@ internal partial class MainWindow
             viewLivePreviewPanel.Children.Add(new TextBlock
             {
                 Text = ZetlViewRenderer.HeadingText(group, view),
-                FontSize = Math.Max(14, 18 - group.Depth),
-                FontWeight = FontWeight.SemiBold,
+                FontSize = Math.Max(13, 24 - (3 * group.EffectiveLevel)),
+                FontWeight = group.HeadingBold ? FontWeight.Bold : FontWeight.SemiBold,
+                TextAlignment = ZetlViewRenderer.NormalizeHeadingAlign(group.HeadingAlign) switch
+                {
+                    "center" => TextAlignment.Center,
+                    "right" => TextAlignment.Right,
+                    _ => TextAlignment.Left,
+                },
                 Margin = new Thickness(group.Depth * 10, 8, 0, 2),
                 TextWrapping = TextWrapping.Wrap
             });

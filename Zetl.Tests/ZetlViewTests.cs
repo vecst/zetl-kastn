@@ -394,6 +394,49 @@ internal static class ZetlViewTests
         AssertContains(htmlHidden, "<title>Demo</title>");
     }
 
+    public static void SectionHeadingStyleRendersAcrossKinds()
+    {
+        var project = Project("Demo", [Bucket("b1", "Ideas")], [Slip("b1", "one")]);
+
+        static ZetlViewSection StyledSection() => new()
+        {
+            Title = "Big Centered",
+            Buckets = ["Ideas"],
+            HeadingAlign = "center",
+            HeadingBold = true,
+            HeadingLevel = 1,
+        };
+
+        // HTML honors level (h1), alignment, and bold.
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument
+            {
+                Id = "h",
+                Name = "H",
+                Kind = ZetlViewKinds.Html,
+                ShowTitle = false,
+                Sections = [StyledSection()],
+            });
+        AssertContains(html, "<h1 style=\"text-align:center;font-weight:700\">Big Centered</h1>");
+
+        // Markdown honors only the size (as heading depth); it cannot express
+        // alignment or bold, so the heading stays plain.
+        var markdown = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument
+            {
+                Id = "m",
+                Name = "M",
+                Kind = ZetlViewKinds.Markdown,
+                ShowTitle = false,
+                Sections = [StyledSection()],
+            }).ReplaceLineEndings("\n");
+        AssertEqual("# Big Centered\n\n- one", markdown, "Markdown uses only the section level.");
+    }
+
     private static void AssertContains(string text, string expected)
     {
         if (!text.Contains(expected, StringComparison.Ordinal))
