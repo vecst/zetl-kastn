@@ -398,6 +398,10 @@ internal partial class MainWindow : Window
                 {
                     selectedBucketId = null;
                     selectedSlipId = null;
+                    // A stale node id from the previous project would block the
+                    // first-slip default and leave nothing meaningfully selected.
+                    lastSelectedNodeId = null;
+                    expandedBucketId = null;
                     editorState.Select(null);
                     searchBox.Text = "";
                     // On opening a project, render with its default view (set by a
@@ -673,16 +677,20 @@ internal partial class MainWindow : Window
 
     private void RefreshBuckets(ZetlProjectSnapshot project, string? selectedBucketId)
     {
-        // Restore whichever node (slip or bucket) was selected, falling back to the
-        // requested bucket, then the first bucket. Runs inside ApplySnapshot's
-        // refreshing guard, so re-selecting drives no side effects here.
-        var restoreId = lastSelectedNodeId
-            ?? selectedBucketId
-            ?? project.Buckets.FirstOrDefault()?.Id;
+        // Runs inside ApplySnapshot's refreshing guard, so re-selecting drives no
+        // side effects here.
         projectTree.ItemsSource = KastnWorkbench.BuildProjectTree(
             project, project.Slips, deletedOnly: showingDeleted);
         UpdateDeletedToggle(project);
-        var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, restoreId);
+        var treeNodes = projectTree.ItemsSource as IEnumerable<KastnTreeNode>;
+        // Restore whichever node was selected, else the requested bucket, else the
+        // first slip (so the editor and the tree/toolbar agree on open), else the
+        // first bucket.
+        var restoreId = lastSelectedNodeId
+            ?? selectedBucketId
+            ?? FirstSlipNode(treeNodes)?.Id
+            ?? project.Buckets.FirstOrDefault()?.Id;
+        var node = FindTreeNode(treeNodes, restoreId);
         projectTree.SelectedItem = node;
         lastSelectedNodeId = node?.Id;
         RefreshBucketEditor();
@@ -777,6 +785,13 @@ internal partial class MainWindow : Window
     // the heading panel act on the bucket's title rather than its slips.
     private ZetlBucketSnapshot? TitleModeBucket()
     {
+        // A slip loaded in the editor means single-slip mode: the toolbar acts on the
+        // slip, not the bucket title, even though the tree row is a bucket.
+        if (editorState.SlipId is not null)
+        {
+            return null;
+        }
+
         return SelectedTreeNode is { Kind: KastnTreeNodeKind.Bucket, Bucket: { } bucket }
             && !KastnWorkbench.IsDeletedBucket(bucket)
             && !string.Equals(expandedBucketId, bucket.Id, StringComparison.Ordinal)
@@ -914,7 +929,7 @@ internal partial class MainWindow : Window
                     }
                 }
             }
-            else if (!editorState.IsDirty && editorState.ConflictCurrent is null)
+            else if (!editorState.IsDirty && editorState.ConflictCurrent is null && TitleModeBucket() is null)
             {
                 slipList.SelectedItem = slips.FirstOrDefault();
                 editorState.Select((slipList.SelectedItem as SlipListItem)?.Slip);
@@ -922,6 +937,8 @@ internal partial class MainWindow : Window
             }
             else
             {
+                // Keep the editor empty when a bucket is in title mode, so a refresh
+                // does not pull a slip in under the heading controls.
                 slipList.SelectedItem = null;
             }
 
@@ -1141,8 +1158,11 @@ internal partial class MainWindow : Window
             searchBox.Focus();
             searchBox.SelectAll();
         }
-        else if (args.KeyModifiers.HasFlag(KeyModifiers.Control) && args.Key == Key.S)
+        else if (args.KeyModifiers.HasFlag(KeyModifiers.Control)
+            && args.Key is Key.S or Key.Enter)
         {
+            // Ctrl+S or Ctrl+Enter saves the current slip (Enter alone inserts a
+            // newline in the editor).
             args.Handled = true;
             await SaveEditorAsync();
         }

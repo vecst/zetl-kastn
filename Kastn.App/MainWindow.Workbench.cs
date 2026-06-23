@@ -1250,6 +1250,31 @@ internal partial class MainWindow
         SetEditingEnabled();
     }
 
+    // The first slip node in tree order, used as the default selection on opening a
+    // project so a slip (not a bucket title) is active to start.
+    private static KastnTreeNode? FirstSlipNode(IEnumerable<KastnTreeNode>? nodes)
+    {
+        if (nodes is null)
+        {
+            return null;
+        }
+
+        foreach (var node in nodes)
+        {
+            if (node.Kind == KastnTreeNodeKind.Slip)
+            {
+                return node;
+            }
+
+            if (FirstSlipNode(node.Children) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
     private static KastnTreeNode? FindTreeNode(IEnumerable<KastnTreeNode>? nodes, string? id)
     {
         if (nodes is null || id is null)
