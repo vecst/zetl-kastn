@@ -282,6 +282,17 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
+                // A slip that already carries its own list markup (e.g. a checkbox
+                // list from the editor) is emitted verbatim, so GFM task items stay
+                // interactive instead of being nested under a redundant bucket marker
+                // (which produced "- - [ ] x": doubled and not a valid task item).
+                var firstContentLine = lines.First(line => line.Length > 0);
+                if (StartsWithMarkdownListMarker(firstContentLine))
+                {
+                    parts.AddRange(lines.Where(line => line.Length > 0));
+                    continue;
+                }
+
                 var marker = listStyle switch
                 {
                     ZetlViewListStyles.Ordered => $"{itemNumber++}. ",
@@ -419,6 +430,31 @@ internal static class ZetlViewRenderer
 
     private static string EscapeAttribute(string text) =>
         Escape(text).Replace("\"", "&quot;");
+
+    // Whether a line already begins with a Markdown list marker (bullet, task
+    // checkbox, or ordered). Such a slip is emitted verbatim by the Markdown view
+    // rather than wrapped in another bucket-level marker.
+    private static bool StartsWithMarkdownListMarker(string line)
+    {
+        var text = line.TrimStart();
+        if (text.StartsWith("- ", StringComparison.Ordinal)
+            || text.StartsWith("* ", StringComparison.Ordinal)
+            || text.StartsWith("+ ", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var digits = 0;
+        while (digits < text.Length && char.IsDigit(text[digits]))
+        {
+            digits++;
+        }
+
+        return digits > 0
+            && digits + 1 < text.Length
+            && (text[digits] == '.' || text[digits] == ')')
+            && text[digits + 1] == ' ';
+    }
 
     private static string EscapeMarkdownAlt(string text) =>
         text.Replace("[", "\\[").Replace("]", "\\]");

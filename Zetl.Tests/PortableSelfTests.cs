@@ -178,6 +178,7 @@ internal static class PortableSelfTests
                 ("Markdown inline formatting renders to HTML", ZetlViewTests.MarkdownInlineFormattingRendersToHtml),
                 ("Markdown block lists render to HTML", ZetlViewTests.MarkdownBlockListsRenderToHtml),
                 ("View list style and heading numbers render", ZetlViewTests.ViewListStyleAndHeadingNumbersRender),
+                ("Markdown preserves a slip's own list markup", ZetlViewTests.MarkdownPreservesSlipOwnListMarkup),
                 ("Slip links parse and resolve stable ids", ZetlSlipLinkTests.ParsesAndResolvesStableIdLinks),
                 ("Slip links refresh caches safely", ZetlSlipLinkTests.RefreshesCachesWithoutDamagingUnresolvedOrMalformedText),
                 ("Slip backlinks are computed from forward links", ZetlSlipLinkTests.ComputesBacklinksWithoutPersistedReverseEdges),

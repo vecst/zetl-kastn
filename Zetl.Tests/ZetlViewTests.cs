@@ -317,6 +317,39 @@ internal static class ZetlViewTests
             "Markdown ordered list with cascading numbered headings.");
     }
 
+    public static void MarkdownPreservesSlipOwnListMarkup()
+    {
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Tasks")],
+            [Slip("b1", "- [ ] todo"), Slip("b1", "- [x] done"), Slip("b1", "plain item")]);
+
+        // Default bullet view: a slip that is already a GFM task item is emitted
+        // verbatim (so it stays interactive), not nested under a second "- " marker
+        // ("- - [ ] todo"); a plain slip still gets the bucket bullet.
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# Demo\n\n## Tasks\n\n- [ ] todo\n- [x] done\n- plain item");
+
+        // A Task-style view also must not double-mark an existing checkbox slip;
+        // only the plain slip gets the task marker.
+        var taskOutput = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument
+            {
+                Id = "t",
+                Name = "T",
+                Kind = ZetlViewKinds.Markdown,
+                ListStyle = ZetlViewListStyles.Task
+            }).ReplaceLineEndings("\n");
+        AssertEqual(
+            "# Demo\n\n## Tasks\n\n- [ ] todo\n- [x] done\n- [ ] plain item",
+            taskOutput,
+            "Task view should keep a checkbox slip's own markup and only mark plain slips.");
+    }
+
     private static void AssertContains(string text, string expected)
     {
         if (!text.Contains(expected, StringComparison.Ordinal))
