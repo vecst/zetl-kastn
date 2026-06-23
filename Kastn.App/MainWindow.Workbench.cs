@@ -356,19 +356,25 @@ internal partial class MainWindow
     {
         var selected = SelectedSlips();
         var slip = selected.Count == 1 ? selected[0] : null;
-        // Alignment applies to a single text slip or, in a batch selection, to every
-        // selected text slip. The active-state highlight only makes sense for one.
+        var titleBucket = TitleModeBucket();
+        // Alignment applies to a bucket heading (title mode), a single text slip, or
+        // every selected text slip (batch). The active highlight is shown for a
+        // single slip or the title bucket.
         var batchAlign = selected.Count >= 2
             && selected.Any(item => item.Type == ZetlSlipType.Text && !IsSlipInDeleted(item));
         var canAlign = IsOnline
             && !saving
             && editorState.ConflictCurrent is null
-            && (batchAlign || (slip is { Type: ZetlSlipType.Text } && !IsSlipInDeleted(slip)));
+            && (titleBucket is not null
+                || batchAlign
+                || (slip is { Type: ZetlSlipType.Text } && !IsSlipInDeleted(slip)));
         alignLeftButton.IsEnabled = canAlign;
         alignCenterButton.IsEnabled = canAlign;
         alignRightButton.IsEnabled = canAlign;
 
-        var active = slip is null ? null : ZetlViewRenderer.SlipAlignment(slip);
+        var active = titleBucket is not null
+            ? ZetlViewRenderer.NormalizeHeadingAlign(titleBucket.HeadingAlign)
+            : slip is null ? null : ZetlViewRenderer.SlipAlignment(slip);
         alignLeftButton.FontWeight = active == "left" ? FontWeight.Bold : FontWeight.Normal;
         alignCenterButton.FontWeight = active == "center" ? FontWeight.Bold : FontWeight.Normal;
         alignRightButton.FontWeight = active == "right" ? FontWeight.Bold : FontWeight.Normal;
@@ -1104,8 +1110,7 @@ internal partial class MainWindow
         }
 
         // A genuine selection change is a "first click": collapse any expanded bucket
-        // so the tap handler treats a later re-click on it as the "second click".
-        treeSelectionChangedThisClick = true;
+        // so a later press on the same bucket reads as the "second click".
         expandedBucketId = null;
 
         var node = SelectedTreeNode;
@@ -1170,17 +1175,15 @@ internal partial class MainWindow
         }
     }
 
-    // A bucket's "second click": a tap that did not change the selection toggles the
-    // already-selected bucket between editing its title and selecting its slips.
-    private void OnTreeNodeTapped(object? sender, Avalonia.Input.TappedEventArgs args)
+    // A bucket's "second click": a press on the bucket that is already the selection
+    // (so it does not raise a selection change) toggles it between editing its title
+    // and selecting its slips. Handled at the tree level on PointerPressed, which —
+    // unlike the per-node Tapped event — fires reliably; tunneling lets us read the
+    // selection as it was before this press.
+    private void OnProjectTreePointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
     {
-        if (treeSelectionChangedThisClick)
-        {
-            treeSelectionChangedThisClick = false;
-            return;
-        }
-
-        if ((sender as Control)?.DataContext is not KastnTreeNode node
+        if (refreshing
+            || NodeFromVisual(e.Source as Visual) is not { } node
             || node.Kind != KastnTreeNodeKind.Bucket
             || node.Bucket is not { } bucket
             || KastnWorkbench.IsDeletedBucket(bucket)
@@ -1189,10 +1192,21 @@ internal partial class MainWindow
             return;
         }
 
-        expandedBucketId = string.Equals(expandedBucketId, node.Id, StringComparison.Ordinal)
-            ? null
-            : node.Id;
-        UpdateTreeSelectionUi();
+        // Defer until the click settles (no selection change, since it is the same
+        // bucket), then toggle this bucket between its title and its slips.
+        var bucketId = node.Id;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!string.Equals(SelectedTreeNode?.Id, bucketId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            expandedBucketId = string.Equals(expandedBucketId, bucketId, StringComparison.Ordinal)
+                ? null
+                : bucketId;
+            UpdateTreeSelectionUi();
+        });
     }
 
     // The distinct slip ids the current tree selection targets: each selected slip

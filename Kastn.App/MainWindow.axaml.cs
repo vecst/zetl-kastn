@@ -108,7 +108,6 @@ internal partial class MainWindow : Window
     // bucket is in title mode: its slips are not batch-selected and the heading
     // controls edit the bucket's title. Reset on any fresh selection.
     private string? expandedBucketId;
-    private bool treeSelectionChangedThisClick;
     private bool bucketHeadingUpdating;
     private bool landingShowingTemplates;
     private bool landingShowingConsumable;
@@ -159,6 +158,12 @@ internal partial class MainWindow : Window
         connection.SnapshotChanged += OnSnapshotChanged;
         landingProjectList.SelectionChanged += OnProjectSelectionChanged;
         projectTree.SelectionChanged += OnTreeSelectionChanged;
+        // Tunnel so we see the selection before this press changes it (re-click of an
+        // already-selected bucket toggles its title/slips mode).
+        projectTree.AddHandler(
+            InputElement.PointerPressedEvent,
+            OnProjectTreePointerPressed,
+            RoutingStrategies.Tunnel);
         SetupTreeDragDrop();
         detailEditorButton.Click += (_, _) => SetDetailPaneMode(showDetails: false);
         detailDetailsButton.Click += (_, _) => SetDetailPaneMode(showDetails: true);
@@ -767,14 +772,22 @@ internal partial class MainWindow : Window
         bucketHeadingUpdating = false;
     }
 
+    // The selected bucket when it is in "title mode" (a single bucket selected and
+    // not expanded to its slips), else null. In this mode the toolbar's alignment and
+    // the heading panel act on the bucket's title rather than its slips.
+    private ZetlBucketSnapshot? TitleModeBucket()
+    {
+        return SelectedTreeNode is { Kind: KastnTreeNodeKind.Bucket, Bucket: { } bucket }
+            && !KastnWorkbench.IsDeletedBucket(bucket)
+            && !string.Equals(expandedBucketId, bucket.Id, StringComparison.Ordinal)
+            ? bucket
+            : null;
+    }
+
     private async Task OnBucketHeadingChangedAsync()
     {
-        if (bucketHeadingUpdating || !IsOnline || saving || currentProject is null)
-        {
-            return;
-        }
-
-        if (SelectedTreeNode is not { Kind: KastnTreeNodeKind.Bucket, Bucket: { } bucket }
+        if (bucketHeadingUpdating
+            || SelectedTreeNode is not { Kind: KastnTreeNodeKind.Bucket, Bucket: { } bucket }
             || KastnWorkbench.IsDeletedBucket(bucket))
         {
             return;
@@ -782,7 +795,16 @@ internal partial class MainWindow : Window
 
         var align = bucketHeadingAlignBox.SelectedIndex switch { 1 => "center", 2 => "right", _ => "" };
         var level = bucketHeadingSizeBox.SelectedIndex switch { 1 => 1, 2 => 3, _ => 2 };
-        var bold = bucketHeadingBoldCheck.IsChecked == true;
+        await SendBucketHeadingAsync(bucket, align, bucketHeadingBoldCheck.IsChecked == true, level);
+    }
+
+    private async Task SendBucketHeadingAsync(ZetlBucketSnapshot bucket, string align, bool bold, int level)
+    {
+        if (!IsOnline || saving || currentProject is null)
+        {
+            return;
+        }
+
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.SetBucketHeading,

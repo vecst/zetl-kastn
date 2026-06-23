@@ -453,7 +453,6 @@
                               ColumnSpacing="6"
                               MinWidth="225"
                               Background="Transparent"
-                              Tapped="OnTreeNodeTapped"
                               Opacity="{Binding NodeOpacity}">
                           <Viewbox Grid.Column="0"
                                    Width="15"

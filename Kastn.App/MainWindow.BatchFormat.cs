@@ -11,6 +11,14 @@ internal partial class MainWindow
 
     private async Task AlignSlipsAsync(string align)
     {
+        // A bucket in title mode: the alignment targets the bucket's heading, so
+        // pressing Center centers the title rather than its slips.
+        if (TitleModeBucket() is { } bucket)
+        {
+            await SendBucketHeadingAsync(bucket, align, bucket.HeadingBold, bucket.HeadingLevel);
+            return;
+        }
+
         if (!HasBatchSelection())
         {
             await SetSlipAlignAsync(align);
