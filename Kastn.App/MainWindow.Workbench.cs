@@ -1128,10 +1128,9 @@ internal partial class MainWindow
         }
         else
         {
-            // Zero slips (an empty bucket) or several: drive the batch list, which
-            // RefreshSlipView preserves, and clear the single-slip editor.
+            // Zero slips (an empty bucket) or several: the batch count comes from the
+            // tree via SelectedSlips, so just refresh and clear the single-slip editor.
             pendingSlipSelectionId = null;
-            SyncSlipListSelection(slipIds);
             RefreshBucketEditor();
             RefreshSlipView(force: true);
             inspectedSlipId = null;
@@ -1159,27 +1158,6 @@ internal partial class MainWindow
         }
 
         return ids;
-    }
-
-    // Seed the (hidden) batch list with a multi-selection so RefreshSlipView, the
-    // batch source of truth, preserves it. Guarded so the list's own handler does
-    // not re-enter while we set it.
-    private void SyncSlipListSelection(IReadOnlyList<string> slipIds)
-    {
-        refreshing = true;
-        try
-        {
-            var idSet = slipIds.ToHashSet(StringComparer.Ordinal);
-            slipList.SelectedItems?.Clear();
-            foreach (var item in slips.Where(item => idSet.Contains(item.Id)))
-            {
-                slipList.SelectedItems?.Add(item);
-            }
-        }
-        finally
-        {
-            refreshing = false;
-        }
     }
 
     // The center View is persistent; this toggle changes only the right Detail pane.
@@ -1257,9 +1235,26 @@ internal partial class MainWindow
 
     private IReadOnlyList<ZetlSlipSnapshot> SelectedSlips()
     {
-        return SelectedSlipItems()
-            .Select(item => item.Slip)
-            .ToList();
+        if (currentProject is null)
+        {
+            return [];
+        }
+
+        // The tree is the selection surface: resolve its slips project-wide so a
+        // batch selection survives crossing buckets, and a bucket selection counts
+        // all its slips immediately — independent of the bucket-scoped display list.
+        var ids = SelectedTreeSlipIds();
+        if (ids.Count > 0)
+        {
+            var idSet = ids.ToHashSet(StringComparer.Ordinal);
+            return currentProject.Slips.Where(slip => idSet.Contains(slip.Id)).ToList();
+        }
+
+        // Fall back to the single editor slip (e.g. a freshly created/selected one).
+        return editorState.SlipId is { } editingId
+            && currentProject.Slips.FirstOrDefault(slip => slip.Id == editingId) is { } slip
+            ? [slip]
+            : [];
     }
 
     private IReadOnlyList<SlipListItem> SelectedSlipItems()
