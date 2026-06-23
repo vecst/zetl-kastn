@@ -225,6 +225,7 @@ internal static class PortableSelfTests
                 ("Kastn project tree separates the Deleted bucket", KastnWorkbenchTests.ProjectTreeSeparatesDeletedBucket),
                 ("Kastn batch format rewrites markers and strike", KastnWorkbenchTests.BatchFormatRewritesMarkersAndStrike),
                 ("Kastn batch ordered numbers restart at breaks", KastnWorkbenchTests.BatchOrderedNumbersRestartAtBreaks),
+                ("Kastn selection computes slips, title, and none", KastnWorkbenchTests.SelectionComputesSlipsTitleAndNone),
                 ("Kastn tree truncates long slip labels", KastnWorkbenchTests.SlipLabelTruncatesLongText),
                 ("Kastn dirty editor survives unrelated changes", KastnWorkbenchTests.DirtyEditorSurvivesUnrelatedChanges),
                 ("Kastn same-slip changes require resolution", KastnWorkbenchTests.SameSlipChangesRequireExplicitResolution),

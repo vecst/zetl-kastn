@@ -1,0 +1,79 @@
+using ZETL.Contracts;
+
+namespace KASTN;
+
+// The one explicit interpretation of what the project tree has selected. Everything
+// the workbench derives from a selection — the editor binding, the toolbar target,
+// the batch set, the right-pane mode — reads this single value instead of poking at
+// the tree / hidden list / editor state independently.
+//
+// A Slips selection holds a set: one id is single-slip editing, two or more is a
+// batch. A BucketTitle selection means a bucket is selected for editing its heading
+// (not its slips). Compute is pure so it can be unit tested.
+internal abstract record KastnSelection
+{
+    public sealed record None : KastnSelection;
+
+    public sealed record Slips(IReadOnlyList<string> SlipIds) : KastnSelection;
+
+    public sealed record BucketTitle(string BucketId) : KastnSelection;
+
+    public static KastnSelection Compute(
+        IReadOnlyList<KastnTreeNode> selectedNodes,
+        KastnTreeNode? primaryNode,
+        string? expandedBucketId)
+    {
+        var ids = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in selectedNodes)
+        {
+            // A bucket contributes its slips only once expanded (its second click);
+            // an un-expanded bucket is a title candidate, not a slip contribution.
+            if (node.Kind == KastnTreeNodeKind.Bucket
+                && !string.Equals(expandedBucketId, node.Id, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            foreach (var slip in TreeSlips(node))
+            {
+                if (seen.Add(slip.Id))
+                {
+                    ids.Add(slip.Id);
+                }
+            }
+        }
+
+        if (ids.Count > 0)
+        {
+            return new Slips(ids);
+        }
+
+        // No slips: a single un-expanded, non-deleted bucket means title editing.
+        if (primaryNode is { Kind: KastnTreeNodeKind.Bucket } bucket
+            && !bucket.IsDeletedBucket
+            && !string.Equals(expandedBucketId, bucket.Id, StringComparison.Ordinal))
+        {
+            return new BucketTitle(bucket.Id);
+        }
+
+        return new None();
+    }
+
+    // A node's slips: its own slip (if it is one) plus every slip beneath it.
+    private static IEnumerable<ZetlSlipSnapshot> TreeSlips(KastnTreeNode node)
+    {
+        if (node.Slip is { } slip)
+        {
+            yield return slip;
+        }
+
+        foreach (var child in node.Children)
+        {
+            foreach (var descendant in TreeSlips(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+}

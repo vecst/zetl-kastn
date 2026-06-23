@@ -798,10 +798,10 @@ internal partial class MainWindow : Window
             return null;
         }
 
-        return SelectedTreeNode is { Kind: KastnTreeNodeKind.Bucket, Bucket: { } bucket }
-            && !KastnWorkbench.IsDeletedBucket(bucket)
-            && !string.Equals(expandedBucketId, bucket.Id, StringComparison.Ordinal)
-            ? bucket
+        return CurrentSelection() is KastnSelection.BucketTitle { BucketId: var bucketId }
+            && currentProject?.Buckets.FirstOrDefault(bucket => bucket.Id == bucketId) is { } found
+            && !KastnWorkbench.IsDeletedBucket(found)
+            ? found
             : null;
     }
 

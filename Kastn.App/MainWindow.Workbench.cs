@@ -1209,34 +1209,18 @@ internal partial class MainWindow
         });
     }
 
-    // The distinct slip ids the current tree selection targets: each selected slip
-    // node, plus every slip beneath a selected bucket only once that bucket is
-    // expanded (its second click). De-duplicated.
-    private IReadOnlyList<string> SelectedTreeSlipIds()
+    // The one explicit interpretation of the tree's selection, computed fresh from
+    // the tree + expand state. SelectedSlips / TitleModeBucket / the batch logic all
+    // read this rather than poking the tree independently.
+    private KastnSelection CurrentSelection()
     {
         var nodes = projectTree.SelectedItems?.OfType<KastnTreeNode>().ToList()
             ?? (SelectedTreeNode is { } single ? [single] : []);
-        var ids = new List<string>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var node in nodes)
-        {
-            if (node.Kind == KastnTreeNodeKind.Bucket
-                && !string.Equals(expandedBucketId, node.Id, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            foreach (var slip in TreeSlips(node))
-            {
-                if (seen.Add(slip.Id))
-                {
-                    ids.Add(slip.Id);
-                }
-            }
-        }
-
-        return ids;
+        return KastnSelection.Compute(nodes, SelectedTreeNode, expandedBucketId);
     }
+
+    private IReadOnlyList<string> SelectedTreeSlipIds() =>
+        CurrentSelection() is KastnSelection.Slips slips ? slips.SlipIds : [];
 
     // The center View is persistent; this toggle changes only the right Detail pane.
     private void SetDetailPaneMode(bool showDetails)

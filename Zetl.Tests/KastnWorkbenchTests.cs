@@ -251,6 +251,59 @@ internal static class KastnWorkbenchTests
 
     private static HashSet<string> Set(params string[] ids) => new(ids, StringComparer.Ordinal);
 
+    public static void SelectionComputesSlipsTitleAndNone()
+    {
+        var s1 = SlipTreeNode("s1");
+        var s2 = SlipTreeNode("s2");
+        var s3 = SlipTreeNode("s3");
+        var bucket = BucketTreeNode("b1", deleted: false, s1, s2, s3);
+        var deletedBucket = BucketTreeNode("deleted", deleted: true, SlipTreeNode("d1"));
+
+        // A single slip is a one-item Slips selection (single-slip edit).
+        AssertTrue(
+            KastnSelection.Compute([s1], s1, expandedBucketId: null) is KastnSelection.Slips { SlipIds.Count: 1 },
+            "A single slip computes to a one-item Slips selection.");
+
+        // Several slips form a batch, preserving order.
+        var multi = KastnSelection.Compute([s1, s2, s3], s3, expandedBucketId: null) as KastnSelection.Slips;
+        AssertEqual(3, multi?.SlipIds.Count ?? 0, "Several slips form a batch Slips selection.");
+        AssertEqual("s1", multi?.SlipIds[0], "Batch selection preserves order.");
+
+        // An un-expanded bucket is a title selection; expanded, it is its slips.
+        AssertTrue(
+            KastnSelection.Compute([bucket], bucket, expandedBucketId: null) is KastnSelection.BucketTitle { BucketId: "b1" },
+            "An un-expanded bucket computes to a title selection.");
+        AssertEqual(
+            3,
+            (KastnSelection.Compute([bucket], bucket, expandedBucketId: "b1") as KastnSelection.Slips)?.SlipIds.Count ?? 0,
+            "An expanded bucket selects its slips.");
+
+        // A deleted bucket is never a title; nothing selected is None.
+        AssertTrue(
+            KastnSelection.Compute([deletedBucket], deletedBucket, expandedBucketId: null) is KastnSelection.None,
+            "A deleted bucket is not a title selection.");
+        AssertTrue(
+            KastnSelection.Compute([], null, expandedBucketId: null) is KastnSelection.None,
+            "No nodes computes to the None selection.");
+    }
+
+    private static KastnTreeNode SlipTreeNode(string id) => new()
+    {
+        Kind = KastnTreeNodeKind.Slip,
+        Id = id,
+        Label = id,
+        Slip = Slip(id, "b", "", "copy", "s", new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero)),
+    };
+
+    private static KastnTreeNode BucketTreeNode(string id, bool deleted, params KastnTreeNode[] children) => new()
+    {
+        Kind = KastnTreeNodeKind.Bucket,
+        Id = id,
+        Label = id,
+        IsDeletedBucket = deleted,
+        Children = children,
+    };
+
     public static void SlipLabelTruncatesLongText()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
