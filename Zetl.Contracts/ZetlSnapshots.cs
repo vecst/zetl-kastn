@@ -14,6 +14,9 @@ public sealed record ZetlProjectSummary
     public required string Name { get; init; }
     public required long MetadataRevision { get; init; }
     public required long ChangeSequence { get; init; }
+
+    // Lifecycle status: "Active" (default), "Finished", or "Archived".
+    public string Status { get; init; } = "Active";
     public int BucketCount { get; init; }
     public int SlipCount { get; init; }
     public int VisibleBucketCount { get; init; }
@@ -36,6 +39,10 @@ public sealed record ZetlProjectSnapshot
     public required long ChangeSequence { get; init; }
 
     public string? ActiveBucketId { get; init; }
+
+    // Lifecycle status: "Active" (default), "Finished", or "Archived". Orthogonal
+    // to lane-active state (which lives in the workspace pointers).
+    public string Status { get; init; } = "Active";
 
     // The view document id this project renders with by default (null = first view).
     public string? DefaultViewId { get; init; }

@@ -16,6 +16,9 @@ internal sealed class ZetlProject
     public string Name { get; set; } = "";
     public long MetadataRevision { get; set; } = 1;
     public long ChangeSequence { get; set; }
+    // Lifecycle status: "Active" (default), "Finished", or "Archived". Distinct
+    // from lane-active state, which lives in the workspace pointers. Reversible.
+    public string Status { get; set; } = ZetlStateStore.ActiveStatus;
     public string? ActiveBucketId { get; set; }
     public string? QuickNoteBucketId { get; set; }
     // The view document this project renders with by default (set by a creation
@@ -142,6 +145,12 @@ internal sealed class ZetlStateStore
     public const string LogProjectName = "Zetl Logs";
     public const string DeletedBucketName = "Deleted";
     public const string DeletedBucketKind = "Deleted";
+
+    // Project lifecycle statuses. Stored as readable words, matching the bucket
+    // Kind / compile-mode string convention.
+    public const string ActiveStatus = "Active";
+    public const string FinishedStatus = "Finished";
+    public const string ArchivedStatus = "Archived";
 
     private readonly ZetlStateStorage storage;
     private readonly string sessionId;
@@ -295,6 +304,14 @@ internal sealed class ZetlStateStore
     public void UpdateProjectName(ZetlProject project, string name, bool shifted = false)
     {
         project.Name = NormalizeName(name, DefaultProjectName(shifted));
+        project.MetadataRevision++;
+        PersistProject(project);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void SetProjectStatus(ZetlProject project, string status)
+    {
+        project.Status = NormalizeProjectStatus(status);
         project.MetadataRevision++;
         PersistProject(project);
     }
@@ -1566,6 +1583,7 @@ internal sealed class ZetlStateStore
         project.Name = NormalizeName(project.Name, DefaultProjectName());
         project.MetadataRevision = Math.Max(project.MetadataRevision, 1);
         project.ChangeSequence = Math.Max(project.ChangeSequence, 0);
+        project.Status = NormalizeProjectStatus(project.Status);
         project.Views ??= [];
         foreach (var view in project.Views)
         {
@@ -1980,6 +1998,34 @@ internal sealed class ZetlStateStore
         // state files, mapped forward to "Replay" by NormalizeBucketKind.
         return string.Equals(kind, "Replay", StringComparison.OrdinalIgnoreCase)
             || string.Equals(kind, "Fifo", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The canonical lifecycle status for a raw string, or null when it is not a
+    // recognized status. Callers that must reject bad input (the IPC service) use
+    // the null result; load-time normalization falls back to Active.
+    public static string? CanonicalProjectStatus(string? status)
+    {
+        if (string.Equals(status, FinishedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return FinishedStatus;
+        }
+
+        if (string.Equals(status, ArchivedStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return ArchivedStatus;
+        }
+
+        if (string.Equals(status, ActiveStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            return ActiveStatus;
+        }
+
+        return null;
+    }
+
+    private static string NormalizeProjectStatus(string? status)
+    {
+        return CanonicalProjectStatus(status) ?? ActiveStatus;
     }
 
     private static string NormalizeBucketKind(string? kind)

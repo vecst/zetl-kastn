@@ -98,6 +98,7 @@ public static class ZetlContractRules
     public static bool RequiresExpectedRevision(ZetlCommandKind kind)
     {
         return kind is ZetlCommandKind.RenameProject
+            or ZetlCommandKind.SetProjectStatus
             or ZetlCommandKind.SetProjectView
             or ZetlCommandKind.SaveProjectView
             or ZetlCommandKind.DeleteProjectView
@@ -114,6 +115,7 @@ public static class ZetlContractRules
     {
         return kind is ZetlCommandKind.CreateProject
             or ZetlCommandKind.RenameProject
+            or ZetlCommandKind.SetProjectStatus
             or ZetlCommandKind.SetProjectView
             or ZetlCommandKind.SaveProjectView
             or ZetlCommandKind.DeleteProjectView

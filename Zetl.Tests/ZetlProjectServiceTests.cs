@@ -720,6 +720,60 @@ internal static class ZetlProjectServiceTests
             "A text slip should not be exposed as picture content.");
     }
 
+    public static void ProjectStatusRoundTripsAcrossReload()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out _);
+        var service = new ZetlProjectService(store);
+
+        AssertEqual(
+            ZetlStateStore.ActiveStatus,
+            project.Status,
+            "A new project should start Active.");
+
+        // Finish the project (revision-checked).
+        var finish = service.Execute(SetStatusCommand(
+            "status-finish", project.Id, ZetlStateStore.FinishedStatus, project.MetadataRevision));
+        var finished = finish.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("SetProjectStatus returned no snapshot.");
+        AssertEqual(ZetlResponseStatus.Success, finish.Status, "Finishing should succeed.");
+        AssertEqual("Finished", finished.Status, "The snapshot should report the new status.");
+        AssertEqual("Finished", project.Status, "The stored project should carry the status.");
+
+        // A stale revision is rejected and leaves the status untouched.
+        var stale = service.Execute(SetStatusCommand(
+            "status-stale", project.Id, ZetlStateStore.ArchivedStatus, finished.MetadataRevision - 1));
+        AssertEqual(ZetlResponseStatus.Conflict, stale.Status, "A stale status edit should conflict.");
+        AssertEqual("Finished", project.Status, "A stale status edit must not change the project.");
+
+        // An unrecognized status is rejected before mutating.
+        var invalid = service.Execute(SetStatusCommand(
+            "status-invalid", project.Id, "Paused", finished.MetadataRevision));
+        AssertEqual(ZetlResponseStatus.ValidationError, invalid.Status, "An unknown status should be rejected.");
+        AssertEqual("Finished", project.Status, "A rejected status edit must not change the project.");
+
+        // Reload from disk: the status persisted.
+        var reloaded = new ZetlStateStore(temp.StatePath);
+        AssertEqual(
+            "Finished",
+            reloaded.State.Projects.Single(item => item.Id == project.Id).Status,
+            "Lifecycle status should persist across reload.");
+    }
+
+    private static ZetlCommandEnvelope SetStatusCommand(
+        string commandId,
+        string projectId,
+        string status,
+        long expectedRevision)
+    {
+        return ZetlCommandEnvelope.Create(
+            commandId,
+            ZetlCommandKind.SetProjectStatus,
+            new SetProjectStatusCommand { Status = status },
+            projectId,
+            expectedTargetRevision: expectedRevision);
+    }
+
     private static ZetlStateStore CreateStoreWithProject(
         TempStateDirectory temp,
         out ZetlProject project,

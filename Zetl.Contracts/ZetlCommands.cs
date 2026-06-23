@@ -24,6 +24,12 @@ public sealed record RenameProjectCommand
     public required string Name { get; init; }
 }
 
+public sealed record SetProjectStatusCommand
+{
+    // The lifecycle status: "Active", "Finished", or "Archived".
+    public required string Status { get; init; }
+}
+
 public sealed record SetProjectViewCommand
 {
     // The default view document id, or null to clear it (fall back to the first view).

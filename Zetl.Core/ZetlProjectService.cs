@@ -113,6 +113,7 @@ internal sealed class ZetlProjectService
             ZetlCommandKind.GetSlipPicture => GetSlipPicture(command),
             ZetlCommandKind.CreateProject => CreateProject(command),
             ZetlCommandKind.RenameProject => RenameProject(command),
+            ZetlCommandKind.SetProjectStatus => SetProjectStatus(command),
             ZetlCommandKind.SetProjectView => SetProjectView(command),
             ZetlCommandKind.SaveProjectView => SaveProjectView(command),
             ZetlCommandKind.DeleteProjectView => DeleteProjectView(command),
@@ -263,6 +264,41 @@ internal sealed class ZetlProjectService
         }
 
         store.UpdateProjectName(project, payload.Name);
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Project, project.Id, project.MetadataRevision);
+        return Success(command, project, snapshot);
+    }
+
+    private ZetlResponseEnvelope SetProjectStatus(ZetlCommandEnvelope command)
+    {
+        var project = FindProject(command.ProjectId!);
+        if (project is null)
+        {
+            return NotFound(command, ZetlEntityKind.Project, command.ProjectId!);
+        }
+
+        var conflict = CheckRevision(
+            command,
+            ZetlEntityKind.Project,
+            project.Id,
+            project.MetadataRevision,
+            ZetlProjectSnapshotMapper.ToSnapshot(project));
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        var payload = Payload<SetProjectStatusCommand>(command);
+        var status = ZetlStateStore.CanonicalProjectStatus(payload.Status);
+        if (status is null)
+        {
+            return ValidationError(
+                command,
+                "project_status_invalid",
+                "A project status must be Active, Finished, or Archived.");
+        }
+
+        store.SetProjectStatus(project, status);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Project, project.Id, project.MetadataRevision);
         return Success(command, project, snapshot);

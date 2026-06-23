@@ -37,6 +37,7 @@ public enum ZetlCommandKind
     GetSlipPicture,
     CreateProject,
     RenameProject,
+    SetProjectStatus,
     SetProjectView,
     SaveProjectView,
     DeleteProjectView,
