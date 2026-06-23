@@ -28,6 +28,15 @@ internal sealed class ZetlProject
     // Universal views remain in the global view catalog.
     public List<ZetlViewDocument> Views { get; set; } = [];
     public List<ZetlBucket> Buckets { get; set; } = new();
+
+    // Board project-picker label: the plain name for an Active project, with a
+    // trailing status marker for a Finished/Archived one so the picker reads
+    // clearly without a value converter.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayNameWithStatus =>
+        string.Equals(Status, ZetlStateStore.ActiveStatus, StringComparison.OrdinalIgnoreCase)
+            ? Name
+            : $"{Name}  ·  {Status}";
 }
 
 internal sealed class ZetlBucket
@@ -315,7 +324,27 @@ internal sealed class ZetlStateStore
     {
         project.Status = NormalizeProjectStatus(status);
         project.MetadataRevision++;
-        PersistProject(project);
+
+        // Invariant: a non-Active project is never lane-active. Whether a project
+        // is sealed via Zetl's Finish button or archived from Kastn, it leaves its
+        // lane so capture advances instead of landing in a put-away project.
+        var clearedLane = false;
+        if (!IsActiveStatus(project))
+        {
+            if (State.ActiveProjectId == project.Id)
+            {
+                State.ActiveProjectId = null;
+                clearedLane = true;
+            }
+
+            if (State.ShiftActiveProjectId == project.Id)
+            {
+                State.ShiftActiveProjectId = null;
+                clearedLane = true;
+            }
+        }
+
+        PersistProject(project, workspace: clearedLane);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -390,19 +419,9 @@ internal sealed class ZetlStateStore
             return null;
         }
 
-        project.Status = FinishedStatus;
-        project.MetadataRevision++;
-        if (State.ActiveProjectId == projectId)
-        {
-            State.ActiveProjectId = null;
-        }
-
-        if (State.ShiftActiveProjectId == projectId)
-        {
-            State.ShiftActiveProjectId = null;
-        }
-
-        PersistProject(project, workspace: true);
+        // SetProjectStatus owns the lane-clearing invariant for any non-Active
+        // status, so finishing is just sealing to Finished.
+        SetProjectStatus(project, FinishedStatus);
         return project;
     }
 

@@ -739,6 +739,10 @@ internal static class ZetlProjectServiceTests
         AssertEqual(ZetlResponseStatus.Success, finish.Status, "Finishing should succeed.");
         AssertEqual("Finished", finished.Status, "The snapshot should report the new status.");
         AssertEqual("Finished", project.Status, "The stored project should carry the status.");
+        AssertEqual<ZetlProject?>(
+            null,
+            store.ActiveProject,
+            "A sealed project must leave its lane (the non-Active invariant).");
 
         // A stale revision is rejected and leaves the status untouched.
         var stale = service.Execute(SetStatusCommand(
@@ -752,10 +756,21 @@ internal static class ZetlProjectServiceTests
         AssertEqual(ZetlResponseStatus.ValidationError, invalid.Status, "An unknown status should be rejected.");
         AssertEqual("Finished", project.Status, "A rejected status edit must not change the project.");
 
+        // Reactivating restores the status but not the lane: making a lane active
+        // again is an explicit Zetl choice, not a side effect of un-sealing.
+        var reactivate = service.Execute(SetStatusCommand(
+            "status-reactivate", project.Id, ZetlStateStore.ActiveStatus, finished.MetadataRevision));
+        AssertEqual(ZetlResponseStatus.Success, reactivate.Status, "Reactivating should succeed.");
+        AssertEqual("Active", project.Status, "Reactivating should restore Active.");
+        AssertEqual<ZetlProject?>(
+            null,
+            store.ActiveProject,
+            "Reactivating must not silently re-occupy the lane.");
+
         // Reload from disk: the status persisted.
         var reloaded = new ZetlStateStore(temp.StatePath);
         AssertEqual(
-            "Finished",
+            "Active",
             reloaded.State.Projects.Single(item => item.Id == project.Id).Status,
             "Lifecycle status should persist across reload.");
     }

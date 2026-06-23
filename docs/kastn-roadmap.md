@@ -544,11 +544,23 @@ New Project picker, and finally creation types that pair templates with views.
       (`ZetlCreationTypeStore` + Kastn's Create landing tab; projects persist a
       default view via the `SetProjectView` IPC command). See K8.7 in the templates
       roadmap.
-- [ ] Add reversible project states such as active, finished, and archived.
-- [ ] Add Zetl's Finish action and default finish output behavior.
-- [ ] Advance dated default projects after finish without reusing a finished
-      session.
-- [ ] Make handoff state visible in both applications.
+- [x] Add reversible project states such as active, finished, and archived. A
+      per-project `Status` rides project metadata (revision-checked
+      `SetProjectStatus` IPC command), normalized on load; `SetProjectStatus`
+      clears the project from any lane it occupies when it goes non-Active, so a
+      put-away project is never lane-active.
+- [~] Add Zetl's Finish action and default finish output behavior. The compile
+      dialog's `Finish Project` button seals the source project and clears its
+      lane (seal + advance only). Default finish *output* (copy/fire on finish)
+      is deferred.
+- [x] Advance dated default projects after finish without reusing a finished
+      session. `GetOrCreateDefaultProject` reuses today's session only while
+      Active and otherwise mints a fresh per-date counter (`2026-06-01 (2)`);
+      consolidation only ever merges Active sessions.
+- [~] Make handoff state visible in both applications. Zetl's Board shows a
+      status marker + `Reactivate`; Kastn's project cards show a status badge,
+      `Archive` / `Reactivate`, and a `Show archived` toggle. Finished/archived
+      slip-level handoff cues remain.
 
 Done when:
 

@@ -100,6 +100,8 @@ internal partial class MainWindow : Window
     private bool detailShowingMetadata;
     private bool landingShowingTemplates;
     private bool landingShowingConsumable;
+    private bool landingShowArchived;
+    private IReadOnlyList<ZetlProjectSummary> lastProjectSummaries = [];
     private bool suppressLandingProjectSelection;
     private string? inspectedSlipId;
     private int pictureRenderGeneration;
@@ -246,6 +248,7 @@ internal partial class MainWindow : Window
         landingCreateButton.Click += (_, _) => ShowLandingSection(templates: false, creations: true);
         landingCaptureButton.Click += (_, _) => SetTemplateType(consumable: false);
         landingConsumableButton.Click += (_, _) => SetTemplateType(consumable: true);
+        landingShowArchivedCheck.IsCheckedChanged += OnShowArchivedChanged;
         landingCreationItems.ItemsSource = creations;
         WireTemplateEditor();
         WireCreationEditor();
@@ -355,19 +358,8 @@ internal partial class MainWindow : Window
         refreshing = true;
         try
         {
-            projects.Clear();
-            foreach (var project in snapshot.Projects)
-            {
-                projects.Add(new ProjectListItem(
-                    project.Id,
-                    project.Name,
-                    project.MetadataRevision,
-                    LandingProjectDetail(project),
-                    string.IsNullOrWhiteSpace(project.PreviewText)
-                        ? "No notes yet"
-                        : project.PreviewText,
-                    LandingProjectActivity(project)));
-            }
+            lastProjectSummaries = snapshot.Projects;
+            PopulateProjectCards();
             RefreshLandingGridLayout();
 
             landingProjectList.SelectedItem = null;
@@ -514,6 +506,9 @@ internal partial class MainWindow : Window
     {
         var showChoices = emptyState.IsVisible && landingModeToggle.IsVisible;
         var showProjects = !landingShowingTemplates && !landingShowingCreations;
+        // The toggle stays visible even with no visible projects, so archived-only
+        // workspaces can still reveal their projects.
+        landingShowArchivedCheck.IsVisible = showChoices && showProjects;
         landingProjectList.IsVisible = showChoices && showProjects && projects.Count > 0;
         landingTemplateList.IsVisible = showChoices && landingShowingTemplates;
         landingTemplateList.IsEnabled = IsOnline;
@@ -554,6 +549,53 @@ internal partial class MainWindow : Window
         landingTemplateList.MaxHeight = landingProjectList.MaxHeight;
         landingCreationList.Width = landingProjectList.Width;
         landingCreationList.MaxHeight = landingProjectList.MaxHeight;
+    }
+
+    // Rebuild the landing project cards from the last snapshot's summaries,
+    // honoring the show-archived toggle. Callers manage the `refreshing` guard
+    // because mutating `projects` fires the list's selection handler.
+    private void PopulateProjectCards()
+    {
+        projects.Clear();
+        foreach (var project in lastProjectSummaries)
+        {
+            // Archived projects are put away: hidden from the landing unless the
+            // user opts to show them. Finished projects still show (badged).
+            var isArchived = string.Equals(
+                project.Status, "Archived", StringComparison.OrdinalIgnoreCase);
+            if (isArchived && !landingShowArchived)
+            {
+                continue;
+            }
+
+            projects.Add(new ProjectListItem(
+                project.Id,
+                project.Name,
+                project.MetadataRevision,
+                LandingProjectDetail(project),
+                string.IsNullOrWhiteSpace(project.PreviewText)
+                    ? "No notes yet"
+                    : project.PreviewText,
+                LandingProjectActivity(project),
+                project.Status));
+        }
+    }
+
+    private void OnShowArchivedChanged(object? sender, RoutedEventArgs args)
+    {
+        landingShowArchived = landingShowArchivedCheck.IsChecked == true;
+        refreshing = true;
+        try
+        {
+            PopulateProjectCards();
+        }
+        finally
+        {
+            refreshing = false;
+        }
+
+        RefreshLandingGridLayout();
+        RefreshLandingMode();
     }
 
     private static string LandingProjectDetail(ZetlProjectSummary project)
@@ -841,6 +883,15 @@ internal partial class MainWindow : Window
         }
     }
 
+    private async void OnProjectCardStatusClick(object? sender, RoutedEventArgs args)
+    {
+        args.Handled = true;
+        if ((sender as Control)?.DataContext is ProjectListItem project)
+        {
+            await SetProjectStatusAsync(project, project.StatusActionTarget);
+        }
+    }
+
     private async Task OpenProjectCardAsync(ProjectListItem project)
     {
         if (!await SaveEditorAsync())
@@ -1037,7 +1088,25 @@ internal partial class MainWindow : Window
         long MetadataRevision,
         string Detail,
         string PreviewText,
-        string ActivityText);
+        string ActivityText,
+        string Status)
+    {
+        public bool IsActive =>
+            string.Equals(Status, "Active", StringComparison.OrdinalIgnoreCase);
+
+        public bool IsArchived =>
+            string.Equals(Status, "Archived", StringComparison.OrdinalIgnoreCase);
+
+        // The badge only appears for non-Active projects, so Active shows nothing.
+        public bool ShowStatusBadge => !IsActive;
+
+        // One contextual status action per card: seal/put-away an active project,
+        // or bring a finished/archived one back. Finishing's lane semantics stay in
+        // Zetl, so Kastn offers Archive (Active) and Reactivate (non-Active).
+        public string StatusActionLabel => IsActive ? "Archive" : "Reactivate";
+
+        public string StatusActionTarget => IsActive ? "Archived" : "Active";
+    }
 
     private sealed record TemplateListItem(
         string Kind,

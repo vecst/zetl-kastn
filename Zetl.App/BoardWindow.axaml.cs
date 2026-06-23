@@ -104,6 +104,16 @@ internal partial class BoardWindow : ZetlPopupWindow
         newProjectButton.Click += async (_, _) => await AddProjectAsync();
         Activated += (_, _) => RefreshProjectCreationFlyout();
         deleteProjectButton.Click += async (_, _) => await DeleteProjectAsync();
+        reactivateProjectButton.Click += (_, _) =>
+        {
+            if (!refreshing
+                && ActiveProject is { } project
+                && !ZetlStateStore.IsActiveStatus(project))
+            {
+                // The store raises Changed, so OnStoreChanged refreshes the Board.
+                store.SetProjectStatus(project, ZetlStateStore.ActiveStatus);
+            }
+        };
         openKastnButton.Click += (_, _) =>
         {
             if (ActiveProject is { } project)
@@ -223,7 +233,13 @@ internal partial class BoardWindow : ZetlPopupWindow
             deleteProjectButton.IsEnabled = hasProject;
             openKastnButton.IsEnabled = hasProject && openInKastn is not null;
             exportProjectButton.IsEnabled = hasProject;
-            activeProjectBox.IsEnabled = hasProject;
+            // A non-Active project cannot be lane-active (the invariant): reactivate
+            // it first. The status marker and Reactivate button surface that path.
+            var isActiveStatus = project is null || ZetlStateStore.IsActiveStatus(project);
+            activeProjectBox.IsEnabled = hasProject && isActiveStatus;
+            projectStatusText.Text = project is null ? "" : project.Status;
+            projectStatusText.IsVisible = hasProject && !isActiveStatus;
+            reactivateProjectButton.IsVisible = hasProject && !isActiveStatus;
             addBucketButton.IsEnabled = hasProject;
             projectNameBox.Text = project?.Name ?? "";
             activeProjectBox.IsChecked = project is not null

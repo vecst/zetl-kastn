@@ -15,7 +15,7 @@
       <ComboBox Grid.Column="1" x:Name="projectBox" HorizontalAlignment="Stretch">
         <ComboBox.ItemTemplate>
           <DataTemplate>
-            <TextBlock Text="{Binding Name}" />
+            <TextBlock Text="{Binding DisplayNameWithStatus}" />
           </DataTemplate>
         </ComboBox.ItemTemplate>
       </ComboBox>
@@ -28,6 +28,19 @@
       <Button Grid.Column="6" x:Name="exportProjectButton" Content="Export" />
       <Button Grid.Column="7" x:Name="deleteProjectButton" Content="Delete" />
       <Button Grid.Column="8" x:Name="openKastnButton" Content="Open in Kastn" />
+      <StackPanel Grid.Column="9"
+                  Orientation="Horizontal"
+                  Spacing="8"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Center">
+        <TextBlock x:Name="projectStatusText"
+                   Classes="muted"
+                   VerticalAlignment="Center"
+                   IsVisible="False" />
+        <Button x:Name="reactivateProjectButton"
+                Content="Reactivate"
+                IsVisible="False" />
+      </StackPanel>
     </Grid>
 
     <Grid Grid.Row="1" ColumnDefinitions="320,8,*">

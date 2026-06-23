@@ -685,7 +685,8 @@ internal partial class MainWindow
             currentProject.MetadataRevision,
             "",
             "",
-            ""));
+            "",
+            currentProject.Status));
     }
 
     private async Task RenameProjectAsync(ProjectListItem project)
@@ -724,6 +725,31 @@ internal partial class MainWindow
         }
 
         HandleSimpleResponse(response, $"Project renamed to '{name}'.");
+    }
+
+    private async Task SetProjectStatusAsync(ProjectListItem project, string status)
+    {
+        if (!IsOnline)
+        {
+            return;
+        }
+
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.SetProjectStatus,
+            new SetProjectStatusCommand { Status = status },
+            project.Id,
+            project.Id,
+            project.MetadataRevision));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            await connection.RefreshAsync();
+        }
+
+        var verb = string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase)
+            ? "reactivated"
+            : status.ToLowerInvariant();
+        HandleSimpleResponse(response, $"Project {verb}.");
     }
 
     private async Task DeleteProjectAsync(ProjectListItem project)

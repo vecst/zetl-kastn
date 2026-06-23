@@ -523,6 +523,14 @@ copy or paste first if you want the text — and is reversible: a finished proje
 is set aside, not locked or deleted, and can be reactivated later. The button is
 available only for an active project.
 
+A finished or archived project shows a status marker in the Board's project
+picker, and selecting it reveals a `Reactivate` button (a non-active project
+cannot be made lane-active until it is reactivated). Kastn surfaces the same
+states on its project cards — a status badge plus an `Archive` / `Reactivate`
+action — and hides archived projects from its landing behind a `Show archived`
+toggle. Archiving from Kastn also clears the project from its lane, so the
+non-active-means-not-capturing invariant holds however a project is sealed.
+
 ## Standard Buckets
 
 `Standard` is the normal bucket kind.
