@@ -117,6 +117,9 @@ internal partial class MainWindow
         SetEditingEnabled();
         var changed = 0;
         var failed = 0;
+        // Drop the per-mutation snapshot pushes during the loop so the tree/View
+        // rebuild once at the end instead of flashing once per slip.
+        batching = true;
         try
         {
             for (var index = 0; index < ordered.Count; index++)
@@ -139,6 +142,7 @@ internal partial class MainWindow
                 }
             }
 
+            batching = false;
             await connection.RefreshAsync();
             statusText.Text = failed == 0
                 ? $"{changed} slip{Plural(changed)} {actionLabel}."
@@ -151,6 +155,7 @@ internal partial class MainWindow
         }
         finally
         {
+            batching = false;
             saving = false;
             SetEditingEnabled();
         }

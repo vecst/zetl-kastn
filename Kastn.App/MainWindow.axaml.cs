@@ -90,6 +90,9 @@ internal partial class MainWindow : Window
     private bool refreshing;
     private bool editorUpdating;
     private bool saving;
+    // Set while a batch loops many UpdateSlip commands; OnSnapshotChanged (off-thread)
+    // reads it to drop the per-mutation snapshot pushes until the batch's final refresh.
+    private volatile bool batching;
     // The single in-flight editor save, so a focus-loss save and a navigation
     // save (e.g. clicking another slip) coalesce instead of racing the `saving`
     // guard.
@@ -372,6 +375,15 @@ internal partial class MainWindow : Window
 
     private void OnSnapshotChanged(object? sender, KastnSessionSnapshot snapshot)
     {
+        // During a batch (e.g. aligning or numbering many slips) the service publishes
+        // a snapshot per mutation; applying each would rebuild the tree and View N
+        // times in sequence. Drop the intermediate pushes — the batch does one
+        // RefreshAsync at the end.
+        if (batching)
+        {
+            return;
+        }
+
         Dispatcher.UIThread.Post(() => ApplySnapshot(snapshot));
     }
 
@@ -681,25 +693,65 @@ internal partial class MainWindow : Window
 
     private void RefreshBuckets(ZetlProjectSnapshot project, string? selectedBucketId)
     {
-        // Runs inside ApplySnapshot's refreshing guard, so re-selecting drives no
-        // side effects here.
+        // Capture the whole current selection (tree node ids) before the rebuild, so
+        // an action that refreshes keeps the entire group selected — not just the
+        // first node. Runs inside ApplySnapshot's refreshing guard, so re-selecting
+        // drives no side effects here.
+        var rememberedIds = projectTree.SelectedItems?.OfType<KastnTreeNode>()
+            .Select(node => node.Id)
+            .ToList() ?? [];
+
         projectTree.ItemsSource = KastnWorkbench.BuildProjectTree(
             project, project.Slips, deletedOnly: showingDeleted);
         UpdateDeletedToggle(project);
         var treeNodes = projectTree.ItemsSource as IEnumerable<KastnTreeNode>;
-        // Restore whichever node was selected, else the requested bucket, else the
-        // first slip (so the editor and the tree/toolbar agree on open), else the
-        // first bucket.
-        var restoreId = lastSelectedNodeId
-            ?? selectedBucketId
-            ?? FirstSlipNode(treeNodes)?.Id
-            ?? project.Buckets.FirstOrDefault()?.Id;
-        var node = FindTreeNode(treeNodes, restoreId);
-        projectTree.SelectedItem = node;
-        lastSelectedNodeId = node?.Id;
+
+        // A pending override (after creating/moving a slip) wins; else restore the
+        // remembered group; else fall back to the requested bucket / first slip /
+        // first bucket so the editor and tree agree on open.
+        IReadOnlyList<string> restoreIds;
+        if (pendingSlipSelectionId is { } pending && FindTreeNode(treeNodes, pending) is not null)
+        {
+            restoreIds = [pending];
+        }
+        else
+        {
+            var present = rememberedIds.Where(id => FindTreeNode(treeNodes, id) is not null).ToList();
+            restoreIds = present.Count > 0
+                ? present
+                : (selectedBucketId
+                    ?? FirstSlipNode(treeNodes)?.Id
+                    ?? project.Buckets.FirstOrDefault()?.Id) is { } fallback
+                        ? [fallback]
+                        : [];
+        }
+
+        ApplyTreeNodeSelection(treeNodes, restoreIds);
+        lastSelectedNodeId = SelectedTreeNode?.Id;
         RefreshBucketEditor();
         RefreshDestinationBuckets();
         SetDetailPaneMode(detailShowingMetadata);
+    }
+
+    // Re-select a set of tree nodes by id: a single node sets SelectedItem, several
+    // populate SelectedItems (multi). Runs under the refreshing guard.
+    private void ApplyTreeNodeSelection(IEnumerable<KastnTreeNode>? treeNodes, IReadOnlyList<string> ids)
+    {
+        var nodes = ids
+            .Select(id => FindTreeNode(treeNodes, id))
+            .OfType<KastnTreeNode>()
+            .ToList();
+        if (nodes.Count <= 1)
+        {
+            projectTree.SelectedItem = nodes.FirstOrDefault();
+            return;
+        }
+
+        projectTree.SelectedItems?.Clear();
+        foreach (var node in nodes)
+        {
+            projectTree.SelectedItems?.Add(node);
+        }
     }
 
     // The Deleted toggle shows the soft-delete count and stays available while the
