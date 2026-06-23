@@ -1140,7 +1140,8 @@ internal partial class MainWindow
     }
 
     // The selection -> editor/batch logic, shared by a fresh selection and a tap that
-    // toggles a bucket between its title (heading) and its slips.
+    // toggles a bucket between its title (heading) and its slips. Branches on the one
+    // explicit selection value.
     private void UpdateTreeSelectionUi()
     {
         var node = SelectedTreeNode;
@@ -1150,20 +1151,19 @@ internal partial class MainWindow
         }
 
         lastSelectedNodeId = node.Id;
-        var slipIds = SelectedTreeSlipIds();
-        var singleSlipId = slipIds.Count == 1 ? slipIds[0] : null;
-        if (singleSlipId is not null)
+        if (CurrentSelection() is KastnSelection.Slips { SlipIds: [var onlySlipId] })
         {
-            pendingSlipSelectionId = singleSlipId;
+            // Exactly one slip: bind the editor to it.
+            pendingSlipSelectionId = onlySlipId;
             RefreshBucketEditor();
             RefreshSlipView(force: true);
-            InspectSlip(singleSlipId);
+            InspectSlip(onlySlipId);
             SetDetailPaneMode(showDetails: false);
         }
         else
         {
-            // Zero slips: a title-mode/empty bucket or several selected. The batch
-            // count comes from the tree via SelectedSlips; clear the single-slip editor.
+            // A batch of slips, a bucket title, or nothing: the batch count comes from
+            // SelectedSlips; clear the single-slip editor either way.
             pendingSlipSelectionId = null;
             RefreshBucketEditor();
             RefreshSlipView(force: true);
