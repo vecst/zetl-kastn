@@ -1096,10 +1096,15 @@ internal partial class MainWindow
             return;
         }
 
-        // Save the current edit before switching away. On a failed save (conflict
-        // or offline) revert the selection so the dirty slip stays put.
+        // The slips the selection acts on: each selected slip node, plus every slip
+        // under a selected bucket node (selecting a bucket = batch-edit its slips).
+        var slipIds = SelectedTreeSlipIds();
+        var singleSlipId = slipIds.Count == 1 ? slipIds[0] : null;
+
+        // Save the current edit before switching away from the edited slip. On a
+        // failed save (conflict or offline) revert the selection so it stays put.
         if (editorState.SlipId is { } editingId
-            && !string.Equals(editingId, node.Id, StringComparison.Ordinal)
+            && !string.Equals(editingId, singleSlipId, StringComparison.Ordinal)
             && editorState.IsDirty
             && !await SaveEditorAsync())
         {
@@ -1111,22 +1116,69 @@ internal partial class MainWindow
         }
 
         lastSelectedNodeId = node.Id;
-        if (node.Kind == KastnTreeNodeKind.Slip)
+        if (singleSlipId is not null)
         {
-            // Reuse the programmatic-selection path: load the slip into the editor
-            // and scope the view to its bucket, then show the Slip pane.
-            pendingSlipSelectionId = node.Id;
+            // Exactly one slip: load it into the editor and scope the view to its
+            // bucket, then show the Slip pane.
+            pendingSlipSelectionId = singleSlipId;
             RefreshBucketEditor();
             RefreshSlipView(force: true);
-            InspectSlip(node.Id);
+            InspectSlip(singleSlipId);
             SetDetailPaneMode(showDetails: false);
         }
         else
         {
+            // Zero slips (an empty bucket) or several: drive the batch list, which
+            // RefreshSlipView preserves, and clear the single-slip editor.
+            pendingSlipSelectionId = null;
+            SyncSlipListSelection(slipIds);
             RefreshBucketEditor();
             RefreshSlipView(force: true);
             inspectedSlipId = null;
             RenderSlipInspector(null);
+            editorState.Select(null);
+            UpdateEditorFromState();
+            SetDetailPaneMode(showDetails: false);
+        }
+    }
+
+    // The distinct slip ids the current tree selection targets: each selected slip
+    // node plus every slip beneath a selected bucket node, de-duplicated.
+    private IReadOnlyList<string> SelectedTreeSlipIds()
+    {
+        var nodes = projectTree.SelectedItems?.OfType<KastnTreeNode>().ToList()
+            ?? (SelectedTreeNode is { } single ? [single] : []);
+        var ids = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var slip in nodes.SelectMany(TreeSlips))
+        {
+            if (seen.Add(slip.Id))
+            {
+                ids.Add(slip.Id);
+            }
+        }
+
+        return ids;
+    }
+
+    // Seed the (hidden) batch list with a multi-selection so RefreshSlipView, the
+    // batch source of truth, preserves it. Guarded so the list's own handler does
+    // not re-enter while we set it.
+    private void SyncSlipListSelection(IReadOnlyList<string> slipIds)
+    {
+        refreshing = true;
+        try
+        {
+            var idSet = slipIds.ToHashSet(StringComparer.Ordinal);
+            slipList.SelectedItems?.Clear();
+            foreach (var item in slips.Where(item => idSet.Contains(item.Id)))
+            {
+                slipList.SelectedItems?.Add(item);
+            }
+        }
+        finally
+        {
+            refreshing = false;
         }
     }
 

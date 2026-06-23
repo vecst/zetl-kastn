@@ -433,7 +433,7 @@
                             Content="+ Slip"
                             Padding="10,3" />
                   </Grid>
-                  <TreeView Grid.Row="1" x:Name="projectTree">
+                  <TreeView Grid.Row="1" x:Name="projectTree" SelectionMode="Multiple">
                     <TreeView.Styles>
                       <Style Selector="TreeViewItem">
                         <Setter Property="IsExpanded" Value="True" />
