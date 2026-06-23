@@ -350,6 +350,50 @@ internal static class ZetlViewTests
             "Task view should keep a checkbox slip's own markup and only mark plain slips.");
     }
 
+    public static void DocumentTitleHidesOrOverridesProjectName()
+    {
+        var project = Project("Demo", [Bucket("b1", "Ideas")], [Slip("b1", "one")]);
+
+        // Default: the project name is the document title.
+        AssertRender(project, ZetlViewKinds.Markdown, "# Demo\n\n## Ideas\n\n- one");
+
+        // A non-empty Title overrides the project name.
+        AssertEqual(
+            "# My Report\n\n## Ideas\n\n- one",
+            ZetlViewRenderer.Render(
+                project,
+                project.Slips,
+                new ZetlViewDocument { Id = "c", Name = "C", Kind = ZetlViewKinds.Markdown, Title = "My Report" })
+                .ReplaceLineEndings("\n"),
+            "A custom title should override the project name.");
+
+        // ShowTitle=false omits the heading entirely.
+        AssertEqual(
+            "## Ideas\n\n- one",
+            ZetlViewRenderer.Render(
+                project,
+                project.Slips,
+                new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Markdown, ShowTitle = false })
+                .ReplaceLineEndings("\n"),
+            "Hiding the title should omit the document heading.");
+
+        // HTML: custom <h1>, and no <h1> when hidden (the tab <title> still falls
+        // back to the project name).
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "html", Name = "H", Kind = ZetlViewKinds.Html, Title = "My Report" });
+        AssertContains(html, "<h1>My Report</h1>");
+        var htmlHidden = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "hh", Name = "H", Kind = ZetlViewKinds.Html, ShowTitle = false });
+        AssertTrue(
+            !htmlHidden.Contains("<h1>", StringComparison.Ordinal),
+            "A hidden title should omit the HTML heading.");
+        AssertContains(htmlHidden, "<title>Demo</title>");
+    }
+
     private static void AssertContains(string text, string expected)
     {
         if (!text.Contains(expected, StringComparison.Ordinal))

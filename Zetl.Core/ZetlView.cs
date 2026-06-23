@@ -84,6 +84,14 @@ internal sealed class ZetlViewDocument
     // outline number (1, 1.1, 1.1.1). The literal kinds ignore it.
     public bool NumberHeadings { get; set; }
 
+    // Document title control for the rendered artifacts (Markdown / HTML / PDF).
+    // ShowTitle=false omits the title heading entirely; a non-empty Title overrides
+    // the project name. The literal Formatted / Plain / TSV kinds keep the project
+    // name for compile parity.
+    public bool ShowTitle { get; set; } = true;
+
+    public string Title { get; set; } = "";
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }

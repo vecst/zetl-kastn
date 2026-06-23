@@ -69,10 +69,13 @@ internal static class KastnPdfRenderer
         var section = document.AddSection();
         section.PageSetup.PageFormat = PageFormat.Letter;
 
-        var title = section.AddParagraph(project.Name.Trim());
-        title.Format.Font.Size = 20;
-        title.Format.Font.Bold = true;
-        title.Format.SpaceAfter = Unit.FromPoint(12);
+        if (ZetlViewRenderer.DocumentTitle(project, view) is { } titleText)
+        {
+            var title = section.AddParagraph(titleText);
+            title.Format.Font.Size = 20;
+            title.Format.Font.Bold = true;
+            title.Format.SpaceAfter = Unit.FromPoint(12);
+        }
 
         // Reuse the shared grouping so the PDF honors view sections and bucket order
         // exactly like the text/Markdown/HTML renderers.

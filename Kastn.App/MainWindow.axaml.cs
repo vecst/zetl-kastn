@@ -101,6 +101,9 @@ internal partial class MainWindow : Window
     private string? pendingSlipSelectionId;
     private bool pendingSlipFocus;
     private bool detailShowingMetadata;
+    // When true the project tree shows only the Deleted bucket's slips (browse +
+    // restore), instead of the normal working tree.
+    private bool showingDeleted;
     private bool landingShowingTemplates;
     private bool landingShowingConsumable;
     private bool landingShowArchived;
@@ -153,6 +156,7 @@ internal partial class MainWindow : Window
         SetupTreeDragDrop();
         detailEditorButton.Click += (_, _) => SetDetailPaneMode(showDetails: false);
         detailDetailsButton.Click += (_, _) => SetDetailPaneMode(showDetails: true);
+        viewDeletedButton.IsCheckedChanged += (_, _) => OnViewDeletedToggled();
         slipList.SelectionChanged += OnSlipSelectionChanged;
         searchBox.TextChanged += (_, _) => RefreshSlipView();
         sourceFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
@@ -220,6 +224,8 @@ internal partial class MainWindow : Window
         viewDescriptionBox.TextChanged += (_, _) => RefreshViewLivePreview();
         viewListStyleBox.SelectionChanged += (_, _) => RefreshViewLivePreview();
         viewNumberHeadingsCheck.IsCheckedChanged += (_, _) => RefreshViewLivePreview();
+        viewTitleBox.TextChanged += (_, _) => RefreshViewLivePreview();
+        viewShowTitleCheck.IsCheckedChanged += (_, _) => RefreshViewLivePreview();
         viewTsvRowBox.ValueChanged += (_, _) => RefreshViewLivePreview();
         saveViewSettingsButton.Click += async (_, _) => await SaveViewAsync();
         cancelViewSettingsButton.Click += async (_, _) => await CancelViewEditAsync();
@@ -653,13 +659,43 @@ internal partial class MainWindow : Window
         var restoreId = lastSelectedNodeId
             ?? selectedBucketId
             ?? project.Buckets.FirstOrDefault()?.Id;
-        projectTree.ItemsSource = KastnWorkbench.BuildProjectTree(project, project.Slips);
+        projectTree.ItemsSource = KastnWorkbench.BuildProjectTree(
+            project, project.Slips, deletedOnly: showingDeleted);
+        UpdateDeletedToggle(project);
         var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, restoreId);
         projectTree.SelectedItem = node;
         lastSelectedNodeId = node?.Id;
         RefreshBucketEditor();
         RefreshDestinationBuckets();
         SetDetailPaneMode(detailShowingMetadata);
+    }
+
+    // The Deleted toggle shows the soft-delete count and stays available while the
+    // Deleted view is open (so the user can exit even after restoring everything).
+    private void UpdateDeletedToggle(ZetlProjectSnapshot project)
+    {
+        var deletedBucketIds = project.Buckets
+            .Where(KastnWorkbench.IsDeletedBucket)
+            .Select(bucket => bucket.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var deletedCount = project.Slips.Count(slip => deletedBucketIds.Contains(slip.BucketId));
+        viewDeletedButton.Content = deletedCount > 0 ? $"Deleted ({deletedCount})" : "Deleted";
+        viewDeletedButton.IsEnabled = deletedCount > 0 || showingDeleted;
+        viewDeletedButton.IsChecked = showingDeleted;
+    }
+
+    private void OnViewDeletedToggled()
+    {
+        if (refreshing)
+        {
+            return;
+        }
+
+        showingDeleted = viewDeletedButton.IsChecked == true;
+        lastSelectedNodeId = null;
+        // Re-apply the current snapshot so the tree rebuilds in the chosen mode and
+        // the editor/inspector/View re-sync through the normal path.
+        ApplySnapshot(connection.Current);
     }
 
     private void RefreshBucketEditor()

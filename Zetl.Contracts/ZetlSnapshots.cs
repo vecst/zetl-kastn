@@ -67,6 +67,11 @@ public sealed record ZetlProjectViewSnapshot
     public IReadOnlyList<ZetlProjectViewSectionSnapshot> Sections { get; init; } = [];
     public string ListStyle { get; init; } = "bullet";
     public bool NumberHeadings { get; init; }
+
+    // Document-title control for the rich kinds: false hides the title; a non-empty
+    // Title overrides the project name.
+    public bool ShowTitle { get; init; } = true;
+    public string Title { get; init; } = "";
 }
 
 public sealed record ZetlProjectViewSectionSnapshot

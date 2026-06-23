@@ -230,6 +230,19 @@ internal static class ZetlViewRenderer
             ? $"{group.OutlineNumber} {group.Heading}"
             : group.Heading;
 
+    // The effective document title for the rich kinds (Markdown / HTML / PDF), or
+    // null when the view hides it. A non-empty view Title overrides the project name.
+    public static string? DocumentTitle(ZetlProjectSnapshot project, ZetlViewDocument view)
+    {
+        if (!view.ShowTitle)
+        {
+            return null;
+        }
+
+        var custom = view.Title?.Trim();
+        return string.IsNullOrEmpty(custom) ? project.Name.Trim() : custom;
+    }
+
     private static string RenderMarkdown(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlViewGroup> groups,
@@ -237,7 +250,10 @@ internal static class ZetlViewRenderer
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures)
     {
         var listStyle = ZetlViewListStyles.Normalize(view.ListStyle);
-        var parts = new List<string> { $"# {project.Name.Trim()}", "" };
+        var documentTitle = DocumentTitle(project, view);
+        var parts = documentTitle is null
+            ? new List<string>()
+            : new List<string> { $"# {documentTitle}", "" };
         foreach (var group in groups)
         {
             var level = Math.Min(6, 2 + group.Depth);
@@ -317,14 +333,17 @@ internal static class ZetlViewRenderer
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures)
     {
         var listStyle = ZetlViewListStyles.Normalize(view.ListStyle);
-        var title = Escape(project.Name.Trim());
+        var documentTitle = DocumentTitle(project, view);
+        // The <title> tab label always needs a value, even when the on-page heading
+        // is hidden; fall back to the project name there.
+        var headTitle = Escape((documentTitle ?? project.Name).Trim());
         var parts = new List<string>
         {
             "<!DOCTYPE html>",
             "<html lang=\"en\">",
             "<head>",
             "<meta charset=\"utf-8\" />",
-            $"<title>{title}</title>",
+            $"<title>{headTitle}</title>",
             "<style>",
             "body { font-family: system-ui, -apple-system, sans-serif; max-width: 48rem; "
                 + "margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }",
@@ -333,9 +352,12 @@ internal static class ZetlViewRenderer
             "figcaption { margin-top: .4rem; color: #666; font-size: .9rem; }",
             "</style>",
             "</head>",
-            "<body>",
-            $"<h1>{title}</h1>"
+            "<body>"
         };
+        if (documentTitle is not null)
+        {
+            parts.Add($"<h1>{Escape(documentTitle)}</h1>");
+        }
 
         var isList = listStyle != ZetlViewListStyles.Paragraph;
         var openTag = listStyle switch

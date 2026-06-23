@@ -177,6 +177,34 @@ internal static class KastnWorkbenchTests
         AssertEqual("Picture", pictureLeaf.Label, "A textless picture labels as Picture.");
     }
 
+    public static void ProjectTreeSeparatesDeletedBucket()
+    {
+        var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
+        var project = Project(
+            buckets:
+            [
+                Bucket("root", "Root"),
+                Bucket("deleted", "Deleted", kind: "Deleted")
+            ],
+            slips:
+            [
+                Slip("a", "root", "active", "copy", "s", now),
+                Slip("d", "deleted", "trashed", "copy", "s", now)
+            ]);
+
+        // The normal tree excludes Deleted; the deleted-only tree shows just it.
+        var normal = KastnWorkbench.BuildProjectTree(project, project.Slips);
+        AssertEqual(1, normal.Count, "Only Root is a root node in the normal tree.");
+        AssertTrue(normal.All(node => node.Id != "deleted"), "The normal tree omits the Deleted bucket.");
+
+        var deleted = KastnWorkbench.BuildProjectTree(project, project.Slips, deletedOnly: true);
+        AssertEqual(1, deleted.Count, "The deleted-only tree shows just the Deleted bucket.");
+        AssertEqual("deleted", deleted[0].Id, "The deleted-only tree root is the Deleted bucket.");
+        AssertTrue(
+            deleted[0].Children.Any(child => child.Id == "d"),
+            "Deleted slips appear under the Deleted bucket.");
+    }
+
     public static void SlipLabelTruncatesLongText()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);

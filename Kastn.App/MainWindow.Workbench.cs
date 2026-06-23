@@ -1073,10 +1073,12 @@ internal partial class MainWindow
         restoreSlipButton.IsEnabled = canEdit && selectedSlipIsDeleted && moveBuckets.Count > 0;
         moveSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive && moveBuckets.Count > 0;
         moveBucketBox.IsEnabled = moveSlipButton.IsEnabled || restoreSlipButton.IsEnabled;
-        addBucketButton.IsEnabled = IsOnline && currentProject is not null;
+        // The Deleted view is for browsing/restoring; bucket and slip creation are
+        // hidden there.
+        addBucketButton.IsEnabled = IsOnline && currentProject is not null && !showingDeleted;
         closeProjectButton.IsEnabled = currentProject is not null;
         saveAsTemplateMenuItem.IsEnabled = currentProject is not null;
-        newSlipButton.IsEnabled = canCreateSlip;
+        newSlipButton.IsEnabled = canCreateSlip && !showingDeleted;
         newSlipMenuItem.IsEnabled = newSlipButton.IsEnabled;
         UpdateAlignButtons();
     }

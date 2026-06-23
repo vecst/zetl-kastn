@@ -418,12 +418,17 @@
                       CornerRadius="5"
                       Padding="12">
                 <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto">
-                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" Margin="0,0,0,8">
                     <TextBlock Grid.Column="0"
                                Text="Buckets &amp; slips"
                                Classes="heading"
                                VerticalAlignment="Center" />
-                    <Button Grid.Column="1"
+                    <ToggleButton Grid.Column="1"
+                                  x:Name="viewDeletedButton"
+                                  Content="Deleted"
+                                  Padding="10,3"
+                                  ToolTip.Tip="Show deleted slips to restore them" />
+                    <Button Grid.Column="2"
                             x:Name="newSlipButton"
                             Content="+ Slip"
                             Padding="10,3" />
@@ -625,11 +630,17 @@
                                  FontSize="12"
                                  TextWrapping="Wrap"
                                  Margin="0,0,0,8" />
-                      <StackPanel Grid.Row="1"
-                                  x:Name="formatToolbar"
-                                  Orientation="Horizontal"
-                                  Spacing="4"
-                                  Margin="0,0,0,6">
+                      <WrapPanel Grid.Row="1"
+                                 x:Name="formatToolbar"
+                                 Orientation="Horizontal"
+                                 Margin="0,0,0,6">
+                        <WrapPanel.Styles>
+                          <!-- WrapPanel has no Spacing; give each control a small
+                               gap so the toolbar reads cleanly when it wraps. -->
+                          <Style Selector="WrapPanel#formatToolbar > Button">
+                            <Setter Property="Margin" Value="0,0,4,4" />
+                          </Style>
+                        </WrapPanel.Styles>
                         <Button x:Name="boldButton" Content="B" FontWeight="Bold" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Bold (**…**)" />
                         <Button x:Name="italicButton" Content="I" FontStyle="Italic" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Italic (*…*)" />
                         <Button x:Name="strikeButton" Content="S" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Strikethrough (~~…~~)" />
@@ -645,10 +656,10 @@
                         <Button x:Name="alignLeftButton" Content="Left" Padding="9,3" ToolTip.Tip="Align left" />
                         <Button x:Name="alignCenterButton" Content="Center" Padding="9,3" ToolTip.Tip="Align center" />
                         <Button x:Name="alignRightButton" Content="Right" Padding="9,3" ToolTip.Tip="Align right" />
-                      </StackPanel>
+                      </WrapPanel>
                       <TextBox Grid.Row="2"
                                x:Name="slipEditor"
-                               MinHeight="180"
+                               MinHeight="140"
                                AcceptsReturn="True"
                                TextWrapping="Wrap"
                                ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -925,16 +936,30 @@
                   <ComboBox x:Name="viewKindBox" IsVisible="False" />
                 </StackPanel>
 
-                <Grid x:Name="viewDocumentSettingsPanel" ColumnDefinitions="*,16,Auto">
-                  <StackPanel Grid.Column="0" Spacing="4">
-                    <TextBlock Text="Slip style" Classes="muted" FontSize="12" />
-                    <ComboBox x:Name="viewListStyleBox" HorizontalAlignment="Stretch" />
+                <StackPanel x:Name="viewDocumentSettingsPanel" Spacing="8">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="Document title" Classes="muted" FontSize="12" />
+                    <TextBox x:Name="viewTitleBox"
+                             Watermark="Project name"
+                             HorizontalAlignment="Stretch" />
+                    <CheckBox x:Name="viewShowTitleCheck"
+                              Content="Show title in exported document" />
+                    <TextBlock Text="Title appears in the exported / copied Markdown, HTML, and PDF."
+                               Classes="muted"
+                               FontSize="11"
+                               TextWrapping="Wrap" />
                   </StackPanel>
-                  <CheckBox Grid.Column="2"
-                            x:Name="viewNumberHeadingsCheck"
-                            Content="Number headings (1, 1.1)"
-                            VerticalAlignment="Bottom" />
-                </Grid>
+                  <Grid ColumnDefinitions="*,16,Auto">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                      <TextBlock Text="Slip style" Classes="muted" FontSize="12" />
+                      <ComboBox x:Name="viewListStyleBox" HorizontalAlignment="Stretch" />
+                    </StackPanel>
+                    <CheckBox Grid.Column="2"
+                              x:Name="viewNumberHeadingsCheck"
+                              Content="Number headings (1, 1.1)"
+                              VerticalAlignment="Bottom" />
+                  </Grid>
+                </StackPanel>
 
                 <StackPanel x:Name="viewTsvPanel" Spacing="4">
                   <TextBlock Text="Items per TSV row" Classes="muted" FontSize="12" />

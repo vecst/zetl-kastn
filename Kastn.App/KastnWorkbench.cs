@@ -141,9 +141,14 @@ internal static class KastnWorkbench
     /// via <see cref="KastnTreeNode.IsExcluded"/>); they only drop out of rendered
     /// views.
     /// </summary>
+    // deletedOnly=false (default) builds the normal working tree and excludes the
+    // protected Deleted bucket, which Kastn surfaces behind a dedicated toggle
+    // instead of letting it sort in among real buckets. deletedOnly=true builds the
+    // Deleted-bucket-only tree for browsing and restoring soft-deleted slips.
     public static IReadOnlyList<KastnTreeNode> BuildProjectTree(
         ZetlProjectSnapshot project,
-        IReadOnlyList<ZetlSlipSnapshot> slips)
+        IReadOnlyList<ZetlSlipSnapshot> slips,
+        bool deletedOnly = false)
     {
         var slipsByBucket = slips
             .GroupBy(slip => slip.BucketId)
@@ -159,6 +164,7 @@ internal static class KastnWorkbench
             var nodes = new List<KastnTreeNode>();
             foreach (var bucket in project.Buckets
                 .Where(bucket => bucket.ParentBucketId == parentId)
+                .Where(bucket => deletedOnly == IsDeletedBucket(bucket))
                 .OrderBy(bucket => bucket.Name, StringComparer.OrdinalIgnoreCase))
             {
                 var bucketSlips = slipsByBucket.TryGetValue(bucket.Id, out var found)

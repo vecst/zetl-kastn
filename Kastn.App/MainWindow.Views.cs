@@ -827,6 +827,8 @@ internal partial class MainWindow
         viewTsvRowBox.Value = Math.Clamp(working.TsvRowLength, 1, 100);
         viewListStyleBox.SelectedItem = ZetlViewListStyles.Normalize(working.ListStyle);
         viewNumberHeadingsCheck.IsChecked = working.NumberHeadings;
+        viewShowTitleCheck.IsChecked = working.ShowTitle;
+        viewTitleBox.Text = working.Title;
         LoadViewStructureEditor(working.Sections);
         viewEditorUpdating = false;
 
@@ -888,6 +890,8 @@ internal partial class MainWindow
         doc.TsvRowLength = (int)(viewTsvRowBox.Value ?? 5);
         doc.ListStyle = viewListStyleBox.SelectedItem as string ?? ZetlViewListStyles.Bullet;
         doc.NumberHeadings = viewNumberHeadingsCheck.IsChecked == true;
+        doc.ShowTitle = viewShowTitleCheck.IsChecked == true;
+        doc.Title = viewTitleBox.Text?.Trim() ?? "";
         doc.Sections = CurrentViewSections();
         return doc;
     }
@@ -925,6 +929,8 @@ internal partial class MainWindow
         view.TsvRowLength = (int)(viewTsvRowBox.Value ?? 5);
         view.ListStyle = viewListStyleBox.SelectedItem as string ?? ZetlViewListStyles.Bullet;
         view.NumberHeadings = viewNumberHeadingsCheck.IsChecked == true;
+        view.ShowTitle = viewShowTitleCheck.IsChecked == true;
+        view.Title = viewTitleBox.Text?.Trim() ?? "";
         view.Sections = CurrentViewSections();
         if (string.IsNullOrEmpty(view.Id))
         {

@@ -69,7 +69,9 @@ internal static class ZetlProjectSnapshotMapper
                 Buckets = section.Buckets.ToList()
             }).ToList(),
             ListStyle = view.ListStyle,
-            NumberHeadings = view.NumberHeadings
+            NumberHeadings = view.NumberHeadings,
+            ShowTitle = view.ShowTitle,
+            Title = view.Title
         };
     }
 
@@ -90,7 +92,9 @@ internal static class ZetlProjectSnapshotMapper
                 Buckets = section.Buckets.ToList()
             }).ToList(),
             ListStyle = view.ListStyle,
-            NumberHeadings = view.NumberHeadings
+            NumberHeadings = view.NumberHeadings,
+            ShowTitle = view.ShowTitle,
+            Title = view.Title
         };
     }
 
