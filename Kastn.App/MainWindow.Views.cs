@@ -46,13 +46,25 @@ internal partial class MainWindow
         // could have changed (a project mutation, the filters, or the chosen view) — a
         // pure selection change just re-highlights, so picture blocks never reload.
         var signature = ViewSignature(visible);
-        if (signature != lastViewSignature || viewSlipBlocks.Count == 0)
+        var rebuilt = signature != lastViewSignature || viewSlipBlocks.Count == 0;
+        var sameProject = string.Equals(lastViewerProjectId, currentProject.Id, StringComparison.Ordinal);
+        lastViewerProjectId = currentProject.Id;
+        var savedOffset = viewerDocumentScroll.Offset;
+        if (rebuilt)
         {
             BuildViewDocument(visible);
             lastViewSignature = signature;
         }
 
-        UpdateViewSelectionHighlight();
+        // A rebuild resets the document scroll to the top. For an in-place change to
+        // the same project (e.g. hiding a slip), preserve the reader's position
+        // instead of flashing to the top and snapping back; only a pure selection
+        // change (no rebuild) scrolls the selected block into view.
+        UpdateViewSelectionHighlight(scrollIntoView: !rebuilt);
+        if (rebuilt && sameProject)
+        {
+            RestoreViewScroll(savedOffset);
+        }
 
         if (SelectedView.Kind == ZetlViewKinds.Pdf)
         {
@@ -337,7 +349,7 @@ internal partial class MainWindow
 
     // Highlight the tree-selected slip's block and scroll it into view (the tree → View
     // half of the bridge). A pure selection change reaches here without a rebuild.
-    private void UpdateViewSelectionHighlight()
+    private void UpdateViewSelectionHighlight(bool scrollIntoView = true)
     {
         if (highlightedViewSlipId is not null
             && viewSlipBlocks.TryGetValue(highlightedViewSlipId, out var previous))
@@ -354,9 +366,30 @@ internal partial class MainWindow
 
         ApplyBlockHighlight(block, on: true);
         highlightedViewSlipId = selectedId;
-        block.BringIntoView();
-        // A freshly rebuilt block may not be laid out yet; retry after layout.
-        Dispatcher.UIThread.Post(block.BringIntoView, DispatcherPriority.Background);
+        if (scrollIntoView)
+        {
+            block.BringIntoView();
+            // A freshly rebuilt block may not be laid out yet; retry after layout.
+            Dispatcher.UIThread.Post(block.BringIntoView, DispatcherPriority.Background);
+        }
+    }
+
+    // Restore the document scroll after a rebuild. Runs after layout (so the new
+    // extent is known) and before paint, so the rebuild's momentary reset to the
+    // top is never visible.
+    private void RestoreViewScroll(Vector savedOffset)
+    {
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                var maxY = Math.Max(
+                    0,
+                    viewerDocumentScroll.Extent.Height - viewerDocumentScroll.Viewport.Height);
+                viewerDocumentScroll.Offset = new Vector(
+                    savedOffset.X,
+                    Math.Min(savedOffset.Y, maxY));
+            },
+            DispatcherPriority.Render);
     }
 
     private void ApplyBlockHighlight(Border block, bool on)

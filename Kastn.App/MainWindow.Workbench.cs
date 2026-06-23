@@ -67,13 +67,8 @@ internal partial class MainWindow
 
         editorState.SetDraft(slipEditor.Text ?? "");
         statusText.Text = editorState.IsDirty
-            ? "Unsaved changes. Autosaving..."
+            ? "Unsaved changes — saved when you leave the editor."
             : connection.Current.Status;
-        if (editorState.IsDirty && editorState.ConflictCurrent is null && IsOnline)
-        {
-            autosaveTimer.Stop();
-            autosaveTimer.Start();
-        }
     }
 
     private async void OnTreeVisibilityClick(object? sender, RoutedEventArgs args)
@@ -190,9 +185,22 @@ internal partial class MainWindow
         }
     }
 
-    private async Task<bool> SaveEditorAsync()
+    private Task<bool> SaveEditorAsync()
     {
-        autosaveTimer.Stop();
+        // Coalesce concurrent callers (editor focus-loss racing a slip selection)
+        // onto one in-flight save, so the second caller awaits the same result
+        // instead of seeing a false "save failed" from the `saving` guard.
+        if (inflightSave is { } pending && !pending.IsCompleted)
+        {
+            return pending;
+        }
+
+        inflightSave = SaveEditorCoreAsync();
+        return inflightSave;
+    }
+
+    private async Task<bool> SaveEditorCoreAsync()
+    {
         if (!editorState.IsDirty)
         {
             return editorState.ConflictCurrent is null;
@@ -818,6 +826,9 @@ internal partial class MainWindow
         var skipped = 0;
         var failed = 0;
         var projectId = currentProject.Id;
+        // A single moved slip stays selected (re-driven through the tree so the
+        // editor/inspector/View re-sync), matching drag-drop. Batch moves clear.
+        var reselectSlipId = selected.Count == 1 ? selected[0].Id : null;
         pendingBucketSelectionId = destination.Id;
         foreach (var slip in selected)
         {
@@ -844,9 +855,17 @@ internal partial class MainWindow
             }
         }
 
-        editorState.Select(null);
-        UpdateEditorFromState();
         await connection.RefreshAsync();
+        if (reselectSlipId is not null)
+        {
+            ReselectSlipNode(reselectSlipId);
+        }
+        else
+        {
+            editorState.Select(null);
+            UpdateEditorFromState();
+        }
+
         statusText.Text = BatchStatus(
             moved > 0 ? $"{moved} slip{Plural(moved)} moved to {destination.Bucket?.Name}" : null,
             skipped > 0 ? $"{skipped} already there" : null,

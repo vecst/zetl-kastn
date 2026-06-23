@@ -86,11 +86,14 @@ internal partial class MainWindow : Window
     private readonly Queue<string> pictureCacheOrder = [];
     private readonly Dictionary<string, Task<ZetlPictureContent?>> pictureLoads = new(StringComparer.Ordinal);
     private readonly List<Bitmap> displayedPictureBitmaps = [];
-    private readonly DispatcherTimer autosaveTimer;
     private ZetlProjectSnapshot? currentProject;
     private bool refreshing;
     private bool editorUpdating;
     private bool saving;
+    // The single in-flight editor save, so a focus-loss save and a navigation
+    // save (e.g. clicking another slip) coalesce instead of racing the `saving`
+    // guard.
+    private Task<bool>? inflightSave;
     private bool addingSlip;
     private bool visibilityUpdating;
     private string? pendingSaveText;
@@ -113,12 +116,14 @@ internal partial class MainWindow : Window
     private readonly Dictionary<string, Border> viewSlipBlocks = new(StringComparer.Ordinal);
     private string lastViewSignature = "";
     private string? highlightedViewSlipId;
+    // The project the center View was last built for, so an in-place rebuild
+    // (e.g. hiding a slip) preserves scroll while switching projects resets it.
+    private string? lastViewerProjectId;
 
     public MainWindow()
     {
         InitializeComponent();
         connection = null!;
-        autosaveTimer = null!;
     }
 
     public MainWindow(KastnConnectionController connection)
@@ -142,16 +147,6 @@ internal partial class MainWindow : Window
         dateFilterBox.SelectedIndex = 0;
         RebuildTemplateCards();
 
-        autosaveTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(900)
-        };
-        autosaveTimer.Tick += async (_, _) =>
-        {
-            autosaveTimer.Stop();
-            await SaveEditorAsync();
-        };
-
         connection.SnapshotChanged += OnSnapshotChanged;
         landingProjectList.SelectionChanged += OnProjectSelectionChanged;
         projectTree.SelectionChanged += OnTreeSelectionChanged;
@@ -164,6 +159,9 @@ internal partial class MainWindow : Window
         sessionFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
         dateFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
         slipEditor.TextChanged += (_, _) => OnEditorTextChanged();
+        // Save when the editor loses focus rather than on a keystroke timer, so
+        // typing is never interrupted by a mid-edit save + refresh.
+        slipEditor.LostFocus += async (_, _) => await SaveEditorAsync();
 
         refreshMenuItem.Click += async (_, _) => await RefreshAsync();
         closeProjectMenuItem.Click += async (_, _) => await CloseProjectAsync();
@@ -256,7 +254,6 @@ internal partial class MainWindow : Window
         KeyDown += OnKeyDown;
         Closed += (_, _) =>
         {
-            autosaveTimer.Stop();
             connection.SnapshotChanged -= OnSnapshotChanged;
             DisposeDisplayedPictures();
         };
