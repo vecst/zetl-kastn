@@ -32,6 +32,8 @@ internal static class PortableSelfTests
                 ("Zetl state creates projects and scratch buckets", StateCreatesProjectAndScratch),
                 ("Zetl state creates dated default projects on demand", StateCreatesDatedDefaultProject),
                 ("Zetl state reuses dated default projects", StateReusesDatedDefaultProject),
+                ("Zetl state finish advances dated default to next session", StateFinishAdvancesDatedDefault),
+                ("Zetl state finish with no active project is a no-op", StateFinishWithNoActiveProjectIsNoop),
                 ("Zetl state consolidates dated default projects", StateConsolidatesDatedDefaultProjects),
                 ("Zetl state consolidates dated default without activation", StateConsolidatesDatedDefaultWithoutActivation),
                 ("Zetl state consolidates child buckets regardless of order", StateConsolidatesChildBucketsRegardlessOfOrder),
@@ -1004,6 +1006,44 @@ internal static class PortableSelfTests
 
             AssertEqual(first.Id, second.Id, "Default project should be reused after it is cleared inactive.");
             AssertEqual(1, store.State.Projects.Count, "Default project reuse should not create duplicates.");
+        }
+
+        private static void StateFinishAdvancesDatedDefault()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var baseName = DateTime.Now.ToString("yyyy-MM-dd");
+
+            var first = store.GetOrCreateDefaultProject();
+            AssertEqual(baseName, first.Name, "The first dated session uses the bare date name.");
+
+            var finished = store.FinishActiveProject();
+            AssertEqual(first.Id, finished?.Id, "Finish should return the sealed project.");
+            AssertEqual("Finished", first.Status, "Finish should mark the project Finished.");
+            AssertEqual<ZetlProject?>(null, store.ActiveProject, "Finish should clear the lane.");
+
+            var second = store.GetOrCreateDefaultProject();
+            AssertTrue(second.Id != first.Id, "Capture after finish should not reopen the sealed session.");
+            AssertEqual($"{baseName} (2)", second.Name, "The next session advances to a per-date counter.");
+            AssertEqual("Active", second.Status, "The advanced session starts Active.");
+            AssertTrue(
+                store.State.Projects.Any(project => project.Id == first.Id && project.Status == "Finished"),
+                "The finished session is retained, not deleted.");
+
+            store.FinishActiveProject();
+            var third = store.GetOrCreateDefaultProject();
+            AssertEqual($"{baseName} (3)", third.Name, "Each finish advances to the next counter.");
+        }
+
+        private static void StateFinishWithNoActiveProjectIsNoop()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.GetOrCreateDefaultProject();
+            store.ClearActiveProject();
+
+            var result = store.FinishActiveProject();
+            AssertEqual<ZetlProject?>(null, result, "Finishing an empty lane should be a no-op.");
         }
 
         private static void StateConsolidatesDatedDefaultProjects()

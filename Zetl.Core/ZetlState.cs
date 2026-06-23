@@ -279,17 +279,19 @@ internal sealed class ZetlStateStore
             return activeProject;
         }
 
-        var defaultName = DefaultProjectName(shifted);
-        var existingProject = ConsolidateProjectsNamed(defaultName);
-        if (existingProject is not null)
+        // Reuse today's dated default only while it is still Active. A finished or
+        // archived session is sealed: capture advances to a fresh session instead
+        // of reopening it.
+        if (FindActiveDatedDefault(shifted) is { } existingProject)
         {
-            SetActiveProjectId(existingProject.Id, shifted);
+            var reused = ConsolidateProjectsNamed(existingProject.Name) ?? existingProject;
+            SetActiveProjectId(reused.Id, shifted);
             PersistWorkspace();
-            return existingProject;
+            return reused;
         }
 
         var defaultBuckets = Defaults.ResolvedProjectBuckets;
-        return CreateProject(defaultName, defaultBuckets, defaultBuckets[0], shifted);
+        return CreateProject(NextDatedDefaultName(shifted), defaultBuckets, defaultBuckets[0], shifted);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -360,6 +362,48 @@ internal sealed class ZetlStateStore
     {
         SetActiveProjectId(null, shifted);
         PersistWorkspace();
+    }
+
+    // Seal the given lane's active project: mark it Finished and clear it from the
+    // lane, leaving the lane with no active project. The next capture advances to
+    // a fresh dated session rather than reopening the sealed one. Reversible by
+    // setting the status back to Active. No-op (returns null) when the lane is
+    // already empty. Finishing is lane management, so it lives here rather than on
+    // the IPC service; Kastn changes status through SetProjectStatus instead.
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlProject? FinishActiveProject(bool shifted = false)
+    {
+        var project = GetActiveProject(shifted);
+        return project is null ? null : FinishProject(project.Id);
+    }
+
+    // Seal a project by id: mark it Finished and clear it from whichever lane(s)
+    // it occupies, so the next capture advances to a fresh dated session. Used by
+    // the compile dialog, whose source project may be any project (not just the
+    // current lane's). No-op (returns null) for an unknown id.
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlProject? FinishProject(string projectId)
+    {
+        var project = State.Projects.FirstOrDefault(item => item.Id == projectId);
+        if (project is null)
+        {
+            return null;
+        }
+
+        project.Status = FinishedStatus;
+        project.MetadataRevision++;
+        if (State.ActiveProjectId == projectId)
+        {
+            State.ActiveProjectId = null;
+        }
+
+        if (State.ShiftActiveProjectId == projectId)
+        {
+            State.ShiftActiveProjectId = null;
+        }
+
+        PersistProject(project, workspace: true);
+        return project;
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -1711,8 +1755,12 @@ internal sealed class ZetlStateStore
 
     private ZetlProject? ConsolidateProjectsNamed(string projectName)
     {
+        // Only ever consolidate Active sessions. A finished/archived project that
+        // happens to share a name must stay standalone, so finishing is never
+        // silently undone by a later merge.
         var matchingProjects = State.Projects
-            .Where(project => string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase))
+            .Where(project => string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase)
+                && IsActiveStatus(project))
             .ToList();
         if (matchingProjects.Count == 0)
         {
@@ -2026,6 +2074,85 @@ internal sealed class ZetlStateStore
     private static string NormalizeProjectStatus(string? status)
     {
         return CanonicalProjectStatus(status) ?? ActiveStatus;
+    }
+
+    public static bool IsActiveStatus(ZetlProject project)
+    {
+        return string.Equals(project.Status, ActiveStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // A dated default project is "<base>" for the first session of the day and
+    // "<base> (N)" for the N-th, where base is DefaultProjectName. Finishing one
+    // session advances capture to the next number. Returns false for any name
+    // that is not a session of this base.
+    private static bool TryGetDatedSessionNumber(string? name, string baseName, out int number)
+    {
+        number = 0;
+        var trimmed = (name ?? "").Trim();
+        if (string.Equals(trimmed, baseName, StringComparison.OrdinalIgnoreCase))
+        {
+            number = 1;
+            return true;
+        }
+
+        if (trimmed.Length > baseName.Length + 3
+            && trimmed.StartsWith(baseName, StringComparison.OrdinalIgnoreCase)
+            && trimmed[baseName.Length] == ' '
+            && trimmed[baseName.Length + 1] == '('
+            && trimmed[^1] == ')'
+            && int.TryParse(trimmed[(baseName.Length + 2)..^1], out var parsed)
+            && parsed >= 2)
+        {
+            number = parsed;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string DatedDefaultSessionName(bool shifted, int number)
+    {
+        var baseName = DefaultProjectName(shifted);
+        return number <= 1 ? baseName : $"{baseName} ({number})";
+    }
+
+    // The most recent still-Active dated default for today, or null when every
+    // session of the day has been finished/archived (or none exists yet).
+    private ZetlProject? FindActiveDatedDefault(bool shifted)
+    {
+        var baseName = DefaultProjectName(shifted);
+        ZetlProject? best = null;
+        var bestNumber = 0;
+        foreach (var project in State.Projects)
+        {
+            if (IsActiveStatus(project)
+                && TryGetDatedSessionNumber(project.Name, baseName, out var number)
+                && number >= bestNumber)
+            {
+                best = project;
+                bestNumber = number;
+            }
+        }
+
+        return best;
+    }
+
+    // The name for a freshly advanced session: one past the highest-numbered
+    // dated session that exists today (finished sessions still count, so the
+    // number never collides with a sealed project).
+    private string NextDatedDefaultName(bool shifted)
+    {
+        var baseName = DefaultProjectName(shifted);
+        var maxNumber = 0;
+        foreach (var project in State.Projects)
+        {
+            if (TryGetDatedSessionNumber(project.Name, baseName, out var number) && number > maxNumber)
+            {
+                maxNumber = number;
+            }
+        }
+
+        return DatedDefaultSessionName(shifted, maxNumber + 1);
     }
 
     private static string NormalizeBucketKind(string? kind)

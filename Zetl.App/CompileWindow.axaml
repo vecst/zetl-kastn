@@ -116,14 +116,18 @@
                 Margin="12,0,0,0" />
     </Grid>
 
-    <Grid Grid.Row="4" ColumnDefinitions="*,Auto" ColumnSpacing="12">
-      <TextBlock Grid.Column="0"
+    <Grid Grid.Row="4" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+      <Button Grid.Column="0"
+              x:Name="finishButton"
+              Content="Finish Project"
+              ToolTip.Tip="Seal this project as Finished and clear it from its lane. Reversible." />
+      <TextBlock Grid.Column="1"
                  x:Name="validationText"
                  Classes="validation"
                  VerticalAlignment="Center"
                  TextWrapping="Wrap"
                  IsVisible="False" />
-      <WrapPanel Grid.Column="1"
+      <WrapPanel Grid.Column="2"
                  Orientation="Horizontal"
                  HorizontalAlignment="Right">
         <Button x:Name="pasteButton"

@@ -56,6 +56,7 @@ internal partial class CompileWindow : ZetlPopupWindow
             Complete(pasteNow: true, saveToBucket: false, unformatted: true);
         pasteLastButton.Click += (_, _) => CompleteLastItem();
         saveBucketButton.Click += (_, _) => Complete(pasteNow: false, saveToBucket: true);
+        finishButton.Click += (_, _) => FinishProject();
         cancelButton.Click += (_, _) => Cancel();
         ZetlWindowShortcuts.Enable(
             this,
@@ -63,6 +64,7 @@ internal partial class CompileWindow : ZetlPopupWindow
             Cancel);
 
         UpdateCompileModeControls();
+        UpdateFinishButton();
         RefreshPreview();
     }
 
@@ -131,6 +133,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         sourceScope = null;
         RebuildSelections();
         ApplyBucketCompileDefaults();
+        UpdateFinishButton();
     }
 
     private void RebuildSelections()
@@ -366,6 +369,33 @@ internal partial class CompileWindow : ZetlPopupWindow
         completionDecided = true;
         Saved = true;
         Close();
+    }
+
+    // Seal the source project (Finished) and clear it from its lane, then close.
+    // Finishing produces no compile output ("seal + advance only"), so it closes
+    // like Cancel (Saved stays false); the host performs no paste or save. The
+    // store mutation is the sole-writer FinishProject and persists on its own.
+    private void FinishProject()
+    {
+        if (!ZetlStateStore.IsActiveStatus(sourceProject))
+        {
+            ShowValidation("This project is already finished.");
+            return;
+        }
+
+        store.FinishProject(sourceProject.Id);
+        completionDecided = true;
+        Close();
+    }
+
+    private void UpdateFinishButton()
+    {
+        // Only an Active, non-infrastructure project can be finished.
+        finishButton.IsEnabled = ZetlStateStore.IsActiveStatus(sourceProject)
+            && !string.Equals(
+                sourceProject.Name,
+                ZetlStateStore.LogProjectName,
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private void Cancel()

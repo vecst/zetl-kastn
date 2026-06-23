@@ -188,6 +188,11 @@ Default project names use the current date, for example:
 
 Zetl reuses the same dated default project instead of creating duplicates each time it opens. If you rename the project, future compile output uses the updated name.
 
+Finishing a project (see Compile) seals it and advances the dated default: the
+next capture starts a fresh session named with a per-date counter, for example
+`2026-06-01 (2)`, instead of reopening the sealed one. A finished project is set
+aside, not deleted, and can be reactivated later.
+
 ## Projects, Buckets, And Notes
 
 A project contains buckets. A bucket contains notes.
@@ -507,6 +512,16 @@ Line breaks and tabs inside note text are normalized to spaces for TSV output.
 Compile spans the whole active project, including notes from earlier sessions. Reactivate an old project from the Board and held `Ctrl+V` can recompile everything in it. Check `This session only` in the dialog to narrow the list back to notes captured this session.
 
 If no project is active, held `Ctrl+V` can still compile. When a `Scratch` bucket holds a current-session quick note, Zetl opens the compile dialog on that whole project — all of its buckets are available to select — without activating it. So a quick note jotted with held `Ctrl+X` is fully compilable even though it never started the project.
+
+### Finishing A Project
+
+The compile dialog has a `Finish Project` button. Finishing seals the project
+you compiled from: it is marked `Finished` and cleared from whichever lane it
+occupied, so the next capture advances to a fresh dated session rather than
+reopening the sealed one. Finishing produces no compile output on its own —
+copy or paste first if you want the text — and is reversible: a finished project
+is set aside, not locked or deleted, and can be reactivated later. The button is
+available only for an active project.
 
 ## Standard Buckets
 
