@@ -356,18 +356,22 @@ internal partial class MainWindow
     {
         var selected = SelectedSlips();
         var slip = selected.Count == 1 ? selected[0] : null;
+        // Alignment applies to a single text slip or, in a batch selection, to every
+        // selected text slip. The active-state highlight only makes sense for one.
+        var batchAlign = selected.Count >= 2
+            && selected.Any(item => item.Type == ZetlSlipType.Text && !IsSlipInDeleted(item));
         var canAlign = IsOnline
             && !saving
-            && slip is { Type: ZetlSlipType.Text }
-            && !IsSlipInDeleted(slip);
+            && editorState.ConflictCurrent is null
+            && (batchAlign || (slip is { Type: ZetlSlipType.Text } && !IsSlipInDeleted(slip)));
         alignLeftButton.IsEnabled = canAlign;
         alignCenterButton.IsEnabled = canAlign;
         alignRightButton.IsEnabled = canAlign;
 
-        var active = slip is null ? "left" : ZetlViewRenderer.SlipAlignment(slip);
-        alignLeftButton.FontWeight = canAlign && active == "left" ? FontWeight.Bold : FontWeight.Normal;
-        alignCenterButton.FontWeight = canAlign && active == "center" ? FontWeight.Bold : FontWeight.Normal;
-        alignRightButton.FontWeight = canAlign && active == "right" ? FontWeight.Bold : FontWeight.Normal;
+        var active = slip is null ? null : ZetlViewRenderer.SlipAlignment(slip);
+        alignLeftButton.FontWeight = active == "left" ? FontWeight.Bold : FontWeight.Normal;
+        alignCenterButton.FontWeight = active == "center" ? FontWeight.Bold : FontWeight.Normal;
+        alignRightButton.FontWeight = active == "right" ? FontWeight.Bold : FontWeight.Normal;
     }
 
     // Wrap the editor selection (or insert a placeholder) in Markdown delimiters, then
@@ -1057,15 +1061,24 @@ internal partial class MainWindow
             && !addingSlip;
         slipEditor.IsEnabled = canEdit && editorState.ConflictCurrent is null;
         var canFormat = slipEditor.IsEnabled;
+        // The list markers, strikethrough, and alignment also work across a multi-slip
+        // selection (applied to every selected text slip); the inline wraps stay
+        // single-slip only.
+        var canBatchFormat = IsOnline
+            && !saving
+            && editorState.ConflictCurrent is null
+            && hasMultipleSelectedSlips
+            && selectedSlips.Any(slip => slip.Type == ZetlSlipType.Text && !IsSlipInDeleted(slip));
+        var canFormatOrBatch = canFormat || canBatchFormat;
         boldButton.IsEnabled = canFormat;
         italicButton.IsEnabled = canFormat;
-        strikeButton.IsEnabled = canFormat;
+        strikeButton.IsEnabled = canFormatOrBatch;
         codeButton.IsEnabled = canFormat;
         linkButton.IsEnabled = canFormat;
         wikiLinkButton.IsEnabled = canFormat;
-        bulletListButton.IsEnabled = canFormat;
-        numberListButton.IsEnabled = canFormat;
-        taskListButton.IsEnabled = canFormat;
+        bulletListButton.IsEnabled = canFormatOrBatch;
+        numberListButton.IsEnabled = canFormatOrBatch;
+        taskListButton.IsEnabled = canFormatOrBatch;
         saveSlipButton.IsEnabled = canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = false;
         deleteSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive;

@@ -220,6 +220,8 @@ internal static class PortableSelfTests
                 ("Kastn filters preserve order and hierarchy", KastnWorkbenchTests.FiltersPreserveSnapshotOrderAndHierarchy),
                 ("Kastn project tree nests buckets, slips, and counts", KastnWorkbenchTests.ProjectTreeNestsBucketsSlipsAndCounts),
                 ("Kastn project tree separates the Deleted bucket", KastnWorkbenchTests.ProjectTreeSeparatesDeletedBucket),
+                ("Kastn batch format rewrites markers and strike", KastnWorkbenchTests.BatchFormatRewritesMarkersAndStrike),
+                ("Kastn batch ordered numbers restart at breaks", KastnWorkbenchTests.BatchOrderedNumbersRestartAtBreaks),
                 ("Kastn tree truncates long slip labels", KastnWorkbenchTests.SlipLabelTruncatesLongText),
                 ("Kastn dirty editor survives unrelated changes", KastnWorkbenchTests.DirtyEditorSurvivesUnrelatedChanges),
                 ("Kastn same-slip changes require resolution", KastnWorkbenchTests.SameSlipChangesRequireExplicitResolution),

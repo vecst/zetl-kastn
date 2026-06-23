@@ -184,18 +184,22 @@ internal partial class MainWindow : Window
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
         closeProjectButton.Click += async (_, _) => await CloseProjectAsync();
         newSlipButton.Click += async (_, _) => await AddSlipAsync();
-        alignLeftButton.Click += async (_, _) => await SetSlipAlignAsync("left");
-        alignCenterButton.Click += async (_, _) => await SetSlipAlignAsync("center");
-        alignRightButton.Click += async (_, _) => await SetSlipAlignAsync("right");
+        // Alignment, strikethrough, and the list markers fork: a single selected slip
+        // edits its text in the editor; a multi-slip / bucket selection applies the
+        // change to every selected slip at once (batch). Bold/italic/code/link wrap a
+        // text run inside one slip, so they stay editor-only.
+        alignLeftButton.Click += async (_, _) => await AlignSlipsAsync("left");
+        alignCenterButton.Click += async (_, _) => await AlignSlipsAsync("center");
+        alignRightButton.Click += async (_, _) => await AlignSlipsAsync("right");
         boldButton.Click += (_, _) => WrapEditorSelection("**", "**", "bold");
         italicButton.Click += (_, _) => WrapEditorSelection("*", "*", "italic");
-        strikeButton.Click += (_, _) => WrapEditorSelection("~~", "~~", "strike");
+        strikeButton.Click += async (_, _) => await StrikeSlipsAsync();
         codeButton.Click += (_, _) => WrapEditorSelection("`", "`", "code");
         linkButton.Click += (_, _) => InsertEditorLink();
         wikiLinkButton.Click += async (_, _) => await InsertSlipLinkAsync();
-        bulletListButton.Click += (_, _) => PrefixSelectedLines(_ => "- ");
-        numberListButton.Click += (_, _) => PrefixSelectedLines(index => $"{index + 1}. ");
-        taskListButton.Click += (_, _) => PrefixSelectedLines(_ => "- [ ] ");
+        bulletListButton.Click += async (_, _) => await ListSlipsAsync("bullet");
+        numberListButton.Click += async (_, _) => await ListSlipsAsync("ordered");
+        taskListButton.Click += async (_, _) => await ListSlipsAsync("task");
         globalViews = viewStore.LoadAll();
         loadedViews = globalViews;
         viewPickerBox.ItemsSource = loadedViews;
