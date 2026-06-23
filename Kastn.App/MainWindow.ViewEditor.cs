@@ -392,14 +392,19 @@ internal partial class MainWindow
         viewLivePreviewPanel.Children.Clear();
         var viewLabel = string.IsNullOrWhiteSpace(view.Name) ? "Untitled view" : view.Name;
         viewLivePreviewSummary.Text = $"{view.Kind} · {viewLabel} · unsaved";
-        viewLivePreviewPanel.Children.Add(new TextBlock
+        // Honor the view's title control (hide / custom) the same way the rendered
+        // document does, so the preview reflects what Copy/Export will produce.
+        if (ZetlViewRenderer.DocumentTitle(currentProject, view) is { } documentTitle)
         {
-            Text = currentProject.Name,
-            FontSize = 22,
-            FontWeight = FontWeight.Bold,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 6)
-        });
+            viewLivePreviewPanel.Children.Add(new TextBlock
+            {
+                Text = documentTitle,
+                FontSize = 22,
+                FontWeight = FontWeight.Bold,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+        }
 
         const int previewLimit = 100;
         var slips = currentProject.Slips
