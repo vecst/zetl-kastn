@@ -1,5 +1,4 @@
-using System;
-using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace ZETL;
 
@@ -9,31 +8,14 @@ namespace ZETL;
 // type always tracks the current text.
 internal static class ZetlSlipClassifier
 {
-    // True when the slip's first non-empty line is a bare absolute http/https URL.
-    // That covers both "I copied a link" and the common "link, then a new line with a
-    // note about it" capture; any lines after the URL are treated as the user's note.
-    // Conservative on the URL line itself: a scheme-less host ("example.com") or prose
-    // that merely contains a link ("see https://x.com here") stays text.
-    public static bool LooksLikeUrl(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
+    // Match an http/https URL anywhere in the text (scheme + at least one more char).
+    private static readonly Regex UrlPattern =
+        new(@"https?://\S", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        foreach (var line in text.ReplaceLineEndings("\n").Split('\n'))
-        {
-            var trimmed = line.Trim();
-            if (trimmed.Length == 0)
-            {
-                continue;
-            }
-
-            return !trimmed.Any(char.IsWhiteSpace)
-                && Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)
-                && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
-        }
-
-        return false;
-    }
+    // A note is a link if it contains an http/https URL *anywhere* — paste a link and
+    // annotate it however you like (before it, after it, mid-sentence) and it still
+    // files under links. Conservative only in requiring an explicit web scheme, so a
+    // scheme-less host ("example.com") or a non-web scheme ("ftp://") stays text.
+    public static bool LooksLikeUrl(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && UrlPattern.IsMatch(text);
 }

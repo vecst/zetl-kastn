@@ -2338,20 +2338,21 @@ internal static class PortableSelfTests
 
         private static void UrlSlipsAreDerivedFromContent()
         {
-            // Only whole-content absolute http/https text is classified as a link.
-            AssertTrue(ZetlSlipClassifier.LooksLikeUrl("https://example.com"), "An https URL is a link.");
+            // A note is a link if it contains an http/https URL anywhere.
+            AssertTrue(ZetlSlipClassifier.LooksLikeUrl("https://example.com"), "A bare URL is a link.");
             AssertTrue(ZetlSlipClassifier.LooksLikeUrl("http://x.com/a?b=1#c"), "A URL with path/query/fragment is a link.");
-            AssertTrue(ZetlSlipClassifier.LooksLikeUrl("  https://trimmed.test  "), "Surrounding whitespace is ignored.");
             AssertTrue(
-                ZetlSlipClassifier.LooksLikeUrl("https://x.com/article\nMy note about the article"),
-                "A link followed by a note (URL on the first line) is still a link.");
-            AssertFalse(
+                ZetlSlipClassifier.LooksLikeUrl("https://x.com/article\nMy note about it"),
+                "A link followed by a note is a link.");
+            AssertTrue(
                 ZetlSlipClassifier.LooksLikeUrl("My note first\nhttps://x.com"),
-                "A note before the link leaves it as text (the URL must lead).");
-            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("example.com"), "A scheme-less host stays text (conservative).");
-            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("see https://x.com here"), "Prose containing a link is not a link slip.");
-            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("ftp://files.test"), "Non-http(s) schemes are not links.");
-            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("just text"), "Plain text is not a link.");
+                "A link anywhere (even after a note) is a link.");
+            AssertTrue(
+                ZetlSlipClassifier.LooksLikeUrl("I read https://x.com/article and loved it."),
+                "A link mid-sentence is a link.");
+            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("example.com"), "A scheme-less host stays text.");
+            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("ftp://files.test"), "A non-web scheme stays text.");
+            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("just a plain note"), "Plain text is not a link.");
 
             // The mapper derives the slip type from the note text — no stored field.
             var bucket = new ZetlBucket { Id = "b", Name = "Links", Kind = "Standard" };
