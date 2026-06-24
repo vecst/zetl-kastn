@@ -141,6 +141,7 @@ internal sealed class ZetlShortcutCoordinator
     {
         return context.KeyCode switch
         {
+            VK_A => HandleProjectToggle(context.ShiftLane),
             VK_B => new ZetlBoardRequest(context.ShiftLane),
             VK_C => await CreateCopyHoldRequestAsync(context, pending),
             VK_P => HandlePopToggle(context.ShiftLane),
@@ -539,6 +540,18 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         return new ZetlCompileRequest(shifted, project, BucketScope: null);
+    }
+
+    private ZetlShortcutRequest? HandleProjectToggle(bool shifted)
+    {
+        var (outcome, name) = store.ToggleActiveProject(shifted);
+        notifications.Show(outcome switch
+        {
+            ZetlProjectToggleOutcome.Activated => $"Activated {name}.",
+            ZetlProjectToggleOutcome.ReturnedToJournal => $"Back to {name}.",
+            _ => "No recent project to activate."
+        });
+        return null;
     }
 
     private ZetlShortcutRequest? HandlePopToggle(bool shifted)

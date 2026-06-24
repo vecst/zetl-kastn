@@ -3,6 +3,12 @@
   "holdDelayMs": 353,
   "hotkeys": [
     {
+      "name": "Ctrl+A",
+      "key": "A",
+      "modifiers": ["Ctrl"],
+      "dispatch": "TapOnly"
+    },
+    {
       "name": "Ctrl+B",
       "key": "B",
       "modifiers": ["Ctrl"],
@@ -49,6 +55,13 @@
       "key": "Z",
       "modifiers": ["Ctrl"],
       "dispatch": "TapOnly"
+    },
+    {
+      "name": "Ctrl+Shift+A",
+      "key": "A",
+      "modifiers": ["Ctrl", "Shift"],
+      "dispatch": "TapOnly",
+      "replayModifiers": ["Ctrl", "Shift"]
     },
     {
       "name": "Ctrl+Shift+B",

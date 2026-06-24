@@ -97,6 +97,7 @@ internal static class PortableSelfTests
                 ("Journal mode rolls into dated buckets", JournalModeRollsIntoDatedBuckets),
                 ("Journal auto-returns from a quiet project", JournalAutoReturnsFromQuietProject),
                 ("Journal auto-return off keeps the project", JournalAutoReturnOffKeepsProject),
+                ("Ctrl+A toggles between the Journal and the last project", ToggleActiveProjectSwitchesBetweenJournalAndLastProject),
                 ("Zetl default hotkeys config parses", DefaultConfigParses),
                 ("Zetl config tolerates null replay modifiers", ConfigNullReplayModifiersDoesNotThrow),
                 ("Zetl config reports clean errors for null fields", ConfigNullFieldsReportCleanErrors),
@@ -2300,6 +2301,38 @@ internal static class PortableSelfTests
                 work.Id,
                 store.GetOrCreateDefaultProject().Id,
                 "With auto-return off, even a long-quiet project keeps capture.");
+        }
+
+        private static void ToggleActiveProjectSwitchesBetweenJournalAndLastProject()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+
+            // The Journal is the home, with no deliberate project used yet.
+            store.GetOrCreateDefaultProject();
+            AssertEqual(
+                ZetlProjectToggleOutcome.NoProjectToActivate,
+                store.ToggleActiveProject().Outcome,
+                "With no deliberate project yet, there is nothing to activate.");
+
+            // Activating a deliberate project records it as the last deliberate project.
+            var work = store.CreateProject("Work", new[] { "Notes" }, "Notes");
+            AssertEqual(work.Id, store.GetActiveProject()?.Id, "The new project is active.");
+
+            var off = store.ToggleActiveProject();
+            AssertEqual(
+                ZetlProjectToggleOutcome.ReturnedToJournal,
+                off.Outcome,
+                "Toggling a deliberate project returns to the Journal.");
+            AssertTrue(store.GetActiveProject()?.JournalMode == true, "The Journal is active after deactivating.");
+
+            var on = store.ToggleActiveProject();
+            AssertEqual(
+                ZetlProjectToggleOutcome.Activated,
+                on.Outcome,
+                "Toggling from the Journal reactivates the last deliberate project.");
+            AssertEqual("Work", on.ProjectName, "It reactivates the last deliberate project by name.");
+            AssertEqual(work.Id, store.GetActiveProject()?.Id, "Work is active again.");
         }
 
         private static void RuntimeAppliesAppSettingsDefaults()

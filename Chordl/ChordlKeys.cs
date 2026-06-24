@@ -8,6 +8,7 @@ public static class ChordlKeys
     public const int VK_SHIFT = 0x10;
     public const int VK_LSHIFT = 0xA0;
     public const int VK_RSHIFT = 0xA1;
+    public const int VK_A = 0x41;
     public const int VK_B = 0x42;
     public const int VK_C = 0x43;
     public const int VK_P = 0x50;
@@ -31,6 +32,7 @@ public static class ChordlKeys
     {
         var keyName = vkCode switch
         {
+            VK_A => "A",
             VK_B => "B",
             VK_C => "C",
             VK_P => "P",

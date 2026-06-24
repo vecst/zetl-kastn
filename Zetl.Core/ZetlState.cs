@@ -11,7 +11,19 @@ internal sealed class ZetlState
     // Tracked by id (not name) so renaming the Journal never loses the pointer.
     public string? DefaultJournalProjectId { get; set; }
     public string? ShiftDefaultJournalProjectId { get; set; }
+    // The last non-journal project that was lane-active, so the held Ctrl+A toggle can
+    // jump back to it from the Journal.
+    public string? LastDeliberateProjectId { get; set; }
+    public string? ShiftLastDeliberateProjectId { get; set; }
     public List<ZetlProject> Projects { get; set; } = new();
+}
+
+// Result of the held Ctrl+A active-project toggle.
+internal enum ZetlProjectToggleOutcome
+{
+    Activated,
+    ReturnedToJournal,
+    NoProjectToActivate
 }
 
 internal sealed class ZetlProject
@@ -415,6 +427,35 @@ internal sealed class ZetlStateStore
     // A deliberately-started project is active (i.e. not the default Journal).
     public bool HasDeliberateActiveProject(bool shifted = false) =>
         GetActiveProject(shifted) is { } active && !IsDefaultJournalProject(active, shifted);
+
+    // Held Ctrl+A toggles the lane between the Journal and the last-used deliberate
+    // project: on a deliberate project it returns to the Journal; on the Journal it
+    // reactivates the last deliberate project (when one is still Active).
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public (ZetlProjectToggleOutcome Outcome, string? ProjectName) ToggleActiveProject(bool shifted = false)
+    {
+        if (GetActiveProject(shifted) is { JournalMode: false } active)
+        {
+            // The deactivated project stays recorded as the last deliberate project
+            // (set when it was activated), so the next toggle brings it back.
+            var journal = GetOrCreateJournalProject(shifted);
+            return (ZetlProjectToggleOutcome.ReturnedToJournal, journal.Name);
+        }
+
+        var lastId = shifted ? State.ShiftLastDeliberateProjectId : State.LastDeliberateProjectId;
+        var last = lastId is null
+            ? null
+            : State.Projects.FirstOrDefault(project =>
+                project.Id == lastId && !project.JournalMode && IsActiveStatus(project));
+        if (last is null)
+        {
+            return (ZetlProjectToggleOutcome.NoProjectToActivate, null);
+        }
+
+        SetActiveProjectId(last.Id, shifted);
+        PersistWorkspace();
+        return (ZetlProjectToggleOutcome.Activated, last.Name);
+    }
 
     // Roll a journal-mode project into the dated bucket for <localNow> (named
     // yyyy-MM-dd, shifted by the configured day-start hour), creating it if needed
@@ -2196,11 +2237,22 @@ internal sealed class ZetlStateStore
         }
 
         // Activating (or reactivating) a deliberate project refreshes its auto-return
-        // window, so the very next capture is not seen as stale.
+        // window and records it as the lane's last deliberate project (for Ctrl+A).
         if (projectId is not null
             && State.Projects.FirstOrDefault(project => project.Id == projectId) is { } activated)
         {
             TouchProjectActivity(activated);
+            if (!activated.JournalMode)
+            {
+                if (shifted)
+                {
+                    State.ShiftLastDeliberateProjectId = activated.Id;
+                }
+                else
+                {
+                    State.LastDeliberateProjectId = activated.Id;
+                }
+            }
         }
     }
 
