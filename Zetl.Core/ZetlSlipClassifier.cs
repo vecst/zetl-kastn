@@ -9,9 +9,11 @@ namespace ZETL;
 // type always tracks the current text.
 internal static class ZetlSlipClassifier
 {
-    // True when the whole captured text is a single absolute http/https URL — the
-    // "I copied a link" case, not prose that merely contains a link. Conservative on
-    // purpose (a scheme-less host like "example.com" is left as text).
+    // True when the slip's first non-empty line is a bare absolute http/https URL.
+    // That covers both "I copied a link" and the common "link, then a new line with a
+    // note about it" capture; any lines after the URL are treated as the user's note.
+    // Conservative on the URL line itself: a scheme-less host ("example.com") or prose
+    // that merely contains a link ("see https://x.com here") stays text.
     public static bool LooksLikeUrl(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -19,13 +21,19 @@ internal static class ZetlSlipClassifier
             return false;
         }
 
-        var trimmed = text.Trim();
-        if (trimmed.Any(char.IsWhiteSpace))
+        foreach (var line in text.ReplaceLineEndings("\n").Split('\n'))
         {
-            return false;
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0)
+            {
+                continue;
+            }
+
+            return !trimmed.Any(char.IsWhiteSpace)
+                && Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)
+                && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
         }
 
-        return Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)
-            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+        return false;
     }
 }

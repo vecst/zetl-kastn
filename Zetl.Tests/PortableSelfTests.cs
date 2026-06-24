@@ -2342,6 +2342,12 @@ internal static class PortableSelfTests
             AssertTrue(ZetlSlipClassifier.LooksLikeUrl("https://example.com"), "An https URL is a link.");
             AssertTrue(ZetlSlipClassifier.LooksLikeUrl("http://x.com/a?b=1#c"), "A URL with path/query/fragment is a link.");
             AssertTrue(ZetlSlipClassifier.LooksLikeUrl("  https://trimmed.test  "), "Surrounding whitespace is ignored.");
+            AssertTrue(
+                ZetlSlipClassifier.LooksLikeUrl("https://x.com/article\nMy note about the article"),
+                "A link followed by a note (URL on the first line) is still a link.");
+            AssertFalse(
+                ZetlSlipClassifier.LooksLikeUrl("My note first\nhttps://x.com"),
+                "A note before the link leaves it as text (the URL must lead).");
             AssertFalse(ZetlSlipClassifier.LooksLikeUrl("example.com"), "A scheme-less host stays text (conservative).");
             AssertFalse(ZetlSlipClassifier.LooksLikeUrl("see https://x.com here"), "Prose containing a link is not a link slip.");
             AssertFalse(ZetlSlipClassifier.LooksLikeUrl("ftp://files.test"), "Non-http(s) schemes are not links.");
