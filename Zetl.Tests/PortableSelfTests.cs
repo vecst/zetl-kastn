@@ -95,6 +95,8 @@ internal static class PortableSelfTests
                 ("Zetl theme store ignores invalid files", ThemeStoreIgnoresInvalidFiles),
                 ("Zetl state applies bucket defaults", StateAppliesBucketDefaults),
                 ("Journal mode rolls into dated buckets", JournalModeRollsIntoDatedBuckets),
+                ("Journal auto-returns from a quiet project", JournalAutoReturnsFromQuietProject),
+                ("Journal auto-return off keeps the project", JournalAutoReturnOffKeepsProject),
                 ("Zetl default hotkeys config parses", DefaultConfigParses),
                 ("Zetl config tolerates null replay modifiers", ConfigNullReplayModifiersDoesNotThrow),
                 ("Zetl config reports clean errors for null fields", ConfigNullFieldsReportCleanErrors),
@@ -1954,6 +1956,7 @@ internal static class PortableSelfTests
             store.Settings.DefaultCompileMode = "TSV";
             store.Settings.DefaultTsvRowLength = 4;
             store.Settings.DayStartHour = 4;
+            store.Settings.JournalAutoReturnHours = 6;
             store.Settings.ThemeId = "custom-theme";
             store.Settings.ThemeVariant = "Dark";
             AssertTrue(store.Settings.KastnAutosave, "Kastn autosave should default on.");
@@ -1982,6 +1985,7 @@ internal static class PortableSelfTests
             AssertEqual("TSV", loaded.Settings.DefaultCompileMode, "Default compile mode should round-trip.");
             AssertEqual(4, loaded.Settings.DefaultTsvRowLength, "Default TSV row length should round-trip.");
             AssertEqual(4, loaded.Settings.DayStartHour, "Journal day-start hour should round-trip.");
+            AssertEqual(6, loaded.Settings.JournalAutoReturnHours, "Journal auto-return hours should round-trip.");
             AssertEqual("custom-theme", loaded.Settings.ThemeId, "Theme id should round-trip.");
             AssertEqual("Dark", loaded.Settings.ThemeVariant, "Theme variant should round-trip.");
             AssertFalse(loaded.Settings.KastnAutosave, "Kastn autosave flag should round-trip.");
@@ -2262,6 +2266,39 @@ internal static class PortableSelfTests
             AssertTrue(
                 store.RollJournalBucket(plain, day1) is null,
                 "A non-journal project does not roll into a dated bucket.");
+        }
+
+        private static void JournalAutoReturnsFromQuietProject()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path)
+            {
+                Defaults = ZetlBucketDefaults.Standard with { JournalAutoReturnHours = 2 }
+            };
+
+            var work = store.CreateProject("Work", new[] { "Notes" }, "Notes");
+            AssertEqual(work.Id, store.GetActiveProject()?.Id, "A new deliberate project is active.");
+            AssertEqual(work.Id, store.GetOrCreateDefaultProject().Id, "A fresh active project keeps capture.");
+
+            // Simulate the project going quiet past the window.
+            work.LastActiveUtc = DateTime.UtcNow.AddHours(-3);
+            var resolved = store.GetOrCreateDefaultProject();
+            AssertTrue(resolved.JournalMode, "A quiet deliberate project auto-returns capture to the Journal.");
+            AssertEqual(resolved.Id, store.GetActiveProject()?.Id, "The Journal becomes the active project.");
+            AssertTrue(resolved.Id != work.Id, "Capture left the quiet deliberate project.");
+        }
+
+        private static void JournalAutoReturnOffKeepsProject()
+        {
+            using var temp = new TempStateFile();
+            // JournalAutoReturnHours defaults to 0 (off).
+            var store = new ZetlStateStore(temp.Path);
+            var work = store.CreateProject("Work", new[] { "Notes" }, "Notes");
+            work.LastActiveUtc = DateTime.UtcNow.AddHours(-10);
+            AssertEqual(
+                work.Id,
+                store.GetOrCreateDefaultProject().Id,
+                "With auto-return off, even a long-quiet project keeps capture.");
         }
 
         private static void RuntimeAppliesAppSettingsDefaults()

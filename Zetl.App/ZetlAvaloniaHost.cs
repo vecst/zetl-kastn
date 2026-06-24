@@ -894,6 +894,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.DefaultCompileMode = window.DefaultCompileMode;
         settings.DefaultTsvRowLength = window.DefaultTsvRowLength;
         settings.DayStartHour = window.DayStartHour;
+        settings.JournalAutoReturnHours = window.JournalAutoReturnHours;
         settings.KastnAutosave = window.KastnAutosave;
         settings.KastnStartup = window.KastnStartup;
         settings.KastnDefaultViewId = window.KastnDefaultViewId;

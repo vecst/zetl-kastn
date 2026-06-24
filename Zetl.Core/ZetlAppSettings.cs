@@ -13,6 +13,9 @@ internal sealed class ZetlAppSettings
     // Hour (0-23, local) at which a new journal day begins, so late-night captures
     // land in the right dated bucket. 0 = midnight.
     public int DayStartHour { get; set; }
+    // Hours of no capture after which an active deliberate project hands capture back
+    // to the Journal, so a forgotten project never traps notes. 0 = off.
+    public int JournalAutoReturnHours { get; set; }
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
     public string ThemeVariant { get; set; } = "System";
 

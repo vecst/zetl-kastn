@@ -27,6 +27,11 @@ internal sealed class ZetlProject
     // instead of a fixed active bucket, so one rolling project reads as a dated
     // journal. The day boundary is the app-level DayStartHour setting.
     public bool JournalMode { get; set; }
+    // Session-scoped activity stamp (not persisted) for the auto-return-to-Journal
+    // check: refreshed when a deliberate project is activated or captured into. A
+    // restart simply leaves it unset, so auto-return waits for fresh activity.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTime LastActiveUtc { get; set; }
     public string? ActiveBucketId { get; set; }
     public string? QuickNoteBucketId { get; set; }
     // The view document this project renders with by default (set by a creation
@@ -154,6 +159,10 @@ internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, 
     // The hour (0-23, local) a journal day begins, used to roll a journal-mode
     // project into the right dated bucket. 0 = midnight.
     public int DayStartHour { get; init; }
+
+    // Hours of no capture after which a deliberate project auto-returns capture to
+    // the Journal. 0 = off.
+    public int JournalAutoReturnHours { get; init; }
 
     public static ZetlBucketDefaults Standard { get; } = new(new[] { "Inbox", "Scratch" }, "Formatted", 5);
 
@@ -306,6 +315,8 @@ internal sealed class ZetlStateStore
         // A journal-mode project always captures into today's dated bucket, so roll
         // it before the shared capture path resolves the active bucket.
         RollJournalBucket(project, DateTime.Now);
+        // This capture counts as activity for the auto-return window.
+        TouchProjectActivity(project);
         return project;
     }
 
@@ -313,13 +324,44 @@ internal sealed class ZetlStateStore
     {
         if (GetActiveProject(shifted) is { } activeProject)
         {
-            return activeProject;
+            if (!ShouldAutoReturnToJournal(activeProject))
+            {
+                return activeProject;
+            }
+
+            // The active deliberate project has gone quiet past the configured window:
+            // hand capture back to the Journal so a forgotten project never traps notes.
+            SetActiveProjectId(null, shifted);
+            PersistWorkspace();
         }
 
         // No deliberate project is active: fall to the Journal, the always-present
         // default capture home. Starting a new project is the only deliberate act;
         // the Journal is never something the user has to activate by hand.
         return GetOrCreateJournalProject(shifted);
+    }
+
+    // True when a deliberate project should hand capture back to the Journal: the
+    // auto-return window is on and it has had no activity for at least that long.
+    private bool ShouldAutoReturnToJournal(ZetlProject active)
+    {
+        if (active.JournalMode || active.LastActiveUtc == default)
+        {
+            return false;
+        }
+
+        var hours = Defaults.JournalAutoReturnHours;
+        return hours > 0 && DateTime.UtcNow - active.LastActiveUtc >= TimeSpan.FromHours(hours);
+    }
+
+    // Mark a deliberate project as just used, refreshing its auto-return window. The
+    // Journal never auto-returns, so it is left untouched (and pays no extra cost).
+    private static void TouchProjectActivity(ZetlProject project)
+    {
+        if (!project.JournalMode)
+        {
+            project.LastActiveUtc = DateTime.UtcNow;
+        }
     }
 
     // The lane's default journal, created on first use and tracked by id (so a rename
@@ -2143,6 +2185,14 @@ internal sealed class ZetlStateStore
         else
         {
             State.ActiveProjectId = projectId;
+        }
+
+        // Activating (or reactivating) a deliberate project refreshes its auto-return
+        // window, so the very next capture is not seen as stale.
+        if (projectId is not null
+            && State.Projects.FirstOrDefault(project => project.Id == projectId) is { } activated)
+        {
+            TouchProjectActivity(activated);
         }
     }
 

@@ -10,7 +10,8 @@ internal static class ZetlRuntimeSettings
             settings.DefaultCompileMode,
             settings.DefaultTsvRowLength)
         {
-            DayStartHour = settings.DayStartHour
+            DayStartHour = settings.DayStartHour,
+            JournalAutoReturnHours = settings.JournalAutoReturnHours
         };
     }
 }
