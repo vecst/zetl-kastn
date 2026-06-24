@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -47,6 +48,24 @@ internal sealed class KastnThemeManager
 
         ApplyResources(CurrentTheme, ResolvePalette(CurrentTheme, CurrentVariant));
     }
+
+    // Re-apply only when the resolved theme or variant actually differs from what is
+    // already applied. The shared settings.json is rewritten for many unrelated Zetl
+    // settings; skipping a no-op apply avoids a needless resource churn/flicker.
+    public void ApplyIfChanged(ZetlThemeDocument theme, string variant)
+    {
+        if (NormalizeVariant(variant) == CurrentVariant && ThemesEqual(theme, CurrentTheme))
+        {
+            return;
+        }
+
+        Apply(theme, variant);
+    }
+
+    private static bool ThemesEqual(ZetlThemeDocument a, ZetlThemeDocument b) =>
+        JsonSerializer.Serialize(a, CompareOptions) == JsonSerializer.Serialize(b, CompareOptions);
+
+    private static readonly JsonSerializerOptions CompareOptions = new();
 
     private ZetlThemePalette ResolvePalette(ZetlThemeDocument theme, string variant)
     {

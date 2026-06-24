@@ -11,6 +11,7 @@ public partial class App : Application
 {
     private KastnConnectionController? connection;
     private KastnThemeManager? themeManager;
+    private KastnThemeWatcher? themeWatcher;
     private MainWindow? mainWindow;
 
     public override void Initialize()
@@ -32,6 +33,8 @@ public partial class App : Application
             themeManager.Apply(
                 themeStore.Resolve(settingsStore.Settings.ThemeId),
                 settingsStore.Settings.ThemeVariant);
+            // Re-apply live when Zetl's theme editor changes the shared settings/theme.
+            themeWatcher = new KastnThemeWatcher(themeManager);
             connection = new KastnConnectionController(
                 token => KastnZetlLauncher.LaunchAsync(zetlPath, pipeName, token),
                 pipeName);
@@ -67,6 +70,8 @@ public partial class App : Application
 
                 connection.DisposeAsync().AsTask().GetAwaiter().GetResult();
                 connection = null;
+                themeWatcher?.Dispose();
+                themeWatcher = null;
                 themeManager = null;
                 mainWindow = null;
             };
