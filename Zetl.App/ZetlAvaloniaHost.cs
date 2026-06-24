@@ -893,6 +893,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ZetlBucketDefaults.ResolveProjectBuckets(window.DefaultProjectBuckets).ToList();
         settings.DefaultCompileMode = window.DefaultCompileMode;
         settings.DefaultTsvRowLength = window.DefaultTsvRowLength;
+        settings.KastnAutosave = window.KastnAutosave;
+        settings.KastnStartup = window.KastnStartup;
+        settings.KastnDefaultViewId = window.KastnDefaultViewId;
+        settings.KastnMinimizeAfterTemplate = window.KastnMinimizeAfterTemplate;
         settingsStore.Save();
         ApplySettings();
         notifications.Show("Settings saved.");

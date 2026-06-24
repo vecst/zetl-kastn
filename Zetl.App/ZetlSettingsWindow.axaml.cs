@@ -15,7 +15,8 @@ internal partial class ZetlSettingsWindow : Window
         ZetlAppSettings settings,
         ZetlThemeManager? themeManager = null,
         ZetlThemeStore? themeStore = null,
-        ZetlAppSettingsStore? settingsStore = null)
+        ZetlAppSettingsStore? settingsStore = null,
+        ZetlViewStore? viewStore = null)
     {
         InitializeComponent();
         ZetlWindowPlacement.Track(this);
@@ -42,6 +43,24 @@ internal partial class ZetlSettingsWindow : Window
             ? settings.DefaultCompileMode
             : "Formatted";
         tsvRowLengthBox.Value = Clamp(settings.DefaultTsvRowLength, 1, 50);
+
+        // Kastn workbench preferences (consumed by the Kastn process via the shared
+        // settings file; Zetl just hosts the one settings surface).
+        kastnAutosaveBox.IsChecked = settings.KastnAutosave;
+        kastnStartupBox.ItemsSource = new[] { "Landing page", "Last opened project" };
+        kastnStartupBox.SelectedIndex =
+            ZetlKastnStartup.Normalize(settings.KastnStartup) == ZetlKastnStartup.LastProject ? 1 : 0;
+
+        var viewChoices = new List<ViewChoice> { new("", "Project default") };
+        viewChoices.AddRange((viewStore ?? new ZetlViewStore()).LoadAll()
+            .OrderBy(view => view.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(view => new ViewChoice(view.Id, view.Name)));
+        kastnDefaultViewBox.ItemsSource = viewChoices;
+        kastnDefaultViewBox.SelectedItem =
+            viewChoices.FirstOrDefault(choice => choice.Id == settings.KastnDefaultViewId)
+            ?? viewChoices[0];
+
+        kastnMinimizeAfterTemplateBox.IsChecked = settings.KastnMinimizeAfterTemplate;
 
         saveButton.Click += (_, _) =>
         {
@@ -91,8 +110,23 @@ internal partial class ZetlSettingsWindow : Window
 
     public int DefaultTsvRowLength => (int)(tsvRowLengthBox.Value ?? 5);
 
+    public bool KastnAutosave => kastnAutosaveBox.IsChecked == true;
+
+    public string KastnStartup => kastnStartupBox.SelectedIndex == 1
+        ? ZetlKastnStartup.LastProject
+        : ZetlKastnStartup.Landing;
+
+    public string KastnDefaultViewId => (kastnDefaultViewBox.SelectedItem as ViewChoice)?.Id ?? "";
+
+    public bool KastnMinimizeAfterTemplate => kastnMinimizeAfterTemplateBox.IsChecked == true;
+
     private static decimal Clamp(int value, int min, int max)
     {
         return Math.Min(max, Math.Max(min, value));
+    }
+
+    private sealed record ViewChoice(string Id, string Label)
+    {
+        public override string ToString() => Label;
     }
 }

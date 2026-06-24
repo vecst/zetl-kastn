@@ -12,6 +12,24 @@ internal sealed class ZetlAppSettings
     public int DefaultTsvRowLength { get; set; } = 5;
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
     public string ThemeVariant { get; set; } = "System";
+
+    // Kastn workbench preferences. Edited from Zetl's Settings window (the single
+    // settings surface) and consumed by the Kastn process, which shares this file.
+    public bool KastnAutosave { get; set; } = true;
+    public string KastnStartup { get; set; } = ZetlKastnStartup.Landing;
+    public string KastnDefaultViewId { get; set; } = "";
+    public bool KastnMinimizeAfterTemplate { get; set; } = true;
+}
+
+internal static class ZetlKastnStartup
+{
+    public const string Landing = "Landing";
+    public const string LastProject = "LastProject";
+
+    public static string Normalize(string? value) =>
+        string.Equals(value?.Trim(), LastProject, StringComparison.OrdinalIgnoreCase)
+            ? LastProject
+            : Landing;
 }
 
 internal sealed class ZetlAppSettingsStore

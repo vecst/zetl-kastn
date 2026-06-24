@@ -12,7 +12,7 @@
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
       <Grid ColumnDefinitions="230,*"
-            RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+            RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
             Margin="0,0,8,0">
         <TextBlock Grid.Row="0" Grid.Column="0"
                    Text="Toast display time (ms)"
@@ -67,6 +67,42 @@
         <NumericUpDown Grid.Row="6" Grid.Column="1" x:Name="tsvRowLengthBox"
                        Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
                        Minimum="1" Maximum="50" Increment="1" />
+
+        <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2"
+                   Text="Kastn workbench"
+                   FontWeight="Bold"
+                   Margin="0,20,0,0" />
+
+        <TextBlock Grid.Row="8" Grid.Column="0"
+                   Text="Autosave slip edits"
+                   Margin="0,12,0,0"
+                   VerticalAlignment="Center" />
+        <CheckBox Grid.Row="8" Grid.Column="1" x:Name="kastnAutosaveBox"
+                  Margin="0,12,0,0"
+                  Content="Save edits automatically when you move away" />
+
+        <TextBlock Grid.Row="9" Grid.Column="0"
+                   Text="On startup"
+                   Margin="0,12,0,0"
+                   VerticalAlignment="Center" />
+        <ComboBox Grid.Row="9" Grid.Column="1" x:Name="kastnStartupBox"
+                  Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+
+        <TextBlock Grid.Row="10" Grid.Column="0"
+                   Text="Default reading view"
+                   Margin="0,12,0,0"
+                   VerticalAlignment="Center" />
+        <ComboBox Grid.Row="10" Grid.Column="1" x:Name="kastnDefaultViewBox"
+                  Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+
+        <TextBlock Grid.Row="11" Grid.Column="0"
+                   Text="After creating from a template"
+                   Margin="0,12,10,0"
+                   VerticalAlignment="Center"
+                   TextWrapping="Wrap" />
+        <CheckBox Grid.Row="11" Grid.Column="1" x:Name="kastnMinimizeAfterTemplateBox"
+                  Margin="0,12,0,0"
+                  Content="Step Kastn aside so capture can start" />
       </Grid>
     </ScrollViewer>
 

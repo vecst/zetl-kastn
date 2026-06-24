@@ -2024,6 +2024,18 @@ internal static class PortableSelfTests
             store.Settings.DefaultTsvRowLength = 4;
             store.Settings.ThemeId = "custom-theme";
             store.Settings.ThemeVariant = "Dark";
+            AssertTrue(store.Settings.KastnAutosave, "Kastn autosave should default on.");
+            AssertEqual(
+                ZetlKastnStartup.Landing,
+                store.Settings.KastnStartup,
+                "Kastn startup should default to the landing page.");
+            AssertTrue(
+                store.Settings.KastnMinimizeAfterTemplate,
+                "Kastn should default to stepping aside after a template create.");
+            store.Settings.KastnAutosave = false;
+            store.Settings.KastnStartup = ZetlKastnStartup.LastProject;
+            store.Settings.KastnDefaultViewId = "markdown";
+            store.Settings.KastnMinimizeAfterTemplate = false;
             store.Save();
 
             var loaded = new ZetlAppSettingsStore(settingsPath);
@@ -2039,6 +2051,15 @@ internal static class PortableSelfTests
             AssertEqual(4, loaded.Settings.DefaultTsvRowLength, "Default TSV row length should round-trip.");
             AssertEqual("custom-theme", loaded.Settings.ThemeId, "Theme id should round-trip.");
             AssertEqual("Dark", loaded.Settings.ThemeVariant, "Theme variant should round-trip.");
+            AssertFalse(loaded.Settings.KastnAutosave, "Kastn autosave flag should round-trip.");
+            AssertEqual(
+                ZetlKastnStartup.LastProject,
+                loaded.Settings.KastnStartup,
+                "Kastn startup choice should round-trip.");
+            AssertEqual("markdown", loaded.Settings.KastnDefaultViewId, "Kastn default view should round-trip.");
+            AssertFalse(
+                loaded.Settings.KastnMinimizeAfterTemplate,
+                "Kastn minimize-after-template flag should round-trip.");
         }
 
         private static void AppSettingsRecoverFromCorruptFile()
