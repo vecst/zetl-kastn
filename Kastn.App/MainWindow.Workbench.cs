@@ -1112,7 +1112,6 @@ internal partial class MainWindow
             return;
         }
 
-        lastSelectedNodeId = node.Id;
         if (CurrentSelection() is KastnSelection.Slips { SlipIds: [var onlySlipId] })
         {
             // Exactly one slip: bind the editor to it.

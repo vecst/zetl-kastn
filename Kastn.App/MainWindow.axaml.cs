@@ -74,7 +74,6 @@ internal partial class MainWindow : Window
     private string templateBaselineJson = "";
     private readonly ObservableCollection<ProjectListItem> projects = [];
     private readonly ObservableCollection<TemplateListItem> templates = [];
-    private string? lastSelectedNodeId;
     private readonly ObservableCollection<SlipListItem> slips = [];
     private readonly ObservableCollection<FilterItem> sources = [];
     private readonly ObservableCollection<FilterItem> sessions = [];
@@ -414,9 +413,6 @@ internal partial class MainWindow : Window
                 {
                     selectedBucketId = null;
                     selectedSlipId = null;
-                    // A stale node id from the previous project would block the
-                    // first-slip default and leave nothing meaningfully selected.
-                    lastSelectedNodeId = null;
                     expandedBucketId = null;
                     editorState.Select(null);
                     searchBox.Text = "";
@@ -447,7 +443,6 @@ internal partial class MainWindow : Window
             {
                 currentProject = null;
                 projectTree.ItemsSource = null;
-                lastSelectedNodeId = null;
                 slips.Clear();
                 editorState.Select(null);
                 UpdateEditorFromState();
@@ -727,7 +722,6 @@ internal partial class MainWindow : Window
         }
 
         ApplyTreeNodeSelection(treeNodes, restoreIds);
-        lastSelectedNodeId = SelectedTreeNode?.Id;
         RefreshBucketEditor();
         RefreshDestinationBuckets();
         SetDetailPaneMode(detailShowingMetadata);
@@ -776,7 +770,6 @@ internal partial class MainWindow : Window
         }
 
         showingDeleted = viewDeletedButton.IsChecked == true;
-        lastSelectedNodeId = null;
         // Re-apply the current snapshot so the tree rebuilds in the chosen mode and
         // the editor/inspector/View re-sync through the normal path.
         ApplySnapshot(connection.Current);
