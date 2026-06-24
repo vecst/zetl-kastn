@@ -37,10 +37,20 @@ internal partial class MainWindow
     private void OnEditTemplateClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is TemplateListItem template)
+        if ((sender as Control)?.DataContext is not TemplateListItem template)
         {
-            // Edit a clone so cancelling leaves the saved file untouched, and so a
-            // built-in (should one ever reach here) can never be mutated in place.
+            return;
+        }
+
+        if (ZetlTemplateDefaults.IsBuiltIn(template.Source.Id))
+        {
+            // Built-ins are immutable presets: "Edit" forks an editable copy (new id
+            // + name) so the preset stays intact, matching the creation-type cards.
+            OpenTemplateEditor(ZetlTemplateDefaults.Duplicate(template.Source), isNew: true);
+        }
+        else
+        {
+            // Edit a clone so cancelling leaves the saved file untouched.
             OpenTemplateEditor(ZetlTemplateDefaults.Clone(template.Source), isNew: false);
         }
     }

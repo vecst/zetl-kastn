@@ -253,7 +253,6 @@
                                     Spacing="6">
                           <Button Content="Edit"
                                   Padding="12,5"
-                                  IsVisible="{Binding IsUser}"
                                   Click="OnEditTemplateClick" />
                           <Button Content="Duplicate"
                                   Padding="12,5"
