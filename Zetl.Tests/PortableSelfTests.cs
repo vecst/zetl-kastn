@@ -1953,6 +1953,7 @@ internal static class PortableSelfTests
             store.Settings.DefaultProjectBuckets = new List<string> { "Notes", "Scratch" };
             store.Settings.DefaultCompileMode = "TSV";
             store.Settings.DefaultTsvRowLength = 4;
+            store.Settings.DayStartHour = 4;
             store.Settings.ThemeId = "custom-theme";
             store.Settings.ThemeVariant = "Dark";
             AssertTrue(store.Settings.KastnAutosave, "Kastn autosave should default on.");
@@ -1980,6 +1981,7 @@ internal static class PortableSelfTests
             AssertEqual("Notes", loaded.Settings.DefaultProjectBuckets[0], "Default buckets should round-trip.");
             AssertEqual("TSV", loaded.Settings.DefaultCompileMode, "Default compile mode should round-trip.");
             AssertEqual(4, loaded.Settings.DefaultTsvRowLength, "Default TSV row length should round-trip.");
+            AssertEqual(4, loaded.Settings.DayStartHour, "Journal day-start hour should round-trip.");
             AssertEqual("custom-theme", loaded.Settings.ThemeId, "Theme id should round-trip.");
             AssertEqual("Dark", loaded.Settings.ThemeVariant, "Theme variant should round-trip.");
             AssertFalse(loaded.Settings.KastnAutosave, "Kastn autosave flag should round-trip.");

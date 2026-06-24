@@ -43,6 +43,7 @@ internal partial class ZetlSettingsWindow : Window
             ? settings.DefaultCompileMode
             : "Formatted";
         tsvRowLengthBox.Value = Clamp(settings.DefaultTsvRowLength, 1, 50);
+        dayStartHourBox.Value = Clamp(settings.DayStartHour, 0, 23);
 
         // Kastn workbench preferences (consumed by the Kastn process via the shared
         // settings file; Zetl just hosts the one settings surface).
@@ -109,6 +110,8 @@ internal partial class ZetlSettingsWindow : Window
     public string DefaultCompileMode => compileModeBox.SelectedItem as string ?? "Formatted";
 
     public int DefaultTsvRowLength => (int)(tsvRowLengthBox.Value ?? 5);
+
+    public int DayStartHour => (int)(dayStartHourBox.Value ?? 0);
 
     public bool KastnAutosave => kastnAutosaveBox.IsChecked == true;
 
