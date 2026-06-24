@@ -30,12 +30,10 @@ internal static class PortableSelfTests
                 ("Synthetic modifier injection uses an unheld side", SyntheticModifierUsesUnheldSide),
                 ("Chord injection suppresses a held Shift for a plain chord", ChordInjectionSuppressesHeldShiftForPlainChord),
                 ("Zetl state creates projects and scratch buckets", StateCreatesProjectAndScratch),
-                ("Zetl state creates dated default projects on demand", StateCreatesDatedDefaultProject),
-                ("Zetl state reuses dated default projects", StateReusesDatedDefaultProject),
-                ("Zetl state finish advances dated default to next session", StateFinishAdvancesDatedDefault),
+                ("Zetl state creates the journal default home", StateCreatesJournalDefaultProject),
+                ("Zetl state reuses the journal default home", StateReusesDatedDefaultProject),
+                ("Zetl state finish starts a fresh journal", StateFinishStartsFreshJournal),
                 ("Zetl state finish with no active project is a no-op", StateFinishWithNoActiveProjectIsNoop),
-                ("Zetl state consolidates dated default projects", StateConsolidatesDatedDefaultProjects),
-                ("Zetl state consolidates dated default without activation", StateConsolidatesDatedDefaultWithoutActivation),
                 ("Zetl state consolidates child buckets regardless of order", StateConsolidatesChildBucketsRegardlessOfOrder),
                 ("Zetl state can start without an active project", StateCanStartWithoutActiveProject),
                 ("Zetl state keeps normal and Shift active projects separate", StateKeepsNormalAndShiftProjectsSeparate),
@@ -123,7 +121,7 @@ internal static class PortableSelfTests
                 ("Runtime Pop removes matching image slip", RuntimePopRemovesMatchingImageSlip),
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
-                ("Runtime cut hold defaults to Scratch", RuntimeCutHoldDefaultsToScratch),
+                ("Runtime cut hold defaults to today's journal bucket", RuntimeCutHoldDefaultsToTodaysJournalBucket),
                 ("Runtime template hold requests the picker", RuntimeTemplateHoldRequestsPicker),
                 ("Runtime compile hold without a project requests the picker", RuntimeCompileHoldWithoutProjectRequestsPicker),
                 ("Runtime compile hold with an active project stays compile", RuntimeCompileHoldWithActiveProjectStaysCompile),
@@ -932,17 +930,21 @@ internal static class PortableSelfTests
             AssertTrue(note.Image?.SourceUrl is not null, "Clean export must not modify the live image source URL.");
         }
 
-        private static void StateCreatesDatedDefaultProject()
+        private static void StateCreatesJournalDefaultProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.GetOrCreateDefaultProject();
-            AssertEqual(DateTime.Now.ToString("yyyy-MM-dd"), project.Name, "Default project should use today's date.");
-            AssertEqual("Inbox", store.ActiveBucket?.Name, "Default project should start in Inbox.");
-            AssertTrue(project.Buckets.Any(bucket => bucket.Name == "Scratch"), "Default project should include Scratch.");
+            AssertEqual("Journal", project.Name, "The default capture home is the Journal.");
+            AssertTrue(project.JournalMode, "The default home is journal-mode.");
+            AssertEqual(DateTime.Now.ToString("yyyy-MM-dd"), store.ActiveBucket?.Name, "Capture lands in today's dated bucket.");
 
+            // Renaming the journal keeps it the default (it is tracked by id), and
+            // compile reflects the new name.
             store.UpdateProjectName(project, "Renamed");
             AssertEqual("Renamed", store.CompilePlainText(project, [store.ActiveBucket!]).Split(Environment.NewLine)[0], "Compile should use the updated project name.");
+            store.ClearActiveProject();
+            AssertEqual(project.Id, store.GetOrCreateDefaultProject().Id, "The renamed journal is still the default home.");
         }
 
         private static void StateCanStartWithoutActiveProject()
@@ -1020,31 +1022,28 @@ internal static class PortableSelfTests
             AssertEqual(1, store.State.Projects.Count, "Default project reuse should not create duplicates.");
         }
 
-        private static void StateFinishAdvancesDatedDefault()
+        private static void StateFinishStartsFreshJournal()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            var baseName = DateTime.Now.ToString("yyyy-MM-dd");
 
             var first = store.GetOrCreateDefaultProject();
-            AssertEqual(baseName, first.Name, "The first dated session uses the bare date name.");
+            AssertTrue(first.JournalMode, "The default home is the Journal.");
 
             var finished = store.FinishActiveProject();
-            AssertEqual(first.Id, finished?.Id, "Finish should return the sealed project.");
-            AssertEqual("Finished", first.Status, "Finish should mark the project Finished.");
+            AssertEqual(first.Id, finished?.Id, "Finish should return the sealed journal.");
+            AssertEqual("Finished", first.Status, "Finish should mark the journal Finished.");
             AssertEqual<ZetlProject?>(null, store.ActiveProject, "Finish should clear the lane.");
 
+            // The Journal is never reopened once sealed (a non-Active project is never
+            // lane-active); capture mints a fresh journal instead.
             var second = store.GetOrCreateDefaultProject();
-            AssertTrue(second.Id != first.Id, "Capture after finish should not reopen the sealed session.");
-            AssertEqual($"{baseName} (2)", second.Name, "The next session advances to a per-date counter.");
-            AssertEqual("Active", second.Status, "The advanced session starts Active.");
+            AssertTrue(second.Id != first.Id, "Capture after finishing the journal starts a fresh one.");
+            AssertTrue(second.JournalMode, "The fresh journal is journal-mode.");
+            AssertEqual("Active", second.Status, "The fresh journal starts Active.");
             AssertTrue(
                 store.State.Projects.Any(project => project.Id == first.Id && project.Status == "Finished"),
-                "The finished session is retained, not deleted.");
-
-            store.FinishActiveProject();
-            var third = store.GetOrCreateDefaultProject();
-            AssertEqual($"{baseName} (3)", third.Name, "Each finish advances to the next counter.");
+                "The finished journal is retained, not deleted.");
         }
 
         private static void StateFinishWithNoActiveProjectIsNoop()
@@ -1056,77 +1055,6 @@ internal static class PortableSelfTests
 
             var result = store.FinishActiveProject();
             AssertEqual<ZetlProject?>(null, result, "Finishing an empty lane should be a no-op.");
-        }
-
-        private static void StateConsolidatesDatedDefaultProjects()
-        {
-            using var temp = new TempStateFile();
-            var store = new ZetlStateStore(temp.Path);
-            var first = store.GetOrCreateDefaultProject();
-            var firstScratch = store.GetScratchBucket(first);
-            store.AddNote(firstScratch, "first", "cut");
-            var duplicate = store.CreateProject("Temporary duplicate", ["Scratch"], "Scratch");
-            duplicate.Name = DateTime.Now.ToString("yyyy-MM-dd");
-            var duplicateScratch = store.GetScratchBucket(duplicate);
-            store.AddNote(duplicateScratch, "second", "cut");
-            store.AddImageNote(
-                duplicate,
-                duplicateScratch,
-                new ZetlClipboardImage([4, 3, 2, 1], 4, 3),
-                "copy");
-            store.ClearActiveProject();
-
-            var consolidated = store.GetOrCreateDefaultProject();
-            var scratch = store.GetScratchBucket(consolidated);
-            AssertEqual(first.Id, consolidated.Id, "Default project consolidation should keep the first project.");
-            AssertEqual(1, store.State.Projects.Count(project => project.Name == DateTime.Now.ToString("yyyy-MM-dd")), "Duplicate daily projects should merge into one.");
-            AssertTrue(scratch.Notes.Any(note => note.Text == "first"), "First scratch note should survive consolidation.");
-            AssertTrue(scratch.Notes.Any(note => note.Text == "second"), "Duplicate scratch note should merge into primary scratch.");
-            var mergedImage = scratch.Notes.Single(note => note.IsImage);
-            AssertEqual(4, store.ReadImageAsset(consolidated, mergedImage)?.Length, "Consolidation should move image assets before deleting the duplicate folder.");
-        }
-
-        private static void StateConsolidatesDatedDefaultWithoutActivation()
-        {
-            using var temp = new TempStateFile();
-            var store = new ZetlStateStore(temp.Path);
-            var first = store.GetOrCreateDefaultProject();
-            var firstScratch = store.GetScratchBucket(first);
-            store.AddNote(firstScratch, "first", "cut");
-            store.State.Projects.Add(new ZetlProject
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                Name = DateTime.Now.ToString("yyyy-MM-dd"),
-                Buckets =
-                [
-                    new ZetlBucket
-                    {
-                        Id = Guid.NewGuid().ToString("N"),
-                        Name = "Scratch",
-                        Kind = "Standard",
-                        Notes =
-                        [
-                            new ZetlNote
-                            {
-                                Id = Guid.NewGuid().ToString("N"),
-                                Text = "second",
-                                Source = "cut",
-                                CreatedAtUtc = DateTime.UtcNow
-                            }
-                        ]
-                    }
-                ]
-            });
-            store.ClearActiveProject();
-
-            store.ConsolidateDefaultProject();
-
-            AssertEqual<ZetlProject?>(null, store.ActiveProject, "Default project consolidation should not activate a project.");
-            AssertEqual(1, store.State.Projects.Count(project => project.Name == DateTime.Now.ToString("yyyy-MM-dd")), "Duplicate daily projects should merge into one.");
-            var scratch = store.State.Projects.Single(project => project.Name == DateTime.Now.ToString("yyyy-MM-dd"))
-                .Buckets.Single(bucket => bucket.Name == "Scratch");
-            AssertTrue(scratch.Notes.Any(note => note.Text == "first"), "First scratch note should survive consolidation.");
-            AssertTrue(scratch.Notes.Any(note => note.Text == "second"), "Duplicate scratch note should merge into primary scratch.");
         }
 
         private static void StateConsolidatesChildBucketsRegardlessOfOrder()
@@ -2291,11 +2219,14 @@ internal static class PortableSelfTests
                 Defaults = new ZetlBucketDefaults(new[] { "Notes", "Scratch" }, "TSV", 4)
             };
 
+            // The default capture home is the rolling Journal (its buckets are days),
+            // so the configured project-bucket names apply to deliberately created
+            // projects, not here. Today's bucket still takes the compile defaults.
             var project = store.GetOrCreateDefaultProject();
-            var notes = project.Buckets.FirstOrDefault(bucket => bucket.Name == "Notes");
-            AssertTrue(notes is not null, "Default project should use the configured buckets.");
-            AssertEqual("TSV", notes!.DefaultCompileMode, "New bucket should take the default compile mode.");
-            AssertEqual(4, notes.DefaultTsvRowLength, "New bucket should take the default TSV row length.");
+            AssertTrue(project.JournalMode, "The default capture home is journal-mode.");
+            var today = store.ActiveBucket!;
+            AssertEqual("TSV", today.DefaultCompileMode, "Today's bucket should take the default compile mode.");
+            AssertEqual(4, today.DefaultTsvRowLength, "Today's bucket should take the default TSV row length.");
 
             var added = store.AddBucket(project, "Extra");
             AssertEqual("TSV", added.DefaultCompileMode, "Added bucket should take the default compile mode.");
@@ -3013,7 +2944,7 @@ internal static class PortableSelfTests
             AssertTrue(request is ZetlBoardRequest, "Copy hold without new text should open the Board.");
         }
 
-        private static void RuntimeCutHoldDefaultsToScratch()
+        private static void RuntimeCutHoldDefaultsToTodaysJournalBucket()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3029,7 +2960,10 @@ internal static class PortableSelfTests
 
             AssertTrue(request is ZetlNoteCaptureRequest, "Cut hold should always open note capture.");
             var note = (ZetlNoteCaptureRequest)request!;
-            AssertEqual("Scratch", note.PreferredBucket!.Name, "First quick note should default to Scratch.");
+            AssertEqual(
+                DateTime.Now.ToString("yyyy-MM-dd"),
+                note.PreferredBucket!.Name,
+                "First quick note defaults to today's journal bucket.");
             AssertTrue(note.ShowStartProjectToggle, "First quick note should offer project activation.");
             AssertFalse(note.StartProjectDefault, "Quick note should not activate the project by default.");
         }

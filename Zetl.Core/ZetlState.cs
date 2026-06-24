@@ -7,6 +7,10 @@ internal sealed class ZetlState
     public int Version { get; set; } = 1;
     public string? ActiveProjectId { get; set; }
     public string? ShiftActiveProjectId { get; set; }
+    // The journal-mode project each lane falls back to as the default capture home.
+    // Tracked by id (not name) so renaming the Journal never loses the pointer.
+    public string? DefaultJournalProjectId { get; set; }
+    public string? ShiftDefaultJournalProjectId { get; set; }
     public List<ZetlProject> Projects { get; set; } = new();
 }
 
@@ -312,20 +316,63 @@ internal sealed class ZetlStateStore
             return activeProject;
         }
 
-        // Reuse today's dated default only while it is still Active. A finished or
-        // archived session is sealed: capture advances to a fresh session instead
-        // of reopening it.
-        if (FindActiveDatedDefault(shifted) is { } existingProject)
+        // No deliberate project is active: fall to the Journal, the always-present
+        // default capture home. Starting a new project is the only deliberate act;
+        // the Journal is never something the user has to activate by hand.
+        return GetOrCreateJournalProject(shifted);
+    }
+
+    // The lane's default journal, created on first use and tracked by id (so a rename
+    // never loses it). Made active per Option 1, so the Board and capture dialog show
+    // the Journal as the current home. Bucketless at creation — the daily roll adds
+    // its first dated bucket, keeping the journal a clean set of day buckets.
+    private ZetlProject GetOrCreateJournalProject(bool shifted)
+    {
+        var pointerId = shifted ? State.ShiftDefaultJournalProjectId : State.DefaultJournalProjectId;
+        // Reuse the journal only while it is still Active. If it was finished or
+        // archived (a non-Active project is never lane-active), capture mints a fresh
+        // journal rather than reopening the sealed one.
+        if (pointerId is not null
+            && State.Projects.FirstOrDefault(project => project.Id == pointerId) is { } existing
+            && IsActiveStatus(existing))
         {
-            var reused = ConsolidateProjectsNamed(existingProject.Name) ?? existingProject;
-            SetActiveProjectId(reused.Id, shifted);
+            SetActiveProjectId(existing.Id, shifted);
             PersistWorkspace();
-            return reused;
+            return existing;
         }
 
-        var defaultBuckets = Defaults.ResolvedProjectBuckets;
-        return CreateProject(NextDatedDefaultName(shifted), defaultBuckets, defaultBuckets[0], shifted);
+        var journal = new ZetlProject
+        {
+            Id = NewId(),
+            Name = shifted ? "Journal Shift" : "Journal",
+            JournalMode = true
+        };
+        State.Projects.Add(journal);
+        if (shifted)
+        {
+            State.ShiftDefaultJournalProjectId = journal.Id;
+        }
+        else
+        {
+            State.DefaultJournalProjectId = journal.Id;
+        }
+
+        SetActiveProjectId(journal.Id, shifted);
+        PersistProject(journal, workspace: true);
+        return journal;
     }
+
+    // True when <project> is the lane's default Journal. Used to keep the "Start a
+    // project?" capture toggle visible while on the Journal even though it is active.
+    public bool IsDefaultJournalProject(ZetlProject project, bool shifted = false) =>
+        string.Equals(
+            project.Id,
+            shifted ? State.ShiftDefaultJournalProjectId : State.DefaultJournalProjectId,
+            StringComparison.Ordinal);
+
+    // A deliberately-started project is active (i.e. not the default Journal).
+    public bool HasDeliberateActiveProject(bool shifted = false) =>
+        GetActiveProject(shifted) is { } active && !IsDefaultJournalProject(active, shifted);
 
     // Roll a journal-mode project into the dated bucket for <localNow> (named
     // yyyy-MM-dd, shifted by the configured day-start hour), creating it if needed
@@ -1106,6 +1153,13 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlBucket GetScratchBucket(ZetlProject project)
     {
+        // A journal project has no Scratch bucket; its default catch-all is today's
+        // dated bucket, so every "default bucket" fallback routes there.
+        if (project.JournalMode)
+        {
+            return RollJournalBucket(project, DateTime.Now)!;
+        }
+
         EnsureScratchBucket(project.Buckets);
         var scratch = project.Buckets.First(bucket => string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase));
         if (project.ActiveBucketId is null || project.Buckets.Any(bucket => bucket.Id == project.ActiveBucketId && IsDeletedBucket(bucket)))
@@ -1527,8 +1581,13 @@ internal sealed class ZetlStateStore
 
         foreach (var candidate in candidates)
         {
+            // A journal project's "scratch" is today's dated bucket; a normal project's
+            // is the bucket literally named Scratch.
+            var scratchName = candidate.JournalMode
+                ? JournalBucketName(DateTime.Now, Defaults.DayStartHour)
+                : "Scratch";
             var scratch = candidate.Buckets.FirstOrDefault(bucket =>
-                string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase)
+                string.Equals(bucket.Name, scratchName, StringComparison.OrdinalIgnoreCase)
                 && bucket.Notes.Any(note => IsCurrentSessionNote(note) && !string.IsNullOrWhiteSpace(note.Text)));
             if (scratch is not null)
             {

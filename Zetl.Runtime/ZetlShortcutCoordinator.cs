@@ -382,7 +382,9 @@ internal sealed class ZetlShortcutCoordinator
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
-        var hadActiveProject = store.GetActiveProject(context.ShiftLane) is not null;
+        // "Deliberate" so the Start-a-project toggle still shows while on the Journal,
+        // which (per Option 1) is itself the active project when nothing else is.
+        var hadActiveProject = store.HasDeliberateActiveProject(context.ShiftLane);
         var project = store.GetOrCreateDefaultProject(context.ShiftLane);
         var pendingImage = pending?.ObservedClipboardImage
             ?? TryGetChangedClipboardImage(
@@ -462,7 +464,9 @@ internal sealed class ZetlShortcutCoordinator
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
-        var hadActiveProject = store.GetActiveProject(context.ShiftLane) is not null;
+        // "Deliberate" so the Start-a-project toggle still shows while on the Journal,
+        // which (per Option 1) is itself the active project when nothing else is.
+        var hadActiveProject = store.HasDeliberateActiveProject(context.ShiftLane);
         var project = store.GetOrCreateDefaultProject(context.ShiftLane);
         var scratch = store.GetScratchBucket(project);
         var preferredBucket = hadActiveProject ? store.GetQuickNoteBucket(project) : scratch;
