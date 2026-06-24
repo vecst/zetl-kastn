@@ -10,6 +10,7 @@
       <MenuItem Header="_File">
         <MenuItem x:Name="refreshMenuItem" Header="_Refresh" InputGesture="F5" />
         <MenuItem x:Name="saveAsTemplateMenuItem" Header="Save as _Template…" />
+        <MenuItem x:Name="journalModeMenuItem" Header="_Journal Mode" ToggleType="CheckBox" />
         <MenuItem x:Name="closeProjectMenuItem" Header="_Close Project" InputGesture="Ctrl+W" />
         <MenuItem x:Name="deleteProjectMenuItem" Header="_Delete Project" />
         <Separator />

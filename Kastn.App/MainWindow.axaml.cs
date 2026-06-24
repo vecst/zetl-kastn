@@ -199,6 +199,7 @@ internal partial class MainWindow : Window
             RoutingStrategies.Tunnel);
 
         refreshMenuItem.Click += async (_, _) => await RefreshAsync();
+        journalModeMenuItem.Click += async (_, _) => await ToggleJournalModeAsync();
         closeProjectMenuItem.Click += async (_, _) => await CloseProjectAsync();
         deleteProjectMenuItem.Click += async (_, _) => await DeleteProjectAsync();
         exitMenuItem.Click += (_, _) => Close();
@@ -1132,6 +1133,8 @@ internal partial class MainWindow : Window
         refreshMenuItem.IsEnabled = online;
         closeProjectMenuItem.IsEnabled = currentProject is not null;
         deleteProjectMenuItem.IsEnabled = online && currentProject is not null;
+        journalModeMenuItem.IsEnabled = online && currentProject is not null;
+        journalModeMenuItem.IsChecked = currentProject?.JournalMode == true;
         focusProjectsMenuItem.IsEnabled = landingProjectList.IsVisible;
         newSlipMenuItem.IsEnabled = online
             && currentProject is not null

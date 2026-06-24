@@ -38,6 +38,7 @@ public enum ZetlCommandKind
     CreateProject,
     RenameProject,
     SetProjectStatus,
+    SetJournalMode,
     SetProjectView,
     SaveProjectView,
     DeleteProjectView,

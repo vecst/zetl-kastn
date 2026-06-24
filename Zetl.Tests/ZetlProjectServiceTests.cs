@@ -813,6 +813,46 @@ internal static class ZetlProjectServiceTests
         AssertEqual(1, loaded.HeadingLevel, "Heading level should persist across reload.");
     }
 
+    public static void ProjectJournalModeRoundTripsThroughService()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out _);
+        var service = new ZetlProjectService(store);
+
+        AssertTrue(!project.JournalMode, "A new project is not journal-mode.");
+
+        var on = service.Execute(ZetlCommandEnvelope.Create(
+            "journal-on",
+            ZetlCommandKind.SetJournalMode,
+            new SetJournalModeCommand { JournalMode = true },
+            project.Id,
+            expectedTargetRevision: project.MetadataRevision));
+        var snapshot = on.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("SetJournalMode returned no snapshot.");
+        AssertEqual(ZetlResponseStatus.Success, on.Status, "Enabling journal mode should succeed.");
+        AssertTrue(snapshot.JournalMode, "The snapshot reports journal mode on.");
+        AssertTrue(project.JournalMode, "The stored project carries journal mode.");
+
+        // A stale revision is rejected and leaves the flag untouched.
+        var stale = service.Execute(ZetlCommandEnvelope.Create(
+            "journal-stale",
+            ZetlCommandKind.SetJournalMode,
+            new SetJournalModeCommand { JournalMode = false },
+            project.Id,
+            expectedTargetRevision: snapshot.MetadataRevision - 1));
+        AssertEqual(ZetlResponseStatus.Conflict, stale.Status, "A stale journal-mode edit should conflict.");
+        AssertTrue(project.JournalMode, "A stale edit must not change the flag.");
+
+        var off = service.Execute(ZetlCommandEnvelope.Create(
+            "journal-off",
+            ZetlCommandKind.SetJournalMode,
+            new SetJournalModeCommand { JournalMode = false },
+            project.Id,
+            expectedTargetRevision: snapshot.MetadataRevision));
+        AssertEqual(ZetlResponseStatus.Success, off.Status, "Disabling journal mode should succeed.");
+        AssertTrue(!project.JournalMode, "The flag is cleared.");
+    }
+
     private static ZetlCommandEnvelope SetStatusCommand(
         string commandId,
         string projectId,

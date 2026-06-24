@@ -30,6 +30,12 @@ public sealed record SetProjectStatusCommand
     public required string Status { get; init; }
 }
 
+public sealed record SetJournalModeCommand
+{
+    // Whether capture should roll into a fresh per-day bucket for this project.
+    public required bool JournalMode { get; init; }
+}
+
 public sealed record SetProjectViewCommand
 {
     // The default view document id, or null to clear it (fall back to the first view).

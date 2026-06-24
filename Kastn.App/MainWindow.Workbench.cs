@@ -707,6 +707,33 @@ internal partial class MainWindow
         HandleSimpleResponse(response, $"Project renamed to '{name}'.");
     }
 
+    private async Task ToggleJournalModeAsync()
+    {
+        if (!IsOnline || currentProject is null)
+        {
+            return;
+        }
+
+        var turningOn = !currentProject.JournalMode;
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.SetJournalMode,
+            new SetJournalModeCommand { JournalMode = turningOn },
+            currentProject.Id,
+            currentProject.Id,
+            currentProject.MetadataRevision));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            await connection.RefreshAsync();
+        }
+
+        HandleSimpleResponse(
+            response,
+            turningOn
+                ? "Journal mode on — capture rolls into a dated bucket each day."
+                : "Journal mode off.");
+    }
+
     private async Task SetProjectStatusAsync(ProjectListItem project, string status)
     {
         if (!IsOnline)

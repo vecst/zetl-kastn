@@ -158,6 +158,7 @@ internal static class PortableSelfTests
                 ("Project service returns picture content read-only", ZetlProjectServiceTests.PictureContentIsReadOnly),
                 ("Project service reorders slips within a bucket", ZetlProjectServiceTests.ReorderSlipMovesWithinBucket),
                 ("Project service lifecycle status round-trips across reload", ZetlProjectServiceTests.ProjectStatusRoundTripsAcrossReload),
+                ("Project service journal-mode round-trips", ZetlProjectServiceTests.ProjectJournalModeRoundTripsThroughService),
                 ("Project service bucket heading round-trips across reload", ZetlProjectServiceTests.BucketHeadingRoundTripsAcrossReload),
                 ("Kastn built-in templates are well-formed", KastnTemplateCatalogTests.BuiltInTemplatesAreValid),
                 ("Kastn template creates a project through Zetl", KastnTemplateCatalogTests.TemplateCreatesProjectThroughService),

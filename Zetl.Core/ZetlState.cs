@@ -447,6 +447,14 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
+    public void SetJournalMode(ZetlProject project, bool journalMode)
+    {
+        project.JournalMode = journalMode;
+        project.MetadataRevision++;
+        PersistProject(project);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetProjectStatus(ZetlProject project, string status)
     {
         project.Status = NormalizeProjectStatus(status);
