@@ -695,8 +695,24 @@ internal partial class MainWindow
         var target = string.IsNullOrEmpty(project.DefaultViewId)
             ? null
             : loadedViews.FirstOrDefault(view => view.Id == project.DefaultViewId);
+        if (target is null)
+        {
+            // No project-pinned view: fall back to the user's global default reading
+            // view from Zetl Settings, then to the first available view.
+            var globalId = CurrentAppSettings().KastnDefaultViewId;
+            if (!string.IsNullOrEmpty(globalId))
+            {
+                target = loadedViews.FirstOrDefault(view => view.Id == globalId);
+            }
+        }
+
         viewPickerBox.SelectedItem = target ?? loadedViews.FirstOrDefault();
     }
+
+    // The Kastn workbench preferences live in the shared Zetl settings file, edited
+    // from Zetl's one Settings window. Read fresh at each use so a change made in Zetl
+    // takes effect without restarting Kastn; these read points are all infrequent.
+    private static ZetlAppSettings CurrentAppSettings() => new ZetlAppSettingsStore().Settings;
 
     private void RefreshViewCatalog(ZetlProjectSnapshot? project, string? selectId = null)
     {

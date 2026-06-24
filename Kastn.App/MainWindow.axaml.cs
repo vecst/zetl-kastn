@@ -180,8 +180,15 @@ internal partial class MainWindow : Window
         dateFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
         slipEditor.TextChanged += (_, _) => OnEditorTextChanged();
         // Save when the editor loses focus rather than on a keystroke timer, so
-        // typing is never interrupted by a mid-edit save + refresh.
-        slipEditor.LostFocus += async (_, _) => await SaveEditorAsync();
+        // typing is never interrupted by a mid-edit save + refresh. The user can turn
+        // this off in Settings; switching slips and explicit Save still commit edits.
+        slipEditor.LostFocus += async (_, _) =>
+        {
+            if (CurrentAppSettings().KastnAutosave)
+            {
+                await SaveEditorAsync();
+            }
+        };
         // Tunnel so Ctrl+Enter saves before the editor's AcceptsReturn turns it into a
         // newline; the explicit save keeps the caret so typing can continue.
         slipEditor.AddHandler(

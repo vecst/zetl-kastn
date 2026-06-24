@@ -542,6 +542,14 @@ internal partial class MainWindow
                 statusText.Text = allSeeded
                     ? $"Created '{created.Name}' from the {template.Name} template."
                     : $"Created '{created.Name}', but some {template.Name} fields could not be added.";
+                // Templates kick off a capture session: step Kastn aside (if the user
+                // opted in) so Zetl's capture is unobstructed. The project stays loaded
+                // and ready for when they return to the workbench.
+                if (CurrentAppSettings().KastnMinimizeAfterTemplate)
+                {
+                    WindowState = WindowState.Minimized;
+                }
+
                 return;
             }
         }
