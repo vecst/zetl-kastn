@@ -85,6 +85,7 @@ internal static class PortableSelfTests
                 ("Zetl state appends activity-log notes without activating", StateAppendsLogNotesWithoutActivating),
                 ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
+                ("Kastn state round-trips the last project", KastnStateRoundTripsLastProject),
                 ("Zetl app settings recover from a corrupt file", AppSettingsRecoverFromCorruptFile),
                 ("Zetl app settings recover from an unreadable file", AppSettingsRecoverFromUnreadableFile),
                 ("Zetl built-in theme validates", ThemeDefaultsValidate),
@@ -2060,6 +2061,20 @@ internal static class PortableSelfTests
             AssertFalse(
                 loaded.Settings.KastnMinimizeAfterTemplate,
                 "Kastn minimize-after-template flag should round-trip.");
+        }
+
+        private static void KastnStateRoundTripsLastProject()
+        {
+            using var temp = new TempStateFile();
+            var directory = System.IO.Path.GetDirectoryName(temp.Path)!;
+            var statePath = System.IO.Path.Combine(directory, "kastn-state.json");
+
+            var store = new KASTN.KastnStateStore(statePath);
+            AssertEqual("", store.LastProjectId, "Last project id should default to empty.");
+            store.LastProjectId = "proj-42";
+
+            var loaded = new KASTN.KastnStateStore(statePath);
+            AssertEqual("proj-42", loaded.LastProjectId, "Last project id should round-trip.");
         }
 
         private static void AppSettingsRecoverFromCorruptFile()

@@ -51,6 +51,8 @@ internal partial class MainWindow : Window
     private bool editingProjectScopedView;
     private bool viewEditorUpdating;
     private string viewBaselineJson = "";
+    // Kastn-owned runtime state (last project opened) for the startup preference.
+    private readonly KastnStateStore stateStore = new(log: Console.Error.WriteLine);
     // Creation types: bundle a template with a default view.
     private readonly ZetlCreationTypeStore creationStore = new(log: Console.Error.WriteLine);
     private readonly ObservableCollection<CreationListItem> creations = [];
@@ -418,6 +420,9 @@ internal partial class MainWindow : Window
                 RefreshViewCatalog(projectSnapshot, selectedViewId);
                 if (!string.Equals(priorProjectId, projectSnapshot.Id, StringComparison.Ordinal))
                 {
+                    // Remember the opened project for the "reopen last project" startup
+                    // preference (Kastn-owned state, not the shared settings file).
+                    stateStore.LastProjectId = projectSnapshot.Id;
                     selectedBucketId = null;
                     selectedSlipId = null;
                     expandedBucketId = null;

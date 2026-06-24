@@ -28,6 +28,14 @@ public partial class App : Application
             var zetlPath = Program.Value(Program.StartupArgs, "--zetl-path=");
             var projectId = Program.Value(Program.StartupArgs, "--project=");
             var settingsStore = new ZetlAppSettingsStore();
+            // With no direct handoff, honor the "reopen last project" startup preference.
+            // A since-deleted id falls through to the landing page in the connection.
+            if (string.IsNullOrEmpty(projectId)
+                && ZetlKastnStartup.Normalize(settingsStore.Settings.KastnStartup)
+                    == ZetlKastnStartup.LastProject)
+            {
+                projectId = new KastnStateStore().State.LastProjectId;
+            }
             var themeStore = new ZetlThemeStore();
             themeManager = new KastnThemeManager(this);
             themeManager.Apply(
