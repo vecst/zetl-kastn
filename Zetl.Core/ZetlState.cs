@@ -19,6 +19,10 @@ internal sealed class ZetlProject
     // Lifecycle status: "Active" (default), "Finished", or "Archived". Distinct
     // from lane-active state, which lives in the workspace pointers. Reversible.
     public string Status { get; set; } = ZetlStateStore.ActiveStatus;
+    // Journal mode: capture rolls into a fresh per-day bucket (named yyyy-MM-dd)
+    // instead of a fixed active bucket, so one rolling project reads as a dated
+    // journal. The day boundary is the app-level DayStartHour setting.
+    public bool JournalMode { get; set; }
     public string? ActiveBucketId { get; set; }
     public string? QuickNoteBucketId { get; set; }
     // The view document this project renders with by default (set by a creation
@@ -2316,4 +2320,10 @@ internal sealed class ZetlStateStore
         var name = DateTime.Now.ToString("yyyy-MM-dd");
         return shifted ? $"{name} Shift" : name;
     }
+
+    // The journal "day" a capture belongs to: clock time shifted back by the
+    // configured day-start hour, so e.g. with dayStartHour=4 a 1am capture lands in
+    // the previous calendar day's bucket. Returns the dated bucket name (yyyy-MM-dd).
+    public static string JournalBucketName(DateTime localNow, int dayStartHour) =>
+        localNow.AddHours(-Math.Clamp(dayStartHour, 0, 23)).ToString("yyyy-MM-dd");
 }

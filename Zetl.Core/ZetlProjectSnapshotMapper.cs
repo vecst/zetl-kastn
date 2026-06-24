@@ -42,6 +42,7 @@ internal static class ZetlProjectSnapshotMapper
             MetadataRevision = project.MetadataRevision,
             ChangeSequence = project.ChangeSequence,
             Status = project.Status,
+            JournalMode = project.JournalMode,
             ActiveBucketId = project.ActiveBucketId,
             DefaultViewId = project.DefaultViewId,
             Views = project.Views.Select(ToSnapshot).ToList(),

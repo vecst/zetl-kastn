@@ -86,6 +86,7 @@ internal static class PortableSelfTests
                 ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
                 ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
                 ("Kastn state round-trips the last project", KastnStateRoundTripsLastProject),
+                ("Journal bucket rolls at the day-start hour", JournalBucketRollsAtDayStartHour),
                 ("Zetl app settings recover from a corrupt file", AppSettingsRecoverFromCorruptFile),
                 ("Zetl app settings recover from an unreadable file", AppSettingsRecoverFromUnreadableFile),
                 ("Zetl built-in theme validates", ThemeDefaultsValidate),
@@ -2075,6 +2076,39 @@ internal static class PortableSelfTests
 
             var loaded = new KASTN.KastnStateStore(statePath);
             AssertEqual("proj-42", loaded.LastProjectId, "Last project id should round-trip.");
+        }
+
+        private static void JournalBucketRollsAtDayStartHour()
+        {
+            // Midnight boundary: every clock hour maps to its own calendar day.
+            AssertEqual(
+                "2026-06-24",
+                ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 0, 30, 0), 0),
+                "Midnight start: 00:30 belongs to that day.");
+            AssertEqual(
+                "2026-06-24",
+                ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 23, 59, 0), 0),
+                "Midnight start: 23:59 belongs to that day.");
+
+            // 4am start: captures before 04:00 belong to the previous day.
+            AssertEqual(
+                "2026-06-23",
+                ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 1, 0, 0), 4),
+                "4am start: 01:00 rolls back to the previous day.");
+            AssertEqual(
+                "2026-06-23",
+                ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 3, 59, 0), 4),
+                "4am start: 03:59 is still the previous day.");
+            AssertEqual(
+                "2026-06-24",
+                ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 4, 0, 0), 4),
+                "4am start: 04:00 begins the new day.");
+
+            // Out-of-range hours clamp rather than throw.
+            AssertEqual(
+                "2026-06-24",
+                ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 23, 30, 0), 99),
+                "An out-of-range day-start hour clamps to 23.");
         }
 
         private static void AppSettingsRecoverFromCorruptFile()

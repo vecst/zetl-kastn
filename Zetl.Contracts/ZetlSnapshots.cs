@@ -44,6 +44,10 @@ public sealed record ZetlProjectSnapshot
     // to lane-active state (which lives in the workspace pointers).
     public string Status { get; init; } = "Active";
 
+    // Journal mode: capture rolls into a fresh per-day bucket instead of a fixed
+    // active bucket, so the project reads as a dated journal.
+    public bool JournalMode { get; init; }
+
     // The view document id this project renders with by default (null = first view).
     public string? DefaultViewId { get; init; }
 

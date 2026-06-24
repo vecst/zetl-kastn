@@ -10,6 +10,9 @@ internal sealed class ZetlAppSettings
     public List<string> DefaultProjectBuckets { get; set; } = new() { "Inbox", "Scratch" };
     public string DefaultCompileMode { get; set; } = "Formatted";
     public int DefaultTsvRowLength { get; set; } = 5;
+    // Hour (0-23, local) at which a new journal day begins, so late-night captures
+    // land in the right dated bucket. 0 = midnight.
+    public int DayStartHour { get; set; }
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
     public string ThemeVariant { get; set; } = "System";
 
