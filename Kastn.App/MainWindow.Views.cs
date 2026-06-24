@@ -386,17 +386,16 @@ internal partial class MainWindow
     // top is never visible.
     private void RestoreViewScroll(Vector savedOffset)
     {
-        Dispatcher.UIThread.Post(
-            () =>
-            {
-                var maxY = Math.Max(
-                    0,
-                    viewerDocumentScroll.Extent.Height - viewerDocumentScroll.Viewport.Height);
-                viewerDocumentScroll.Offset = new Vector(
-                    savedOffset.X,
-                    Math.Min(savedOffset.Y, maxY));
-            },
-            DispatcherPriority.Render);
+        // Force a synchronous layout so the rebuilt content's extent is known, then
+        // restore the offset immediately — before the frame paints — so the rebuild
+        // never visibly flashes to the top. (Posting it a frame later showed the flash.)
+        viewerDocumentScroll.UpdateLayout();
+        var maxY = Math.Max(
+            0,
+            viewerDocumentScroll.Extent.Height - viewerDocumentScroll.Viewport.Height);
+        viewerDocumentScroll.Offset = new Vector(
+            savedOffset.X,
+            Math.Min(savedOffset.Y, maxY));
     }
 
     private void ApplyBlockHighlight(Border block, bool on)
