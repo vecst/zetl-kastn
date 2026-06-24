@@ -204,7 +204,7 @@ internal static class KastnPdfRenderer
             }
             else if (block is ZetlListBlock listBlock)
             {
-                var number = 1;
+                var number = listBlock.Start;
                 foreach (var item in listBlock.Items)
                 {
                     var paragraph = section.AddParagraph();

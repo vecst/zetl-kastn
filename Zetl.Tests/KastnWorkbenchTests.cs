@@ -218,39 +218,6 @@ internal static class KastnWorkbenchTests
         AssertEqual("done", KastnBatchFormat.ToggleStrike("~~done~~"), "Unwrap strike.");
     }
 
-    public static void BatchOrderedNumbersRestartAtBreaks()
-    {
-        var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
-        // Document order: bucket A [a1, a2, a3], then bucket B [b1, b2].
-        var slips = new[]
-        {
-            Slip("a1", "A", "", "copy", "s", now),
-            Slip("a2", "A", "", "copy", "s", now),
-            Slip("a3", "A", "", "copy", "s", now),
-            Slip("b1", "B", "", "copy", "s", now),
-            Slip("b2", "B", "", "copy", "s", now),
-        };
-
-        // A contiguous run counts up.
-        var run = KastnBatchFormat.OrderedNumbers(slips, Set("a1", "a2", "a3"), _ => true);
-        AssertEqual(1, run["a1"], "Run starts at 1.");
-        AssertEqual(2, run["a2"], "Run counts up.");
-        AssertEqual(3, run["a3"], "Run counts up.");
-
-        // An unselected slip between selections restarts the count.
-        var gapped = KastnBatchFormat.OrderedNumbers(slips, Set("a1", "a3"), _ => true);
-        AssertEqual(1, gapped["a1"], "Before the gap is 1.");
-        AssertEqual(1, gapped["a3"], "After a gap restarts at 1.");
-
-        // A bucket boundary (adjacent in document order) also restarts.
-        var crossBucket = KastnBatchFormat.OrderedNumbers(slips, Set("a3", "b1", "b2"), _ => true);
-        AssertEqual(1, crossBucket["a3"], "Last of bucket A is 1.");
-        AssertEqual(1, crossBucket["b1"], "First of bucket B restarts at 1.");
-        AssertEqual(2, crossBucket["b2"], "Bucket B run counts up.");
-    }
-
-    private static HashSet<string> Set(params string[] ids) => new(ids, StringComparer.Ordinal);
-
     public static void SelectionComputesSlipsTitleAndNone()
     {
         var s1 = SlipTreeNode("s1");

@@ -28,8 +28,9 @@ internal sealed record ZetlParagraphBlock(IReadOnlyList<IReadOnlyList<ZetlInline
 
 internal sealed record ZetlListItem(IReadOnlyList<ZetlInline> Inlines, bool Checked);
 
-// Kind is "bullet", "ordered", or "task".
-internal sealed record ZetlListBlock(string Kind, IReadOnlyList<ZetlListItem> Items) : ZetlBlock;
+// Kind is "bullet", "ordered", or "task". Start is the ordered list's first number
+// (1 for bullet/task), preserved so renderers can continue a run across slips.
+internal sealed record ZetlListBlock(string Kind, IReadOnlyList<ZetlListItem> Items, int Start = 1) : ZetlBlock;
 
 internal static class ZetlMarkdown
 {
@@ -160,6 +161,7 @@ internal static class ZetlMarkdown
         List<IReadOnlyList<ZetlInline>>? paragraph = null;
         string? listKind = null;
         List<ZetlListItem>? items = null;
+        var listStart = 1;
 
         void FlushParagraph()
         {
@@ -175,22 +177,24 @@ internal static class ZetlMarkdown
         {
             if (items is { Count: > 0 })
             {
-                blocks.Add(new ZetlListBlock(listKind!, items));
+                blocks.Add(new ZetlListBlock(listKind!, items, listStart));
             }
 
             items = null;
             listKind = null;
+            listStart = 1;
         }
 
         foreach (var line in lines)
         {
-            if (TryClassifyListLine(line, out var kind, out var content, out var isChecked))
+            if (TryClassifyListLine(line, out var kind, out var content, out var isChecked, out var number))
             {
                 FlushParagraph();
                 if (items is null || listKind != kind)
                 {
                     FlushList();
                     listKind = kind;
+                    listStart = number;
                     items = [];
                 }
 
@@ -213,11 +217,13 @@ internal static class ZetlMarkdown
         string line,
         out string kind,
         out string content,
-        out bool isChecked)
+        out bool isChecked,
+        out int number)
     {
         kind = "";
         content = "";
         isChecked = false;
+        number = 1;
         var trimmed = line.TrimStart();
 
         // Task: "- [ ] …" or "- [x] …" (checked first so the bullet rule does not win).
@@ -250,6 +256,7 @@ internal static class ZetlMarkdown
         {
             kind = "ordered";
             content = trimmed[(dot + 2)..];
+            number = int.TryParse(trimmed[..dot], out var parsed) ? parsed : 1;
             return true;
         }
 
@@ -269,7 +276,7 @@ internal static class ZetlMarkdown
                     builder.Append(string.Join("<br />", paragraph.Lines.Select(InlinesToHtml)));
                     break;
                 case ZetlListBlock { Kind: "ordered" } ordered:
-                    builder.Append("<ol>");
+                    builder.Append(ordered.Start > 1 ? $"<ol start=\"{ordered.Start}\">" : "<ol>");
                     foreach (var item in ordered.Items)
                     {
                         builder.Append("<li>").Append(InlinesToHtml(item.Inlines)).Append("</li>");

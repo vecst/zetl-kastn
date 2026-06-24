@@ -129,7 +129,7 @@ internal static class ZetlViewRenderer
             if (slipsByBucketId.TryGetValue(bucket.Id, out var bucketSlips) && bucketSlips.Count > 0)
             {
                 var depth = BucketDepth(bucket, bucketsById);
-                groups.Add(new ZetlViewGroup(bucket.Name.Trim(), depth, bucket, bucketSlips)
+                groups.Add(new ZetlViewGroup(bucket.Name.Trim(), depth, bucket, RenumberOrderedSlips(bucketSlips))
                 {
                     OutlineNumber = numberer.Next(depth),
                     HeadingAlign = bucket.HeadingAlign,
@@ -178,7 +178,7 @@ internal static class ZetlViewRenderer
             {
                 // Sections are flat (depth 0); the section title is the heading, with
                 // the section's optional heading styling carried onto the group.
-                groups.Add(new ZetlViewGroup(section.Title.Trim(), 0, headerBucket, sectionSlips)
+                groups.Add(new ZetlViewGroup(section.Title.Trim(), 0, headerBucket, RenumberOrderedSlips(sectionSlips))
                 {
                     OutlineNumber = numberer.Next(0),
                     HeadingAlign = section.HeadingAlign,
@@ -535,6 +535,72 @@ internal static class ZetlViewRenderer
     {
         var value = slip.Align?.Trim().ToLowerInvariant();
         return value is "center" or "right" ? value : "left";
+    }
+
+    // Numbered slips each store an ordered marker, but the *displayed* number is
+    // computed here over the visible slips so a numbered list reads 1, 2, 3… in
+    // document order and re-flows when slips are hidden or reordered. A run of
+    // adjacent ordered slips counts up; any non-ordered slip (or picture) restarts it.
+    private static IReadOnlyList<ZetlSlipSnapshot> RenumberOrderedSlips(
+        IReadOnlyList<ZetlSlipSnapshot> slips)
+    {
+        List<ZetlSlipSnapshot>? renumbered = null;
+        var run = 0;
+        for (var i = 0; i < slips.Count; i++)
+        {
+            var slip = slips[i];
+            string? rewritten = null;
+            if (slip.Type == ZetlSlipType.Text
+                && TryRenumberFirstOrdered(slip.Text, run + 1, out rewritten))
+            {
+                run++;
+            }
+            else
+            {
+                run = 0;
+            }
+
+            if (rewritten is not null)
+            {
+                renumbered ??= [.. slips.Take(i)];
+                renumbered.Add(slip with { Text = rewritten });
+            }
+            else
+            {
+                renumbered?.Add(slip);
+            }
+        }
+
+        return renumbered ?? slips;
+    }
+
+    // If the slip's first non-empty line is an ordered marker ("N. …"), rewrite its
+    // number to <number>; leaves the text untouched and returns false otherwise.
+    private static bool TryRenumberFirstOrdered(string? text, int number, out string rewritten)
+    {
+        rewritten = text ?? "";
+        var lines = rewritten.ReplaceLineEndings("\n").Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var trimmed = lines[i].TrimStart();
+            if (trimmed.Length == 0)
+            {
+                continue;
+            }
+
+            var dot = trimmed.IndexOf(". ", StringComparison.Ordinal);
+            if (dot <= 0 || !trimmed[..dot].All(char.IsAsciiDigit))
+            {
+                return false;
+            }
+
+            var indent = lines[i][..(lines[i].Length - trimmed.Length)];
+            lines[i] = $"{indent}{number}. {trimmed[(dot + 2)..]}";
+            rewritten = string.Join("\n", lines);
+            return true;
+        }
+
+        return false;
     }
 
     private static string SlipText(ZetlSlipSnapshot slip) =>

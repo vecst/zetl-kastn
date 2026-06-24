@@ -350,6 +350,41 @@ internal static class ZetlViewTests
             "Task view should keep a checkbox slip's own markup and only mark plain slips.");
     }
 
+    public static void OrderedSlipsRenumberContinuouslyOverVisibleSlips()
+    {
+        // Each ordered slip just stores "1."; the renderer numbers a run continuously
+        // and restarts it at a non-ordered slip — computed over the visible slips.
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Steps")],
+            [Slip("b1", "1. alpha"), Slip("b1", "1. beta"), Slip("b1", "note"), Slip("b1", "1. gamma")]);
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# Demo\n\n## Steps\n\n1. alpha\n2. beta\n- note\n1. gamma");
+
+        // Hiding the first slip re-flows the numbers: the run starts over at 1.
+        var hidden = Project(
+            "Demo",
+            [Bucket("b1", "Steps")],
+            [
+                Slip("b1", "1. alpha") with { ExcludedFromViews = true },
+                Slip("b1", "1. beta"),
+                Slip("b1", "1. gamma")
+            ]);
+        AssertRender(hidden, ZetlViewKinds.Markdown, "# Demo\n\n## Steps\n\n1. beta\n2. gamma");
+
+        // HTML carries the computed start so a one-item <ol> per slip still reads 1, 2, 3
+        // instead of every slip restarting at 1.
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html }).ReplaceLineEndings("\n");
+        AssertTrue(
+            html.Contains("<ol start=\"2\">", StringComparison.Ordinal),
+            "The second ordered slip's list starts at 2 in HTML.");
+    }
+
     public static void DocumentTitleHidesOrOverridesProjectName()
     {
         var project = Project("Demo", [Bucket("b1", "Ideas")], [Slip("b1", "one")]);

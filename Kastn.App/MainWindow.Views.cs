@@ -443,7 +443,7 @@ internal partial class MainWindow
             }
             else if (block is ZetlListBlock list)
             {
-                var number = 1;
+                var number = list.Start;
                 foreach (var item in list.Items)
                 {
                     var marker = list.Kind switch

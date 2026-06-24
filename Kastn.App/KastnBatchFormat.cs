@@ -1,10 +1,8 @@
-using ZETL.Contracts;
-
 namespace KASTN;
 
 // Pure helpers for batch slip formatting (UI roadmap Phase 2): list-marker
-// rewriting, strikethrough toggling, and the contiguous-run numbering rule. Kept
-// free of UI state so they can be unit tested.
+// rewriting and strikethrough toggling. Kept free of UI state so they can be unit
+// tested. (Ordered-list numbering is computed at render time in ZetlViewRenderer.)
 internal static class KastnBatchFormat
 {
     // Replace a line's leading list marker (bullet / checkbox / ordered), if any, so
@@ -63,36 +61,5 @@ internal static class KastnBatchFormat
         }
 
         return $"~~{text}~~";
-    }
-
-    // Number the selected slips: a contiguous run (adjacent selected, eligible slips
-    // in one bucket) counts up; any break — an unselected/ineligible slip between, or
-    // a bucket boundary — restarts the count at 1. documentOrder must be the project's
-    // bucket-grouped slip order.
-    public static IReadOnlyDictionary<string, int> OrderedNumbers(
-        IReadOnlyList<ZetlSlipSnapshot> documentOrder,
-        ISet<string> selectedIds,
-        Func<ZetlSlipSnapshot, bool> isEligible)
-    {
-        var numbers = new Dictionary<string, int>(StringComparer.Ordinal);
-        var counter = 0;
-        ZetlSlipSnapshot? previous = null;
-        foreach (var slip in documentOrder)
-        {
-            if (!selectedIds.Contains(slip.Id) || !isEligible(slip))
-            {
-                previous = null;
-                continue;
-            }
-
-            counter = previous is not null
-                && string.Equals(previous.BucketId, slip.BucketId, StringComparison.Ordinal)
-                ? counter + 1
-                : 1;
-            numbers[slip.Id] = counter;
-            previous = slip;
-        }
-
-        return numbers;
     }
 }

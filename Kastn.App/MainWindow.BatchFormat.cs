@@ -58,36 +58,13 @@ internal partial class MainWindow
             return;
         }
 
-        // Ordered lists number per the user's rule: a contiguous run (adjacent
-        // selected slips in one bucket) counts up; any break — an unselected slip
-        // between, or a bucket boundary — restarts the count at 1.
-        var numbers = kind == "ordered" ? ComputeOrderedNumbers() : null;
+        // Each ordered slip just stores a "1." marker; the displayed number is
+        // computed at render time over the visible slips (ZetlViewRenderer renumbers
+        // a run continuously), so the list re-flows when slips are hidden or moved.
+        var lineMarker = kind switch { "ordered" => "1. ", "task" => "- [ ] ", _ => "- " };
         await ApplyBatchAsync(
             kind switch { "ordered" => "numbered", "task" => "made a checklist", _ => "bulleted" },
-            (slip, _) =>
-            {
-                var marker = kind switch
-                {
-                    "ordered" => $"{numbers![slip.Id]}. ",
-                    "task" => "- [ ] ",
-                    _ => "- ",
-                };
-                return new UpdateSlipCommand { Text = KastnBatchFormat.ApplyLineMarker(slip.Text, marker) };
-            });
-    }
-
-    private IReadOnlyDictionary<string, int> ComputeOrderedNumbers()
-    {
-        if (currentProject is null)
-        {
-            return new Dictionary<string, int>(StringComparer.Ordinal);
-        }
-
-        var selectedIds = SelectedSlips().Select(slip => slip.Id).ToHashSet(StringComparer.Ordinal);
-        return KastnBatchFormat.OrderedNumbers(
-            currentProject.Slips,
-            selectedIds,
-            slip => slip.Type == ZetlSlipType.Text && !IsSlipInDeleted(slip));
+            (slip, _) => new UpdateSlipCommand { Text = KastnBatchFormat.ApplyLineMarker(slip.Text, lineMarker) });
     }
 
     // Loop the selected text slips in document order, sending one UpdateSlip per
