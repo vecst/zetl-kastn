@@ -135,7 +135,9 @@ internal static class ZetlProjectSnapshotMapper
         {
             Id = note.Id,
             Revision = note.Revision,
-            Type = note.IsImage ? ZetlSlipType.Picture : ZetlSlipType.Text,
+            Type = note.IsImage
+                ? ZetlSlipType.Picture
+                : ZetlSlipClassifier.LooksLikeUrl(note.Text) ? ZetlSlipType.Url : ZetlSlipType.Text,
             BucketId = bucket.Id,
             Title = note.Title,
             Text = note.Text,

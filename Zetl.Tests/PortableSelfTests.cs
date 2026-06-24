@@ -98,6 +98,7 @@ internal static class PortableSelfTests
                 ("Journal auto-returns from a quiet project", JournalAutoReturnsFromQuietProject),
                 ("Journal auto-return off keeps the project", JournalAutoReturnOffKeepsProject),
                 ("Ctrl+A toggles between the Journal and the last project", ToggleActiveProjectSwitchesBetweenJournalAndLastProject),
+                ("URL slips are derived from content", UrlSlipsAreDerivedFromContent),
                 ("Zetl default hotkeys config parses", DefaultConfigParses),
                 ("Zetl config tolerates null replay modifiers", ConfigNullReplayModifiersDoesNotThrow),
                 ("Zetl config reports clean errors for null fields", ConfigNullFieldsReportCleanErrors),
@@ -2333,6 +2334,29 @@ internal static class PortableSelfTests
                 "Toggling from the Journal reactivates the last deliberate project.");
             AssertEqual("Work", on.ProjectName, "It reactivates the last deliberate project by name.");
             AssertEqual(work.Id, store.GetActiveProject()?.Id, "Work is active again.");
+        }
+
+        private static void UrlSlipsAreDerivedFromContent()
+        {
+            // Only whole-content absolute http/https text is classified as a link.
+            AssertTrue(ZetlSlipClassifier.LooksLikeUrl("https://example.com"), "An https URL is a link.");
+            AssertTrue(ZetlSlipClassifier.LooksLikeUrl("http://x.com/a?b=1#c"), "A URL with path/query/fragment is a link.");
+            AssertTrue(ZetlSlipClassifier.LooksLikeUrl("  https://trimmed.test  "), "Surrounding whitespace is ignored.");
+            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("example.com"), "A scheme-less host stays text (conservative).");
+            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("see https://x.com here"), "Prose containing a link is not a link slip.");
+            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("ftp://files.test"), "Non-http(s) schemes are not links.");
+            AssertFalse(ZetlSlipClassifier.LooksLikeUrl("just text"), "Plain text is not a link.");
+
+            // The mapper derives the slip type from the note text — no stored field.
+            var bucket = new ZetlBucket { Id = "b", Name = "Links", Kind = "Standard" };
+            AssertEqual(
+                ZETL.Contracts.ZetlSlipType.Url,
+                ZetlProjectSnapshotMapper.ToSnapshot(bucket, new ZetlNote { Id = "u", Text = "https://example.com" }).Type,
+                "A URL note maps to a Url slip.");
+            AssertEqual(
+                ZETL.Contracts.ZetlSlipType.Text,
+                ZetlProjectSnapshotMapper.ToSnapshot(bucket, new ZetlNote { Id = "t", Text = "hello world" }).Type,
+                "Plain text maps to a Text slip.");
         }
 
         private static void RuntimeAppliesAppSettingsDefaults()
