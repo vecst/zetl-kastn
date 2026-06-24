@@ -574,26 +574,32 @@ Done when:
 Goal: make Zetl and Kastn feel like two surfaces of one local system, not two
 apps with unrelated preferences.
 
-- [ ] Treat the selected theme as a global Zetl/Kastn preference.
-- [ ] Load the same `settings.json` theme id, theme variant, and `themes/`
+- [x] Treat the selected theme as a global Zetl/Kastn preference.
+- [x] Load the same `settings.json` theme id, theme variant, and `themes/`
       documents in Kastn.
-- [ ] Apply global theme changes across open Zetl and Kastn windows without
-      requiring either app to restart.
-- [ ] Keep one theme editor rather than forking separate Zetl and Kastn theme
-      editors.
-- [ ] Add Kastn-specific settings to the Zetl Settings window in a clearly
-      labeled Kastn section.
-- [ ] Store Kastn app preferences in the shared app settings document unless a
-      setting is project-specific.
-- [ ] Keep project-specific Kastn choices with the project or view definition,
-      not in global app settings.
+- [x] Apply global theme changes across open Zetl and Kastn windows without
+      requiring either app to restart. Kastn's `KastnThemeWatcher` watches the
+      shared settings file and `themes/` folder and re-applies live; Zetl applies
+      in process.
+- [x] Keep one theme editor rather than forking separate Zetl and Kastn theme
+      editors. Kastn has no editor; it consumes the theme Zetl's editor produces.
+- [x] Add Kastn-specific settings to the Zetl Settings window in a clearly
+      labeled Kastn section (autosave, startup view, default reading view, and
+      step-aside-after-template).
+- [x] Store Kastn app preferences in the shared app settings document unless a
+      setting is project-specific. Session-only state (last project opened) lives
+      in a Kastn-owned `kastn-state.json` so its writes never race Zetl's.
+- [x] Keep project-specific Kastn choices with the project or view definition,
+      not in global app settings. The per-project default view stays on the
+      project; the global default is only a fallback.
 
 Done when:
 
-- [ ] Changing the active theme in Zetl updates Kastn, and changing it from any
-      future Kastn entry point updates Zetl.
-- [ ] A user can discover and edit Kastn preferences from Zetl Settings.
-- [ ] Backing up the app settings and theme folder preserves the visible
+- [~] Changing the active theme in Zetl updates Kastn live. The reverse (a Kastn
+      theme entry point updating Zetl) remains future work — Kastn has no theme
+      editor yet.
+- [x] A user can discover and edit Kastn preferences from Zetl Settings.
+- [x] Backing up the app settings and theme folder preserves the visible
       behavior of both applications.
 
 ## K9. Hardening And Release
