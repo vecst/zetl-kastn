@@ -96,6 +96,7 @@ internal static class PortableSelfTests
                 ("Zetl themes preserve unknown JSON fields", ThemePreservesUnknownJsonFields),
                 ("Zetl theme store ignores invalid files", ThemeStoreIgnoresInvalidFiles),
                 ("Zetl state applies bucket defaults", StateAppliesBucketDefaults),
+                ("Journal mode rolls into dated buckets", JournalModeRollsIntoDatedBuckets),
                 ("Zetl default hotkeys config parses", DefaultConfigParses),
                 ("Zetl config tolerates null replay modifiers", ConfigNullReplayModifiersDoesNotThrow),
                 ("Zetl config reports clean errors for null fields", ConfigNullFieldsReportCleanErrors),
@@ -2299,6 +2300,35 @@ internal static class PortableSelfTests
             var added = store.AddBucket(project, "Extra");
             AssertEqual("TSV", added.DefaultCompileMode, "Added bucket should take the default compile mode.");
             AssertEqual(4, added.DefaultTsvRowLength, "Added bucket should take the default TSV row length.");
+        }
+
+        private static void JournalModeRollsIntoDatedBuckets()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Journal", new[] { "Scratch" });
+            project.JournalMode = true;
+
+            var day1 = new DateTime(2026, 6, 23, 9, 0, 0);
+            var day2 = new DateTime(2026, 6, 24, 9, 0, 0);
+
+            var first = store.RollJournalBucket(project, day1);
+            AssertTrue(first is not null, "Rolling a journal project yields a bucket.");
+            AssertEqual("2026-06-23", first!.Name, "The first roll creates that day's dated bucket.");
+            AssertEqual(first.Id, project.ActiveBucketId, "Today's bucket becomes active.");
+
+            var sameDay = store.RollJournalBucket(project, day1);
+            AssertEqual(first.Id, sameDay!.Id, "A second capture the same day reuses the bucket.");
+
+            var nextDay = store.RollJournalBucket(project, day2);
+            AssertEqual("2026-06-24", nextDay!.Name, "A new day creates a new dated bucket.");
+            AssertTrue(nextDay.Id != first.Id, "The new day's bucket is distinct.");
+            AssertEqual(nextDay.Id, project.ActiveBucketId, "The new day's bucket becomes active.");
+
+            var plain = store.CreateProject("Plain", new[] { "Scratch" });
+            AssertTrue(
+                store.RollJournalBucket(plain, day1) is null,
+                "A non-journal project does not roll into a dated bucket.");
         }
 
         private static void RuntimeAppliesAppSettingsDefaults()

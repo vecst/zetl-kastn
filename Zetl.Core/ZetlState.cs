@@ -147,6 +147,10 @@ internal sealed class ZetlImageAsset
 
 internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, string CompileMode, int TsvRowLength)
 {
+    // The hour (0-23, local) a journal day begins, used to roll a journal-mode
+    // project into the right dated bucket. 0 = midnight.
+    public int DayStartHour { get; init; }
+
     public static ZetlBucketDefaults Standard { get; } = new(new[] { "Inbox", "Scratch" }, "Formatted", 5);
 
     // The configured project buckets, or the built-in Inbox/Scratch fallback
@@ -294,6 +298,15 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlProject GetOrCreateDefaultProject(bool shifted = false)
     {
+        var project = ResolveDefaultProject(shifted);
+        // A journal-mode project always captures into today's dated bucket, so roll
+        // it before the shared capture path resolves the active bucket.
+        RollJournalBucket(project, DateTime.Now);
+        return project;
+    }
+
+    private ZetlProject ResolveDefaultProject(bool shifted)
+    {
         if (GetActiveProject(shifted) is { } activeProject)
         {
             return activeProject;
@@ -312,6 +325,20 @@ internal sealed class ZetlStateStore
 
         var defaultBuckets = Defaults.ResolvedProjectBuckets;
         return CreateProject(NextDatedDefaultName(shifted), defaultBuckets, defaultBuckets[0], shifted);
+    }
+
+    // Roll a journal-mode project into the dated bucket for <localNow> (named
+    // yyyy-MM-dd, shifted by the configured day-start hour), creating it if needed
+    // and making it active. No-op (returns null) for a non-journal project.
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlBucket? RollJournalBucket(ZetlProject project, DateTime localNow)
+    {
+        if (!project.JournalMode)
+        {
+            return null;
+        }
+
+        return GetOrCreateBucket(project, JournalBucketName(localNow, Defaults.DayStartHour), setActive: true);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]

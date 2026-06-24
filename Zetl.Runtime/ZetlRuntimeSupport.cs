@@ -8,7 +8,10 @@ internal static class ZetlRuntimeSettings
         store.Defaults = new ZetlBucketDefaults(
             projectBuckets,
             settings.DefaultCompileMode,
-            settings.DefaultTsvRowLength);
+            settings.DefaultTsvRowLength)
+        {
+            DayStartHour = settings.DayStartHour
+        };
     }
 }
 
