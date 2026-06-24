@@ -1281,7 +1281,8 @@ internal partial class MainWindow
                 (sessionFilterBox.SelectedItem as FilterItem)?.Value,
                 (dateFilterBox.SelectedItem as DateFilterItem)?.Value ?? KastnDateFilter.All,
                 searchBox.Text,
-                DateTimeOffset.Now);
+                DateTimeOffset.Now,
+                (typeFilterBox.SelectedItem as TypeFilterItem)?.Value);
     }
 
     // The center View is the constant whole-project document: it never scopes to the
@@ -1303,7 +1304,8 @@ internal partial class MainWindow
                 (sessionFilterBox.SelectedItem as FilterItem)?.Value,
                 (dateFilterBox.SelectedItem as DateFilterItem)?.Value ?? KastnDateFilter.All,
                 searchBox.Text,
-                DateTimeOffset.Now)
+                DateTimeOffset.Now,
+                (typeFilterBox.SelectedItem as TypeFilterItem)?.Value)
             .Where(slip => !IsSlipInDeleted(slip))
             .ToList();
     }

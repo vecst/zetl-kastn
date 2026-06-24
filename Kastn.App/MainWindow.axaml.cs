@@ -156,6 +156,14 @@ internal partial class MainWindow : Window
         dates.Add(new DateFilterItem(KastnDateFilter.Last7Days, "Last 7 days"));
         dates.Add(new DateFilterItem(KastnDateFilter.Last30Days, "Last 30 days"));
         dateFilterBox.SelectedIndex = 0;
+        typeFilterBox.ItemsSource = new[]
+        {
+            new TypeFilterItem(null, "All types"),
+            new TypeFilterItem(ZetlSlipType.Text, "Text"),
+            new TypeFilterItem(ZetlSlipType.Url, "Links"),
+            new TypeFilterItem(ZetlSlipType.Picture, "Pictures")
+        };
+        typeFilterBox.SelectedIndex = 0;
         RebuildTemplateCards();
 
         connection.SnapshotChanged += OnSnapshotChanged;
@@ -180,6 +188,7 @@ internal partial class MainWindow : Window
         sourceFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
         sessionFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
         dateFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
+        typeFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
         slipEditor.TextChanged += (_, _) => OnEditorTextChanged();
         // Save when the editor loses focus rather than on a keystroke timer, so
         // typing is never interrupted by a mid-edit save + refresh. The user can turn
@@ -1393,5 +1402,6 @@ internal partial class MainWindow : Window
         string Detail,
         ZetlSlipSnapshot Slip);
     private sealed record FilterItem(string? Value, string Label);
+    private sealed record TypeFilterItem(ZetlSlipType? Value, string Label);
     private sealed record DateFilterItem(KastnDateFilter Value, string Label);
 }

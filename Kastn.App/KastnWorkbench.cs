@@ -256,7 +256,8 @@ internal static class KastnWorkbench
         string? sessionId,
         KastnDateFilter dateFilter,
         string? search,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        ZetlSlipType? type = null)
     {
         var bucketIds = bucketId is null
             ? null
@@ -277,6 +278,7 @@ internal static class KastnWorkbench
         };
         var query = project.Slips.Where(slip =>
             (bucketIds is null || bucketIds.Contains(slip.BucketId))
+            && (type is null || slip.Type == type)
             && (string.IsNullOrWhiteSpace(source)
                 || string.Equals(slip.Source, source, StringComparison.Ordinal))
             && (string.IsNullOrWhiteSpace(sessionId)
