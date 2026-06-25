@@ -8,11 +8,11 @@ internal static class ZetlSyntheticModifier
         int leftKey,
         int rightKey)
     {
-        if (leftDown && rightDown)
+        if (leftDown || rightDown)
         {
             return null;
         }
 
-        return leftDown ? rightKey : leftKey;
+        return leftKey;
     }
 }

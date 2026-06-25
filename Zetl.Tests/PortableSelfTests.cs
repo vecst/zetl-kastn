@@ -523,21 +523,21 @@ internal static class PortableSelfTests
                     VK_RCONTROL),
                 "With neither side held, injection should use left Ctrl.");
             AssertEqual<int?>(
-                VK_RCONTROL,
+                null,
                 ZetlSyntheticModifier.SelectInjection(
                     leftDown: true,
                     rightDown: false,
                     VK_LCONTROL,
                     VK_RCONTROL),
-                "With left held, injection should use right Ctrl.");
+                "With left held, no synthetic modifier is needed.");
             AssertEqual<int?>(
-                VK_LCONTROL,
+                null,
                 ZetlSyntheticModifier.SelectInjection(
                     leftDown: false,
                     rightDown: true,
                     VK_LCONTROL,
                     VK_RCONTROL),
-                "With right held, injection should use left Ctrl.");
+                "With right held, no synthetic modifier is needed.");
             AssertEqual<int?>(
                 null,
                 ZetlSyntheticModifier.SelectInjection(
