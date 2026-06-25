@@ -1,4 +1,4 @@
-# Kastn/Zetl Contract Notes
+# Kastn/Zetl Contracts
 
 This document fixes the K0 invariants for the local protocol between Kastn and
 the resident Zetl process. The public DTOs and enums live in `Zetl.Contracts`.
@@ -69,8 +69,8 @@ protocols. A transient transport failure may retry the same command ID.
   exposing storage paths or changing project state.
 - A snapshot includes project metadata revision, project change sequence,
   buckets, and slips.
-- A slip title is optional metadata. Clients display note text as the fallback
-  title when it is absent; non-picture slips require either a title or note text.
+- A slip title is optional metadata. Clients display body text as the fallback
+  title when it is absent; non-picture slips require either a title or body text.
 - Change events identify the changed entity and resulting project change
   sequence.
 - On reconnect, after a sequence gap, or after any uncertain local merge, Kastn

@@ -111,7 +111,7 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         var activeBucket = store.GetActiveBucket(context.ShiftLane);
-        if (activeBucket is not null && ZetlStateStore.IsFifoBucket(activeBucket))
+        if (activeBucket is not null && ZetlStateStore.IsReplayBucket(activeBucket))
         {
             // The hook callback needs the handled decision synchronously, but the
             // replay clipboard read/write and synthetic paste must not run on the
@@ -590,7 +590,7 @@ internal sealed class ZetlShortcutCoordinator
             return null;
         }
 
-        if (ZetlStateStore.IsFifoBucket(bucket))
+        if (ZetlStateStore.IsReplayBucket(bucket))
         {
             store.SetBucketKind(bucket, "Standard");
             store.SetBucketPopMode(bucket, true);
@@ -612,7 +612,7 @@ internal sealed class ZetlShortcutCoordinator
             return null;
         }
 
-        if (ZetlStateStore.IsFifoBucket(bucket))
+        if (ZetlStateStore.IsReplayBucket(bucket))
         {
             store.SetBucketKind(bucket, "Standard");
             ResetReplayClipboardTracking(shifted);
@@ -801,7 +801,7 @@ internal sealed class ZetlShortcutCoordinator
     // hook-vs-dispatcher race the inline version had.
     private async Task HandleReplayTapAsync(bool shifted, ZetlBucket activeBucket)
     {
-        if (!store.TryPeekNextFifoNote(activeBucket, out var fifoNote) || fifoNote is null)
+        if (!store.TryPeekNextReplayNote(activeBucket, out var replayNote) || replayNote is null)
         {
             // The bucket is empty, so replay is genuinely done -- return to
             // Standard regardless. But this tap suppressed the physical Ctrl+V, so
@@ -817,15 +817,15 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         var project = store.GetActiveProject(shifted);
-        var noteId = fifoNote.Id;
-        var replayItem = fifoNote.IsImage
-            ? project is not null && store.ReadImageAsset(project, fifoNote) is { } bytes
+        var noteId = replayNote.Id;
+        var replayItem = replayNote.IsImage
+            ? project is not null && store.ReadImageAsset(project, replayNote) is { } bytes
                 ? ZetlClipboardSnapshot.FromImage(new ZetlClipboardImage(
                     bytes,
-                    fifoNote.Image!.Width,
-                    fifoNote.Image.Height))
+                    replayNote.Image!.Width,
+                    replayNote.Image.Height))
                 : null
-            : ZetlClipboardSnapshot.FromText(fifoNote.Text);
+            : ZetlClipboardSnapshot.FromText(replayNote.Text);
         var bucketName = activeBucket.Name;
         if (replayItem is null)
         {
@@ -856,37 +856,37 @@ internal sealed class ZetlShortcutCoordinator
             }
 
             ZetlBucket? reviewBucket = null;
-            ZetlNote? consumedNote = null;
-            ZetlNote? reviewNote = null;
+            ZetlSlip? consumedSlip = null;
+            ZetlSlip? reviewSlip = null;
             var consumed = project is not null
-                ? store.TryConsumeFifoNoteToReview(
+                ? store.TryConsumeReplayNoteToReview(
                     project,
                     activeBucket,
                     noteId,
                     out reviewBucket,
-                    out consumedNote,
-                    out reviewNote)
-                : store.TryConsumeFifoNote(activeBucket, noteId, out consumedNote);
+                    out consumedSlip,
+                    out reviewSlip)
+                : store.TryConsumeReplayNote(activeBucket, noteId, out consumedSlip);
             if (consumed && reviewBucket is not null)
             {
                 log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
             }
 
-            if (consumed && consumedNote is not null)
+            if (consumed && consumedSlip is not null)
             {
                 var undoReviewBucket = reviewBucket;
-                var undoReviewNoteId = reviewNote?.Id;
+                var undoReviewSlipId = reviewSlip?.Id;
                 undoStack.Push(
                     shifted,
                     $"Restored replay item to {bucketName}.",
-                    () => store.RestoreFifoConsumedNote(
+                    () => store.RestoreReplayConsumedNote(
                         activeBucket,
-                        consumedNote,
+                        consumedSlip,
                         undoReviewBucket,
-                        undoReviewNoteId));
+                        undoReviewSlipId));
             }
 
-            var replayComplete = !store.TryPeekNextFifoNote(activeBucket, out _);
+            var replayComplete = !store.TryPeekNextReplayNote(activeBucket, out _);
             if (replayComplete)
             {
                 store.SetBucketKind(activeBucket, "Standard");

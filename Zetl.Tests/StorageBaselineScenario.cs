@@ -16,7 +16,7 @@ internal static class StorageBaselineScenario
             Console.WriteLine($"OS: {System.Runtime.InteropServices.RuntimeInformation.OSDescription}");
             Console.WriteLine($"Process architecture: {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}");
             Console.WriteLine();
-            Console.WriteLine("| Notes | JSON MiB | Atomic rewrite ms | Load ms | Loaded memory MiB |");
+            Console.WriteLine("| Slips | JSON MiB | Atomic rewrite ms | Load ms | Loaded memory MiB |");
             Console.WriteLine("| ---: | ---: | ---: | ---: | ---: |");
 
             foreach (var noteCount in NoteCounts)
@@ -73,7 +73,7 @@ internal static class StorageBaselineScenario
 
             if (loaded.Projects.Single().Buckets.Sum(bucket => bucket.Notes.Count) != noteCount)
             {
-                throw new InvalidOperationException("Loaded note count did not match the baseline project.");
+                throw new InvalidOperationException("Loaded slip count did not match the baseline project.");
             }
 
             loadTimes.Add(stopwatch.Elapsed.TotalMilliseconds);
@@ -113,7 +113,7 @@ internal static class StorageBaselineScenario
             for (var noteIndex = 0; noteIndex < count; noteIndex++)
             {
                 var globalIndex = bucketIndex * notesPerBucket + Math.Min(bucketIndex, remainder) + noteIndex;
-                bucket.Notes.Add(new ZetlNote
+                bucket.Slips.Add(new ZetlSlip
                 {
                     Id = $"note-{globalIndex:D6}",
                     Text = $"Baseline note {globalIndex:D6}: representative captured text for JSON storage measurement.",

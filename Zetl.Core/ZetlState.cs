@@ -76,7 +76,10 @@ internal sealed class ZetlBucket
     public string DefaultStartingText { get; set; } = "";
     public int DefaultTsvRowLength { get; set; } = 5;
     public bool PopMode { get; set; }
-    public string? FifoReviewBucketId { get; set; }
+    // Preserve the historical JSON field name while using Replay terminology
+    // throughout active code.
+    [System.Text.Json.Serialization.JsonPropertyName("fifoReviewBucketId")]
+    public string? ReplayReviewBucketId { get; set; }
     // Per-bucket heading styling for rendered views (the bucket's title in the
     // all-buckets layouts). Align "" (left) / "center" / "right"; Bold; Level 1/2/3
     // sizes the heading (0 = automatic). Honored by HTML/PDF/on-screen; Markdown
@@ -84,7 +87,16 @@ internal sealed class ZetlBucket
     public string HeadingAlign { get; set; } = "";
     public bool HeadingBold { get; set; }
     public int HeadingLevel { get; set; }
-    public List<ZetlNote> Notes { get; set; } = new();
+    [System.Text.Json.Serialization.JsonPropertyName("notes")]
+    public List<ZetlSlip> Slips { get; set; } = new();
+
+    // Transitional source alias. Persisted JSON is owned by Slips above.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<ZetlSlip> Notes
+    {
+        get => Slips;
+        set => Slips = value;
+    }
 }
 
 internal sealed record BucketDisplayItem(ZetlBucket Bucket, string Label)
@@ -95,15 +107,18 @@ internal sealed record BucketDisplayItem(ZetlBucket Bucket, string Label)
     }
 }
 
-internal sealed record NoteDisplayItem(ZetlBucket Bucket, ZetlNote Note, string Label)
+internal sealed record SlipDisplayItem(ZetlBucket Bucket, ZetlSlip Slip, string Label)
 {
+    // Transitional member alias for callers not yet migrated.
+    public ZetlSlip Note => Slip;
+
     public override string ToString()
     {
         return Label;
     }
 }
 
-internal sealed class ZetlNote
+internal sealed class ZetlSlip
 {
     public const string TextKind = "Text";
     public const string ImageKind = "Image";
@@ -738,7 +753,7 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public ZetlNote AddNote(
+    public ZetlSlip AddNote(
         ZetlBucket bucket,
         string text,
         string source,
@@ -746,7 +761,7 @@ internal sealed class ZetlStateStore
         AddNote(bucket, text, source, null, null, captureOrigin);
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public ZetlNote AddNote(
+    public ZetlSlip AddNote(
         ZetlBucket bucket,
         string text,
         string source,
@@ -755,7 +770,7 @@ internal sealed class ZetlStateStore
         ZetlCaptureOrigin? captureOrigin = null,
         string? title = null)
     {
-        var note = new ZetlNote
+        var note = new ZetlSlip
         {
             Id = NewId(),
             Title = (title ?? "").Trim(),
@@ -765,12 +780,12 @@ internal sealed class ZetlStateStore
             CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow,
             CaptureOrigin = captureOrigin
         };
-        bucket.Notes.Add(note);
+        bucket.Slips.Add(note);
         PersistBucket(bucket);
         return note;
     }
 
-    public ZetlNote AddImageNote(
+    public ZetlSlip AddImageNote(
         ZetlProject project,
         ZetlBucket bucket,
         ZetlClipboardImage image,
@@ -793,10 +808,10 @@ internal sealed class ZetlStateStore
             System.Security.Cryptography.SHA256.HashData(image.PngBytes))
             .ToLowerInvariant();
         var relativePath = storage.WriteAsset(project, hash, ".png", image.PngBytes);
-        var note = new ZetlNote
+        var note = new ZetlSlip
         {
             Id = NewId(),
-            ContentKind = ZetlNote.ImageKind,
+            ContentKind = ZetlSlip.ImageKind,
             Text = (caption ?? "").Trim(),
             Image = new ZetlImageAsset
             {
@@ -812,19 +827,19 @@ internal sealed class ZetlStateStore
             CreatedAtUtc = DateTime.UtcNow,
             CaptureOrigin = captureOrigin
         };
-        bucket.Notes.Add(note);
+        bucket.Slips.Add(note);
         PersistProject(project);
         return note;
     }
 
-    public byte[]? ReadImageAsset(ZetlProject project, ZetlNote note)
+    public byte[]? ReadImageAsset(ZetlProject project, ZetlSlip note)
     {
         return note.IsImage && note.Image is not null
             ? storage.ReadAsset(project, note.Image.RelativePath)
             : null;
     }
 
-    public string? GetImageAssetPath(ZetlProject project, ZetlNote note)
+    public string? GetImageAssetPath(ZetlProject project, ZetlSlip note)
     {
         return note.IsImage && note.Image is not null
             ? storage.GetAssetPath(project, note.Image.RelativePath)
@@ -838,9 +853,9 @@ internal sealed class ZetlStateStore
     // Used by a structured compile-to-bucket that keeps notes separate instead
     // of flattening them into one combined note.
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public IReadOnlyList<ZetlNote> AddNotes(ZetlBucket bucket, IEnumerable<string> texts, string source)
+    public IReadOnlyList<ZetlSlip> AddNotes(ZetlBucket bucket, IEnumerable<string> texts, string source)
     {
-        var added = new List<ZetlNote>();
+        var added = new List<ZetlSlip>();
         foreach (var text in texts)
         {
             var trimmed = (text ?? "").Trim();
@@ -849,7 +864,7 @@ internal sealed class ZetlStateStore
                 continue;
             }
 
-            var note = new ZetlNote
+            var note = new ZetlSlip
             {
                 Id = NewId(),
                 Text = trimmed,
@@ -857,7 +872,7 @@ internal sealed class ZetlStateStore
                 SessionId = sessionId,
                 CreatedAtUtc = DateTime.UtcNow
             };
-            bucket.Notes.Add(note);
+            bucket.Slips.Add(note);
             added.Add(note);
         }
 
@@ -909,7 +924,7 @@ internal sealed class ZetlStateStore
                 continue;
             }
 
-            bucket.Notes.Add(new ZetlNote
+            bucket.Slips.Add(new ZetlSlip
             {
                 Id = NewId(),
                 Text = trimmed,
@@ -919,9 +934,9 @@ internal sealed class ZetlStateStore
             });
         }
 
-        if (bucket.Notes.Count > maxNotesPerBucket)
+        if (bucket.Slips.Count > maxNotesPerBucket)
         {
-            bucket.Notes.RemoveRange(0, bucket.Notes.Count - maxNotesPerBucket);
+            bucket.Slips.RemoveRange(0, bucket.Slips.Count - maxNotesPerBucket);
         }
 
         // Day-bucket names are yyyy-MM-dd, so ordinal-descending order is newest
@@ -941,19 +956,19 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void DeleteNote(ZetlBucket bucket, string noteId)
     {
-        var note = bucket.Notes.FirstOrDefault(item => item.Id == noteId);
+        var note = bucket.Slips.FirstOrDefault(item => item.Id == noteId);
         if (note is null)
         {
             return;
         }
 
-        bucket.Notes.Remove(note);
+        bucket.Slips.Remove(note);
         PersistBucket(bucket);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void UpdateNote(
-        ZetlNote note,
+        ZetlSlip note,
         string text,
         string? title = null,
         bool? excludedFromViews = null,
@@ -1029,7 +1044,7 @@ internal sealed class ZetlStateStore
             return;
         }
 
-        if (IsFifoBucket(bucket))
+        if (IsReplayBucket(bucket))
         {
             bucket.PopMode = false;
             bucket.Revision++;
@@ -1054,7 +1069,7 @@ internal sealed class ZetlStateStore
         }
 
         bucket.Kind = NormalizeBucketKind(kind);
-        if (IsFifoBucket(bucket))
+        if (IsReplayBucket(bucket))
         {
             bucket.PopMode = false;
         }
@@ -1085,7 +1100,7 @@ internal sealed class ZetlStateStore
             bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
             bucket.DefaultStartingText = (defaultStartingText ?? "").Trim();
             bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
-            if (IsFifoBucket(bucket))
+            if (IsReplayBucket(bucket))
             {
                 bucket.PopMode = false;
             }
@@ -1097,7 +1112,7 @@ internal sealed class ZetlStateStore
             bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
             bucket.DefaultStartingText = (defaultStartingText ?? "").Trim();
             bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
-            if (IsFifoBucket(bucket))
+            if (IsReplayBucket(bucket))
             {
                 bucket.PopMode = false;
             }
@@ -1148,8 +1163,8 @@ internal sealed class ZetlStateStore
         bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
         bucket.DefaultStartingText = (defaultStartingText ?? "").Trim();
         bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
-        bucket.PopMode = !IsFifoBucket(bucket) && popMode;
-        bucket.FifoReviewBucketId = replayReviewBucketId != bucket.Id
+        bucket.PopMode = !IsReplayBucket(bucket) && popMode;
+        bucket.ReplayReviewBucketId = replayReviewBucketId != bucket.Id
             && project.Buckets.Any(item => item.Id == replayReviewBucketId && !IsDeletedBucket(item))
                 ? replayReviewBucketId
                 : null;
@@ -1158,10 +1173,10 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool MoveNote(ZetlProject project, ZetlNote note, ZetlBucket destination)
+    public bool MoveNote(ZetlProject project, ZetlSlip note, ZetlBucket destination)
     {
         var source = project.Buckets.FirstOrDefault(bucket =>
-            bucket.Notes.Any(item => item.Id == note.Id));
+            bucket.Slips.Any(item => item.Id == note.Id));
         if (source is null
             || project.Buckets.All(bucket => bucket.Id != destination.Id)
             || source.Id == destination.Id)
@@ -1169,8 +1184,8 @@ internal sealed class ZetlStateStore
             return false;
         }
 
-        source.Notes.RemoveAll(item => item.Id == note.Id);
-        destination.Notes.Add(note);
+        source.Slips.RemoveAll(item => item.Id == note.Id);
+        destination.Slips.Add(note);
         if (IsDeletedBucket(destination))
         {
             note.DeletedFromBucketId = source.Id;
@@ -1188,24 +1203,24 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool ReorderNote(ZetlProject project, ZetlNote note, string? beforeNoteId)
+    public bool ReorderNote(ZetlProject project, ZetlSlip note, string? beforeNoteId)
     {
         var bucket = project.Buckets.FirstOrDefault(bucket =>
-            bucket.Notes.Any(item => item.Id == note.Id));
+            bucket.Slips.Any(item => item.Id == note.Id));
         if (bucket is null)
         {
             return false;
         }
 
-        var currentIndex = bucket.Notes.FindIndex(item => item.Id == note.Id);
+        var currentIndex = bucket.Slips.FindIndex(item => item.Id == note.Id);
         int targetIndex;
         if (beforeNoteId is null)
         {
-            targetIndex = bucket.Notes.Count;
+            targetIndex = bucket.Slips.Count;
         }
         else
         {
-            var anchorIndex = bucket.Notes.FindIndex(item => item.Id == beforeNoteId);
+            var anchorIndex = bucket.Slips.FindIndex(item => item.Id == beforeNoteId);
             if (anchorIndex < 0)
             {
                 return false;
@@ -1214,14 +1229,14 @@ internal sealed class ZetlStateStore
             targetIndex = anchorIndex;
         }
 
-        bucket.Notes.RemoveAt(currentIndex);
+        bucket.Slips.RemoveAt(currentIndex);
         if (targetIndex > currentIndex)
         {
             targetIndex--;
         }
 
-        targetIndex = Math.Clamp(targetIndex, 0, bucket.Notes.Count);
-        bucket.Notes.Insert(targetIndex, note);
+        targetIndex = Math.Clamp(targetIndex, 0, bucket.Slips.Count);
+        bucket.Slips.Insert(targetIndex, note);
         note.Revision++;
         PersistProject(project);
         return true;
@@ -1231,7 +1246,7 @@ internal sealed class ZetlStateStore
     public void ToggleActiveBucketPopMode(bool shifted = false)
     {
         var bucket = GetActiveBucket(shifted);
-        if (bucket is null || IsFifoBucket(bucket))
+        if (bucket is null || IsReplayBucket(bucket))
         {
             return;
         }
@@ -1294,16 +1309,16 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryPopLastMatchingActiveNote(string text, bool shifted, out ZetlBucket? bucket, out ZetlNote? note)
+    public bool TryPopLastMatchingActiveNote(string text, bool shifted, out ZetlBucket? bucket, out ZetlSlip? note)
     {
         bucket = GetActiveBucket(shifted);
         note = null;
-        if (bucket is null || IsFifoBucket(bucket) || !bucket.PopMode || bucket.Notes.Count == 0)
+        if (bucket is null || IsReplayBucket(bucket) || !bucket.PopMode || bucket.Slips.Count == 0)
         {
             return false;
         }
 
-        var last = bucket.Notes.LastOrDefault(IsCurrentSessionNote);
+        var last = bucket.Slips.LastOrDefault(IsCurrentSessionNote);
         if (last is null)
         {
             return false;
@@ -1315,7 +1330,7 @@ internal sealed class ZetlStateStore
         }
 
         last.Revision++;
-        bucket.Notes.Remove(last);
+        bucket.Slips.Remove(last);
         note = last;
         PersistBucket(bucket);
         return true;
@@ -1325,16 +1340,16 @@ internal sealed class ZetlStateStore
         string sha256,
         bool shifted,
         out ZetlBucket? bucket,
-        out ZetlNote? note)
+        out ZetlSlip? note)
     {
         bucket = GetActiveBucket(shifted);
         note = null;
-        if (bucket is null || IsFifoBucket(bucket) || !bucket.PopMode)
+        if (bucket is null || IsReplayBucket(bucket) || !bucket.PopMode)
         {
             return false;
         }
 
-        var last = bucket.Notes.LastOrDefault(IsCurrentSessionNote);
+        var last = bucket.Slips.LastOrDefault(IsCurrentSessionNote);
         if (last?.IsImage != true
             || last.Image is null
             || !string.Equals(last.Image.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
@@ -1342,42 +1357,42 @@ internal sealed class ZetlStateStore
             return false;
         }
 
-        bucket.Notes.Remove(last);
+        bucket.Slips.Remove(last);
         note = last;
         PersistBucket(bucket);
         return true;
     }
 
-    public bool TryPeekNextFifoNote(ZetlBucket? bucket, out ZetlNote? note)
+    public bool TryPeekNextReplayNote(ZetlBucket? bucket, out ZetlSlip? note)
     {
-        if (bucket is null || !IsFifoBucket(bucket))
+        if (bucket is null || !IsReplayBucket(bucket))
         {
             note = null;
             return false;
         }
 
-        note = bucket.Notes.FirstOrDefault(item =>
+        note = bucket.Slips.FirstOrDefault(item =>
             IsCurrentSessionNote(item)
             && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
         return note is not null;
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryConsumeFifoNote(ZetlBucket bucket, string noteId)
+    public bool TryConsumeReplayNote(ZetlBucket bucket, string noteId)
     {
-        return TryConsumeFifoNote(bucket, noteId, out _);
+        return TryConsumeReplayNote(bucket, noteId, out _);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryConsumeFifoNote(ZetlBucket bucket, string noteId, out ZetlNote? consumedNote)
+    public bool TryConsumeReplayNote(ZetlBucket bucket, string noteId, out ZetlSlip? consumedNote)
     {
-        if (!IsFifoBucket(bucket))
+        if (!IsReplayBucket(bucket))
         {
             consumedNote = null;
             return false;
         }
 
-        var note = bucket.Notes.FirstOrDefault(item => item.Id == noteId && IsCurrentSessionNote(item));
+        var note = bucket.Slips.FirstOrDefault(item => item.Id == noteId && IsCurrentSessionNote(item));
         if (note is null)
         {
             consumedNote = null;
@@ -1385,48 +1400,48 @@ internal sealed class ZetlStateStore
         }
 
         note.Revision++;
-        bucket.Notes.Remove(note);
+        bucket.Slips.Remove(note);
         consumedNote = note;
         PersistBucket(bucket);
         return true;
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryConsumeFifoNoteToReview(ZetlProject project, ZetlBucket bucket, string noteId, out ZetlBucket? reviewBucket)
+    public bool TryConsumeReplayNoteToReview(ZetlProject project, ZetlBucket bucket, string noteId, out ZetlBucket? reviewBucket)
     {
-        return TryConsumeFifoNoteToReview(project, bucket, noteId, out reviewBucket, out _, out _);
+        return TryConsumeReplayNoteToReview(project, bucket, noteId, out reviewBucket, out _, out _);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryConsumeFifoNoteToReview(
+    public bool TryConsumeReplayNoteToReview(
         ZetlProject project,
         ZetlBucket bucket,
         string noteId,
         out ZetlBucket? reviewBucket,
-        out ZetlNote? consumedNote,
-        out ZetlNote? reviewNote)
+        out ZetlSlip? consumedNote,
+        out ZetlSlip? reviewNote)
     {
         reviewBucket = null;
         consumedNote = null;
         reviewNote = null;
-        if (!IsFifoBucket(bucket))
+        if (!IsReplayBucket(bucket))
         {
             return false;
         }
 
-        var note = bucket.Notes.FirstOrDefault(item => item.Id == noteId && IsCurrentSessionNote(item));
+        var note = bucket.Slips.FirstOrDefault(item => item.Id == noteId && IsCurrentSessionNote(item));
         if (note is null)
         {
             return false;
         }
 
         note.Revision++;
-        bucket.Notes.Remove(note);
+        bucket.Slips.Remove(note);
         consumedNote = note;
         if (note.IsImage || !string.IsNullOrWhiteSpace(note.Text))
         {
-            reviewBucket = GetOrCreateFifoReviewBucket(project, bucket);
-            reviewNote = new ZetlNote
+            reviewBucket = GetOrCreateReplayReviewBucket(project, bucket);
+            reviewNote = new ZetlSlip
             {
                 Id = NewId(),
                 ContentKind = note.ContentKind,
@@ -1448,7 +1463,7 @@ internal sealed class ZetlStateStore
                 CreatedAtUtc = DateTime.UtcNow,
                 CaptureOrigin = note.CaptureOrigin
             };
-            reviewBucket.Notes.Add(reviewNote);
+            reviewBucket.Slips.Add(reviewNote);
         }
 
         PersistProject(project);
@@ -1456,39 +1471,39 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public void RestoreNote(ZetlBucket bucket, ZetlNote note, bool insertAtFront = false)
+    public void RestoreNote(ZetlBucket bucket, ZetlSlip note, bool insertAtFront = false)
     {
-        if (bucket.Notes.Any(item => item.Id == note.Id))
+        if (bucket.Slips.Any(item => item.Id == note.Id))
         {
             return;
         }
 
         if (insertAtFront)
         {
-            bucket.Notes.Insert(0, note);
+            bucket.Slips.Insert(0, note);
         }
         else
         {
-            bucket.Notes.Add(note);
+            bucket.Slips.Add(note);
         }
 
         PersistBucket(bucket);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public void RestoreFifoConsumedNote(ZetlBucket bucket, ZetlNote note, ZetlBucket? reviewBucket, string? reviewNoteId)
+    public void RestoreReplayConsumedNote(ZetlBucket bucket, ZetlSlip note, ZetlBucket? reviewBucket, string? reviewNoteId)
     {
         bucket.Kind = "Replay";
         bucket.PopMode = false;
         bucket.Revision++;
         if (reviewBucket is not null && reviewNoteId is not null)
         {
-            reviewBucket.Notes.RemoveAll(item => item.Id == reviewNoteId);
+            reviewBucket.Slips.RemoveAll(item => item.Id == reviewNoteId);
         }
 
-        if (bucket.Notes.All(item => item.Id != note.Id))
+        if (bucket.Slips.All(item => item.Id != note.Id))
         {
-            bucket.Notes.Insert(0, note);
+            bucket.Slips.Insert(0, note);
         }
 
         PersistBucket(bucket);
@@ -1501,7 +1516,7 @@ internal sealed class ZetlStateStore
         {
             var depth = BucketDepth(bucket, project.Buckets);
             parts.Add(IndentedLine(bucket.Name.Trim(), depth));
-            parts.AddRange(bucket.Notes
+            parts.AddRange(bucket.Slips
                 .Where(note => !note.IsImage)
                 .Select(note => IndentedText(note.Text, depth + 1)));
             parts.Add("");
@@ -1510,7 +1525,7 @@ internal sealed class ZetlStateStore
         return string.Join(Environment.NewLine, parts).TrimEnd();
     }
 
-    public string CompilePlainTextFromNotes(ZetlProject project, IEnumerable<NoteDisplayItem> selectedNotes)
+    public string CompilePlainTextFromNotes(ZetlProject project, IEnumerable<SlipDisplayItem> selectedNotes)
     {
         var parts = new List<string> { project.Name.Trim(), "" };
         foreach (var group in selectedNotes.GroupBy(item => item.Bucket))
@@ -1526,7 +1541,7 @@ internal sealed class ZetlStateStore
         return string.Join(Environment.NewLine, parts).TrimEnd();
     }
 
-    public string CompileUnformattedFromNotes(IEnumerable<NoteDisplayItem> selectedNotes)
+    public string CompileUnformattedFromNotes(IEnumerable<SlipDisplayItem> selectedNotes)
     {
         return string.Join(
             Environment.NewLine,
@@ -1535,7 +1550,7 @@ internal sealed class ZetlStateStore
                 .Where(text => text.Length > 0));
     }
 
-    public string CompileTsvFromNotes(ZetlProject project, IEnumerable<NoteDisplayItem> selectedNotes, int rowLength)
+    public string CompileTsvFromNotes(ZetlProject project, IEnumerable<SlipDisplayItem> selectedNotes, int rowLength)
     {
         var normalizedRowLength = Math.Max(1, rowLength);
         var parts = new List<string> { project.Name.Trim() };
@@ -1604,38 +1619,38 @@ internal sealed class ZetlStateStore
     // Compile operates on the whole project by default. Passing
     // currentSessionOnly narrows it to notes captured this session, which the
     // compile dialog exposes as a "This session only" toggle.
-    public IReadOnlyList<NoteDisplayItem> GetNoteDisplayItems(ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope = null, bool currentSessionOnly = false)
+    public IReadOnlyList<SlipDisplayItem> GetSlipDisplayItems(ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope = null, bool currentSessionOnly = false)
     {
         var scopedBucketIds = bucketScope?.Select(bucket => bucket.Id).ToHashSet(StringComparer.Ordinal);
-        var result = new List<NoteDisplayItem>();
+        var result = new List<SlipDisplayItem>();
         foreach (var bucketItem in GetBucketDisplayItems(project)
             .Where(item => scopedBucketIds is null || scopedBucketIds.Contains(item.Bucket.Id)))
         {
-            foreach (var note in bucketItem.Bucket.Notes.Where(note => IsCompilableNote(note, currentSessionOnly)))
+            foreach (var note in bucketItem.Bucket.Slips.Where(note => IsCompilableNote(note, currentSessionOnly)))
             {
-                result.Add(new NoteDisplayItem(bucketItem.Bucket, note, $"{bucketItem.Label.Trim()}: {PreviewText(note.Text)}"));
+                result.Add(new SlipDisplayItem(bucketItem.Bucket, note, $"{bucketItem.Label.Trim()}: {PreviewText(note.Text)}"));
             }
         }
 
         return result;
     }
 
-    public bool TryGetLastNoteDisplayItem(ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope, out NoteDisplayItem? note, bool currentSessionOnly = false)
+    public bool TryGetLastSlipDisplayItem(ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope, out SlipDisplayItem? slip, bool currentSessionOnly = false)
     {
-        note = GetNoteDisplayItems(project, bucketScope, currentSessionOnly)
+        slip = GetSlipDisplayItems(project, bucketScope, currentSessionOnly)
             .OrderByDescending(item => item.Note.CreatedAtUtc)
             .FirstOrDefault();
-        return note is not null;
+        return slip is not null;
     }
 
     public bool HasCompilableNotes(ZetlProject project, bool currentSessionOnly = false)
     {
         return project.Buckets.Any(bucket =>
             !IsDeletedBucket(bucket)
-            && bucket.Notes.Any(note => IsCompilableNote(note, currentSessionOnly)));
+            && bucket.Slips.Any(note => IsCompilableNote(note, currentSessionOnly)));
     }
 
-    private bool IsCompilableNote(ZetlNote note, bool currentSessionOnly)
+    private bool IsCompilableNote(ZetlSlip note, bool currentSessionOnly)
     {
         return (!currentSessionOnly || IsCurrentSessionNote(note)) && !string.IsNullOrWhiteSpace(note.Text);
     }
@@ -1653,7 +1668,7 @@ internal sealed class ZetlStateStore
                 project,
                 latest = project.Buckets
                     .Where(bucket => !IsDeletedBucket(bucket))
-                    .SelectMany(bucket => bucket.Notes)
+                    .SelectMany(bucket => bucket.Slips)
                     .Select(note => (DateTime?)note.CreatedAtUtc)
                     .Max()
             })
@@ -1679,7 +1694,7 @@ internal sealed class ZetlStateStore
                 : "Scratch";
             var scratch = candidate.Buckets.FirstOrDefault(bucket =>
                 string.Equals(bucket.Name, scratchName, StringComparison.OrdinalIgnoreCase)
-                && bucket.Notes.Any(note => IsCurrentSessionNote(note) && !string.IsNullOrWhiteSpace(note.Text)));
+                && bucket.Slips.Any(note => IsCurrentSessionNote(note) && !string.IsNullOrWhiteSpace(note.Text)));
             if (scratch is not null)
             {
                 project = candidate;
@@ -1737,7 +1752,7 @@ internal sealed class ZetlStateStore
         PersistProject(owner);
     }
 
-    private void PersistNote(ZetlNote note)
+    private void PersistNote(ZetlSlip note)
     {
         var owner = OwnerProjectOfNote(note);
         if (owner is null)
@@ -1816,10 +1831,10 @@ internal sealed class ZetlStateStore
         return State.Projects.FirstOrDefault(project => project.Buckets.Any(item => item.Id == bucket.Id));
     }
 
-    private ZetlProject? OwnerProjectOfNote(ZetlNote note)
+    private ZetlProject? OwnerProjectOfNote(ZetlSlip note)
     {
         return State.Projects.FirstOrDefault(project =>
-            project.Buckets.Any(bucket => bucket.Notes.Any(item => item.Id == note.Id)));
+            project.Buckets.Any(bucket => bucket.Slips.Any(item => item.Id == note.Id)));
     }
 
     private ZetlWorkspaceFile BuildWorkspaceFile()
@@ -1873,10 +1888,10 @@ internal sealed class ZetlStateStore
                 bucket.ParentBucketId = null;
             }
 
-            if (bucket.FifoReviewBucketId == bucket.Id
-                || project.Buckets.All(candidate => candidate.Id != bucket.FifoReviewBucketId || IsDeletedBucket(candidate)))
+            if (bucket.ReplayReviewBucketId == bucket.Id
+                || project.Buckets.All(candidate => candidate.Id != bucket.ReplayReviewBucketId || IsDeletedBucket(candidate)))
             {
-                bucket.FifoReviewBucketId = null;
+                bucket.ReplayReviewBucketId = null;
             }
 
             bucket.Kind = NormalizeBucketKind(bucket.Kind);
@@ -1892,20 +1907,20 @@ internal sealed class ZetlStateStore
                 EnsureDeletedBucketShape(bucket);
             }
 
-            if (IsFifoBucket(bucket))
+            if (IsReplayBucket(bucket))
             {
                 bucket.PopMode = false;
             }
-            bucket.Notes ??= new List<ZetlNote>();
-            foreach (var note in bucket.Notes)
+            bucket.Slips ??= new List<ZetlSlip>();
+            foreach (var note in bucket.Slips)
             {
                 note.Id = string.IsNullOrWhiteSpace(note.Id) ? NewId() : note.Id;
                 note.Revision = Math.Max(note.Revision, 1);
                 note.Title ??= "";
                 note.Text ??= "";
                 note.ContentKind = note.Image is not null
-                    ? ZetlNote.ImageKind
-                    : ZetlNote.TextKind;
+                    ? ZetlSlip.ImageKind
+                    : ZetlSlip.TextKind;
                 note.Source ??= "";
                 if (note.CreatedAtUtc == default)
                 {
@@ -1968,7 +1983,7 @@ internal sealed class ZetlStateStore
         bucket.Kind = DeletedBucketKind;
         bucket.DefaultKind = DeletedBucketKind;
         bucket.PopMode = false;
-        bucket.FifoReviewBucketId = null;
+        bucket.ReplayReviewBucketId = null;
     }
 
     // Stamp a freshly created bucket with the user's default compile mode and
@@ -2018,7 +2033,7 @@ internal sealed class ZetlStateStore
     private void CopyImageAssets(ZetlProject targetProject, ZetlProject sourceProject)
     {
         foreach (var note in sourceProject.Buckets
-            .SelectMany(bucket => bucket.Notes)
+            .SelectMany(bucket => bucket.Slips)
             .Where(note => note.IsImage && note.Image is not null))
         {
             var bytes = storage.ReadAsset(sourceProject, note.Image!.RelativePath);
@@ -2063,19 +2078,19 @@ internal sealed class ZetlStateStore
                     DefaultCompileMode = NormalizeCompileMode(sourceBucket.DefaultCompileMode),
                     DefaultStartingText = (sourceBucket.DefaultStartingText ?? "").Trim(),
                     DefaultTsvRowLength = sourceBucket.DefaultTsvRowLength <= 0 ? 5 : sourceBucket.DefaultTsvRowLength,
-                    PopMode = !IsFifoKind(sourceKind) && sourceBucket.PopMode,
-                    Notes = new List<ZetlNote>()
+                    PopMode = !IsReplayKindValue(sourceKind) && sourceBucket.PopMode,
+                    Slips = new List<ZetlSlip>()
                 };
                 targetProject.Buckets.Add(targetBucket);
             }
             else
             {
-                if (IsFifoKind(sourceKind))
+                if (IsReplayKindValue(sourceKind))
                 {
                     targetBucket.Kind = sourceKind;
                     targetBucket.PopMode = false;
                 }
-                else if (!IsFifoBucket(targetBucket))
+                else if (!IsReplayBucket(targetBucket))
                 {
                     targetBucket.PopMode |= sourceBucket.PopMode;
                 }
@@ -2089,9 +2104,9 @@ internal sealed class ZetlStateStore
                 targetBucket.DefaultTsvRowLength = sourceBucket.DefaultTsvRowLength <= 0 ? 5 : sourceBucket.DefaultTsvRowLength;
             }
 
-            foreach (var note in sourceBucket.Notes)
+            foreach (var note in sourceBucket.Slips)
             {
-                targetBucket.Notes.Add(note);
+                targetBucket.Slips.Add(note);
             }
 
             bucketMap[sourceBucket.Id] = targetBucket;
@@ -2099,12 +2114,12 @@ internal sealed class ZetlStateStore
 
         foreach (var sourceBucket in sourceProject.Buckets)
         {
-            if (sourceBucket.FifoReviewBucketId is not null
+            if (sourceBucket.ReplayReviewBucketId is not null
                 && bucketMap.TryGetValue(sourceBucket.Id, out var targetBucket)
-                && bucketMap.TryGetValue(sourceBucket.FifoReviewBucketId, out var targetReviewBucket)
+                && bucketMap.TryGetValue(sourceBucket.ReplayReviewBucketId, out var targetReviewBucket)
                 && targetBucket.Id != targetReviewBucket.Id)
             {
-                targetBucket.FifoReviewBucketId = targetReviewBucket.Id;
+                targetBucket.ReplayReviewBucketId = targetReviewBucket.Id;
             }
         }
 
@@ -2220,7 +2235,7 @@ internal sealed class ZetlStateStore
         return normalized.Length == 0 ? fallback : normalized;
     }
 
-    private bool IsCurrentSessionNote(ZetlNote note)
+    private bool IsCurrentSessionNote(ZetlSlip note)
     {
         return string.Equals(note.SessionId, sessionId, StringComparison.Ordinal);
     }
@@ -2256,9 +2271,9 @@ internal sealed class ZetlStateStore
         }
     }
 
-    public static bool IsFifoBucket(ZetlBucket bucket)
+    public static bool IsReplayBucket(ZetlBucket bucket)
     {
-        return IsFifoKind(bucket.Kind);
+        return IsReplayKindValue(bucket.Kind);
     }
 
     // The Scratch bucket is special (always present, the quick-note default)
@@ -2282,10 +2297,10 @@ internal sealed class ZetlStateStore
     // "Fifo" value as well).
     public static bool IsReplayKind(string? kind)
     {
-        return IsFifoKind(kind);
+        return IsReplayKindValue(kind);
     }
 
-    private static bool IsFifoKind(string? kind)
+    private static bool IsReplayKindValue(string? kind)
     {
         // "Replay" is the stored value; "Fifo" is the legacy value from older
         // state files, mapped forward to "Replay" by NormalizeBucketKind.
@@ -2333,7 +2348,7 @@ internal sealed class ZetlStateStore
             return DeletedBucketKind;
         }
 
-        return IsFifoKind(kind) ? "Replay" : "Standard";
+        return IsReplayKindValue(kind) ? "Replay" : "Standard";
     }
 
     private static string NormalizeCompileMode(string? mode)
@@ -2351,21 +2366,21 @@ internal sealed class ZetlStateStore
         return "Formatted";
     }
 
-    private ZetlBucket GetOrCreateFifoReviewBucket(ZetlProject project, ZetlBucket fifoBucket)
+    private ZetlBucket GetOrCreateReplayReviewBucket(ZetlProject project, ZetlBucket replayBucket)
     {
-        if (fifoBucket.FifoReviewBucketId is not null)
+        if (replayBucket.ReplayReviewBucketId is not null)
         {
             var existingReviewBucket = project.Buckets.FirstOrDefault(bucket =>
-                bucket.Id == fifoBucket.FifoReviewBucketId && bucket.Id != fifoBucket.Id);
+                bucket.Id == replayBucket.ReplayReviewBucketId && bucket.Id != replayBucket.Id);
             if (existingReviewBucket is not null)
             {
                 return existingReviewBucket;
             }
         }
 
-        var reviewBucketName = NormalizeName($"{fifoBucket.Name} Review", "Replay Review");
+        var reviewBucketName = NormalizeName($"{replayBucket.Name} Review", "Replay Review");
         var reviewBucket = project.Buckets.FirstOrDefault(bucket =>
-            bucket.Id != fifoBucket.Id
+            bucket.Id != replayBucket.Id
             && string.Equals(bucket.Name, reviewBucketName, StringComparison.OrdinalIgnoreCase));
         if (reviewBucket is null)
         {
@@ -2375,8 +2390,8 @@ internal sealed class ZetlStateStore
 
         reviewBucket.Kind = "Standard";
         reviewBucket.PopMode = false;
-        fifoBucket.FifoReviewBucketId = reviewBucket.Id;
-        fifoBucket.Revision++;
+        replayBucket.ReplayReviewBucketId = reviewBucket.Id;
+        replayBucket.Revision++;
         return reviewBucket;
     }
 

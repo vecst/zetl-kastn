@@ -4,7 +4,7 @@ namespace ZETL;
 
 // The hand-rolled Markdown layer for slip text (UI roadmap item 7). Intentionally a
 // small subset — inline emphasis, code, and links — parsed into one AST that every
-// renderer walks: HTML here, and MigraDoc/Avalonia inlines in the head. Unmatched
+// renderer walks: HTML here, and MigraDoc/Avalonia inlines in the applications. Unmatched
 // delimiters fall back to literal text, so plain text is always valid input and the
 // literal views (Formatted/Plain/TSV) can keep ignoring it and render verbatim.
 

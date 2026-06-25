@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace ZETL;
 
-// Shared Win32 P/Invoke surface for the Avalonia head. Centralizes the
+// Shared Win32 P/Invoke surface for the Avalonia application. Centralizes the
 // user32/kernel32 entry points that were otherwise redeclared across the
 // keyboard hook, the foreground/activation helper, and the click-away monitor.
 // Single-use imports (clipboard, SendInput, the mouse-hook-only helpers) stay

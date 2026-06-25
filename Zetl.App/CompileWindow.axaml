@@ -5,7 +5,7 @@
         MinWidth="900" MinHeight="560"
         SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
-        Title="Compile Zetl Notes">
+        Title="Compile Zetl Slips">
   <Grid Margin="{DynamicResource ZetlWindowPadding}"
         RowDefinitions="Auto,*,Auto,Auto,Auto"
         RowSpacing="10">
@@ -27,7 +27,7 @@
       <Grid Grid.Column="0" RowDefinitions="Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
           <TextBlock Grid.Column="0"
-                     Text="Notes"
+                     Text="Slips"
                      FontWeight="SemiBold"
                      VerticalAlignment="Center" />
           <Button Grid.Column="1"
@@ -47,7 +47,7 @@
             <Grid Margin="8">
               <StackPanel x:Name="selectionHost" Spacing="8" />
               <TextBlock x:Name="emptySelectionText"
-                         Text="No notes match this source and session filter."
+                         Text="No slips match this source and session filter."
                          TextWrapping="Wrap"
                          Opacity="0.7"
                          Margin="4"
@@ -111,7 +111,7 @@
                 IsEditable="True" />
       <CheckBox Grid.Column="3"
                 x:Name="flattenCheck"
-                Content="Flatten into one note"
+                Content="Flatten into one slip"
                 VerticalAlignment="Center"
                 Margin="12,0,0,0" />
     </Grid>

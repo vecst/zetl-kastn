@@ -2,8 +2,7 @@ using Avalonia.Controls;
 
 namespace ZETL;
 
-// Avalonia port of ProjectSetupForm. The result properties intentionally match
-// the WinForms dialog so shared orchestration can consume either implementation.
+// Project setup window. Result properties form its host-facing contract.
 internal partial class ProjectSetupWindow : Window
 {
     // The bucket text restored when "Custom buckets" is reselected after a

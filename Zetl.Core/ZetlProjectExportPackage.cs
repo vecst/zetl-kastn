@@ -50,9 +50,9 @@ internal static class ZetlProjectExportPackage
 
         var snapshot = ZetlProjectExportSnapshot.Create(project, includeCaptureOrigins);
         var referencedAssets = snapshot.Buckets
-            .SelectMany(bucket => bucket.Notes)
-            .Where(note => note.IsImage && note.Image is not null)
-            .Select(note => note.Image!.RelativePath.Replace('\\', '/'))
+            .SelectMany(bucket => bucket.Slips)
+            .Where(slip => slip.IsImage && slip.Image is not null)
+            .Select(slip => slip.Image!.RelativePath.Replace('\\', '/'))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var assetFiles = (assets ?? [])

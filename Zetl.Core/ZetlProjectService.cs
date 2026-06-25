@@ -763,7 +763,7 @@ internal sealed class ZetlProjectService
 
         var payload = Payload<ReorderSlipCommand>(command);
         if (payload.BeforeSlipId is not null
-            && bucket.Notes.All(item => item.Id != payload.BeforeSlipId))
+            && bucket.Slips.All(item => item.Id != payload.BeforeSlipId))
         {
             return ValidationError(
                 command,
@@ -890,7 +890,7 @@ internal sealed class ZetlProjectService
         return project is null || bucket is null ? null : (project, bucket);
     }
 
-    private (ZetlProject Project, ZetlBucket Bucket, ZetlNote Note)? FindNote(
+    private (ZetlProject Project, ZetlBucket Bucket, ZetlSlip Slip)? FindNote(
         string projectId,
         string noteId)
     {
@@ -902,10 +902,10 @@ internal sealed class ZetlProjectService
 
         foreach (var bucket in project.Buckets)
         {
-            var note = bucket.Notes.FirstOrDefault(item => item.Id == noteId);
-            if (note is not null)
+            var slip = bucket.Slips.FirstOrDefault(item => item.Id == noteId);
+            if (slip is not null)
             {
-                return (project, bucket, note);
+                return (project, bucket, slip);
             }
         }
 

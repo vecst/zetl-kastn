@@ -634,7 +634,7 @@ internal partial class MainWindow : Window
                 project.MetadataRevision,
                 LandingProjectDetail(project),
                 string.IsNullOrWhiteSpace(project.PreviewText)
-                    ? "No notes yet"
+                    ? "No slips yet"
                     : project.PreviewText,
                 LandingProjectActivity(project),
                 project.Status));
@@ -671,7 +671,7 @@ internal partial class MainWindow : Window
     {
         return project.LastActivityUtc is null
             ? "No activity yet"
-            : $"Last note {project.LastActivityUtc.Value.LocalDateTime:g}";
+            : $"Last slip {project.LastActivityUtc.Value.LocalDateTime:g}";
     }
 
     private void RefreshFilterChoices(ZetlProjectSnapshot project)

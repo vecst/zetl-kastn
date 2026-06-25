@@ -57,7 +57,7 @@ public partial class App : Application
                 return;
             }
 
-            // DEV HARNESS: preview ported windows against throwaway data.
+            // DEV HARNESS: preview windows against throwaway data.
             // Each instance gets its own state directory so concurrent
             // previews never contend on the same files.
             var stateDir = Path.Combine(
@@ -111,7 +111,7 @@ public partial class App : Application
                 new ZetlNotificationEntry(DateTime.Now.AddMinutes(-3), "Queue replay is on."),
                 new ZetlNotificationEntry(DateTime.Now, "Compiled to Scratch in Preview.")
             };
-            if (bucket.Notes.Count == 0)
+            if (bucket.Slips.Count == 0)
             {
                 store.AddNote(
                     bucket,
@@ -125,7 +125,7 @@ public partial class App : Application
                 store.AddNote(bucket, "Test Replay and Pop behavior.", "manual");
             }
 
-            if (bucket.Notes.All(note => !note.IsImage))
+            if (bucket.Slips.All(slip => !slip.IsImage))
             {
                 store.AddImageNote(
                     project,
@@ -150,23 +150,23 @@ public partial class App : Application
 
             var ideasBucket = project.Buckets.FirstOrDefault(item => item.Name == "Ideas");
             if (ideasBucket is not null
-                && ideasBucket.Notes.All(note => note.Text != "Compare formatted and plain output."))
+                && ideasBucket.Slips.All(slip => slip.Text != "Compare formatted and plain output."))
             {
                 store.AddNote(ideasBucket, "Compare formatted and plain output.", "manual");
             }
 
             var nestedBucket = project.Buckets.First(item => item.Name == "Nested");
-            if (nestedBucket.Notes.All(note => note.Text != "Verify nested bucket selection."))
+            if (nestedBucket.Slips.All(slip => slip.Text != "Verify nested bucket selection."))
             {
                 store.AddNote(nestedBucket, "Verify nested bucket selection.", "manual");
             }
 
             const string currentSessionPreviewText = "Current-session compile preview.";
-            foreach (var note in bucket.Notes
-                .Where(note => note.Text == currentSessionPreviewText)
+            foreach (var slip in bucket.Slips
+                .Where(slip => slip.Text == currentSessionPreviewText)
                 .ToList())
             {
-                store.DeleteNote(bucket, note.Id);
+                store.DeleteNote(bucket, slip.Id);
             }
             store.AddNote(bucket, currentSessionPreviewText, "manual");
 
@@ -182,7 +182,7 @@ public partial class App : Application
 
             var secondProject = store.State.Projects.First(item => item.Name == "Second Project");
             var queueBucket = secondProject.Buckets.First(item => item.Name == "Queue");
-            if (queueBucket.Notes.All(note => note.Text != "Compile from another project."))
+            if (queueBucket.Slips.All(slip => slip.Text != "Compile from another project."))
             {
                 store.AddNote(queueBucket, "Compile from another project.", "manual");
             }
@@ -336,7 +336,7 @@ public partial class App : Application
         ZetlBucket bucket)
     {
         var note = project.Buckets
-            .SelectMany(item => item.Notes)
+            .SelectMany(item => item.Slips)
             .First(item => item.IsImage);
         var bytes = store.ReadImageAsset(project, note)!;
         return new NoteCaptureWindow(

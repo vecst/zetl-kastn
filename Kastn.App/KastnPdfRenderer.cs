@@ -10,7 +10,7 @@ namespace KASTN;
 /// Renders a project's slips to a PDF using MigraDoc (pure managed). Built from the
 /// same snapshot grouping the text views use — a read-only projection — so the PDF
 /// reflects current slips and never writes them. PDF output is binary, so this lives
-/// in the head rather than the portable renderer in Zetl.Core.
+/// in Kastn rather than the portable renderer in Zetl.Core.
 /// </summary>
 internal static class KastnPdfRenderer
 {

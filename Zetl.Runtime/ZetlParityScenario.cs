@@ -108,7 +108,7 @@ internal static class ZetlParityScenario
                     bucket.PopMode,
                     bucket.DefaultCompileMode,
                     bucket.DefaultTsvRowLength,
-                    bucket.Notes
+                    bucket.Slips
                         .Select(note => new ParityNote(note.Text, note.Source))
                         .ToList()))
                 .ToList());

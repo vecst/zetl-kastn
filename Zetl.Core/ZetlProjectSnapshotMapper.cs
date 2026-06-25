@@ -9,12 +9,12 @@ internal static class ZetlProjectSnapshotMapper
         var visibleBuckets = project.Buckets
             .Where(bucket => !ZetlStateStore.IsDeletedBucket(bucket))
             .ToList();
-        var visibleNotes = visibleBuckets
-            .SelectMany(bucket => bucket.Notes)
+        var visibleSlips = visibleBuckets
+            .SelectMany(bucket => bucket.Slips)
             .ToList();
         var deletedSlipCount = project.Buckets
             .Where(ZetlStateStore.IsDeletedBucket)
-            .Sum(bucket => bucket.Notes.Count);
+            .Sum(bucket => bucket.Slips.Count);
 
         return new ZetlProjectSummary
         {
@@ -24,11 +24,11 @@ internal static class ZetlProjectSnapshotMapper
             ChangeSequence = project.ChangeSequence,
             Status = project.Status,
             BucketCount = project.Buckets.Count,
-            SlipCount = project.Buckets.Sum(bucket => bucket.Notes.Count),
+            SlipCount = project.Buckets.Sum(bucket => bucket.Slips.Count),
             VisibleBucketCount = visibleBuckets.Count,
-            VisibleSlipCount = visibleNotes.Count,
+            VisibleSlipCount = visibleSlips.Count,
             DeletedSlipCount = deletedSlipCount,
-            LastActivityUtc = LastActivityUtc(visibleNotes),
+            LastActivityUtc = LastActivityUtc(visibleSlips),
             PreviewText = SummaryPreviewText(project)
         };
     }
@@ -48,7 +48,7 @@ internal static class ZetlProjectSnapshotMapper
             Views = project.Views.Select(ToSnapshot).ToList(),
             Buckets = project.Buckets.Select(ToSnapshot).ToList(),
             Slips = project.Buckets
-                .SelectMany(bucket => bucket.Notes.Select(note => ToSnapshot(bucket, note)))
+                .SelectMany(bucket => bucket.Slips.Select(slip => ToSnapshot(bucket, slip)))
                 .ToList()
         };
     }
@@ -121,7 +121,7 @@ internal static class ZetlProjectSnapshotMapper
                 DefaultStartingText = bucket.DefaultStartingText,
                 DefaultTsvRowLength = bucket.DefaultTsvRowLength,
                 PopMode = bucket.PopMode,
-                ReplayReviewBucketId = bucket.FifoReviewBucketId
+                ReplayReviewBucketId = bucket.ReplayReviewBucketId
             },
             HeadingAlign = bucket.HeadingAlign,
             HeadingBold = bucket.HeadingBold,
@@ -129,48 +129,48 @@ internal static class ZetlProjectSnapshotMapper
         };
     }
 
-    public static ZetlSlipSnapshot ToSnapshot(ZetlBucket bucket, ZetlNote note)
+    public static ZetlSlipSnapshot ToSnapshot(ZetlBucket bucket, ZetlSlip slip)
     {
         return new ZetlSlipSnapshot
         {
-            Id = note.Id,
-            Revision = note.Revision,
-            Type = note.IsImage
+            Id = slip.Id,
+            Revision = slip.Revision,
+            Type = slip.IsImage
                 ? ZetlSlipType.Picture
-                : ZetlSlipClassifier.LooksLikeUrl(note.Text) ? ZetlSlipType.Url : ZetlSlipType.Text,
+                : ZetlSlipClassifier.LooksLikeUrl(slip.Text) ? ZetlSlipType.Url : ZetlSlipType.Text,
             BucketId = bucket.Id,
-            Title = note.Title,
-            Text = note.Text,
-            Picture = note.Image is null
+            Title = slip.Title,
+            Text = slip.Text,
+            Picture = slip.Image is null
                 ? null
                 : new ZetlPictureSnapshot
                 {
-                    SourceUrl = note.Image.SourceUrl,
-                    MimeType = note.Image.MimeType,
-                    Width = note.Image.Width,
-                    Height = note.Image.Height,
-                    ByteLength = note.Image.ByteLength,
-                    Sha256 = note.Image.Sha256
+                    SourceUrl = slip.Image.SourceUrl,
+                    MimeType = slip.Image.MimeType,
+                    Width = slip.Image.Width,
+                    Height = slip.Image.Height,
+                    ByteLength = slip.Image.ByteLength,
+                    Sha256 = slip.Image.Sha256
                 },
-            CaptureOrigin = note.CaptureOrigin is null
+            CaptureOrigin = slip.CaptureOrigin is null
                 ? null
                 : new ZetlCaptureOriginSnapshot
                 {
-                    ApplicationName = note.CaptureOrigin.ApplicationName,
-                    ProcessName = note.CaptureOrigin.ProcessName,
-                    WindowTitle = note.CaptureOrigin.WindowTitle
+                    ApplicationName = slip.CaptureOrigin.ApplicationName,
+                    ProcessName = slip.CaptureOrigin.ProcessName,
+                    WindowTitle = slip.CaptureOrigin.WindowTitle
                 },
-            Source = note.Source,
-            SessionId = note.SessionId,
+            Source = slip.Source,
+            SessionId = slip.SessionId,
             CapturedAtUtc = new DateTimeOffset(
-                DateTime.SpecifyKind(note.CreatedAtUtc, DateTimeKind.Utc)),
-            DeletedFromBucketId = note.DeletedFromBucketId,
-            DeletedAtUtc = note.DeletedAtUtc is null
+                DateTime.SpecifyKind(slip.CreatedAtUtc, DateTimeKind.Utc)),
+            DeletedFromBucketId = slip.DeletedFromBucketId,
+            DeletedAtUtc = slip.DeletedAtUtc is null
                 ? null
                 : new DateTimeOffset(
-                    DateTime.SpecifyKind(note.DeletedAtUtc.Value, DateTimeKind.Utc)),
-            ExcludedFromViews = note.ExcludedFromViews,
-            Align = note.Align
+                    DateTime.SpecifyKind(slip.DeletedAtUtc.Value, DateTimeKind.Utc)),
+            ExcludedFromViews = slip.ExcludedFromViews,
+            Align = slip.Align
         };
     }
 
@@ -178,12 +178,12 @@ internal static class ZetlProjectSnapshotMapper
     {
         var snippets = project.Buckets
             .Where(bucket => !ZetlStateStore.IsDeletedBucket(bucket))
-            .SelectMany(bucket => bucket.Notes)
-            .Where(note => !string.IsNullOrWhiteSpace(note.Title) || !string.IsNullOrWhiteSpace(note.Text))
-            .OrderByDescending(note => note.CreatedAtUtc)
+            .SelectMany(bucket => bucket.Slips)
+            .Where(slip => !string.IsNullOrWhiteSpace(slip.Title) || !string.IsNullOrWhiteSpace(slip.Text))
+            .OrderByDescending(slip => slip.CreatedAtUtc)
             .Take(3)
-            .Select(note => ZetlStateStore.PreviewText(
-                string.IsNullOrWhiteSpace(note.Title) ? note.Text : note.Title))
+            .Select(slip => ZetlStateStore.PreviewText(
+                string.IsNullOrWhiteSpace(slip.Title) ? slip.Text : slip.Title))
             .ToList();
 
         return snippets.Count == 0
@@ -191,12 +191,12 @@ internal static class ZetlProjectSnapshotMapper
             : string.Join(Environment.NewLine, snippets);
     }
 
-    private static DateTimeOffset? LastActivityUtc(IReadOnlyList<ZetlNote> visibleNotes)
+    private static DateTimeOffset? LastActivityUtc(IReadOnlyList<ZetlSlip> visibleSlips)
     {
-        return visibleNotes.Count == 0
+        return visibleSlips.Count == 0
             ? null
             : new DateTimeOffset(DateTime.SpecifyKind(
-                visibleNotes.Max(note => note.CreatedAtUtc),
+                visibleSlips.Max(slip => slip.CreatedAtUtc),
                 DateTimeKind.Utc));
     }
 }

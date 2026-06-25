@@ -145,7 +145,7 @@ internal static class KastnDialogs
         var search = new TextBox
         {
             Text = initialQuery,
-            Watermark = "Search titles, notes, or slip ids"
+            Watermark = "Search titles, bodies, or slip ids"
         };
         var list = new ListBox { MinHeight = 300 };
         var choose = new Button
@@ -218,7 +218,7 @@ internal static class KastnDialogs
         var preview = text.ReplaceLineEndings(" ").Trim();
         if (preview.Length == 0)
         {
-            return "No note text";
+            return "No body text";
         }
 
         return preview.Length <= 70 ? preview : $"{preview[..67]}...";

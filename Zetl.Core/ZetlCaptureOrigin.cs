@@ -106,12 +106,12 @@ internal static class ZetlProjectExportSnapshot
             ?? throw new InvalidDataException("Could not create a project export snapshot.");
         if (!includeCaptureOrigins)
         {
-            foreach (var note in snapshot.Buckets.SelectMany(bucket => bucket.Notes))
+            foreach (var slip in snapshot.Buckets.SelectMany(bucket => bucket.Slips))
             {
-                note.CaptureOrigin = null;
-                if (note.Image is not null)
+                slip.CaptureOrigin = null;
+                if (slip.Image is not null)
                 {
-                    note.Image.SourceUrl = null;
+                    slip.Image.SourceUrl = null;
                 }
             }
         }

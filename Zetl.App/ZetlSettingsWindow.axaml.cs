@@ -2,7 +2,7 @@ using Avalonia.Controls;
 
 namespace ZETL;
 
-// Avalonia port of ZetlSettingsForm. It edits a snapshot and exposes the chosen
+// Settings window. It edits a snapshot and exposes the chosen
 // values; persistence remains the controller's responsibility.
 internal partial class ZetlSettingsWindow : Window
 {

@@ -1,0 +1,40 @@
+# Documentation Map
+
+The repository documentation is organized by purpose. Roadmaps describe current
+open work; design and contract documents explain stable decisions or preserve
+implementation context.
+
+## Current Roadmaps
+
+- [`kastn-roadmap.md`](kastn-roadmap.md) — current Kastn/Zetl product work
+- [`linux-roadmap.md`](linux-roadmap.md) — current Linux platform work
+- [`windows-parity-checklist.md`](windows-parity-checklist.md) — manual Windows
+  dogfood and release-candidate smoke pass
+
+These are the authoritative places to answer “what remains?”
+
+## Product And Architecture
+
+- [`kastn.md`](kastn.md) — product boundary between Zetl and Kastn
+- [`kastn-workbench.md`](kastn-workbench.md) — current Kastn workbench behavior
+- [`kastn-process.md`](kastn-process.md) — process, single-instance, reconnect,
+  tray, and shutdown lifecycle
+- [`linux-port.md`](linux-port.md) — Linux keyboard/UI architecture background
+
+## Contracts And Measurements
+
+- [`kastn-contracts.md`](kastn-contracts.md) — mutation, revision, snapshot, and
+  protocol invariants
+- [`kastn-ipc.md`](kastn-ipc.md) — named-pipe framing and lifecycle
+- [`kastn-storage-baseline.md`](kastn-storage-baseline.md) — repeatable JSON
+  storage measurements
+
+## Focused Design Records
+
+- [`kastn-ui-roadmap.md`](kastn-ui-roadmap.md) — Kastn UI work already landed
+  and the remaining linked-slip/board designs
+- [`kastn-templates-roadmap.md`](kastn-templates-roadmap.md) — template and
+  creation-type design, including temporary consumables
+
+Focused design records are not the master project queue. Their remaining work
+is summarized in [`kastn-roadmap.md`](kastn-roadmap.md).

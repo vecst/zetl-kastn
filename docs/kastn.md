@@ -2,8 +2,8 @@
 
 > Status: kastn is implemented as the deliberate project and template workbench.
 > Zetl consumes its shared template catalog read-only and can start a named project
-> from a template directly from the Board. The staged implementation history and
-> remaining work live in [`kastn-roadmap.md`](kastn-roadmap.md).
+> from a template directly from the Board. Current remaining work lives in
+> [`kastn-roadmap.md`](kastn-roadmap.md).
 
 ## Premise
 
@@ -67,7 +67,7 @@ Human-readable JSON remains the canonical live store. It is not a secondary
 export generated from a database. The project folder should always be current,
 inspectable, and ready to share without a conversion step.
 
-The existing JSON model has been exercised with approximately 20,000 notes in a
+The existing JSON model has been exercised with approximately 20,000 slips in a
 project without an observed usability problem. Storage work should therefore
 start by consolidating writes in Zetl and measuring real behavior rather than
 introducing SQLite preemptively.
@@ -77,9 +77,10 @@ SQLite implementation can live behind Zetl without changing kastn. SQLite is
 reconsidered only if measured project sizes or future transaction requirements
 show that JSON is the limiting factor.
 
-## Planned data model: typed capture log
+## Possible storage evolution: typed capture log
 
-Evolve the store from bucket-owns-notes containment to a **typed capture log**:
+If measurements justify a storage migration, the current model can evolve from
+bucket-owned slip containment to a **typed capture log**:
 
 - One JSON per clipboard type (text, url, picture, file) per project.
 - Each captured item is stamped with its bucket and capture time. A **bucket
@@ -94,32 +95,28 @@ Evolve the store from bucket-owns-notes containment to a **typed capture log**:
 - Capture stays decision-free because the clipboard format itself declares the
   type.
 
-Image Capture v1 now establishes the first typed-slip bridge without yet moving
-to the full per-type log: text notes load unchanged, image slips reference
+Image capture establishes the first typed-slip bridge without yet moving to the
+full per-type log: text slips load unchanged, picture slips reference
 content-addressed PNG assets inside the project folder, and Board/export paths
 understand those assets. This compatibility step can migrate into the typed
 capture log without changing the asset references or package layout.
 
 ## Two extension points authored in kastn
 
-Both are authored in kastn and stored like the theme system (versioned,
-import/export JSON documents, protected presets), but they are **distinct**:
+These are authored in kastn and modeled like the theme system: versioned JSON
+documents with protected presets and user-defined copies.
 
-- **Templates (input side).** A named scaffold for a *new, empty* project: its
+- **Templates (input side).** A named scaffold for a new project: its
   default buckets and their behaviors (kind, pop/replay defaults, compile mode,
-  TSV headers / row length, starting text). Zetl's "New Project" has a template
+  TSV headers / row length, starting text, and optional starter cards). Zetl's
+  "New Project" has a template
   picker so you can start, say, a "Recipe" project with the right buckets and
   rules already in place. Zetl treats the shared catalog under
-  `%AppData%\Zetl\templates` as read-only: selecting one from the Board asks for a project name
-  and immediately starts the resulting project in that Board's lane.
-- **Views / creation-types (output side).** A renderer that projects an
-  *existing* project's slips into an artifact — **Markdown, Markdown → PDF, or
-  HTML → PDF** — based on the data available. View configuration (which buckets
-  map to which sections) lives as metadata with the project, the same way
-  per-bucket TSV headers already do.
-
-Today's compile formats (Formatted / Plain / TSV) are the first three views, just
-hardcoded.
+  `%AppData%\Zetl\templates` as read-only.
+- **Views (output side).** A renderer that projects an existing project's slips
+  into Formatted, Plain, TSV, Markdown, HTML, or PDF output. Universal views
+  live in the shared catalog; structured views can live with their project.
+- **Creation types.** A small bundle pairing a template with a default view.
 
 A single creation-type such as "Recipe" plausibly ships **both**: a template
 (start with Ingredients / Steps / Notes buckets) and a view (render those slips
@@ -152,24 +149,20 @@ empty-trash style action, not the default meaning of delete.
 
 ## Handoff: "Open in kastn"
 
-So you don't have to navigate away to launch the app, Zetl's compile dialog
-gains an **Open in kastn** button. It signals kastn with the project id — focus
-it if kastn is already running (single-instance IPC), or launch it pointed at
-that project if not. This makes "where you go when you're done" a one-click trip.
+The Zetl Board can open its selected project directly in kastn. The tray can
+also open or restore kastn. Both paths focus the existing single instance when
+it is running or launch it when it is not.
 
 ## The project lifecycle ties it together
 
-The planned project "finish" action (a Finish button in compile, with a default
-compile action so finishing can copy and/or fire the output) is the **seam**
-between the two apps: you wrap a session in Zetl, it is sealed, and kastn is
-where that finished session goes to become real work. Finishing also lets the
-dated-default project advance to the next session of the day (e.g. a per-date
-counter) instead of reusing a closed one. "Finished" is reversible — set aside,
-not locked.
+The Compile window's `Finish Project` action is the **seam** between the two
+apps: it sets the project aside, clears its lane, and lets the dated default
+advance to the next session of the day. Finishing is reversible—set aside, not
+locked. Combining finish with a default copy/fire output remains an open
+workflow decision.
 
 ## Groundwork already in place
 
-The split is supported by the `Zetl.Core` / `Zetl.Runtime` / head separation,
-head-agnostic persistence,
-self-contained per-project folders under `%AppData%\Zetl`, and the theme system
-as the template for versioned, shareable, import/export JSON definitions.
+The split is supported by the `Zetl.Core` / `Zetl.Runtime` / application separation,
+the sole-writer project service, versioned IPC contracts, self-contained project
+folders, and shared theme/template/view document systems.

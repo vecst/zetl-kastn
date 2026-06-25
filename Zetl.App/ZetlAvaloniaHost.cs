@@ -323,7 +323,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             return TrayIconState.Active;
         }
 
-        if (ZetlStateStore.IsFifoBucket(bucket))
+        if (ZetlStateStore.IsReplayBucket(bucket))
         {
             return TrayIconState.Replay;
         }
@@ -565,7 +565,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             // No templates at all (built-ins always ship some, so this is rare):
             // keep the original message for the compile fallback path.
             notifications.Show(request.FromCompileFallback
-                ? "No Zetl notes to compile yet."
+                ? "No Zetl slips to compile yet."
                 : "No templates yet. Create one in Kastn.");
             return;
         }
@@ -654,10 +654,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             ShowInTaskbar = false,
             DismissOnDeactivate = target is not null
         };
-        ConfigureAndShowPopup(window, target, "Note", () =>
+        ConfigureAndShowPopup(window, target, "Capture", () =>
         {
             Log(
-                "Note popup closed: "
+                "Capture popup closed: "
                 + $"saved={window.Saved}, "
                 + $"deactivate={window.ClosedByDeactivate}.");
             var outcome = coordinator.CompleteNoteCapture(
@@ -940,7 +940,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private void TogglePopMode()
     {
         if (store.ActiveBucket is { } bucket
-            && ZetlStateStore.IsFifoBucket(bucket))
+            && ZetlStateStore.IsReplayBucket(bucket))
         {
             notifications.Show("Replay buckets cannot use pop mode.");
             return;

@@ -6,8 +6,8 @@
        under the already git-ignored artifacts\ tree, alongside publish output.
 
        Each project keeps its own obj\ intermediate directory; only the final bin
-       output is shared. Assembly names are unique (Zetl, Kastn, Zetl.Legacy,
-       Zetl.Core, ...), so nothing collides in the flat directory. -->
+       output is shared. Assembly names are unique (Zetl, Kastn, Zetl.Core, ...),
+       so nothing collides in the flat directory. -->
   <PropertyGroup>
     <BaseOutputPath>$(MSBuildThisFileDirectory)artifacts\bin\</BaseOutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>

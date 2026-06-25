@@ -265,9 +265,8 @@ internal static partial class ZetlTemplateDefaults
 /// </summary>
 internal static class ZetlTemplateValidator
 {
-    // Canonical bucket setting values. Kept in step with ZetlState's normalizers,
-    // which store exactly these strings ("Fifo" is a legacy alias normalized to
-    // "Replay" before it ever reaches a template document).
+    // Canonical bucket setting values. Kept in step with ZetlState's normalizers;
+    // older persisted aliases are normalized before reaching a template document.
     private static readonly string[] ValidKinds = ["Standard", "Replay"];
     private static readonly string[] ValidCompileModes = ["Formatted", "Plain", "TSV"];
 

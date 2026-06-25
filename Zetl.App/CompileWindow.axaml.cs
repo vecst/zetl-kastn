@@ -5,8 +5,7 @@ using Avalonia.Media;
 
 namespace ZETL;
 
-// Avalonia port of CompileForm. Completion properties intentionally mirror the
-// WinForms form so the runtime host can consume either implementation.
+// Compile workflow window. Completion properties form its host-facing result.
 internal partial class CompileWindow : ZetlPopupWindow
 {
     private readonly ZetlStateStore store = null!;
@@ -91,8 +90,8 @@ internal partial class CompileWindow : ZetlPopupWindow
         .Where(text => text.Length > 0)
         .ToList();
 
-    private IReadOnlyList<NoteDisplayItem> SelectedNotes => selections
-        .SelectMany(group => group.Notes)
+    private IReadOnlyList<SlipDisplayItem> SelectedNotes => selections
+        .SelectMany(group => group.Slips)
         .Where(item => item.CheckBox.IsChecked == true)
         .Select(item => item.Item)
         .ToList();
@@ -148,7 +147,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         selectionHost.Children.Clear();
 
         var scoped = sourceScope is not null;
-        var groups = store.GetNoteDisplayItems(
+        var groups = store.GetSlipDisplayItems(
                 sourceProject,
                 sourceScope,
                 sessionOnlyCheck.IsChecked == true)
@@ -179,7 +178,7 @@ internal partial class CompileWindow : ZetlPopupWindow
                     HorizontalContentAlignment = HorizontalAlignment.Stretch
                 };
                 var noteSelection = new NoteSelection(item, noteCheckBox);
-                bucketSelection.Notes.Add(noteSelection);
+                bucketSelection.Slips.Add(noteSelection);
                 noteCheckBox.IsCheckedChanged += (_, _) =>
                     OnNoteChecked(bucketSelection);
                 notePanel.Children.Add(noteCheckBox);
@@ -210,7 +209,7 @@ internal partial class CompileWindow : ZetlPopupWindow
 
         refreshing = true;
         var isChecked = group.CheckBox.IsChecked == true;
-        foreach (var note in group.Notes)
+        foreach (var note in group.Slips)
         {
             note.CheckBox.IsChecked = isChecked;
         }
@@ -227,11 +226,11 @@ internal partial class CompileWindow : ZetlPopupWindow
         }
 
         refreshing = true;
-        var checkedCount = group.Notes.Count(note => note.CheckBox.IsChecked == true);
+        var checkedCount = group.Slips.Count(note => note.CheckBox.IsChecked == true);
         group.CheckBox.IsChecked = checkedCount switch
         {
             0 => false,
-            var count when count == group.Notes.Count => true,
+            var count when count == group.Slips.Count => true,
             _ => null
         };
         refreshing = false;
@@ -244,7 +243,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         foreach (var group in selections)
         {
             group.CheckBox.IsChecked = value;
-            foreach (var note in group.Notes)
+            foreach (var note in group.Slips)
             {
                 note.CheckBox.IsChecked = value;
             }
@@ -268,7 +267,7 @@ internal partial class CompileWindow : ZetlPopupWindow
             : BuildCompiledText(selected);
     }
 
-    private string BuildCompiledText(IReadOnlyList<NoteDisplayItem> selected)
+    private string BuildCompiledText(IReadOnlyList<SlipDisplayItem> selected)
     {
         return SelectedCompileMode switch
         {
@@ -329,7 +328,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         var selected = SelectedNotes;
         if (selected.Count == 0)
         {
-            ShowValidation("Select at least one note to compile.");
+            ShowValidation("Select at least one slip to compile.");
             return;
         }
 
@@ -352,14 +351,14 @@ internal partial class CompileWindow : ZetlPopupWindow
 
     private void CompleteLastItem()
     {
-        if (!store.TryGetLastNoteDisplayItem(
+        if (!store.TryGetLastSlipDisplayItem(
                 sourceProject,
                 sourceScope,
                 out var note,
                 sessionOnlyCheck.IsChecked == true)
             || note is null)
         {
-            ShowValidation("No note matches the current source and session filter.");
+            ShowValidation("No slip matches the current source and session filter.");
             return;
         }
 
@@ -424,7 +423,7 @@ internal partial class CompileWindow : ZetlPopupWindow
     }
 
     private sealed record NoteSelection(
-        NoteDisplayItem Item,
+        SlipDisplayItem Item,
         CheckBox CheckBox);
 
     private sealed class BucketSelection(
@@ -435,6 +434,6 @@ internal partial class CompileWindow : ZetlPopupWindow
 
         public CheckBox CheckBox { get; } = checkBox;
 
-        public List<NoteSelection> Notes { get; } = [];
+        public List<NoteSelection> Slips { get; } = [];
     }
 }

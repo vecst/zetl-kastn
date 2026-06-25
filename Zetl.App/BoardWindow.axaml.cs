@@ -15,7 +15,7 @@ internal partial class BoardWindow : ZetlPopupWindow
     private readonly Func<ZetlTemplateDocument, string, bool, ZetlProject?>? createProjectFromTemplate;
     private bool refreshing;
     private bool childDialogOpen;
-    private ZetlNote? editingNote;
+    private ZetlSlip? editingNote;
     private List<BoardNoteItem> noteItems = [];
     private Bitmap? selectedImagePreview;
 
@@ -162,7 +162,7 @@ internal partial class BoardWindow : ZetlPopupWindow
 
     private ZetlBucket? ActiveBucket => (bucketList.SelectedItem as BucketDisplayItem)?.Bucket;
 
-    private ZetlNote? ActiveNote => (noteList.SelectedItem as BoardNoteItem)?.Note;
+    private ZetlSlip? ActiveNote => (noteList.SelectedItem as BoardNoteItem)?.Note;
 
     public void ShowActiveProject()
     {
@@ -286,16 +286,16 @@ internal partial class BoardWindow : ZetlPopupWindow
             deleteBucketButton.IsEnabled = !isScratch;
             bucketSettingsButton.IsEnabled = true;
             bucketKindBox.IsEnabled = true;
-            bucketKindBox.SelectedItem = ZetlStateStore.IsFifoBucket(bucket)
+            bucketKindBox.SelectedItem = ZetlStateStore.IsReplayBucket(bucket)
                 ? "Replay"
                 : "Standard";
             popModeBox.IsChecked = bucket.PopMode;
-            popModeBox.IsEnabled = !ZetlStateStore.IsFifoBucket(bucket);
+            popModeBox.IsEnabled = !ZetlStateStore.IsReplayBucket(bucket);
             createNoteButton.IsEnabled = true;
 
             DisposeNoteImages();
-            noteItems = bucket.Notes
-                .Select(note => CreateNoteItem(ActiveProject!, note))
+            noteItems = bucket.Slips
+                .Select(slip => CreateNoteItem(ActiveProject!, slip))
                 .ToList();
             noteList.ItemsSource = noteItems;
             // While composing a new note the draft isn't in the list yet; keep
@@ -635,7 +635,7 @@ internal partial class BoardWindow : ZetlPopupWindow
         }
     }
 
-    private BoardNoteItem CreateNoteItem(ZetlProject project, ZetlNote note)
+    private BoardNoteItem CreateNoteItem(ZetlProject project, ZetlSlip note)
     {
         Bitmap? thumbnail = null;
         if (note.IsImage && store.ReadImageAsset(project, note) is { } bytes)
@@ -764,7 +764,7 @@ internal partial class BoardWindow : ZetlPopupWindow
     }
 }
 
-internal sealed record BoardNoteItem(ZetlNote Note, Bitmap? Thumbnail)
+internal sealed record BoardNoteItem(ZetlSlip Note, Bitmap? Thumbnail)
 {
     public string DisplayText => Note.DisplayText;
     public bool IsImage => Note.IsImage;

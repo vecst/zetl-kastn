@@ -55,7 +55,7 @@
 
             <TextBlock Grid.Row="3" Grid.Column="0" Text="Ctrl+V" FontWeight="Bold" Margin="8" />
             <TextBlock Grid.Row="3" Grid.Column="1" Text="Pop the last item in Pop Mode, or paste the next item in Replay Mode." TextWrapping="Wrap" Margin="8" />
-            <TextBlock Grid.Row="3" Grid.Column="2" Text="Compile notes — or, with no active project and nothing to compile, pick a template (like Ctrl+T)." TextWrapping="Wrap" Margin="8" />
+            <TextBlock Grid.Row="3" Grid.Column="2" Text="Compile slips — or, with no active project and nothing to compile, pick a template (like Ctrl+T)." TextWrapping="Wrap" Margin="8" />
 
             <TextBlock Grid.Row="4" Grid.Column="0" Text="Ctrl+P" FontWeight="Bold" Margin="8" />
             <TextBlock Grid.Row="4" Grid.Column="1" Text="Normal Ctrl+P." TextWrapping="Wrap" Margin="8" />
@@ -84,9 +84,9 @@
 
         <TextBlock Text="Compile" Classes="heading" />
         <TextBlock TextWrapping="Wrap">
-          Hold Ctrl+V to gather notes, then copy, paste, or save the result into
-          a bucket. Formatted mode groups notes under headings, Plain emits one
-          note per line, and TSV creates spreadsheet rows using the configured
+          Hold Ctrl+V to gather slips, then copy, paste, or save the result into
+          a bucket. Formatted mode groups slips under headings, Plain emits one
+          slip per line, and TSV creates spreadsheet rows using the configured
           row length and optional header lines.
         </TextBlock>
 
@@ -99,7 +99,7 @@
 
         <TextBlock Text="Replay Mode" Classes="heading" />
         <TextBlock TextWrapping="Wrap">
-          Replay Mode pastes a bucket's notes in order. Each Ctrl+V uses the next
+          Replay Mode pastes a bucket's slips in order. Each Ctrl+V uses the next
           item, archives it for review, and restores your own clipboard. When the
           bucket is empty, normal paste resumes.
         </TextBlock>

@@ -1,105 +1,170 @@
-# Kastn Read And Organize Workbench
+# Kastn Workbench
 
-K4 turns the Kastn shell into the first useful project workbench. Kastn still
-does not read or write project files. It renders immutable snapshots and sends
-revision-checked domain commands to Zetl.
+Kastn is the deliberate project, template, view, and creation-type workspace.
+It never reads or writes project JSON directly. It renders Zetl snapshots and
+sends revision-checked domain commands back to Zetl.
 
-## Browsing
+## Landing
 
-The project navigator lists every non-infrastructure project returned by Zetl.
-Selecting a project does not change either of Zetl's active capture lanes.
+Kastn opens to a card-based landing page unless a direct project handoff or
+startup preference opens a project.
 
-The bucket pane shows the persisted bucket order and hierarchy. Selecting a
-bucket filters the slip list to that bucket and its descendants. `All buckets`
-shows slips in snapshot order, which is bucket order followed by the persisted
-slip order inside each bucket.
+The landing page provides:
 
-The workbench also filters by:
+- **Projects** — project summaries, preview snippets, lifecycle state, counts,
+  recent activity, rename/delete, archive/reactivate, and an archived toggle
+- **Templates** — protected built-ins and user-authored Capture or Consumable
+  templates
+- **Create** — creation types pairing a template with a default view
 
-- case-insensitive text search;
-- source;
-- capture session;
-- today, the last 7 days, or the last 30 days.
+Opening a project does not change either of Zetl's active capture lanes.
+`Close Project` returns to the landing page without closing Kastn or Zetl.
 
-Filters compose and do not mutate project state.
+## Project Layout
 
-Picture slips render inline in Read View. Kastn requests their normalized PNG
-content from Zetl through the read-only IPC picture command and keeps a bounded
-in-memory cache; it never opens project asset paths directly. Edit View shows
-the picture above its editable caption.
+The workbench uses three persistent panes:
 
-The Slip details rail keeps captured information visible without turning it
-into editable document content. Its visible-slip picker preserves the rendered
-Read View, while each Edit View block has an explicit `Details` action. The
-inspector groups bucket and capture time, source and session, application and
-window provenance, picture dimensions/size/original URL, deletion history, and
-technical identity. It follows the active filters and preserves the inspected
-slip across live snapshot refreshes while that slip remains visible. HTTP(S)
-image provenance can be opened explicitly from the inspector.
+- **Tree** — buckets and slips, plus creation and organization actions
+- **View** — the rendered project document, copy/export, and view management
+- **Detail** — `Editor | Details` for the selected slip
+
+The View remains visible while a slip is edited. Selecting a tree item scrolls
+and highlights its rendered block; clicking a View block selects it in the tree.
+
+The tree shows bucket hierarchy and persisted slip order. A bucket selection is
+navigation rather than a hidden View scope change. Search and explicit filters
+control which slips are rendered.
+
+## Search And Filters
+
+Filters compose without mutating project state:
+
+- case-insensitive text search
+- source
+- capture session
+- today, last 7 days, or last 30 days
+
+The tree, counts, and View reflect the active filter set. Stable IDs preserve
+selection across snapshot refreshes where the selected item remains visible.
 
 ## Editing
 
-Each Edit View card has an optional title field. A slip without an explicit
-title displays a title derived from its note, preserving every existing project
-without migration. A title-only slip is valid and useful as a labeled blank in
-a reusable template. `New` creates one empty-body `Untitled` card, focuses and
-selects its title, disables itself while creation is in flight, and focuses the
-existing untouched draft instead of creating another when pressed repeatedly.
+Text slips have an optional title and body. Without an explicit title, Kastn
+derives a display title from the body. Title-only slips are valid.
 
-Selecting a slip opens it in the editor. Text changes autosave after a short
-idle delay and can also be saved with `Ctrl+S`. Zetl accepts the edit only when
-the slip revision still matches the revision Kastn opened.
+The editor supports:
 
-Kastn tracks the editor independently from refreshed snapshots:
+- idle autosave and `Ctrl+S`
+- optional include/exclude from views
+- left, center, or right block alignment
+- Markdown-backed bold, italic, strikethrough, inline code, and web links
+- bullet, numbered, and task lists
+- stable-ID wiki-link insertion
 
-- unrelated captures preserve the selected slip and unsaved text;
-- an acknowledged local save is recognized even if its change event arrives
-  before the command response;
-- a same-slip remote edit keeps the local draft and opens the conflict panel.
+`New` creates one title-only `Untitled` draft and focuses its title. Repeated
+creation attempts return to the untouched draft rather than accumulating empty
+slips.
 
-The conflict panel displays both versions. `Use Zetl Version` discards the
-local draft. `Keep Mine` retries the local text against the newest revision.
-There is no automatic last-writer-wins overwrite.
+Zetl accepts an edit only when the slip revision still matches the version Kastn
+opened. Unrelated captures preserve the local draft. A same-slip remote edit
+opens a conflict panel:
+
+- `Use Zetl Version` discards the local draft.
+- `Keep Mine` retries against the newest revision.
+
+There is no silent last-writer-wins overwrite.
+
+## Pictures And Details
+
+Picture slips render inline in the View and above their editable captions in the
+Editor. Kastn requests normalized PNG content from Zetl through read-only IPC
+and keeps a bounded in-memory cache; it never opens project asset paths.
+
+The Details pane groups:
+
+- bucket and capture time
+- source and session
+- application and window provenance
+- picture dimensions, size, and original URL
+- deletion history
+- technical identity and revisions
+
+HTTP(S) image provenance can be opened explicitly.
 
 ## Organization
 
-Bucket commands support:
+Bucket actions support creation, rename, reparenting, reorder, and confirmed
+tree deletion. Slip actions support creation, move, reorder, batch movement,
+include/exclude, and deletion.
 
-- adding a root bucket or a child of the selected bucket;
-- renaming a bucket;
-- changing its parent without creating a hierarchy cycle;
-- deleting a bucket tree after confirmation.
+Drag-and-drop maps to ordinary Zetl commands:
 
-Slip commands support:
+- slip onto bucket → `MoveSlip`
+- slip onto slip → `ReorderSlip` or move-before
+- bucket onto bucket → parent change
+- bucket onto root space → promote to top level
 
-- moving the selected slip to another bucket;
-- deleting the selected slip after confirmation.
+Cycle checks and protected-bucket rules remain enforced by Zetl.
 
-All commands pass through Zetl's sole-writer service. Successful responses mean
-the project JSON write is already durable.
+### Soft Delete
 
-## Picture-aware views and exports
+Ordinary Kastn deletion moves slips into the protected `Deleted` bucket.
+Deleted slips retain their prior bucket and deletion time and can be restored.
 
-Markdown and HTML views embed pictures as self-contained PNG data URIs. PDF
-views embed the PNG data in the document. Formatted, Plain, and TSV remain text
-formats, so they retain each picture as a readable caption marker rather than
-silently dropping it. Export fetches only the picture slips visible under the
-current bucket, source, session, date, and search filters; unavailable assets
-produce a readable placeholder while the rest of the export continues.
+The Deleted view is intentionally separate from ordinary capture and publishing.
+Zetl's Board, capture targets, Compile, Replay, and Pop ignore it. Permanent
+empty-trash behavior remains a separate future action.
+
+## Views And Exports
+
+The View is a projection over current slips. It never becomes a second editable
+document.
+
+Available output kinds:
+
+- Formatted
+- Plain
+- TSV
+- Markdown
+- HTML
+- PDF
+
+Document views support custom sections, bucket merging/omission, nested
+structure, heading numbering, slip list style, Markdown formatting, alignment,
+and embedded pictures.
+
+Universal views live in `%AppData%\Zetl\views`. Views with project-specific
+section structure are stored in the owning project and mutate through Zetl's
+revision-checked service.
+
+Markdown and HTML exports embed pictures as PNG data URIs. PDF embeds them
+directly. Literal text formats retain readable picture-caption markers.
+Unavailable assets produce placeholders without aborting the remaining export.
+
+## Templates And Creation Types
+
+Kastn authors the shared template catalog and creation types. Template use,
+project creation, bucket setup, starter slips, and default-view assignment still
+go through Zetl.
+
+See [`kastn-templates-roadmap.md`](kastn-templates-roadmap.md) for the document
+model and remaining temporary-consumable design.
 
 ## Keyboard
 
-- `Ctrl+F`: focus search.
-- `Ctrl+S`: save the editor immediately.
-- `F2`: focus and select the current bucket name.
-- `F5`: refresh snapshots.
+- `Ctrl+F`: focus search
+- `Ctrl+S`: save the active editor immediately
+- `F2`: focus and select the current bucket name
+- `F5`: request fresh snapshots
 
-Normal list keyboard navigation is provided by Avalonia for projects, buckets,
-and slips.
+Standard Avalonia keyboard navigation applies to cards, tree items, controls,
+and lists.
 
 ## Live Changes
 
-Zetl publishes project-sequence notifications for IPC mutations and its own
-direct keyboard captures. Kastn requests a fresh selected-project snapshot when
-a notification arrives. Stable project, bucket, and slip IDs allow the UI to
-preserve selection and editor state while the visible read model updates.
+Zetl publishes project-sequence notifications for IPC mutations and direct
+keyboard captures. Kastn requests a fresh selected-project snapshot when a
+notification arrives.
+
+The editor tracks its draft separately from refreshed snapshots, allowing
+unrelated live changes to update the project without interrupting active work.

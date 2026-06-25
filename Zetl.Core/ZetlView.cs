@@ -15,7 +15,7 @@ internal static class ZetlViewKinds
     public const string Tsv = "TSV";
     public const string Markdown = "Markdown";
     public const string Html = "HTML";
-    // PDF output is binary, so it is produced by the head (Kastn renders it with
+    // PDF output is binary, so Kastn produces it with
     // MigraDoc from the same snapshot model); the portable text renderer only
     // returns a note for it.
     public const string Pdf = "PDF";

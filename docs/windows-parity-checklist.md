@@ -1,8 +1,7 @@
-# Windows Avalonia Dogfood Checklist
+# Windows Smoke Checklist
 
-Use this checklist for the A7 cutover pass. The primary app is the Avalonia
-artifact, `Zetl.exe`. `Zetl.Legacy.exe` remains buildable as a fallback until
-this pass is complete.
+Use this checklist for Windows dogfood and release-candidate smoke passes. The
+canonical app is `Zetl.exe`.
 
 ## Prepare
 
@@ -31,7 +30,7 @@ this pass is complete.
 
 - [ ] Tap `Ctrl+C`, `Ctrl+X`, `Ctrl+V`, `Ctrl+B`, `Ctrl+P`, `Ctrl+R`, and
       `Ctrl+Z`; the foreground application keeps its normal tap behavior.
-- [ ] Held `Ctrl+C` captures copied text and click-away commits the note.
+- [ ] Held `Ctrl+C` captures copied text and click-away commits the slip.
 - [ ] Plain `Ctrl+C` captures clipboard images into the active bucket; verify
       Board thumbnail, full preview, provenance, deduplication, and ZIP export.
 - [ ] Copy a direct image URL; verify Zetl downloads it into the project's
@@ -43,9 +42,9 @@ this pass is complete.
 - [ ] Held `Ctrl+B` opens an auto-hiding Board; held `Ctrl+Shift+B` uses the
       Shift lane.
 - [ ] Held `Ctrl+V` opens Compile; click-away cancels without changing state.
-- [ ] Replay pastes in order, archives consumed notes, restores the user's
+- [ ] Replay pastes in order, archives consumed slips, restores the user's
       clipboard, and can be undone.
-- [ ] Pop removes the matching pasted note and can be undone.
+- [ ] Pop removes the matching pasted slip and can be undone.
 - [ ] Replay and Pop image slips; verify image-to-image and image-to-text
       clipboard restoration plus undo.
 - [ ] After rapid tap/hold replay stress and after forced Zetl termination,
@@ -55,8 +54,8 @@ this pass is complete.
 ## Board, Compile, And Theme
 
 - [ ] Create, rename, select, and delete projects, buckets, nested buckets, and
-      notes in both lanes.
-- [ ] Edit and clear an image caption from the Board; verify its note-list label
+      slips in both lanes.
+- [ ] Edit and clear an image caption from the Board; verify its slip-list label
       updates and the caption survives restart.
 - [ ] Compile formatted, unformatted, and TSV output.
 - [ ] Save structured and flattened compile results to another bucket.
@@ -86,9 +85,3 @@ For a failure, record:
 - foreground application and whether either process was elevated
 - expected and actual result
 - relevant entries from Notification History or `Zetl Logs`
-
-The legacy fallback can be launched explicitly with:
-
-```powershell
-dotnet run --project ZetlHotkeys.csproj
-```

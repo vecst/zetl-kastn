@@ -72,7 +72,7 @@ internal sealed class ZetlOutlineNumberer
 /// Zetl and Kastn can render the same view from the same data, and re-rendering
 /// always reflects current slips. The Formatted/Plain/TSV kinds reproduce Zetl's
 /// compile output; Markdown/HTML are document artifacts; PDF is rendered by the
-/// head from the same <see cref="BuildGroups"/> grouping.
+/// application from the same <see cref="BuildGroups"/> grouping.
 /// </summary>
 internal static class ZetlViewRenderer
 {
@@ -89,7 +89,7 @@ internal static class ZetlViewRenderer
             ZetlViewKinds.Tsv => RenderTsv(project, groups, view.TsvRowLength),
             ZetlViewKinds.Markdown => RenderMarkdown(project, groups, view, pictures),
             ZetlViewKinds.Html => RenderHtml(project, groups, view, pictures),
-            // PDF is binary; the head renders it from BuildGroups. Return a note so
+            // PDF is binary; Kastn renders it from BuildGroups. Return a note so
             // any text surface (e.g. a preview) explains how to get the PDF.
             ZetlViewKinds.Pdf => "This is a PDF view — use Export to save a .pdf file.",
             _ => RenderFormatted(project, groups)
@@ -101,7 +101,7 @@ internal static class ZetlViewRenderer
     /// order, only buckets with slips) by default, or one group per declared
     /// <see cref="ZetlViewDocument.Sections"/> section (merging the named buckets'
     /// slips under the section title) when the view defines sections. Empty groups
-    /// are omitted. Shared by the text renderer and the head's PDF renderer.
+    /// are omitted. Shared by the text renderer and Kastn's PDF renderer.
     /// </summary>
     public static IReadOnlyList<ZetlViewGroup> BuildGroups(
         ZetlProjectSnapshot project,
@@ -246,7 +246,7 @@ internal static class ZetlViewRenderer
     }
 
     // Heading text, optionally prefixed with the group's cascading outline number.
-    // Public so the head's PDF and on-screen renderers number headings consistently.
+    // Public so the PDF and on-screen renderers number headings consistently.
     public static string HeadingText(ZetlViewGroup group, ZetlViewDocument view) =>
         view.NumberHeadings && group.OutlineNumber.Length > 0
             ? $"{group.OutlineNumber} {group.Heading}"

@@ -83,21 +83,17 @@ reconnects, and reloads snapshots. The user does not need to restart Kastn.
 
 ## Application Shell
 
-K3 provides:
+Kastn provides:
 
 - a windowed application with a taskbar presence that minimizes into Zetl's
   tray (see Tray And Shutdown Coordination);
 - a procedural window/taskbar icon (a white "K" over a dusk gradient, the sibling
   of Zetl's tray "Z");
 - File, View, and Help menus;
-- a project navigator;
-- project, bucket, and recent-slip read views;
+- a card-based project/template/creation landing page;
+- the three-pane project workbench;
 - connecting, offline, and no-project empty states;
 - shared Zetl color and typography token names.
-
-Editing and organization commands remain deferred to K4. K3 is deliberately
-read-only so the connection lifecycle can settle before editor state and
-revision conflicts are introduced.
 
 ## Zetl Handoff
 

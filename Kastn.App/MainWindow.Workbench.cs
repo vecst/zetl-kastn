@@ -179,7 +179,7 @@ internal partial class MainWindow
             && string.IsNullOrWhiteSpace(SelectedSlip?.Title)
             && SelectedSlip?.Type != ZetlSlipType.Picture)
         {
-            statusText.Text = "A slip needs a title or note.";
+            statusText.Text = "A slip needs a title or body.";
             return false;
         }
 

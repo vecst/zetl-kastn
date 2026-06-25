@@ -21,8 +21,8 @@ internal static class PortableSelfTests
                 ("Ctrl+B hold opens board without dispatch", BoardHoldDoesNotDispatch),
                 ("Ctrl+P tap dispatches pop key on key-up", PopToggleTapDispatchesOnKeyUp),
                 ("Ctrl+P hold raises Pop toggle", PopToggleHoldDoesNotDispatch),
-                ("Ctrl+R tap dispatches replay key on key-up", FifoToggleTapDispatchesOnKeyUp),
-                ("Ctrl+R hold raises Replay toggle", FifoToggleHoldDoesNotDispatch),
+                ("Ctrl+R tap dispatches replay key on key-up", ReplayToggleTapDispatchesOnKeyUp),
+                ("Ctrl+R hold raises Replay toggle", ReplayToggleHoldDoesNotDispatch),
                 ("Ctrl+Z hold raises Zetl undo", UndoHoldDoesNotDispatch),
                 ("Shift changes restart hold detection", ShiftChangeRestartsHold),
                 ("Shift repeat does not restart hold detection", ShiftRepeatDoesNotRestartHold),
@@ -55,10 +55,10 @@ internal static class PortableSelfTests
                 ("Zetl state compiles TSV with bucket headers", StateCompilesTsvWithBucketHeaders),
                 ("Zetl state finds last active note", StateFindsLastActiveNote),
                 ("Zetl compile scope respects the session-only toggle", StateCompileScopeRespectsSessionToggle),
-                ("Zetl state FIFO dequeues current-session notes in order", StateFifoDequeuesCurrentSessionNotesInOrder),
-                ("Zetl state FIFO archives consumed notes for review", StateFifoArchivesConsumedNotesForReview),
-                ("Zetl state FIFO restores consumed notes from review", StateFifoRestoresConsumedNotesFromReview),
-                ("Zetl state FIFO disables pop mode", StateFifoDisablesPopMode),
+                ("Zetl state Replay dequeues current-session slips in order", StateReplayDequeuesCurrentSessionSlipsInOrder),
+                ("Zetl state Replay archives consumed slips for review", StateReplayArchivesConsumedSlipsForReview),
+                ("Zetl state Replay restores consumed slips from review", StateReplayRestoresConsumedSlipsFromReview),
+                ("Zetl state Replay disables pop mode", StateReplayDisablesPopMode),
                 ("Zetl state maps legacy Fifo kind to Replay", StateMapsLegacyFifoKindToReplay),
                 ("Zetl state detects compilable notes", StateDetectsCompilableNotes),
                 ("Zetl state finds inactive scratch notes for compile", StateFindsInactiveScratchCompileTarget),
@@ -418,7 +418,7 @@ internal static class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void FifoToggleTapDispatchesOnKeyUp()
+        private static void ReplayToggleTapDispatchesOnKeyUp()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out var taps, out _);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -430,7 +430,7 @@ internal static class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void FifoToggleHoldDoesNotDispatch()
+        private static void ReplayToggleHoldDoesNotDispatch()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -1413,7 +1413,7 @@ internal static class PortableSelfTests
                 3);
 
             AssertEqual("Vehicle Entry", bucket.Name, "Bucket settings should rename the bucket.");
-            AssertTrue(ZetlStateStore.IsFifoBucket(bucket), "Bucket settings should set the current kind.");
+            AssertTrue(ZetlStateStore.IsReplayBucket(bucket), "Bucket settings should set the current kind.");
             AssertFalse(bucket.PopMode, "Replay bucket settings should disable pop mode.");
             AssertEqual("Replay", bucket.DefaultKind, "Default kind should persist in memory.");
             AssertEqual("TSV", bucket.DefaultCompileMode, "Compile mode should persist in memory.");
@@ -1560,84 +1560,84 @@ internal static class PortableSelfTests
             AssertEqual(2, inbox.Notes.Count, "Old notes should remain stored for board/history.");
         }
 
-        private static void StateFifoDequeuesCurrentSessionNotesInOrder()
+        private static void StateReplayDequeuesCurrentSessionSlipsInOrder()
         {
             using var temp = new TempStateFile();
-            var store = new ZetlStateStore(temp.Path, "fifo-session");
+            var store = new ZetlStateStore(temp.Path, "replay-session");
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
             store.SetBucketKind(queue, "Replay");
             store.AddNote(queue, "one", "copy");
             store.AddNote(queue, "two", "copy");
 
-            AssertTrue(store.TryPeekNextFifoNote(queue, out var first), "FIFO bucket should expose its first note.");
-            AssertEqual("one", first?.Text, "FIFO should start with the oldest current-session note.");
-            AssertTrue(store.TryConsumeFifoNote(queue, first!.Id), "FIFO should consume the first note.");
-            AssertTrue(store.TryPeekNextFifoNote(queue, out var second), "FIFO bucket should expose the next note.");
-            AssertEqual("two", second?.Text, "FIFO should advance to the next note.");
-            AssertTrue(store.TryConsumeFifoNote(queue, second!.Id), "FIFO should consume the second note.");
-            AssertFalse(store.TryPeekNextFifoNote(queue, out _), "FIFO should be empty after its last note is consumed.");
+            AssertTrue(store.TryPeekNextReplayNote(queue, out var first), "Replay bucket should expose its first slip.");
+            AssertEqual("one", first?.Text, "Replay should start with the oldest current-session slip.");
+            AssertTrue(store.TryConsumeReplayNote(queue, first!.Id), "Replay should consume the first slip.");
+            AssertTrue(store.TryPeekNextReplayNote(queue, out var second), "Replay bucket should expose the next slip.");
+            AssertEqual("two", second?.Text, "Replay should advance to the next slip.");
+            AssertTrue(store.TryConsumeReplayNote(queue, second!.Id), "Replay should consume the second slip.");
+            AssertFalse(store.TryPeekNextReplayNote(queue, out _), "Replay should be empty after its last slip is consumed.");
 
             var reloaded = new ZetlStateStore(temp.Path, "new-session");
             var loadedQueue = reloaded.State.Projects.Single().Buckets.Single(bucket => bucket.Name == "Queue");
-            AssertFalse(reloaded.TryPeekNextFifoNote(loadedQueue, out _), "Old-session FIFO notes should not be active after restart.");
-            AssertEqual(0, loadedQueue.Notes.Count, "Consumed FIFO notes should stay consumed after reload.");
+            AssertFalse(reloaded.TryPeekNextReplayNote(loadedQueue, out _), "Old-session Replay slips should not be active after restart.");
+            AssertEqual(0, loadedQueue.Notes.Count, "Consumed Replay slips should stay consumed after reload.");
         }
 
-        private static void StateFifoArchivesConsumedNotesForReview()
+        private static void StateReplayArchivesConsumedSlipsForReview()
         {
             using var temp = new TempStateFile();
-            var store = new ZetlStateStore(temp.Path, "fifo-session");
+            var store = new ZetlStateStore(temp.Path, "replay-session");
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
             store.SetBucketKind(queue, "Replay");
             store.AddNote(queue, "posted", "copy");
 
-            AssertTrue(store.TryPeekNextFifoNote(queue, out var note), "FIFO bucket should expose a note.");
-            AssertTrue(store.TryConsumeFifoNoteToReview(project, queue, note!.Id, out var reviewBucket), "FIFO should consume into review.");
+            AssertTrue(store.TryPeekNextReplayNote(queue, out var note), "Replay bucket should expose a slip.");
+            AssertTrue(store.TryConsumeReplayNoteToReview(project, queue, note!.Id, out var reviewBucket), "Replay should consume into review.");
 
-            AssertTrue(reviewBucket is not null, "FIFO consume should create a review bucket.");
+            AssertTrue(reviewBucket is not null, "Replay consume should create a review bucket.");
             AssertEqual(queue.Id, project.ActiveBucketId, "Review archive should not steal the active bucket.");
-            AssertEqual("Queue Review", reviewBucket!.Name, "Review bucket should be named from the FIFO bucket.");
+            AssertEqual("Queue Review", reviewBucket!.Name, "Review bucket should be named from the Replay bucket.");
             AssertEqual("Standard", reviewBucket.Kind, "Review bucket should stay standard.");
             AssertEqual("posted", reviewBucket.Notes.Single().Text, "Review bucket should keep consumed text.");
             AssertEqual("replay", reviewBucket.Notes.Single().Source, "Review note should be tagged as replay.");
-            AssertFalse(store.TryPeekNextFifoNote(queue, out _), "Consumed FIFO note should leave the queue.");
+            AssertFalse(store.TryPeekNextReplayNote(queue, out _), "Consumed Replay slip should leave the queue.");
 
             store.AddNote(queue, "posted again", "copy");
-            AssertTrue(store.TryPeekNextFifoNote(queue, out var second), "FIFO bucket should expose another note.");
-            AssertTrue(store.TryConsumeFifoNoteToReview(project, queue, second!.Id, out var sameReviewBucket), "FIFO should consume into the same review bucket.");
-            AssertTrue(sameReviewBucket is not null, "FIFO consume should return the reused review bucket.");
+            AssertTrue(store.TryPeekNextReplayNote(queue, out var second), "Replay bucket should expose another slip.");
+            AssertTrue(store.TryConsumeReplayNoteToReview(project, queue, second!.Id, out var sameReviewBucket), "Replay should consume into the same review bucket.");
+            AssertTrue(sameReviewBucket is not null, "Replay consume should return the reused review bucket.");
             AssertEqual(reviewBucket.Id, sameReviewBucket!.Id, "Review bucket should be reused.");
-            AssertEqual(2, sameReviewBucket.Notes.Count, "Review bucket should accumulate consumed FIFO notes.");
+            AssertEqual(2, sameReviewBucket.Notes.Count, "Review bucket should accumulate consumed Replay slips.");
         }
 
-        private static void StateFifoRestoresConsumedNotesFromReview()
+        private static void StateReplayRestoresConsumedSlipsFromReview()
         {
             using var temp = new TempStateFile();
-            var store = new ZetlStateStore(temp.Path, "fifo-session");
+            var store = new ZetlStateStore(temp.Path, "replay-session");
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
             store.SetBucketKind(queue, "Replay");
             store.AddNote(queue, "posted", "copy");
 
-            AssertTrue(store.TryPeekNextFifoNote(queue, out var note), "FIFO bucket should expose a note.");
+            AssertTrue(store.TryPeekNextReplayNote(queue, out var note), "Replay bucket should expose a slip.");
             AssertTrue(
-                store.TryConsumeFifoNoteToReview(project, queue, note!.Id, out var reviewBucket, out var consumedNote, out var reviewNote),
-                "FIFO should consume with undo details.");
-            AssertTrue(consumedNote is not null, "FIFO consume should return consumed note.");
-            AssertTrue(reviewBucket is not null, "FIFO consume should return review bucket.");
-            AssertTrue(reviewNote is not null, "FIFO consume should return review note.");
+                store.TryConsumeReplayNoteToReview(project, queue, note!.Id, out var reviewBucket, out var consumedNote, out var reviewNote),
+                "Replay should consume with undo details.");
+            AssertTrue(consumedNote is not null, "Replay consume should return the consumed slip.");
+            AssertTrue(reviewBucket is not null, "Replay consume should return the review bucket.");
+            AssertTrue(reviewNote is not null, "Replay consume should return the review slip.");
 
             store.SetBucketKind(queue, "Standard");
-            store.RestoreFifoConsumedNote(queue, consumedNote!, reviewBucket, reviewNote?.Id);
+            store.RestoreReplayConsumedNote(queue, consumedNote!, reviewBucket, reviewNote?.Id);
 
-            AssertTrue(ZetlStateStore.IsFifoBucket(queue), "FIFO undo should restore FIFO kind.");
-            AssertEqual("posted", queue.Notes.Single().Text, "FIFO undo should restore consumed note.");
-            AssertEqual(0, reviewBucket!.Notes.Count, "FIFO undo should remove the review copy.");
+            AssertTrue(ZetlStateStore.IsReplayBucket(queue), "Replay undo should restore Replay kind.");
+            AssertEqual("posted", queue.Notes.Single().Text, "Replay undo should restore the consumed slip.");
+            AssertEqual(0, reviewBucket!.Notes.Count, "Replay undo should remove the review copy.");
         }
 
-        private static void StateFifoDisablesPopMode()
+        private static void StateReplayDisablesPopMode()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1647,9 +1647,9 @@ internal static class PortableSelfTests
             store.SetBucketPopMode(queue, true);
             AssertTrue(queue.PopMode, "Standard bucket should accept pop mode.");
             store.SetBucketKind(queue, "Replay");
-            AssertFalse(queue.PopMode, "Switching to FIFO should turn pop mode off.");
+            AssertFalse(queue.PopMode, "Switching to Replay should turn pop mode off.");
             store.SetBucketPopMode(queue, true);
-            AssertFalse(queue.PopMode, "FIFO bucket should reject pop mode.");
+            AssertFalse(queue.PopMode, "Replay bucket should reject pop mode.");
         }
 
         private static void StateMapsLegacyFifoKindToReplay()
@@ -1658,7 +1658,7 @@ internal static class PortableSelfTests
             // A state file written by an older build that used the "Fifo" kind.
             var legacyJson =
                 """
-                { "version": 1, "activeProjectId": "p1", "projects": [ { "id": "p1", "name": "Demo", "activeBucketId": "b1", "buckets": [ { "id": "b1", "name": "Queue", "kind": "Fifo", "defaultKind": "Fifo", "notes": [] } ] } ] }
+                { "version": 1, "activeProjectId": "p1", "projects": [ { "id": "p1", "name": "Demo", "activeBucketId": "b1", "buckets": [ { "id": "b1", "name": "Queue", "kind": "Fifo", "defaultKind": "Fifo", "fifoReviewBucketId": "b2", "notes": [] }, { "id": "b2", "name": "Queue Review", "kind": "Standard", "defaultKind": "Standard", "notes": [] } ] } ] }
                 """;
             System.IO.File.WriteAllText(temp.Path, legacyJson);
 
@@ -1667,7 +1667,18 @@ internal static class PortableSelfTests
             AssertEqual("Queue", queue.Name, "Legacy bucket should load.");
             AssertEqual("Replay", queue.Kind, "Legacy Fifo kind should load as Replay.");
             AssertEqual("Replay", queue.DefaultKind, "Legacy Fifo default kind should load as Replay.");
-            AssertTrue(ZetlStateStore.IsFifoBucket(queue), "Legacy Fifo bucket should still be a replay bucket.");
+            AssertTrue(ZetlStateStore.IsReplayBucket(queue), "Legacy Fifo bucket should still be a Replay bucket.");
+            AssertEqual("b2", queue.ReplayReviewBucketId, "Legacy Replay review links should load.");
+
+            store.SetBucketKind(queue, queue.Kind);
+            var projectPath = Directory.GetFiles(
+                System.IO.Path.GetDirectoryName(temp.Path)!,
+                "project.json",
+                SearchOption.AllDirectories).Single();
+            var savedJson = System.IO.File.ReadAllText(projectPath);
+            AssertTrue(
+                savedJson.Contains("\"fifoReviewBucketId\": \"b2\"", StringComparison.Ordinal),
+                "Replay review links should retain their historical JSON field name.");
         }
 
         private static void StateRoundTripsJson()
@@ -1683,6 +1694,14 @@ internal static class PortableSelfTests
             AssertEqual(bucket.Id, loaded.ActiveBucket?.Id, "Active bucket id should round-trip.");
             AssertEqual(note.Id, loaded.ActiveBucket?.Notes.Single().Id, "Note id should round-trip.");
             AssertEqual("round trip", loaded.ActiveBucket?.Notes.Single().Text, "Note text should round-trip.");
+
+            var projectPath = Directory.GetFiles(
+                System.IO.Path.GetDirectoryName(temp.Path)!,
+                "project.json",
+                SearchOption.AllDirectories).Single();
+            var projectJson = System.IO.File.ReadAllText(projectPath);
+            AssertTrue(projectJson.Contains("\"notes\":", StringComparison.Ordinal), "Slip storage should retain the historical notes field.");
+            AssertFalse(projectJson.Contains("\"slips\":", StringComparison.Ordinal), "Slip storage should not introduce a second serialized collection.");
         }
 
         private static void StateStoresEachProjectInItsOwnFolder()
@@ -2359,11 +2378,11 @@ internal static class PortableSelfTests
             var bucket = new ZetlBucket { Id = "b", Name = "Links", Kind = "Standard" };
             AssertEqual(
                 ZETL.Contracts.ZetlSlipType.Url,
-                ZetlProjectSnapshotMapper.ToSnapshot(bucket, new ZetlNote { Id = "u", Text = "https://example.com" }).Type,
+                ZetlProjectSnapshotMapper.ToSnapshot(bucket, new ZetlSlip { Id = "u", Text = "https://example.com" }).Type,
                 "A URL note maps to a Url slip.");
             AssertEqual(
                 ZETL.Contracts.ZetlSlipType.Text,
-                ZetlProjectSnapshotMapper.ToSnapshot(bucket, new ZetlNote { Id = "t", Text = "hello world" }).Type,
+                ZetlProjectSnapshotMapper.ToSnapshot(bucket, new ZetlSlip { Id = "t", Text = "hello world" }).Type,
                 "Plain text maps to a Text slip.");
         }
 
@@ -2772,7 +2791,7 @@ internal static class PortableSelfTests
             AssertEqual(1, keyboard.PasteCount, "Replay tap should send one synthetic paste.");
             AssertEqual("user clipboard", clipboard.Text, "Replay should restore the user's clipboard.");
             AssertEqual(0, queue.Notes.Count, "Replay should consume the queued note.");
-            var review = project.Buckets.Single(bucket => bucket.Id == queue.FifoReviewBucketId);
+            var review = project.Buckets.Single(bucket => bucket.Id == queue.ReplayReviewBucketId);
             AssertEqual("queued value", review.Notes.Single().Text, "Replay should archive the consumed note.");
             AssertEqual("Standard", queue.Kind, "An empty Replay bucket should return to Standard.");
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
@@ -2812,7 +2831,7 @@ internal static class PortableSelfTests
                 clipboard.Image?.PngBytes.SequenceEqual(userBytes) == true,
                 "Image Replay should restore the user's previous image clipboard.");
             AssertEqual(0, queue.Notes.Count, "Successful image Replay should consume the queued slip.");
-            var review = project.Buckets.Single(bucket => bucket.Id == queue.FifoReviewBucketId);
+            var review = project.Buckets.Single(bucket => bucket.Id == queue.ReplayReviewBucketId);
             AssertTrue(review.Notes.Single().IsImage, "Replay review should preserve the image slip type.");
             AssertEqual(
                 queuedBytes.Length,

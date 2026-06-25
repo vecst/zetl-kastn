@@ -94,7 +94,7 @@
                     Background="Transparent" />
 
       <Grid Grid.Column="2" RowDefinitions="Auto,2*,Auto,3*,Auto" Margin="8,0,0,0">
-        <TextBlock Grid.Row="0" Text="Notes"
+        <TextBlock Grid.Row="0" Text="Slips"
                    Classes="heading"
                    Margin="0,0,0,6" />
         <ListBox Grid.Row="1" x:Name="noteList">
@@ -122,7 +122,7 @@
           </ListBox.ItemTemplate>
         </ListBox>
 
-        <TextBlock Grid.Row="2" Text="Selected note"
+        <TextBlock Grid.Row="2" Text="Selected slip"
                    FontWeight="SemiBold"
                    Margin="0,10,0,4" />
         <Grid Grid.Row="3">
@@ -142,8 +142,8 @@
           </Grid>
         </Grid>
         <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8" Margin="0,10,0,0">
-          <Button Grid.Column="0" x:Name="createNoteButton" Content="Create Note" />
-          <Button Grid.Column="1" x:Name="deleteNoteButton" Content="Delete Note" />
+          <Button Grid.Column="0" x:Name="createNoteButton" Content="Create Slip" />
+          <Button Grid.Column="1" x:Name="deleteNoteButton" Content="Delete Slip" />
           <Button Grid.Column="3" x:Name="closeBoardButton" Content="Close" Width="76" />
         </Grid>
       </Grid>

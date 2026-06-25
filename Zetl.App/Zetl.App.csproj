@@ -19,7 +19,6 @@
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\WindowsCaptureOriginProvider.cs" Link="WindowsCaptureOriginProvider.cs" />
     <ProjectReference Include="..\Chordl\Chordl.csproj" />
     <ProjectReference Include="..\Zetl.Contracts\Zetl.Contracts.csproj" />
     <ProjectReference Include="..\Zetl.Core\Zetl.Core.csproj" />

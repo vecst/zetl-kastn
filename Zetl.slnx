@@ -7,5 +7,4 @@
   <Project Path="Kastn.App/Kastn.App.csproj" />
   <Project Path="Zetl.Linux.Spike/Zetl.Linux.Spike.csproj" />
   <Project Path="Zetl.Tests/Zetl.Tests.csproj" />
-  <Project Path="ZetlHotkeys.csproj" />
 </Solution>

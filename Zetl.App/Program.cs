@@ -3,9 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace ZETL;
 
-// Entry point for the cross-platform (Avalonia) Zetl head. This will become the
-// single UI for both Windows and Linux; for now it stands up alongside the
-// WinForms head so the Avalonia UI can be built and compared on Windows.
+// Entry point for the canonical cross-platform Avalonia application.
 internal static class Program
 {
     private static Mutex? singleInstanceMutex;
