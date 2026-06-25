@@ -126,6 +126,7 @@ internal static class PortableSelfTests
                 ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
                 ("Runtime cut hold defaults to today's journal bucket", RuntimeCutHoldDefaultsToTodaysJournalBucket),
+                ("Runtime select-all hold captures the selection", RuntimeSelectAllHoldCapturesTheSelection),
                 ("Runtime template hold requests the picker", RuntimeTemplateHoldRequestsPicker),
                 ("Runtime compile hold without a project requests the picker", RuntimeCompileHoldWithoutProjectRequestsPicker),
                 ("Runtime compile hold with an active project stays compile", RuntimeCompileHoldWithActiveProjectStaysCompile),
@@ -3072,6 +3073,30 @@ internal static class PortableSelfTests
             AssertFalse(note.StartProjectDefault, "Quick note should not activate the project by default.");
         }
 
+        private static void RuntimeSelectAllHoldCapturesTheSelection()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var clipboard = new FakeClipboard(null, changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _);
+            // Holding Ctrl+A injects a copy; simulate the app copying the selected field.
+            keyboard.OnSendChord = () => clipboard.SetText("the whole field");
+
+            var request = coordinator.HandleHoldAsync(
+                ShortcutContext(VK_A, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+
+            AssertTrue(request is ZetlNoteCaptureRequest, "Holding Ctrl+A opens a capture.");
+            AssertEqual(
+                "the whole field",
+                ((ZetlNoteCaptureRequest)request!).Text,
+                "It captures the freshly-copied selection.");
+        }
+
         private static void RuntimeTemplateHoldRequestsPicker()
         {
             using var temp = new TempStateFile();
@@ -3894,6 +3919,10 @@ internal static class PortableSelfTests
 
             public bool PasteSucceeds { get; set; } = true;
 
+            // Lets a test simulate the foreground app reacting to an injected chord
+            // (e.g. Ctrl+C copying the selection onto the clipboard).
+            public Action? OnSendChord { get; set; }
+
             public bool Start(Func<int, bool, bool, bool, bool> handleKeyEvent)
             {
                 return true;
@@ -3905,6 +3934,7 @@ internal static class PortableSelfTests
                 bool restoreCtrl,
                 bool restoreShift)
             {
+                OnSendChord?.Invoke();
                 return Task.FromResult(true);
             }
 

@@ -141,6 +141,7 @@ internal sealed class ZetlShortcutCoordinator
     {
         return context.KeyCode switch
         {
+            VK_A => await CreateSelectAllCaptureRequestAsync(context),
             VK_J => HandleProjectToggle(context.ShiftLane),
             VK_B => new ZetlBoardRequest(context.ShiftLane),
             VK_C => await CreateCopyHoldRequestAsync(context, pending),
@@ -377,6 +378,32 @@ internal sealed class ZetlShortcutCoordinator
         var index = shifted ? 1 : 0;
         replayUserClipboard[index] = null;
         replayInjectedClipboard[index] = null;
+    }
+
+    // Held Ctrl+A: the physical select-all already passed through (dispatch None), so
+    // the field is selected. Select-all leaves nothing on the clipboard, so — unlike
+    // copy-hold, where the user's own Ctrl+C already copied — Zetl copies the selection
+    // itself (same injection path as paste/replay), waits for the clipboard to reflect
+    // it, then captures it exactly like a copy-hold. One quick Ctrl+A,Ctrl+C in a hold.
+    private async Task<ZetlShortcutRequest?> CreateSelectAllCaptureRequestAsync(ChordlEventContext context)
+    {
+        if (!await keyboard.SendChord(VK_C, includeShift: false, restoreCtrl: false, restoreShift: false))
+        {
+            return new ZetlBoardRequest(context.ShiftLane);
+        }
+
+        await WaitForClipboardChangeAsync(context.ClipboardSequenceNumber, ClipboardObservationTimeout);
+        return await CreateCopyHoldRequestAsync(context, pending: null);
+    }
+
+    private async Task WaitForClipboardChangeAsync(uint beforeSequence, TimeSpan timeout)
+    {
+        var elapsed = TimeSpan.Zero;
+        while (elapsed < timeout && clipboard.GetChangeToken() == beforeSequence)
+        {
+            await delay.WaitAsync(ClipboardPollInterval);
+            elapsed += ClipboardPollInterval;
+        }
     }
 
     private async Task<ZetlShortcutRequest?> CreateCopyHoldRequestAsync(

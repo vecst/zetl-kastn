@@ -3,6 +3,12 @@
   "holdDelayMs": 353,
   "hotkeys": [
     {
+      "name": "Ctrl+A",
+      "key": "A",
+      "modifiers": ["Ctrl"],
+      "dispatch": "None"
+    },
+    {
       "name": "Ctrl+J",
       "key": "J",
       "modifiers": ["Ctrl"],
