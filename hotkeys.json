@@ -3,8 +3,8 @@
   "holdDelayMs": 353,
   "hotkeys": [
     {
-      "name": "Ctrl+A",
-      "key": "A",
+      "name": "Ctrl+J",
+      "key": "J",
       "modifiers": ["Ctrl"],
       "dispatch": "TapOnly"
     },
@@ -57,8 +57,8 @@
       "dispatch": "TapOnly"
     },
     {
-      "name": "Ctrl+Shift+A",
-      "key": "A",
+      "name": "Ctrl+Shift+J",
+      "key": "J",
       "modifiers": ["Ctrl", "Shift"],
       "dispatch": "TapOnly",
       "replayModifiers": ["Ctrl", "Shift"]

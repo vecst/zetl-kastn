@@ -97,7 +97,7 @@ internal static class PortableSelfTests
                 ("Journal mode rolls into dated buckets", JournalModeRollsIntoDatedBuckets),
                 ("Journal auto-returns from a quiet project", JournalAutoReturnsFromQuietProject),
                 ("Journal auto-return off keeps the project", JournalAutoReturnOffKeepsProject),
-                ("Ctrl+A toggles between the Journal and the last project", ToggleActiveProjectSwitchesBetweenJournalAndLastProject),
+                ("Ctrl+J toggles between the Journal and the last project", ToggleActiveProjectSwitchesBetweenJournalAndLastProject),
                 ("URL slips are derived from content", UrlSlipsAreDerivedFromContent),
                 ("Zetl default hotkeys config parses", DefaultConfigParses),
                 ("Zetl config tolerates null replay modifiers", ConfigNullReplayModifiersDoesNotThrow),

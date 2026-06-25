@@ -428,7 +428,7 @@ internal sealed class ZetlStateStore
     public bool HasDeliberateActiveProject(bool shifted = false) =>
         GetActiveProject(shifted) is { } active && !IsDefaultJournalProject(active, shifted);
 
-    // Held Ctrl+A toggles the lane between the Journal and the last-used deliberate
+    // Held Ctrl+J toggles the lane between the Journal and the last-used deliberate
     // project: on a deliberate project it returns to the Journal; on the Journal it
     // reactivates the last deliberate project (when one is still Active).
     [MethodImpl(MethodImplOptions.Synchronized)]

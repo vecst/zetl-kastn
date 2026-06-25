@@ -141,7 +141,7 @@ internal sealed class ZetlShortcutCoordinator
     {
         return context.KeyCode switch
         {
-            VK_A => HandleProjectToggle(context.ShiftLane),
+            VK_J => HandleProjectToggle(context.ShiftLane),
             VK_B => new ZetlBoardRequest(context.ShiftLane),
             VK_C => await CreateCopyHoldRequestAsync(context, pending),
             VK_P => HandlePopToggle(context.ShiftLane),
