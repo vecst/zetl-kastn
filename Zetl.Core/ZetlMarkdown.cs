@@ -32,6 +32,21 @@ internal sealed record ZetlListItem(IReadOnlyList<ZetlInline> Inlines, bool Chec
 // (1 for bullet/task), preserved so renderers can continue a run across slips.
 internal sealed record ZetlListBlock(string Kind, IReadOnlyList<ZetlListItem> Items, int Start = 1) : ZetlBlock;
 
+// A "# heading" within a slip. Rendered as a *softened* sub-heading (bold, slightly
+// larger) rather than a real document heading, so it never competes with the bucket /
+// section outline or the slip title. Level (1-6) is kept only to scale that emphasis.
+internal sealed record ZetlHeadingBlock(int Level, IReadOnlyList<ZetlInline> Inlines) : ZetlBlock;
+
+// Consecutive "> " lines form one blockquote; each line keeps its own inlines.
+internal sealed record ZetlQuoteBlock(IReadOnlyList<IReadOnlyList<ZetlInline>> Lines) : ZetlBlock;
+
+// A fenced ``` code block. Content is literal — no inline parsing — and Language is the
+// optional info string after the opening fence ("" when none).
+internal sealed record ZetlCodeBlock(string Text, string Language) : ZetlBlock;
+
+// A "---" thematic break.
+internal sealed record ZetlDividerBlock : ZetlBlock;
+
 internal static class ZetlMarkdown
 {
     public static IReadOnlyList<ZetlInline> ParseInlines(string text) =>
@@ -159,9 +174,12 @@ internal static class ZetlMarkdown
         var lines = (text ?? "").ReplaceLineEndings("\n").Split('\n');
 
         List<IReadOnlyList<ZetlInline>>? paragraph = null;
+        List<IReadOnlyList<ZetlInline>>? quote = null;
         string? listKind = null;
         List<ZetlListItem>? items = null;
         var listStart = 1;
+        List<string>? code = null;
+        var codeLanguage = "";
 
         void FlushParagraph()
         {
@@ -171,6 +189,16 @@ internal static class ZetlMarkdown
             }
 
             paragraph = null;
+        }
+
+        void FlushQuote()
+        {
+            if (quote is { Count: > 0 })
+            {
+                blocks.Add(new ZetlQuoteBlock(quote));
+            }
+
+            quote = null;
         }
 
         void FlushList()
@@ -185,11 +213,60 @@ internal static class ZetlMarkdown
             listStart = 1;
         }
 
+        // Close every open inline run before starting a different block kind.
+        void FlushAll()
+        {
+            FlushParagraph();
+            FlushQuote();
+            FlushList();
+        }
+
         foreach (var line in lines)
         {
-            if (TryClassifyListLine(line, out var kind, out var content, out var isChecked, out var number))
+            // Inside a fenced code block everything is literal until the closing fence.
+            if (code is not null)
+            {
+                if (IsCodeFence(line, out _))
+                {
+                    blocks.Add(new ZetlCodeBlock(string.Join("\n", code), codeLanguage));
+                    code = null;
+                    codeLanguage = "";
+                }
+                else
+                {
+                    code.Add(line);
+                }
+
+                continue;
+            }
+
+            if (IsCodeFence(line, out var language))
+            {
+                FlushAll();
+                code = [];
+                codeLanguage = language;
+            }
+            else if (IsDivider(line))
+            {
+                FlushAll();
+                blocks.Add(new ZetlDividerBlock());
+            }
+            else if (IsHeading(line, out var level, out var headingContent))
+            {
+                FlushAll();
+                blocks.Add(new ZetlHeadingBlock(level, ParseInlines(headingContent)));
+            }
+            else if (IsQuote(line, out var quoteContent))
             {
                 FlushParagraph();
+                FlushList();
+                quote ??= [];
+                quote.Add(ParseInlines(quoteContent));
+            }
+            else if (TryClassifyListLine(line, out var kind, out var content, out var isChecked, out var number))
+            {
+                FlushParagraph();
+                FlushQuote();
                 if (items is null || listKind != kind)
                 {
                     FlushList();
@@ -202,15 +279,158 @@ internal static class ZetlMarkdown
             }
             else
             {
+                FlushQuote();
                 FlushList();
                 paragraph ??= [];
                 paragraph.Add(ParseInlines(line));
             }
         }
 
-        FlushParagraph();
-        FlushList();
+        // An unterminated fence still yields its accumulated content as a code block,
+        // matching the inline parser's "unmatched delimiter stays literal" leniency.
+        if (code is not null)
+        {
+            blocks.Add(new ZetlCodeBlock(string.Join("\n", code), codeLanguage));
+        }
+
+        FlushAll();
         return blocks;
+    }
+
+    // The blocks to render for a whole note. A note whose kind is heading/quote/code/
+    // divider renders its entire body as that one block (the body is clean text — the
+    // kind is the structure, not inline markup); any other kind parses the body normally
+    // so a list item or paragraph still renders its own text. Every block renderer walks
+    // this, so the note-kind structure reuses the same heading/quote/code/divider output.
+    public static IReadOnlyList<ZetlBlock> BlocksForNote(string? noteKind, string text)
+    {
+        switch ((noteKind ?? "").Trim().ToLowerInvariant())
+        {
+            case "heading":
+                return [new ZetlHeadingBlock(2, ParseInlines(text))];
+            case "quote":
+                return [new ZetlQuoteBlock(
+                    (text ?? "").ReplaceLineEndings("\n").Split('\n')
+                        .Select(line => ParseInlines(line)).ToList())];
+            case "code":
+                return [new ZetlCodeBlock(text ?? "", "")];
+            case "divider":
+                return [new ZetlDividerBlock()];
+            default:
+                return ParseBlocks(text ?? "");
+        }
+    }
+
+    // A fenced code block opens and closes on a line whose first non-space content is
+    // three or more backticks. The opening fence may carry an info string (language
+    // hint); a backtick in that string disqualifies it so inline `code` is never a fence.
+    private static bool IsCodeFence(string line, out string language)
+    {
+        language = "";
+        var trimmed = line.TrimStart();
+        if (!trimmed.StartsWith("```", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var ticks = 0;
+        while (ticks < trimmed.Length && trimmed[ticks] == '`')
+        {
+            ticks++;
+        }
+
+        var rest = trimmed[ticks..];
+        if (rest.Contains('`'))
+        {
+            return false;
+        }
+
+        language = rest.Trim();
+        return true;
+    }
+
+    // A thematic break: a line of three or more of -, *, or _ (one kind), nothing else.
+    private static bool IsDivider(string line)
+    {
+        var trimmed = line.Trim();
+        if (trimmed.Length < 3)
+        {
+            return false;
+        }
+
+        var marker = trimmed[0];
+        return marker is '-' or '*' or '_' && trimmed.All(ch => ch == marker);
+    }
+
+    // An ATX heading: 1-6 leading #, a space, then the heading text.
+    private static bool IsHeading(string line, out int level, out string content)
+    {
+        level = 0;
+        content = "";
+        var trimmed = line.TrimStart();
+        var hashes = 0;
+        while (hashes < trimmed.Length && trimmed[hashes] == '#')
+        {
+            hashes++;
+        }
+
+        if (hashes is < 1 or > 6 || hashes >= trimmed.Length || trimmed[hashes] != ' ')
+        {
+            return false;
+        }
+
+        level = hashes;
+        content = trimmed[(hashes + 1)..].Trim();
+        return true;
+    }
+
+    // A blockquote line: "> " (or a bare ">"), with one optional space after the marker.
+    private static bool IsQuote(string line, out string content)
+    {
+        content = "";
+        var trimmed = line.TrimStart();
+        if (!trimmed.StartsWith('>'))
+        {
+            return false;
+        }
+
+        var rest = trimmed[1..];
+        content = rest.StartsWith(' ') ? rest[1..] : rest;
+        return true;
+    }
+
+    // True when the slip text holds any block structure beyond paragraphs and lists
+    // (a heading, blockquote, fenced code block, or divider). The Markdown export emits
+    // such slips as their own blocks rather than wrapping them under a bucket marker.
+    public static bool ContainsBlockStructure(string text) =>
+        ParseBlocks(text).Any(block =>
+            block is ZetlHeadingBlock or ZetlQuoteBlock or ZetlCodeBlock or ZetlDividerBlock);
+
+    // Convert "# heading" lines to a bold line so a softened sub-heading never enters
+    // the exported Markdown outline. Fence-aware: lines inside a ``` block are left
+    // untouched (a "#" there is literal code, not a heading).
+    public static IReadOnlyList<string> SoftenHeadingsForMarkdown(IEnumerable<string> lines)
+    {
+        var result = new List<string>();
+        var inCode = false;
+        foreach (var line in lines)
+        {
+            if (IsCodeFence(line, out _))
+            {
+                inCode = !inCode;
+                result.Add(line);
+            }
+            else if (!inCode && IsHeading(line, out _, out var content))
+            {
+                result.Add(content.Length == 0 ? "" : $"**{content}**");
+            }
+            else
+            {
+                result.Add(line);
+            }
+        }
+
+        return result;
     }
 
     private static bool TryClassifyListLine(
@@ -265,15 +485,36 @@ internal static class ZetlMarkdown
 
     // Render a slip's blocks to the inner HTML of its list item: paragraphs as text
     // with line breaks, lists as <ul>/<ol> (task lists use checkbox glyphs).
-    public static string BlocksToHtml(string text)
+    public static string BlocksToHtml(string text) => BlocksToHtml(ParseBlocks(text));
+
+    public static string BlocksToHtml(IReadOnlyList<ZetlBlock> blocks)
     {
         var builder = new StringBuilder();
-        foreach (var block in ParseBlocks(text))
+        foreach (var block in blocks)
         {
             switch (block)
             {
                 case ZetlParagraphBlock paragraph:
                     builder.Append(string.Join("<br />", paragraph.Lines.Select(InlinesToHtml)));
+                    break;
+                case ZetlHeadingBlock heading:
+                    // Softened: a bold, slightly larger lead — never a real <h*> — so it
+                    // stays out of the document outline and any future table of contents.
+                    var headingSize = heading.Level <= 1 ? "1.15em" : heading.Level == 2 ? "1.05em" : "1em";
+                    builder.Append($"<p style=\"font-weight:700;font-size:{headingSize};margin:0.5em 0 0.2em\">")
+                        .Append(InlinesToHtml(heading.Inlines))
+                        .Append("</p>");
+                    break;
+                case ZetlQuoteBlock quote:
+                    builder.Append("<blockquote>")
+                        .Append(string.Join("<br />", quote.Lines.Select(InlinesToHtml)))
+                        .Append("</blockquote>");
+                    break;
+                case ZetlCodeBlock code:
+                    builder.Append("<pre><code>").Append(Escape(code.Text)).Append("</code></pre>");
+                    break;
+                case ZetlDividerBlock:
+                    builder.Append("<hr />");
                     break;
                 case ZetlListBlock { Kind: "ordered" } ordered:
                     builder.Append(ordered.Start > 1 ? $"<ol start=\"{ordered.Start}\">" : "<ol>");

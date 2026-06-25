@@ -79,7 +79,6 @@ internal static class KastnPdfRenderer
 
         // Reuse the shared grouping so the PDF honors view sections and bucket order
         // exactly like the text/Markdown/HTML renderers.
-        var listStyle = ZetlViewListStyles.Normalize(view.ListStyle);
         foreach (var group in ZetlViewRenderer.BuildGroups(project, slips, view))
         {
             var heading = section.AddParagraph(ZetlViewRenderer.HeadingText(group, view));
@@ -94,12 +93,24 @@ internal static class KastnPdfRenderer
             heading.Format.SpaceBefore = Unit.FromPoint(10);
             heading.Format.SpaceAfter = Unit.FromPoint(4);
             heading.Format.LeftIndent = Unit.FromPoint(group.Depth * 14);
+            // A container "group" reads as a shaded, boxed header bar so it is visibly a
+            // grouping rather than an ordinary section.
+            if (group.RenderKind == "group")
+            {
+                heading.Format.Shading.Color = new Color(0xF2, 0xF2, 0xF2);
+                heading.Format.Borders.Color = new Color(0xCC, 0xCC, 0xCC);
+                heading.Format.Borders.Width = 0.75;
+                heading.Format.Borders.Distance = Unit.FromPoint(3);
+            }
 
-            var itemNumber = 1;
+            // Each note carries its own list kind; ordered notes count over their run
+            // and any non-ordered note or picture restarts it.
+            var orderedRun = 0;
             foreach (var slip in group.Slips)
             {
                 if (slip.Type == ZetlSlipType.Picture)
                 {
+                    orderedRun = 0;
                     if (pictures?.TryGetValue(slip.Id, out var picture) == true)
                     {
                         Directory.CreateDirectory(imageDirectory);
@@ -137,18 +148,26 @@ internal static class KastnPdfRenderer
                 }
 
                 var displayText = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-                if (string.IsNullOrWhiteSpace(displayText))
+                var kind = ZetlViewRenderer.SlipListKind(slip);
+                // A divider note carries no text but still renders (as a rule); other
+                // empty notes are skipped.
+                if (kind != "divider" && string.IsNullOrWhiteSpace(displayText))
                 {
                     continue;
                 }
 
-                var slipMarker = listStyle switch
+                var slipMarker = kind switch
                 {
-                    ZetlViewListStyles.Ordered => $"{itemNumber++}. ",
-                    ZetlViewListStyles.Task => "☐ ",
-                    ZetlViewListStyles.Paragraph => "",
-                    _ => "• "
+                    "ordered" => $"{++orderedRun}. ",
+                    "task" => slip.Checked ? "☑ " : "☐ ",
+                    "bullet" => "• ",
+                    _ => ""
                 };
+                if (kind != "ordered")
+                {
+                    orderedRun = 0;
+                }
+
                 AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker);
             }
         }
@@ -174,7 +193,8 @@ internal static class KastnPdfRenderer
         };
         var placedSlipMarker = false;
 
-        foreach (var block in ZetlMarkdown.ParseBlocks(text))
+        // A whole-note kind (heading/quote/code/divider) synthesizes its one block.
+        foreach (var block in ZetlMarkdown.BlocksForNote(slip.ListKind, text))
         {
             if (block is ZetlParagraphBlock paragraphBlock)
             {
@@ -221,6 +241,86 @@ internal static class KastnPdfRenderer
                     AppendInlines(paragraph.AddFormattedText(), item.Inlines);
                 }
 
+                placedSlipMarker = true;
+            }
+            else if (block is ZetlHeadingBlock headingBlock)
+            {
+                // Softened sub-heading: bold and a touch larger, not a document heading.
+                var paragraph = section.AddParagraph();
+                paragraph.Format.LeftIndent = Unit.FromPoint((depth + 1) * 14);
+                paragraph.Format.SpaceBefore = Unit.FromPoint(6);
+                paragraph.Format.SpaceAfter = Unit.FromPoint(2);
+                paragraph.Format.Alignment = alignment;
+                if (!placedSlipMarker)
+                {
+                    if (slipMarker.Length > 0)
+                    {
+                        paragraph.AddText(slipMarker);
+                    }
+
+                    placedSlipMarker = true;
+                }
+
+                var headingText = paragraph.AddFormattedText();
+                headingText.Bold = true;
+                headingText.Font.Size = headingBlock.Level <= 1 ? 13 : headingBlock.Level == 2 ? 12 : 11.5;
+                AppendInlines(headingText, headingBlock.Inlines);
+            }
+            else if (block is ZetlQuoteBlock quoteBlock)
+            {
+                var paragraph = section.AddParagraph();
+                paragraph.Format.LeftIndent = Unit.FromPoint((depth + 2) * 14);
+                paragraph.Format.SpaceBefore = Unit.FromPoint(2);
+                paragraph.Format.SpaceAfter = Unit.FromPoint(2);
+                paragraph.Format.Alignment = alignment;
+                paragraph.Format.Borders.Left.Width = 2;
+                paragraph.Format.Borders.Left.Color = new Color(0xBB, 0xBB, 0xBB);
+                paragraph.Format.Borders.DistanceFromLeft = Unit.FromPoint(4);
+                var quoteText = paragraph.AddFormattedText();
+                quoteText.Italic = true;
+                for (var line = 0; line < quoteBlock.Lines.Count; line++)
+                {
+                    if (line > 0)
+                    {
+                        quoteText.AddLineBreak();
+                    }
+
+                    AppendInlines(quoteText, quoteBlock.Lines[line]);
+                }
+
+                placedSlipMarker = true;
+            }
+            else if (block is ZetlCodeBlock codeBlock)
+            {
+                var paragraph = section.AddParagraph();
+                paragraph.Format.LeftIndent = Unit.FromPoint((depth + 2) * 14);
+                paragraph.Format.SpaceBefore = Unit.FromPoint(3);
+                paragraph.Format.SpaceAfter = Unit.FromPoint(3);
+                paragraph.Format.Font.Name = KastnPdfFontResolver.MonoFamilyName;
+                paragraph.Format.Font.Size = 9.5;
+                paragraph.Format.Shading.Color = new Color(0xF2, 0xF2, 0xF2);
+                var codeLines = codeBlock.Text.ReplaceLineEndings("\n").Split('\n');
+                for (var line = 0; line < codeLines.Length; line++)
+                {
+                    if (line > 0)
+                    {
+                        paragraph.AddLineBreak();
+                    }
+
+                    paragraph.AddText(codeLines[line]);
+                }
+
+                placedSlipMarker = true;
+            }
+            else if (block is ZetlDividerBlock)
+            {
+                // An empty paragraph with a bottom border reads as a horizontal rule.
+                var paragraph = section.AddParagraph();
+                paragraph.Format.LeftIndent = Unit.FromPoint((depth + 1) * 14);
+                paragraph.Format.SpaceBefore = Unit.FromPoint(4);
+                paragraph.Format.SpaceAfter = Unit.FromPoint(4);
+                paragraph.Format.Borders.Bottom.Width = 0.75;
+                paragraph.Format.Borders.Bottom.Color = new Color(0xCC, 0xCC, 0xCC);
                 placedSlipMarker = true;
             }
         }
@@ -275,13 +375,22 @@ internal sealed class KastnPdfFontResolver : IFontResolver
 {
     public const string FamilyName = "Zetl Sans";
 
+    // A monospace family for fenced code blocks. Backed by Consolas, falling back to
+    // Courier New and finally the sans face, so a missing font never aborts the render.
+    public const string MonoFamilyName = "Zetl Mono";
+
     public FontResolverInfo? ResolveTypeface(string familyName, bool bold, bool italic)
     {
-        var face = (bold, italic) switch
+        var mono = familyName == MonoFamilyName;
+        var face = (mono, bold, italic) switch
         {
-            (true, true) => "z-bi",
-            (true, false) => "z-b",
-            (false, true) => "z-i",
+            (true, true, true) => "zm-bi",
+            (true, true, false) => "zm-b",
+            (true, false, true) => "zm-i",
+            (true, false, false) => "zm-r",
+            (false, true, true) => "z-bi",
+            (false, true, false) => "z-b",
+            (false, false, true) => "z-i",
             _ => "z-r"
         };
         return new FontResolverInfo(face);
@@ -289,15 +398,23 @@ internal sealed class KastnPdfFontResolver : IFontResolver
 
     public byte[]? GetFont(string faceName)
     {
-        var file = faceName switch
+        return faceName switch
         {
-            "z-b" => "arialbd.ttf",
-            "z-i" => "ariali.ttf",
-            "z-bi" => "arialbi.ttf",
-            _ => "arial.ttf"
+            "z-b" => LoadSystemFont("arialbd.ttf") ?? LoadSystemFont("arial.ttf"),
+            "z-i" => LoadSystemFont("ariali.ttf") ?? LoadSystemFont("arial.ttf"),
+            "z-bi" => LoadSystemFont("arialbi.ttf") ?? LoadSystemFont("arial.ttf"),
+            "zm-b" => LoadMonoFont("consolab.ttf", "courbd.ttf"),
+            "zm-i" => LoadMonoFont("consolai.ttf", "couri.ttf"),
+            "zm-bi" => LoadMonoFont("consolaz.ttf", "courbi.ttf"),
+            "zm-r" => LoadMonoFont("consola.ttf", "cour.ttf"),
+            _ => LoadSystemFont("arial.ttf")
         };
-        return LoadSystemFont(file) ?? LoadSystemFont("arial.ttf");
     }
+
+    // Prefer Consolas, then Courier New, then the sans fallback so code still renders
+    // (just not monospaced) on a machine missing both monospace faces.
+    private static byte[]? LoadMonoFont(string consolas, string courier) =>
+        LoadSystemFont(consolas) ?? LoadSystemFont(courier) ?? LoadSystemFont("arial.ttf");
 
     private static byte[]? LoadSystemFont(string file)
     {

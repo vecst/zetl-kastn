@@ -249,6 +249,123 @@ internal static class ZetlProjectServiceTests
         AssertTrue(note.Align is null, "The stored note should carry no alignment for left.");
     }
 
+    public static void SlipListKindAndCheckedRoundTrip()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "todo", "copy");
+        var service = new ZetlProjectService(store);
+
+        ZetlSlipSnapshot Update(string id, UpdateSlipCommand command, long revision) =>
+            service.Execute(ZetlCommandEnvelope.Create(
+                id, ZetlCommandKind.UpdateSlip, command, project.Id, note.Id, revision))
+                .Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException($"{id} did not return a slip.");
+
+        // Become a task, then check it.
+        var task = Update("to-task", new UpdateSlipCommand { Text = note.Text, ListKind = "task" }, note.Revision);
+        AssertEqual("task", task.ListKind, "The snapshot should report the task kind.");
+        var checkedSlip = Update("check", new UpdateSlipCommand { Text = task.Text, Checked = true }, task.Revision);
+        AssertTrue(checkedSlip.Checked, "Checking a task should persist.");
+
+        // Omitting the kind on a text edit preserves both kind and checked.
+        var edited = Update("edit", new UpdateSlipCommand { Text = "done soon" }, checkedSlip.Revision);
+        AssertEqual("task", edited.ListKind, "Omitting the kind preserves it.");
+        AssertTrue(edited.Checked, "Omitting checked preserves it.");
+
+        // Switching to a non-task kind clears the now-meaningless checked flag.
+        var bulleted = Update("to-bullet", new UpdateSlipCommand { Text = edited.Text, ListKind = "bullet" }, edited.Revision);
+        AssertEqual("bullet", bulleted.ListKind, "The kind should become bullet.");
+        AssertTrue(!bulleted.Checked, "Leaving task should clear the checked flag.");
+
+        // An unknown kind normalizes to a plain paragraph ("").
+        var plain = Update("to-plain", new UpdateSlipCommand { Text = bulleted.Text, ListKind = "paragraph" }, bulleted.Revision);
+        AssertEqual("", plain.ListKind, "An unknown kind normalizes to no marker.");
+        AssertEqual("", note.ListKind, "The stored note carries no marker for an unknown kind.");
+    }
+
+    public static void DividerNoteAddsWithoutContent()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var service = new ZetlProjectService(store);
+
+        // A divider is a content-less structural note, so the title-or-note rule is waived.
+        var divider = service.Execute(ZetlCommandEnvelope.Create(
+            "add-divider",
+            ZetlCommandKind.AddSlip,
+            new AddSlipCommand { BucketId = bucket.Id, Text = "", Source = "kastn", ListKind = "divider" },
+            project.Id));
+        AssertEqual(ZetlResponseStatus.Success, divider.Status, "A content-less divider note should be allowed.");
+        var snapshot = divider.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Divider add returned no slip.");
+        AssertEqual("divider", snapshot.ListKind, "The new note should carry the divider kind.");
+
+        // Toggling a content-less divider's visibility re-sends its empty text, which must
+        // not trip the title-or-note requirement.
+        var hide = service.Execute(ZetlCommandEnvelope.Create(
+            "hide-divider",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = snapshot.Text, ExcludedFromViews = true },
+            project.Id,
+            snapshot.Id,
+            snapshot.Revision));
+        AssertEqual(ZetlResponseStatus.Success, hide.Status, "Hiding a divider should be allowed.");
+
+        // A non-divider note with no content is still rejected.
+        var empty = service.Execute(ZetlCommandEnvelope.Create(
+            "add-empty",
+            ZetlCommandKind.AddSlip,
+            new AddSlipCommand { BucketId = bucket.Id, Text = "", Source = "kastn" },
+            project.Id));
+        AssertEqual(ZetlResponseStatus.ValidationError, empty.Status, "A content-less plain note is still rejected.");
+    }
+
+    public static void StructuralNoteIsSkippedByPop()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+
+        // Activate the bucket in Pop mode, then capture a real note followed by a divider.
+        store.SetActiveProject(project.Id);
+        store.SetActiveBucket(project, bucket.Id);
+        store.SetBucketPopMode(bucket, true);
+        var note = store.AddNote(bucket, "value", "copy");
+        store.AddNote(bucket, "", "copy", listKind: "divider");
+
+        // A trailing divider must not block popping the content note above it (Pop only
+        // looks at the last note, so a structural one would otherwise shadow it).
+        var popped = store.TryPopLastMatchingActiveNote("value", shifted: false, out _, out var poppedNote);
+        AssertTrue(popped, "A trailing divider should not block Pop of the note above it.");
+        AssertEqual(note.Id, poppedNote?.Id, "Pop should remove the content note, not the divider.");
+    }
+
+    public static void BucketRenderKindRoundTrips()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out _);
+        var service = new ZetlProjectService(store);
+
+        var group = service.Execute(ZetlCommandEnvelope.Create(
+            "add-group",
+            ZetlCommandKind.AddBucket,
+            new AddBucketCommand { Name = "Group", RenderKind = "group" },
+            project.Id));
+        var snapshot = group.Payload?.Deserialize<ZetlBucketSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Group add returned no bucket.");
+        AssertEqual("group", snapshot.RenderKind, "A group bucket carries its render kind.");
+
+        // An unknown render kind normalizes to a normal bucket.
+        var weird = service.Execute(ZetlCommandEnvelope.Create(
+            "add-weird",
+            ZetlCommandKind.AddBucket,
+            new AddBucketCommand { Name = "Weird", RenderKind = "carousel" },
+            project.Id));
+        var weirdSnapshot = weird.Payload?.Deserialize<ZetlBucketSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Bucket add returned nothing.");
+        AssertEqual("", weirdSnapshot.RenderKind, "An unknown render kind normalizes to a normal bucket.");
+    }
+
     public static void BucketAndSlipCommandsRoundTrip()
     {
         using var temp = new TempStateDirectory();

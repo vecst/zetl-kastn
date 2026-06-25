@@ -495,6 +495,7 @@ internal sealed class ZetlProjectService
         }
 
         var bucket = store.AddBucket(project, payload.Name, payload.ParentBucketId, setActive: false);
+        bucket.RenderKind = ZetlViewRenderer.NormalizeBucketRenderKind(payload.RenderKind);
         ApplyBucketDefinition(
             project,
             bucket,
@@ -638,7 +639,12 @@ internal sealed class ZetlProjectService
         }
 
         var (project, bucket) = found.Value;
-        if (string.IsNullOrWhiteSpace(payload.Text) && string.IsNullOrWhiteSpace(payload.Title))
+        var isDivider = string.Equals(payload.ListKind, "divider", StringComparison.OrdinalIgnoreCase);
+        // A divider is a structural note with no authored content, so it is exempt from
+        // the title-or-note requirement; every other kind still needs content.
+        if (!isDivider
+            && string.IsNullOrWhiteSpace(payload.Text)
+            && string.IsNullOrWhiteSpace(payload.Title))
         {
             return ValidationError(command, "slip_content_required", "A slip title or note is required.");
         }
@@ -659,7 +665,8 @@ internal sealed class ZetlProjectService
             payload.Source,
             payload.SessionId,
             payload.CapturedAtUtc?.UtcDateTime,
-            title: payload.Title);
+            title: payload.Title,
+            listKind: payload.ListKind);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Created, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);
@@ -687,14 +694,21 @@ internal sealed class ZetlProjectService
 
         var payload = Payload<UpdateSlipCommand>(command);
         var title = payload.Title ?? note.Title;
-        if (string.IsNullOrWhiteSpace(payload.Text)
+        // A structural note (divider, etc.) is content-less by design, so it is exempt
+        // from the title-or-note rule — otherwise toggling its visibility or alignment,
+        // which re-sends its empty text, would be rejected.
+        var resultingKind = payload.ListKind ?? note.ListKind;
+        if (!ZetlViewRenderer.IsStructuralKind(resultingKind)
+            && string.IsNullOrWhiteSpace(payload.Text)
             && string.IsNullOrWhiteSpace(title)
             && !note.IsImage)
         {
             return ValidationError(command, "slip_content_required", "A slip title or note is required.");
         }
 
-        store.UpdateNote(note, payload.Text, payload.Title, payload.ExcludedFromViews, payload.Align);
+        store.UpdateNote(
+            note, payload.Text, payload.Title, payload.ExcludedFromViews,
+            payload.Align, payload.ListKind, payload.Checked);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);

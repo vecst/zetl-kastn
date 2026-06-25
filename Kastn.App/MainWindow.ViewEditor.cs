@@ -503,7 +503,6 @@ internal partial class MainWindow
             return;
         }
 
-        var listStyle = ZetlViewListStyles.Normalize(view.ListStyle);
         foreach (var group in groups)
         {
             viewLivePreviewPanel.Children.Add(new TextBlock
@@ -521,18 +520,25 @@ internal partial class MainWindow
                 TextWrapping = TextWrapping.Wrap
             });
 
-            var itemNumber = 1;
+            // Each note carries its own list kind; ordered notes count over their run.
+            var orderedRun = 0;
             foreach (var slip in group.Slips)
             {
-                var marker = slip.Type == ZetlSlipType.Picture
+                var kind = slip.Type == ZetlSlipType.Picture
                     ? ""
-                    : listStyle switch
-                    {
-                        ZetlViewListStyles.Ordered => $"{itemNumber++}.",
-                        ZetlViewListStyles.Task => "☐",
-                        ZetlViewListStyles.Paragraph => "",
-                        _ => "•"
-                    };
+                    : ZetlViewRenderer.SlipListKind(slip);
+                var marker = kind switch
+                {
+                    "ordered" => $"{++orderedRun}.",
+                    "bullet" => "•",
+                    "task" => slip.Checked ? "☑" : "☐",
+                    _ => ""
+                };
+                if (kind != "ordered")
+                {
+                    orderedRun = 0;
+                }
+
                 viewLivePreviewPanel.Children.Add(BuildViewPreviewSlip(slip, group.Depth, marker));
             }
         }

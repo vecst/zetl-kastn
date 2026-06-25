@@ -59,6 +59,10 @@ public sealed record AddBucketCommand
     public required string Name { get; init; }
     public string? ParentBucketId { get; init; }
     public ZetlBucketSettings Settings { get; init; } = new();
+
+    // Optional Kastn render kind for the new bucket: "group" / "table" / "latex"
+    // create a structural container; "" (default) is a normal bucket.
+    public string? RenderKind { get; init; }
 }
 
 public sealed record UpdateBucketCommand
@@ -86,6 +90,10 @@ public sealed record AddSlipCommand
     public required string Source { get; init; }
     public string? SessionId { get; init; }
     public DateTimeOffset? CapturedAtUtc { get; init; }
+
+    // Optional block kind for the new note. "divider" creates a content-less structural
+    // note (a rendered rule); the list/heading/quote/code kinds are normally set later.
+    public string? ListKind { get; init; }
 }
 
 public sealed record UpdateSlipCommand
@@ -100,6 +108,14 @@ public sealed record UpdateSlipCommand
 
     // Null preserves the current alignment; "left" / "center" / "right" sets it.
     public string? Align { get; init; }
+
+    // Null preserves the current list kind; "" clears it (plain paragraph) and
+    // "bullet" / "ordered" / "task" set the note's own list-item kind.
+    public string? ListKind { get; init; }
+
+    // Null preserves the current checked state; true/false set it (only meaningful
+    // when the note's list kind is "task").
+    public bool? Checked { get; init; }
 }
 
 public sealed record MoveSlipCommand

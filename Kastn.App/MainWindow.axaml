@@ -424,7 +424,7 @@
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">
-                <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto">
+                <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
                   <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" Margin="0,0,0,8">
                     <TextBlock Grid.Column="0"
                                Text="Buckets &amp; slips"
@@ -440,7 +440,26 @@
                             Content="+ Slip"
                             Padding="10,3" />
                   </Grid>
-                  <TreeView Grid.Row="1" x:Name="projectTree" SelectionMode="Multiple">
+                  <!-- Insert bar for structural (Kastn-only) elements Zetl ignores. Holds
+                       Divider now; Group / Table / LaTeX will join it here. -->
+                  <StackPanel Grid.Row="1"
+                              Orientation="Horizontal"
+                              Spacing="6"
+                              Margin="0,0,0,8">
+                    <TextBlock Text="Insert"
+                               Classes="muted"
+                               FontSize="12"
+                               VerticalAlignment="Center" />
+                    <Button x:Name="insertDividerButton"
+                            Content="— Divider"
+                            Padding="10,3"
+                            ToolTip.Tip="Insert a divider after the selected slip" />
+                    <Button x:Name="insertGroupButton"
+                            Content="▢ Group"
+                            Padding="10,3"
+                            ToolTip.Tip="Insert a group container — drag slips or buckets into it" />
+                  </StackPanel>
+                  <TreeView Grid.Row="2" x:Name="projectTree" SelectionMode="Multiple">
                     <TreeView.Styles>
                       <Style Selector="TreeViewItem">
                         <Setter Property="IsExpanded" Value="True" />
@@ -465,11 +484,21 @@
                                    Width="15"
                                    Height="15"
                                    VerticalAlignment="Center"
-                                   IsVisible="{Binding IsBucket}"
+                                   IsVisible="{Binding IsPlainBucket}"
                                    ToolTip.Tip="Bucket">
                             <Path Stroke="{DynamicResource ZetlAccentBrush}"
                                   StrokeThickness="1.7"
                                   Data="M2 5h7l2 2h11v12H2z" />
+                          </Viewbox>
+                          <Viewbox Grid.Column="0"
+                                   Width="15"
+                                   Height="15"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsContainerBucket}"
+                                   ToolTip.Tip="Container (drag slips or buckets in)">
+                            <Path Stroke="{DynamicResource ZetlAccentBrush}"
+                                  StrokeThickness="1.7"
+                                  Data="M3 4h18v16H3z M3 9h18" />
                           </Viewbox>
                           <Viewbox Grid.Column="0"
                                    Width="15"
@@ -490,6 +519,16 @@
                             <Path Stroke="{DynamicResource ZetlMutedTextBrush}"
                                   StrokeThickness="1.7"
                                   Data="M3 4h18v16H3z M6 16l4-4 3 3 2-2 3 3 M16 8h.01" />
+                          </Viewbox>
+                          <Viewbox Grid.Column="0"
+                                   Width="15"
+                                   Height="15"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsStructural}"
+                                   ToolTip.Tip="Structural element">
+                            <Path Stroke="{DynamicResource ZetlAccentBrush}"
+                                  StrokeThickness="1.7"
+                                  Data="M3 12h18" />
                           </Viewbox>
                           <Button Grid.Column="1"
                                   Width="26"
@@ -539,27 +578,38 @@
                                        Classes="muted"
                                        FontSize="10" />
                           </Border>
+                          <!-- Live drop target marker during drag-and-drop. -->
+                          <Border Grid.Column="0"
+                                  Grid.ColumnSpan="4"
+                                  IsHitTestVisible="False"
+                                  BorderThickness="3,0,0,0"
+                                  BorderBrush="{DynamicResource ZetlAccentBrush}"
+                                  Background="{DynamicResource ZetlSurfaceBrush}"
+                                  CornerRadius="2"
+                                  Margin="-4,0,0,0"
+                                  Opacity="0.6"
+                                  IsVisible="{Binding IsDropTarget}" />
                         </Grid>
                       </TreeDataTemplate>
                     </TreeView.ItemTemplate>
                   </TreeView>
-                  <TextBox Grid.Row="2"
+                  <TextBox Grid.Row="3"
                            x:Name="bucketNameBox"
                            Watermark="Bucket name"
                            Margin="0,10,0,0" />
-                  <ComboBox Grid.Row="3"
+                  <ComboBox Grid.Row="4"
                             x:Name="parentBucketBox"
                             Margin="0,8,0,0">
                     <ComboBox.ItemTemplate>
                       <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                     </ComboBox.ItemTemplate>
                   </ComboBox>
-                  <TextBlock Grid.Row="4"
+                  <TextBlock Grid.Row="5"
                              x:Name="parentBucketHintText"
                              Classes="muted"
                              FontSize="12"
                              Margin="0,4,0,0" />
-                  <StackPanel Grid.Row="5"
+                  <StackPanel Grid.Row="6"
                               x:Name="bucketHeadingPanel"
                               Spacing="4"
                               Margin="0,8,0,0"
@@ -573,7 +623,7 @@
                                 VerticalAlignment="Center" />
                     </WrapPanel>
                   </StackPanel>
-                  <Grid Grid.Row="6"
+                  <Grid Grid.Row="7"
                         ColumnDefinitions="*,*,*"
                         ColumnSpacing="6"
                         Margin="0,8,0,0">
@@ -652,33 +702,45 @@
                                  FontSize="12"
                                  TextWrapping="Wrap"
                                  Margin="0,0,0,8" />
-                      <WrapPanel Grid.Row="1"
-                                 x:Name="formatToolbar"
-                                 Orientation="Horizontal"
-                                 Margin="0,0,0,6">
-                        <WrapPanel.Styles>
-                          <!-- WrapPanel has no Spacing; give each control a small
-                               gap so the toolbar reads cleanly when it wraps. -->
-                          <Style Selector="WrapPanel#formatToolbar > Button">
-                            <Setter Property="Margin" Value="0,0,4,4" />
-                          </Style>
-                        </WrapPanel.Styles>
-                        <Button x:Name="boldButton" Content="B" FontWeight="Bold" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Bold (**…**)" />
-                        <Button x:Name="italicButton" Content="I" FontStyle="Italic" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Italic (*…*)" />
-                        <Button x:Name="strikeButton" Content="S" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Strikethrough (~~…~~)" />
-                        <Button x:Name="codeButton" Content="&lt;/&gt;" Padding="9,3" Focusable="False" ToolTip.Tip="Inline code (`…`)" />
-                        <Button x:Name="linkButton" Content="Link" Padding="9,3" Focusable="False" ToolTip.Tip="Link ([text](url))" />
-                        <Button x:Name="wikiLinkButton" Content="[[ Link ]]" Padding="9,3" Focusable="False" ToolTip.Tip="Link to another slip" />
-                        <Border Width="1" Background="{DynamicResource ZetlBorderBrush}" Margin="4,2" />
-                        <Button x:Name="bulletListButton" Content="•" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Bullet list (- )" />
-                        <Button x:Name="numberListButton" Content="1." Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Numbered list (1. )" />
-                        <Button x:Name="taskListButton" Content="☑" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Checklist (- [ ] )" />
-                        <Border Width="1" Background="{DynamicResource ZetlBorderBrush}" Margin="4,2" />
-                        <TextBlock Text="Align" Classes="muted" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0" />
-                        <Button x:Name="alignLeftButton" Content="Left" Padding="9,3" ToolTip.Tip="Align left" />
-                        <Button x:Name="alignCenterButton" Content="Center" Padding="9,3" ToolTip.Tip="Align center" />
-                        <Button x:Name="alignRightButton" Content="Right" Padding="9,3" ToolTip.Tip="Align right" />
-                      </WrapPanel>
+                      <StackPanel Grid.Row="1" Margin="0,0,0,6">
+                        <WrapPanel x:Name="formatToolbar"
+                                   Orientation="Horizontal">
+                          <WrapPanel.Styles>
+                            <!-- WrapPanel has no Spacing; give each control a small
+                                 gap so the toolbar reads cleanly when it wraps. -->
+                            <Style Selector="WrapPanel#formatToolbar > Button">
+                              <Setter Property="Margin" Value="0,0,4,4" />
+                            </Style>
+                          </WrapPanel.Styles>
+                          <Button x:Name="boldButton" Content="B" FontWeight="Bold" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Bold" />
+                          <Button x:Name="italicButton" Content="I" FontStyle="Italic" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Italic" />
+                          <Button x:Name="strikeButton" Content="S" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Strikethrough" />
+                          <Button x:Name="codeButton" Content="&lt;/&gt;" Padding="9,3" Focusable="False" ToolTip.Tip="Inline code" />
+                          <Button x:Name="linkButton" Content="Link" Padding="9,3" Focusable="False" ToolTip.Tip="Web link" />
+                          <Button x:Name="wikiLinkButton" Content="[[ Link ]]" Padding="9,3" Focusable="False" ToolTip.Tip="Link to another slip" />
+                          <Border Width="1" Background="{DynamicResource ZetlBorderBrush}" Margin="4,2" />
+                          <Button x:Name="bulletListButton" Content="•" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Bullet list" />
+                          <Button x:Name="numberListButton" Content="1." Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Numbered list" />
+                          <Button x:Name="taskListButton" Content="☑" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Checklist" />
+                          <Border Width="1" Background="{DynamicResource ZetlBorderBrush}" Margin="4,2" />
+                          <Button x:Name="headingButton" Content="H" Padding="9,3" MinWidth="30" Focusable="False" ToolTip.Tip="Sub-heading" />
+                          <Button x:Name="quoteButton" Content="Quote" Padding="9,3" Focusable="False" ToolTip.Tip="Blockquote" />
+                          <Button x:Name="codeBlockButton" Content="Code" Padding="9,3" Focusable="False" ToolTip.Tip="Code block" />
+                          <Border Width="1" Background="{DynamicResource ZetlBorderBrush}" Margin="4,2" />
+                          <TextBlock Text="Align" Classes="muted" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0" />
+                          <Button x:Name="alignLeftButton" Content="Left" Padding="9,3" ToolTip.Tip="Align left" />
+                          <Button x:Name="alignCenterButton" Content="Center" Padding="9,3" ToolTip.Tip="Align center" />
+                          <Button x:Name="alignRightButton" Content="Right" Padding="9,3" ToolTip.Tip="Align right" />
+                        </WrapPanel>
+                        <!-- Advisory when the selected view's Copy/Export artifact does
+                             not carry the formatting the always-rich reader shows. -->
+                        <TextBlock x:Name="formatFidelityNote"
+                                   Classes="muted"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   IsVisible="False"
+                                   Margin="0,4,0,0" />
+                      </StackPanel>
                       <TextBox Grid.Row="2"
                                x:Name="slipEditor"
                                MinHeight="140"
@@ -968,7 +1030,10 @@
                                TextWrapping="Wrap" />
                   </StackPanel>
                   <Grid ColumnDefinitions="*,16,Auto">
-                    <StackPanel Grid.Column="0" Spacing="4">
+                    <!-- List style is now a per-note property set from the editor
+                         toolbar, so the view no longer carries a bucket-wide slip
+                         style. The box is kept (hidden) only to preserve wiring. -->
+                    <StackPanel Grid.Column="0" Spacing="4" IsVisible="False">
                       <TextBlock Text="Slip style" Classes="muted" FontSize="12" />
                       <ComboBox x:Name="viewListStyleBox" HorizontalAlignment="Stretch" />
                     </StackPanel>

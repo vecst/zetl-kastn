@@ -1,3 +1,4 @@
+using ZETL;
 using ZETL.Contracts;
 
 namespace KASTN;
@@ -43,29 +44,31 @@ internal partial class MainWindow
             (slip, _) => new UpdateSlipCommand { Text = KastnBatchFormat.ToggleStrike(slip.Text) });
     }
 
-    // kind: "bullet" | "ordered" | "task".
+    // kind: bullet | ordered | task | heading | quote | code. The kind is the note's
+    // own render property (nothing is written into the body); a single selection toggles
+    // it, a multi-selection applies it uniformly.
     private async Task ListSlipsAsync(string kind)
     {
         if (!HasBatchSelection())
         {
-            Func<int, string> marker = kind switch
-            {
-                "ordered" => index => $"{index + 1}. ",
-                "task" => _ => "- [ ] ",
-                _ => _ => "- ",
-            };
-            PrefixSelectedLines(marker);
+            await SetSlipListKindAsync(kind);
             return;
         }
 
-        // Each ordered slip just stores a "1." marker; the displayed number is
-        // computed at render time over the visible slips (ZetlViewRenderer renumbers
-        // a run continuously), so the list re-flows when slips are hidden or moved.
-        var lineMarker = kind switch { "ordered" => "1. ", "task" => "- [ ] ", _ => "- " };
         await ApplyBatchAsync(
-            kind switch { "ordered" => "numbered", "task" => "made a checklist", _ => "bulleted" },
-            (slip, _) => new UpdateSlipCommand { Text = KastnBatchFormat.ApplyLineMarker(slip.Text, lineMarker) });
+            NoteKindActionLabel(kind),
+            (slip, _) => new UpdateSlipCommand { Text = slip.Text, ListKind = kind });
     }
+
+    private static string NoteKindActionLabel(string kind) => kind switch
+    {
+        "ordered" => "numbered",
+        "task" => "made a checklist",
+        "heading" => "made a heading",
+        "quote" => "made a quote",
+        "code" => "made a code block",
+        _ => "bulleted"
+    };
 
     // Loop the selected text slips in document order, sending one UpdateSlip per
     // slip; mirrors the single-slip save path's status/guard handling. In a batch
@@ -83,7 +86,8 @@ internal partial class MainWindow
         var ordered = currentProject.Slips
             .Where(slip => selectedIds.Contains(slip.Id)
                 && slip.Type == ZetlSlipType.Text
-                && !IsSlipInDeleted(slip))
+                && !IsSlipInDeleted(slip)
+                && !ZetlViewRenderer.IsStructuralKind(slip.ListKind))
             .ToList();
         if (ordered.Count == 0)
         {

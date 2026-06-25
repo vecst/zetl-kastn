@@ -323,13 +323,17 @@ internal partial class MainWindow
         // every selected text slip (batch). The active highlight is shown for a
         // single slip or the title bucket.
         var batchAlign = selected.Count >= 2
-            && selected.Any(item => item.Type == ZetlSlipType.Text && !IsSlipInDeleted(item));
+            && selected.Any(item => item.Type == ZetlSlipType.Text
+                && !IsSlipInDeleted(item)
+                && !ZetlViewRenderer.IsStructuralKind(item.ListKind));
         var canAlign = IsOnline
             && !saving
             && editorState.ConflictCurrent is null
             && (titleBucket is not null
                 || batchAlign
-                || (slip is { Type: ZetlSlipType.Text } && !IsSlipInDeleted(slip)));
+                || (slip is { Type: ZetlSlipType.Text }
+                    && !IsSlipInDeleted(slip)
+                    && !ZetlViewRenderer.IsStructuralKind(slip.ListKind)));
         alignLeftButton.IsEnabled = canAlign;
         alignCenterButton.IsEnabled = canAlign;
         alignRightButton.IsEnabled = canAlign;
@@ -340,6 +344,134 @@ internal partial class MainWindow
         alignLeftButton.FontWeight = active == "left" ? FontWeight.Bold : FontWeight.Normal;
         alignCenterButton.FontWeight = active == "center" ? FontWeight.Bold : FontWeight.Normal;
         alignRightButton.FontWeight = active == "right" ? FontWeight.Bold : FontWeight.Normal;
+    }
+
+    // Highlight the list button matching the single selected note's own list kind, so
+    // the buttons read as toggles (pressed when that kind is active) like alignment.
+    private void UpdateListButtons()
+    {
+        var selected = SelectedSlips();
+        var slip = selected.Count == 1 ? selected[0] : null;
+        var active = slip is { Type: ZetlSlipType.Text } && !IsSlipInDeleted(slip)
+            ? ZetlViewRenderer.SlipListKind(slip)
+            : "";
+        bulletListButton.FontWeight = active == "bullet" ? FontWeight.Bold : FontWeight.Normal;
+        numberListButton.FontWeight = active == "ordered" ? FontWeight.Bold : FontWeight.Normal;
+        taskListButton.FontWeight = active == "task" ? FontWeight.Bold : FontWeight.Normal;
+        headingButton.FontWeight = active == "heading" ? FontWeight.Bold : FontWeight.Normal;
+        quoteButton.FontWeight = active == "quote" ? FontWeight.Bold : FontWeight.Normal;
+        codeBlockButton.FontWeight = active == "code" ? FontWeight.Bold : FontWeight.Normal;
+    }
+
+    // Set the selected note's kind, toggling it off when already that kind. The kind is
+    // the note's render property — nothing is written into its body text.
+    private Task SetSlipListKindAsync(string kind)
+    {
+        var selected = SelectedSlips();
+        if (selected.Count != 1)
+        {
+            return Task.CompletedTask;
+        }
+
+        var slip = selected[0];
+        var target = ZetlViewRenderer.SlipListKind(slip) == kind ? "" : kind;
+        var label = target.Length == 0
+            ? "Note kind cleared."
+            : $"Note {NoteKindActionLabel(target)}.";
+        return UpdateSlipPropertyAsync(
+            slip, text => new UpdateSlipCommand { Text = text, ListKind = target }, label);
+    }
+
+    // Toggle a task note's checked state from a checkbox click in the View. Targets the
+    // clicked note by id rather than the editor selection.
+    private Task ToggleSlipCheckedAsync(string slipId)
+    {
+        var slip = currentProject?.Slips.FirstOrDefault(item => item.Id == slipId);
+        if (slip is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var toggled = !slip.Checked;
+        return UpdateSlipPropertyAsync(
+            slip,
+            text => new UpdateSlipCommand { Text = text, Checked = toggled },
+            toggled ? "Checked." : "Unchecked.");
+    }
+
+    // Send one UpdateSlip for a single text note, preserving an in-progress editor draft
+    // and resolving conflicts exactly like the editor save path. Used by the per-note
+    // list-kind and checked toggles (alignment keeps its own copy for the title-bucket
+    // and batch cases).
+    private async Task UpdateSlipPropertyAsync(
+        ZetlSlipSnapshot slip,
+        Func<string, UpdateSlipCommand> buildWithText,
+        string successText)
+    {
+        if (!IsOnline || saving || currentProject is null
+            || slip.Type != ZetlSlipType.Text || IsSlipInDeleted(slip))
+        {
+            return;
+        }
+
+        var isEditing = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal);
+        if (isEditing && editorState.ConflictCurrent is not null)
+        {
+            return;
+        }
+
+        var revision = isEditing ? editorState.Revision : slip.Revision;
+        var text = isEditing ? editorState.DraftText.Trim() : slip.Text;
+
+        saving = true;
+        SetEditingEnabled();
+        try
+        {
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.UpdateSlip,
+                buildWithText(text),
+                currentProject.Id,
+                slip.Id,
+                revision));
+            if (response.Status == ZetlResponseStatus.Conflict)
+            {
+                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
+                    ZetlProtocolJson.Options);
+                if (current is not null && isEditing)
+                {
+                    editorState.Reconcile(current);
+                    ShowConflict();
+                }
+
+                return;
+            }
+
+            if (response.Status != ZetlResponseStatus.Success)
+            {
+                statusText.Text = response.Error?.Message ?? $"Update failed: {response.Status}.";
+                return;
+            }
+
+            if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
+                && isEditing)
+            {
+                editorState.AcceptSaved(saved);
+            }
+
+            await connection.RefreshAsync();
+            statusText.Text = successText;
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            statusText.Text = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+            SetEditingEnabled();
+        }
     }
 
     // Wrap the editor selection (or insert a placeholder) in Markdown delimiters, then
@@ -361,33 +493,6 @@ internal partial class MainWindow
         slipEditor.Text = text[..start] + prefix + inner + suffix + text[end..];
         slipEditor.SelectionStart = start + prefix.Length;
         slipEditor.SelectionEnd = start + prefix.Length + inner.Length;
-        slipEditor.Focus();
-    }
-
-    // Prefix every line the selection touches with a list marker (incrementing for
-    // numbered lists), then reselect the modified block. A collapsed selection prefixes
-    // just the current line.
-    private void PrefixSelectedLines(Func<int, string> marker)
-    {
-        if (!slipEditor.IsEnabled)
-        {
-            return;
-        }
-
-        var text = slipEditor.Text ?? "";
-        var selStart = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
-        var selEnd = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
-
-        var blockStart = selStart == 0 ? 0 : text.LastIndexOf('\n', selStart - 1) + 1;
-        var nextNewline = text.IndexOf('\n', selEnd);
-        var blockEnd = nextNewline < 0 ? text.Length : nextNewline;
-
-        var lines = text[blockStart..blockEnd].Split('\n');
-        var rebuilt = string.Join("\n", lines.Select((line, index) => marker(index) + line));
-
-        slipEditor.Text = text[..blockStart] + rebuilt + text[blockEnd..];
-        slipEditor.SelectionStart = blockStart;
-        slipEditor.SelectionEnd = blockStart + rebuilt.Length;
         slipEditor.Focus();
     }
 
@@ -581,6 +686,134 @@ internal partial class MainWindow
             addingSlip = false;
             SetEditingEnabled();
         }
+    }
+
+    // Insert a Group container — a bucket Kastn renders as a boxed group. Slips and whole
+    // buckets are dragged into it through the existing tree drag-and-drop.
+    private async Task InsertGroupBucketAsync()
+    {
+        if (!IsOnline || currentProject is null)
+        {
+            return;
+        }
+
+        var parentId = SelectedBucketId is not null && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
+            ? SelectedBucketId
+            : null;
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.AddBucket,
+            new AddBucketCommand { Name = "Group", ParentBucketId = parentId, RenderKind = "group" },
+            currentProject.Id));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            pendingBucketSelectionId = response.Payload?.Deserialize<ZetlBucketSnapshot>(
+                ZetlProtocolJson.Options)?.Id;
+            await connection.RefreshAsync();
+            statusText.Text = "Group added — drag slips or buckets into it.";
+        }
+        else
+        {
+            statusText.Text = response.Error?.Message ?? $"Group creation failed: {response.Status}.";
+        }
+    }
+
+    // Insert a divider as its own structural note (rendered as a rule) after the selected
+    // note, rather than editing a note to "become" a divider. A divider carries no text.
+    private async Task InsertDividerSlipAsync()
+    {
+        if (!IsOnline || currentProject is null || addingSlip)
+        {
+            return;
+        }
+
+        var selected = SelectedSlips();
+        var anchor = selected.Count == 1 && !IsSlipInDeleted(selected[0]) ? selected[0] : null;
+        var bucketId = anchor?.BucketId
+            ?? (SelectedBucketId is { } selectedBucketId
+                && !KastnWorkbench.IsDeletedBucket(SelectedBucket) ? selectedBucketId : null)
+            ?? currentProject.ActiveBucketId
+            ?? currentProject.Buckets.FirstOrDefault(
+                bucket => !KastnWorkbench.IsDeletedBucket(bucket))?.Id;
+        if (bucketId is null)
+        {
+            statusText.Text = "Create a bucket before adding a divider.";
+            return;
+        }
+
+        addingSlip = true;
+        SetEditingEnabled();
+        try
+        {
+            if (!await SaveEditorAsync())
+            {
+                statusText.Text = "Save or resolve the current slip before adding a divider.";
+                return;
+            }
+
+            // The note that follows the anchor in document order — the reorder target so
+            // the new divider lands just after the anchor (null = keep it last).
+            var nextSlipId = anchor is null ? null : NextSlipInBucket(bucketId, anchor.Id);
+
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.AddSlip,
+                new AddSlipCommand
+                {
+                    BucketId = bucketId,
+                    Text = "",
+                    Source = "kastn",
+                    ListKind = "divider"
+                },
+                currentProject.Id));
+            if (response.Status != ZetlResponseStatus.Success)
+            {
+                statusText.Text = response.Error?.Message ?? $"Divider failed: {response.Status}.";
+                return;
+            }
+
+            var created = response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options);
+            if (created is not null && anchor is not null)
+            {
+                // The divider lands at the end of the bucket; move it before the note that
+                // followed the anchor (no-op when the anchor was already last).
+                await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                    Guid.NewGuid().ToString("N"),
+                    ZetlCommandKind.ReorderSlip,
+                    new ReorderSlipCommand { BeforeSlipId = nextSlipId },
+                    currentProject.Id,
+                    created.Id,
+                    created.Revision));
+            }
+
+            if (created is not null)
+            {
+                pendingBucketSelectionId = created.BucketId;
+                pendingSlipSelectionId = created.Id;
+            }
+
+            await connection.RefreshAsync();
+            statusText.Text = "Divider added.";
+        }
+        finally
+        {
+            addingSlip = false;
+            SetEditingEnabled();
+        }
+    }
+
+    // The id of the note immediately after anchorId within the bucket (document order),
+    // or null when the anchor is last — used as a reorder anchor for divider insertion.
+    private string? NextSlipInBucket(string bucketId, string anchorId)
+    {
+        if (currentProject is null)
+        {
+            return null;
+        }
+
+        var bucketSlips = currentProject.Slips.Where(slip => slip.BucketId == bucketId).ToList();
+        var index = bucketSlips.FindIndex(slip => slip.Id == anchorId);
+        return index >= 0 && index + 1 < bucketSlips.Count ? bucketSlips[index + 1].Id : null;
     }
 
     private async Task SaveBucketAsync()
@@ -1030,7 +1263,9 @@ internal partial class MainWindow
             ?? currentProject?.Slips.FirstOrDefault(item => item.Id == editorState.SlipId);
         slipMetadataText.Text = slip is null
             ? "Select a slip to read or edit it."
-            : SlipMetadata(slip);
+            : ZetlViewRenderer.IsStructuralKind(slip.ListKind)
+                ? "Structural element — a divider Kastn renders and Zetl ignores. It has no text to edit; use Delete to remove it."
+                : SlipMetadata(slip);
         SetEditingEnabled();
     }
 
@@ -1042,9 +1277,15 @@ internal partial class MainWindow
         var allSelectedSlipsAreActive = hasSelectedSlips
             && selectedSlips.All(slip => !IsSlipInDeleted(slip));
         var selectedSlipIsDeleted = selectedSlips.Count == 1 && IsSlipInDeleted(selectedSlips[0]);
+        // A structural note (a divider, and later group/table/latex) is a Kastn-only
+        // element with no authored content, so the editor and content-format controls
+        // do not apply to it — only move/delete remain.
+        var selectedIsStructural = selectedSlips.Count == 1
+            && ZetlViewRenderer.IsStructuralKind(selectedSlips[0].ListKind);
         var canEdit = IsOnline
             && editorState.SlipId is not null
             && !hasMultipleSelectedSlips
+            && !selectedIsStructural
             && !saving;
         var canBatch = IsOnline
             && hasSelectedSlips
@@ -1071,6 +1312,15 @@ internal partial class MainWindow
         codeButton.IsEnabled = canFormat;
         linkButton.IsEnabled = canFormat;
         wikiLinkButton.IsEnabled = canFormat;
+        headingButton.IsEnabled = canFormatOrBatch;
+        quoteButton.IsEnabled = canFormatOrBatch;
+        codeBlockButton.IsEnabled = canFormatOrBatch;
+        // The divider insert lives in the tree-side insert bar and creates a new
+        // structural note, so it follows the new-slip rule rather than needing a note
+        // in the editor.
+        insertDividerButton.IsEnabled = canCreateSlip && !showingDeleted;
+        // A group is a bucket, so it follows the add-bucket rule.
+        insertGroupButton.IsEnabled = IsOnline && currentProject is not null && !showingDeleted;
         bulletListButton.IsEnabled = canFormatOrBatch;
         numberListButton.IsEnabled = canFormatOrBatch;
         taskListButton.IsEnabled = canFormatOrBatch;
@@ -1089,6 +1339,7 @@ internal partial class MainWindow
         newSlipButton.IsEnabled = canCreateSlip && !showingDeleted;
         newSlipMenuItem.IsEnabled = newSlipButton.IsEnabled;
         UpdateAlignButtons();
+        UpdateListButtons();
     }
 
     private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)

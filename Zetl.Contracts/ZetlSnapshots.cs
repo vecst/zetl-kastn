@@ -104,6 +104,10 @@ public sealed record ZetlBucketSnapshot
     public string HeadingAlign { get; init; } = "";
     public bool HeadingBold { get; init; }
     public int HeadingLevel { get; init; }
+
+    // Kastn-only: how Kastn renders this bucket's contents — "" (normal section),
+    // "group" (boxed container), "table", or "latex". Zetl ignores it.
+    public string RenderKind { get; init; } = "";
 }
 
 public sealed record ZetlBucketSettings
@@ -139,6 +143,14 @@ public sealed record ZetlSlipSnapshot
     // Kastn-only: per-slip block alignment for rendered views — "center" or
     // "right"; null/absent = left.
     public string? Align { get; init; }
+
+    // Kastn-only: the note's own list-item kind in rendered views — "bullet",
+    // "ordered", or "task"; "" / absent renders as a plain paragraph. Authoritative
+    // per note (it is not inherited from a view-wide style).
+    public string ListKind { get; init; } = "";
+
+    // Kastn-only: the checked state when ListKind is "task"; ignored otherwise.
+    public bool Checked { get; init; }
 }
 
 public sealed record ZetlPictureSnapshot

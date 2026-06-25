@@ -241,6 +241,11 @@ internal partial class MainWindow : Window
         bulletListButton.Click += async (_, _) => await ListSlipsAsync("bullet");
         numberListButton.Click += async (_, _) => await ListSlipsAsync("ordered");
         taskListButton.Click += async (_, _) => await ListSlipsAsync("task");
+        headingButton.Click += async (_, _) => await ListSlipsAsync("heading");
+        quoteButton.Click += async (_, _) => await ListSlipsAsync("quote");
+        codeBlockButton.Click += async (_, _) => await ListSlipsAsync("code");
+        insertDividerButton.Click += async (_, _) => await InsertDividerSlipAsync();
+        insertGroupButton.Click += async (_, _) => await InsertGroupBucketAsync();
         globalViews = viewStore.LoadAll();
         loadedViews = globalViews;
         viewPickerBox.ItemsSource = loadedViews;

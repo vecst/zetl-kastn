@@ -125,7 +125,8 @@ internal static class ZetlProjectSnapshotMapper
             },
             HeadingAlign = bucket.HeadingAlign,
             HeadingBold = bucket.HeadingBold,
-            HeadingLevel = bucket.HeadingLevel
+            HeadingLevel = bucket.HeadingLevel,
+            RenderKind = bucket.RenderKind
         };
     }
 
@@ -170,7 +171,9 @@ internal static class ZetlProjectSnapshotMapper
                 : new DateTimeOffset(
                     DateTime.SpecifyKind(slip.DeletedAtUtc.Value, DateTimeKind.Utc)),
             ExcludedFromViews = slip.ExcludedFromViews,
-            Align = slip.Align
+            Align = slip.Align,
+            ListKind = slip.ListKind,
+            Checked = slip.Checked
         };
     }
 

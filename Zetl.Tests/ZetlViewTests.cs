@@ -79,10 +79,46 @@ internal static class ZetlViewTests
             ZetlViewKinds.Plain,
             "first idea\nsecond idea\ndo this");
 
+        // Notes carry no list kind, so they render as paragraphs (not bucket-bulleted).
         AssertRender(
             project,
             ZetlViewKinds.Markdown,
-            "# Demo\n\n## Ideas\n\n- first idea\n- second idea\n\n### Steps\n\n- do this");
+            "# Demo\n\n## Ideas\n\nfirst idea\n\nsecond idea\n\n### Steps\n\ndo this");
+    }
+
+    public static void ExportFidelityMatchesRenderedKinds()
+    {
+        // Formatting carries only into the kinds that translate the Markdown AST;
+        // the literal compile kinds emit slip text verbatim.
+        foreach (var kind in new[] { ZetlViewKinds.Markdown, ZetlViewKinds.Html, ZetlViewKinds.Pdf })
+        {
+            AssertTrue(
+                ZetlViewRenderer.ExportPreservesFormatting(kind),
+                $"'{kind}' export should carry slip formatting.");
+        }
+
+        foreach (var kind in new[] { ZetlViewKinds.Formatted, ZetlViewKinds.Plain, ZetlViewKinds.Tsv })
+        {
+            AssertTrue(
+                !ZetlViewRenderer.ExportPreservesFormatting(kind),
+                $"'{kind}' export is literal and should not carry slip formatting.");
+        }
+
+        // Alignment is a block style only the document-laying kinds honor; Markdown
+        // has no alignment syntax, so it drops there too.
+        AssertTrue(
+            ZetlViewRenderer.ExportPreservesAlignment(ZetlViewKinds.Html)
+                && ZetlViewRenderer.ExportPreservesAlignment(ZetlViewKinds.Pdf),
+            "HTML and PDF exports should carry alignment.");
+        foreach (var kind in new[]
+        {
+            ZetlViewKinds.Markdown, ZetlViewKinds.Formatted, ZetlViewKinds.Plain, ZetlViewKinds.Tsv
+        })
+        {
+            AssertTrue(
+                !ZetlViewRenderer.ExportPreservesAlignment(kind),
+                $"'{kind}' export should not carry alignment.");
+        }
     }
 
     public static void RendererBuildsTsvRowsUsingBucketHeaders()
@@ -159,7 +195,7 @@ internal static class ZetlViewTests
         var project = Project(
             "Demo",
             [Bucket("b1", "Ideas"), Bucket("b2", "Steps", parent: "b1")],
-            [Slip("b1", "first <b>idea</b> & more"), Slip("b2", "do this")]);
+            [Slip("b1", "first <b>idea</b> & more", "bullet"), Slip("b2", "do this", "bullet")]);
 
         var view = new ZetlViewDocument { Id = "v", Name = "V", Kind = ZetlViewKinds.Html };
         var html = ZetlViewRenderer.Render(project, project.Slips, view);
@@ -178,9 +214,9 @@ internal static class ZetlViewTests
             "Demo",
             [Bucket("b1", "Ideas")],
             [
-                Slip("b1", "left one"),
-                Slip("b1", "middle one") with { Align = "center" },
-                Slip("b1", "right one") with { Align = "right" },
+                Slip("b1", "left one", "bullet"),
+                Slip("b1", "middle one", "bullet") with { Align = "center" },
+                Slip("b1", "right one", "bullet") with { Align = "right" },
             ]);
 
         var html = ZetlViewRenderer.Render(
@@ -224,7 +260,7 @@ internal static class ZetlViewTests
         var project = Project(
             "Demo",
             [Bucket("b1", "Ideas")],
-            [Slip("b1", "see **this** and [x](http://h)")]);
+            [Slip("b1", "see **this** and [x](http://h)", "bullet")]);
         var html = ZetlViewRenderer.Render(
             project,
             project.Slips,
@@ -255,23 +291,63 @@ internal static class ZetlViewTests
         AssertEqual("a<br />b", ZetlMarkdown.BlocksToHtml("a\nb"), "Plain text stays a paragraph.");
     }
 
-    public static void ViewListStyleAndHeadingNumbersRender()
+    public static void MarkdownBlockStructuresRenderToHtml()
+    {
+        AssertEqual(
+            "<p style=\"font-weight:700;font-size:1.05em;margin:0.5em 0 0.2em\">Section</p>",
+            ZetlMarkdown.BlocksToHtml("## Section"),
+            "A softened sub-heading renders as a styled paragraph, never an <h*>.");
+        AssertEqual(
+            "<blockquote>a<br />b</blockquote>",
+            ZetlMarkdown.BlocksToHtml("> a\n> b"),
+            "Consecutive quote lines merge into one blockquote.");
+        AssertEqual(
+            "<pre><code>&lt;tag&gt;\nx</code></pre>",
+            ZetlMarkdown.BlocksToHtml("```\n<tag>\nx\n```"),
+            "Fenced code is literal and HTML-escaped.");
+        AssertEqual(
+            "<hr />",
+            ZetlMarkdown.BlocksToHtml("---"),
+            "A dashed line is a thematic break.");
+
+        // A single-backtick span on its own line stays inline code, not a fence.
+        AssertEqual(
+            "<code>x</code>",
+            ZetlMarkdown.BlocksToHtml("`x`"),
+            "Inline code is not mistaken for a code fence.");
+    }
+
+    public static void MarkdownExportSoftensHeadingsAndKeepsBlocks()
     {
         var project = Project(
+            "Doc",
+            [Bucket("b1", "B")],
+            [Slip("b1", "## Section"), Slip("b1", "```\nx = 1\n```")]);
+
+        // The sub-heading softens to bold (kept out of the .md outline); the fenced code
+        // slip passes through verbatim instead of being wrapped under a bucket marker.
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# Doc\n\n## B\n\n**Section**\n\n```\nx = 1\n```");
+    }
+
+    public static void ViewListStyleAndHeadingNumbersRender()
+    {
+        // Per-note list kind drives the markers (the view no longer carries a bucket-
+        // wide style); cascading heading numbers still come from the view.
+        var ordered = Project(
             "Demo",
             [Bucket("b1", "Ideas"), Bucket("b2", "Steps", parent: "b1")],
-            [Slip("b1", "first"), Slip("b2", "second")]);
-
-        // Ordered list style + cascading numbered headings (HTML).
+            [Slip("b1", "first", "ordered"), Slip("b2", "second", "ordered")]);
         var html = ZetlViewRenderer.Render(
-            project,
-            project.Slips,
+            ordered,
+            ordered.Slips,
             new ZetlViewDocument
             {
                 Id = "v",
                 Name = "V",
                 Kind = ZetlViewKinds.Html,
-                ListStyle = ZetlViewListStyles.Ordered,
                 NumberHeadings = true
             });
         AssertContains(html, "<h2>1 Ideas</h2>");
@@ -280,41 +356,46 @@ internal static class ZetlViewTests
         AssertContains(html, "<h3>1.1 Steps</h3>");
         AssertContains(html, "<li>second</li>");
 
-        // Task style: checkbox glyphs in an unmarked list.
+        // Task notes: checkbox glyphs reflecting each note's checked state.
+        var tasks = Project(
+            "Demo",
+            [Bucket("b1", "Ideas")],
+            [Slip("b1", "first", "task"), Slip("b1", "second", "task", isChecked: true)]);
         var taskHtml = ZetlViewRenderer.Render(
-            project,
-            project.Slips,
-            new ZetlViewDocument { Id = "t", Name = "T", Kind = ZetlViewKinds.Html, ListStyle = ZetlViewListStyles.Task });
+            tasks,
+            tasks.Slips,
+            new ZetlViewDocument { Id = "t", Name = "T", Kind = ZetlViewKinds.Html });
         AssertContains(taskHtml, "<ul style=\"list-style:none;padding-left:1.1em\">");
         AssertContains(taskHtml, "<li>☐ first</li>");
+        AssertContains(taskHtml, "<li>☑ second</li>");
 
-        // Paragraph style: no list wrapper at all.
+        // Plain notes: no list wrapper at all.
+        var plain = Project("Demo", [Bucket("b1", "Ideas")], [Slip("b1", "first")]);
         var paragraphHtml = ZetlViewRenderer.Render(
-            project,
-            project.Slips,
-            new ZetlViewDocument { Id = "p", Name = "P", Kind = ZetlViewKinds.Html, ListStyle = ZetlViewListStyles.Paragraph });
+            plain,
+            plain.Slips,
+            new ZetlViewDocument { Id = "p", Name = "P", Kind = ZetlViewKinds.Html });
         AssertContains(paragraphHtml, "<div>first</div>");
         AssertTrue(
             !paragraphHtml.Contains("<ul", StringComparison.Ordinal)
                 && !paragraphHtml.Contains("<ol>", StringComparison.Ordinal),
-            "Paragraph style should emit no list element.");
+            "Plain notes should emit no list element.");
 
-        // Markdown ordered list + numbered headings.
+        // Markdown ordered notes + numbered headings.
         var markdown = ZetlViewRenderer.Render(
-            project,
-            project.Slips,
+            ordered,
+            ordered.Slips,
             new ZetlViewDocument
             {
                 Id = "m",
                 Name = "M",
                 Kind = ZetlViewKinds.Markdown,
-                ListStyle = ZetlViewListStyles.Ordered,
                 NumberHeadings = true
             }).ReplaceLineEndings("\n");
         AssertEqual(
             "# Demo\n\n## 1 Ideas\n\n1. first\n\n### 1.1 Steps\n\n1. second",
             markdown,
-            "Markdown ordered list with cascading numbered headings.");
+            "Markdown ordered notes with cascading numbered headings.");
     }
 
     public static void MarkdownPreservesSlipOwnListMarkup()
@@ -324,65 +405,143 @@ internal static class ZetlViewTests
             [Bucket("b1", "Tasks")],
             [Slip("b1", "- [ ] todo"), Slip("b1", "- [x] done"), Slip("b1", "plain item")]);
 
-        // Default bullet view: a slip that is already a GFM task item is emitted
-        // verbatim (so it stays interactive), not nested under a second "- " marker
-        // ("- - [ ] todo"); a plain slip still gets the bucket bullet.
+        // A note that already holds its own GFM list markup in its body is emitted
+        // verbatim (so it stays interactive); a note with no markup is a paragraph.
         AssertRender(
             project,
             ZetlViewKinds.Markdown,
-            "# Demo\n\n## Tasks\n\n- [ ] todo\n- [x] done\n- plain item");
+            "# Demo\n\n## Tasks\n\n- [ ] todo\n- [x] done\nplain item");
+    }
 
-        // A Task-style view also must not double-mark an existing checkbox slip;
-        // only the plain slip gets the task marker.
-        var taskOutput = ZetlViewRenderer.Render(
+    public static void GroupBucketRendersAsBoxedSection()
+    {
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Notes", renderKind: "group")],
+            [Slip("b1", "inside")]);
+
+        var html = ZetlViewRenderer.Render(
             project,
             project.Slips,
-            new ZetlViewDocument
-            {
-                Id = "t",
-                Name = "T",
-                Kind = ZetlViewKinds.Markdown,
-                ListStyle = ZetlViewListStyles.Task
-            }).ReplaceLineEndings("\n");
-        AssertEqual(
-            "# Demo\n\n## Tasks\n\n- [ ] todo\n- [x] done\n- [ ] plain item",
-            taskOutput,
-            "Task view should keep a checkbox slip's own markup and only mark plain slips.");
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
+        AssertContains(html, "<section class=\"kastn-group\">");
+        AssertContains(html, "</section>");
+        AssertContains(html, "<h2>Notes</h2>");
+
+        // A normal bucket is not wrapped.
+        var plain = Project("Demo", [Bucket("b1", "Notes")], [Slip("b1", "inside")]);
+        var plainHtml = ZetlViewRenderer.Render(
+            plain,
+            plain.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
+        AssertTrue(
+            !plainHtml.Contains("<section class=\"kastn-group\">", StringComparison.Ordinal),
+            "A normal bucket should not render a group box.");
+    }
+
+    public static void StructuralKindClassification()
+    {
+        AssertTrue(ZetlViewRenderer.IsStructuralKind("divider"), "A divider is a structural kind.");
+        foreach (var kind in new[] { "", "bullet", "ordered", "task", "heading", "quote", "code" })
+        {
+            AssertTrue(
+                !ZetlViewRenderer.IsStructuralKind(kind),
+                $"'{kind}' renders a note's content, so it is not structural.");
+        }
+    }
+
+    public static void NoteKindRendersAsWholeNoteBlock()
+    {
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "B")],
+            [
+                Slip("b1", "Title", "heading"),
+                Slip("b1", "quoted", "quote"),
+                Slip("b1", "code line", "code"),
+                Slip("b1", "", "divider"),
+            ]);
+
+        // HTML: each whole-note kind renders as its own block (heading softened to a
+        // styled paragraph, quote/code/divider as the matching elements).
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
+        AssertContains(html, "<p style=\"font-weight:700;font-size:1.05em;margin:0.5em 0 0.2em\">Title</p>");
+        AssertContains(html, "<blockquote>quoted</blockquote>");
+        AssertContains(html, "<pre><code>code line</code></pre>");
+        AssertContains(html, "<hr />");
+
+        // Markdown: heading softens to bold; quote/code/divider use GFM syntax.
+        var markdown = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "m", Name = "M", Kind = ZetlViewKinds.Markdown }).ReplaceLineEndings("\n");
+        AssertContains(markdown, "**Title**");
+        AssertContains(markdown, "> quoted");
+        AssertContains(markdown, "```\ncode line\n```");
+        AssertContains(markdown, "---");
+    }
+
+    public static void PerSlipListKindRendersMarkdownMarkers()
+    {
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "B")],
+            [
+                Slip("b1", "a", "bullet"),
+                Slip("b1", "b", "task"),
+                Slip("b1", "c", "task", isChecked: true),
+            ]);
+
+        // Each note's own kind drives its marker; checked tasks emit [x]. A run of list
+        // notes stays one contiguous list (no blank lines between items).
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# Demo\n\n## B\n\n- a\n- [ ] b\n- [x] c");
     }
 
     public static void OrderedSlipsRenumberContinuouslyOverVisibleSlips()
     {
-        // Each ordered slip just stores "1."; the renderer numbers a run continuously
-        // and restarts it at a non-ordered slip — computed over the visible slips.
+        // Ordered notes are numbered over their run (computed at render time) and a
+        // non-ordered note restarts the count.
         var project = Project(
             "Demo",
             [Bucket("b1", "Steps")],
-            [Slip("b1", "1. alpha"), Slip("b1", "1. beta"), Slip("b1", "note"), Slip("b1", "1. gamma")]);
+            [
+                Slip("b1", "alpha", "ordered"),
+                Slip("b1", "beta", "ordered"),
+                Slip("b1", "note"),
+                Slip("b1", "gamma", "ordered")
+            ]);
         AssertRender(
             project,
             ZetlViewKinds.Markdown,
-            "# Demo\n\n## Steps\n\n1. alpha\n2. beta\n- note\n1. gamma");
+            "# Demo\n\n## Steps\n\n1. alpha\n2. beta\nnote\n\n1. gamma");
 
-        // Hiding the first slip re-flows the numbers: the run starts over at 1.
+        // Hiding the first note re-flows the numbers: the run starts over at 1.
         var hidden = Project(
             "Demo",
             [Bucket("b1", "Steps")],
             [
-                Slip("b1", "1. alpha") with { ExcludedFromViews = true },
-                Slip("b1", "1. beta"),
-                Slip("b1", "1. gamma")
+                Slip("b1", "alpha", "ordered") with { ExcludedFromViews = true },
+                Slip("b1", "beta", "ordered"),
+                Slip("b1", "gamma", "ordered")
             ]);
         AssertRender(hidden, ZetlViewKinds.Markdown, "# Demo\n\n## Steps\n\n1. beta\n2. gamma");
 
-        // HTML carries the computed start so a one-item <ol> per slip still reads 1, 2, 3
-        // instead of every slip restarting at 1.
+        // HTML groups a contiguous ordered run into one <ol> (so it reads 1, 2); the
+        // note interrupts the run, starting a fresh <ol> for gamma.
         var html = ZetlViewRenderer.Render(
             project,
             project.Slips,
             new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html }).ReplaceLineEndings("\n");
-        AssertTrue(
-            html.Contains("<ol start=\"2\">", StringComparison.Ordinal),
-            "The second ordered slip's list starts at 2 in HTML.");
+        AssertContains(html, "<ol>");
+        AssertContains(html, "<li>alpha</li>");
+        AssertContains(html, "<li>beta</li>");
+        AssertContains(html, "<div>note</div>");
     }
 
     public static void DocumentTitleHidesOrOverridesProjectName()
@@ -390,11 +549,11 @@ internal static class ZetlViewTests
         var project = Project("Demo", [Bucket("b1", "Ideas")], [Slip("b1", "one")]);
 
         // Default: the project name is the document title.
-        AssertRender(project, ZetlViewKinds.Markdown, "# Demo\n\n## Ideas\n\n- one");
+        AssertRender(project, ZetlViewKinds.Markdown, "# Demo\n\n## Ideas\n\none");
 
         // A non-empty Title overrides the project name.
         AssertEqual(
-            "# My Report\n\n## Ideas\n\n- one",
+            "# My Report\n\n## Ideas\n\none",
             ZetlViewRenderer.Render(
                 project,
                 project.Slips,
@@ -404,7 +563,7 @@ internal static class ZetlViewTests
 
         // ShowTitle=false omits the heading entirely.
         AssertEqual(
-            "## Ideas\n\n- one",
+            "## Ideas\n\none",
             ZetlViewRenderer.Render(
                 project,
                 project.Slips,
@@ -469,7 +628,7 @@ internal static class ZetlViewTests
                 ShowTitle = false,
                 Sections = [StyledSection()],
             }).ReplaceLineEndings("\n");
-        AssertEqual("# Big Centered\n\n- one", markdown, "Markdown uses only the section level.");
+        AssertEqual("# Big Centered\n\none", markdown, "Markdown uses only the section level.");
     }
 
     public static void BucketHeadingStyleRendersInAllBucketsView()
@@ -735,7 +894,7 @@ internal static class ZetlViewTests
 
         var markdown = ZetlViewRenderer.Render(project, project.Slips, view).ReplaceLineEndings("\n");
         AssertEqual(
-            "# Demo\n\n## Method\n\n- mix\n\n## What you need\n\n- eggs",
+            "# Demo\n\n## Method\n\nmix\n\n## What you need\n\neggs",
             markdown,
             "Sections should rename, reorder, and omit buckets.");
     }
@@ -851,16 +1010,19 @@ internal static class ZetlViewTests
         string id,
         string name,
         string? parent = null,
-        string startingText = "") => new()
+        string startingText = "",
+        string renderKind = "") => new()
     {
         Id = id,
         Revision = 1,
         Name = name,
         ParentBucketId = parent,
-        Settings = new ZetlBucketSettings { DefaultStartingText = startingText }
+        Settings = new ZetlBucketSettings { DefaultStartingText = startingText },
+        RenderKind = renderKind
     };
 
-    private static ZetlSlipSnapshot Slip(string bucketId, string text) => new()
+    private static ZetlSlipSnapshot Slip(
+        string bucketId, string text, string listKind = "", bool isChecked = false) => new()
     {
         Id = Guid.NewGuid().ToString("N"),
         Revision = 1,
@@ -868,7 +1030,9 @@ internal static class ZetlViewTests
         BucketId = bucketId,
         Text = text,
         Source = "copy",
-        CapturedAtUtc = DateTimeOffset.UnixEpoch
+        CapturedAtUtc = DateTimeOffset.UnixEpoch,
+        ListKind = listKind,
+        Checked = isChecked
     };
 
     private static ZetlSlipSnapshot PictureSlip(

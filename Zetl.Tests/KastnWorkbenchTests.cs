@@ -207,13 +207,8 @@ internal static class KastnWorkbenchTests
 
     public static void BatchFormatRewritesMarkersAndStrike()
     {
-        // Re-applying a list kind swaps the existing marker instead of stacking.
-        AssertEqual("- task", KastnBatchFormat.ApplyLineMarker("- [ ] task", "- "), "Checkbox to bullet.");
-        AssertEqual("- [ ] task", KastnBatchFormat.ApplyLineMarker("- task", "- [ ] "), "Bullet to checkbox.");
-        AssertEqual("3. item", KastnBatchFormat.ApplyLineMarker("1. item", "3. "), "Renumber an ordered item.");
-        AssertEqual("- plain", KastnBatchFormat.ApplyLineMarker("plain", "- "), "Plain to bullet.");
-
-        // Strikethrough toggles.
+        // Strikethrough toggles. (List-item kind is now a per-note property, not body
+        // markup, so there is no marker-rewriting helper to test here.)
         AssertEqual("~~done~~", KastnBatchFormat.ToggleStrike("done"), "Wrap in strike.");
         AssertEqual("done", KastnBatchFormat.ToggleStrike("~~done~~"), "Unwrap strike.");
     }

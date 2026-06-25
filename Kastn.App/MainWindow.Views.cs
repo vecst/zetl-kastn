@@ -32,6 +32,7 @@ internal partial class MainWindow
             RefreshSlipInspector([]);
             copyViewButton.IsEnabled = false;
             exportViewButton.IsEnabled = false;
+            formatFidelityNote.IsVisible = false;
             return;
         }
 
@@ -84,6 +85,30 @@ internal partial class MainWindow
         }
 
         deleteViewMenuItem.IsEnabled = !ZetlViewDefaults.IsBuiltIn(SelectedView.Id);
+        UpdateFormatFidelityNote();
+    }
+
+    // The on-screen reader always renders slip formatting and alignment; the selected
+    // view kind only decides what its Copy/Export artifact carries. Tell the editor
+    // when that artifact would drop the formatting the reader is showing, so a user
+    // authoring toward, say, a TSV export is not surprised by raw markup in the output.
+    private void UpdateFormatFidelityNote()
+    {
+        var kind = SelectedView.Kind;
+        var preservesFormatting = ZetlViewRenderer.ExportPreservesFormatting(kind);
+        var preservesAlignment = ZetlViewRenderer.ExportPreservesAlignment(kind);
+        if (preservesFormatting && preservesAlignment)
+        {
+            formatFidelityNote.IsVisible = false;
+            return;
+        }
+
+        formatFidelityNote.Text = preservesFormatting
+            // Markdown carries inline formatting but has no alignment syntax.
+            ? "Markdown export keeps text formatting but not block alignment."
+            : $"The {kind} view copies and exports as literal text — formatting shows "
+                + "here in the reader but is dropped from Copy/Export.";
+        formatFidelityNote.IsVisible = true;
     }
 
     private string ViewSignature(IReadOnlyList<ZetlSlipSnapshot> visible)
@@ -214,10 +239,15 @@ internal partial class MainWindow
             return;
         }
 
-        var listStyle = ZetlViewListStyles.Normalize(SelectedView.ListStyle);
         foreach (var group in groups)
         {
-            viewerDocumentPanel.Children.Add(new TextBlock
+            // A container bucket ("group") wraps its heading and slips in a bordered box;
+            // otherwise they go straight into the document.
+            var isGroup = group.RenderKind == "group";
+            var groupBox = isGroup ? new StackPanel { Spacing = 2 } : null;
+            var target = (Panel?)groupBox ?? viewerDocumentPanel;
+
+            target.Children.Add(new TextBlock
             {
                 Text = ZetlViewRenderer.HeadingText(group, SelectedView),
                 FontSize = Math.Max(14, 27 - (3 * group.EffectiveLevel)),
@@ -229,27 +259,51 @@ internal partial class MainWindow
                     _ => TextAlignment.Left,
                 },
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Avalonia.Thickness(group.Depth * 14, 8, 0, 2)
+                Margin = new Avalonia.Thickness(isGroup ? 0 : group.Depth * 14, isGroup ? 0 : 8, 0, 2)
             });
 
-            var itemNumber = 1;
+            // Each note carries its own list kind (authoritative, not a view-wide
+            // style); ordered notes count up over their run and any non-ordered note
+            // or picture restarts it.
+            var orderedRun = 0;
             foreach (var slip in group.Slips)
             {
-                var marker = slip.Type == ZetlSlipType.Picture
+                var kind = slip.Type == ZetlSlipType.Picture
                     ? ""
-                    : listStyle switch
-                    {
-                        ZetlViewListStyles.Ordered => $"{itemNumber++}.",
-                        ZetlViewListStyles.Task => "☐",
-                        ZetlViewListStyles.Paragraph => "",
-                        _ => "•"
-                    };
-                viewerDocumentPanel.Children.Add(BuildSlipBlock(slip, group.Depth, generation, marker));
+                    : ZetlViewRenderer.SlipListKind(slip);
+                var marker = kind switch
+                {
+                    "ordered" => $"{++orderedRun}.",
+                    "bullet" => "•",
+                    "task" => slip.Checked ? "☑" : "☐",
+                    _ => ""
+                };
+                if (kind != "ordered")
+                {
+                    orderedRun = 0;
+                }
+
+                target.Children.Add(
+                    BuildSlipBlock(slip, isGroup ? 0 : group.Depth, generation, marker, checkable: kind == "task"));
+            }
+
+            if (groupBox is not null)
+            {
+                viewerDocumentPanel.Children.Add(new Border
+                {
+                    BorderThickness = new Avalonia.Thickness(1),
+                    BorderBrush = ThemeBrush("ZetlBorderBrush") ?? Brushes.Gray,
+                    CornerRadius = new Avalonia.CornerRadius(6),
+                    Padding = new Avalonia.Thickness(12, 8),
+                    Margin = new Avalonia.Thickness(group.Depth * 14, 10, 0, 4),
+                    Child = groupBox
+                });
             }
         }
     }
 
-    private Border BuildSlipBlock(ZetlSlipSnapshot slip, int depth, int generation, string marker)
+    private Border BuildSlipBlock(
+        ZetlSlipSnapshot slip, int depth, int generation, string marker, bool checkable = false)
     {
         var content = new StackPanel { Spacing = 5 };
         if (slip.Type == ZetlSlipType.Picture)
@@ -314,6 +368,19 @@ internal partial class MainWindow
                 MinWidth = 18,
                 VerticalAlignment = VerticalAlignment.Top
             };
+            if (checkable)
+            {
+                // The task checkbox toggles the note's checked property in place; mark
+                // the event handled so it does not also fall through to slip selection.
+                markerBlock.Cursor = new Cursor(StandardCursorType.Hand);
+                var slipId = slip.Id;
+                markerBlock.PointerPressed += async (_, args) =>
+                {
+                    args.Handled = true;
+                    await ToggleSlipCheckedAsync(slipId);
+                };
+            }
+
             Grid.SetColumn(markerBlock, 0);
             Grid.SetColumn(content, 1);
             grid.Children.Add(markerBlock);
@@ -420,7 +487,9 @@ internal partial class MainWindow
     private void AppendSlipBlocks(StackPanel content, ZetlSlipSnapshot slip, string text)
     {
         var alignment = SlipTextAlignment(slip);
-        foreach (var block in ZetlMarkdown.ParseBlocks(text))
+        // A whole-note kind (heading/quote/code/divider) synthesizes its one block; any
+        // other kind parses the body normally.
+        foreach (var block in ZetlMarkdown.BlocksForNote(slip.ListKind, text))
         {
             if (block is ZetlParagraphBlock paragraph)
             {
@@ -471,6 +540,76 @@ internal partial class MainWindow
                     row.Children.Add(itemBlock);
                     content.Children.Add(row);
                 }
+            }
+            else if (block is ZetlHeadingBlock heading)
+            {
+                // Softened sub-heading: bold and slightly larger, never a section heading.
+                var headingBlock = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    TextAlignment = alignment,
+                    FontWeight = FontWeight.Bold,
+                    FontSize = heading.Level <= 1 ? 17 : heading.Level == 2 ? 15.5 : 14,
+                    Margin = new Avalonia.Thickness(0, 6, 0, 1)
+                };
+                AppendInlines(headingBlock.Inlines!, heading.Inlines);
+                content.Children.Add(headingBlock);
+            }
+            else if (block is ZetlQuoteBlock quote)
+            {
+                var quoteText = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    TextAlignment = alignment,
+                    FontStyle = FontStyle.Italic
+                };
+                for (var line = 0; line < quote.Lines.Count; line++)
+                {
+                    if (line > 0)
+                    {
+                        quoteText.Inlines!.Add(new LineBreak());
+                    }
+
+                    AppendInlines(quoteText.Inlines!, quote.Lines[line]);
+                }
+
+                content.Children.Add(new Border
+                {
+                    BorderThickness = new Avalonia.Thickness(3, 0, 0, 0),
+                    BorderBrush = ThemeBrush("ZetlBorderBrush") ?? Brushes.Gray,
+                    Padding = new Avalonia.Thickness(8, 2, 0, 2),
+                    Margin = new Avalonia.Thickness(2, 2, 0, 2),
+                    Child = quoteText
+                });
+            }
+            else if (block is ZetlCodeBlock code)
+            {
+                var codeText = new TextBlock
+                {
+                    Text = code.Text,
+                    TextWrapping = TextWrapping.Wrap
+                };
+                if (ThemeFont("ZetlMonoFontFamily") is { } mono)
+                {
+                    codeText.FontFamily = mono;
+                }
+
+                content.Children.Add(new Border
+                {
+                    Classes = { "surface" },
+                    Padding = new Avalonia.Thickness(8, 6),
+                    Margin = new Avalonia.Thickness(0, 2, 0, 2),
+                    Child = codeText
+                });
+            }
+            else if (block is ZetlDividerBlock)
+            {
+                content.Children.Add(new Border
+                {
+                    Height = 1,
+                    Background = ThemeBrush("ZetlBorderBrush") ?? Brushes.Gray,
+                    Margin = new Avalonia.Thickness(0, 6, 0, 6)
+                });
             }
         }
     }

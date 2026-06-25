@@ -27,6 +27,10 @@ internal sealed record ZetlViewGroup(
 
     public int HeadingLevel { get; init; }
 
+    // How Kastn renders this group: "" (a normal section), or "group"/"table"/"latex"
+    // when the source bucket is a structural container.
+    public string RenderKind { get; init; } = "";
+
     // The heading level the renderers use: an explicit per-section level, else the
     // depth-based default (h2 for top level).
     public int EffectiveLevel => HeadingLevel > 0
@@ -96,6 +100,21 @@ internal static class ZetlViewRenderer
         };
     }
 
+    // Whether copying or exporting this view kind carries inline slip formatting
+    // (emphasis, code, links, and list/task markup) into the produced artifact.
+    // The literal compile kinds (Formatted/Plain/TSV) emit slip text verbatim, so
+    // the Markdown markup would surface as raw characters instead of formatting;
+    // Markdown/HTML/PDF each translate it. Mirrors the Render dispatch above.
+    public static bool ExportPreservesFormatting(string? kind) =>
+        kind is ZetlViewKinds.Markdown or ZetlViewKinds.Html or ZetlViewKinds.Pdf;
+
+    // Whether copying or exporting this view kind carries per-slip and heading
+    // alignment. Only the block-laying document kinds do; Markdown has no alignment
+    // syntax and the literal kinds ignore it (see SlipAlignment). The on-screen
+    // reader honors alignment regardless, so this is purely about the artifact.
+    public static bool ExportPreservesAlignment(string? kind) =>
+        kind is ZetlViewKinds.Html or ZetlViewKinds.Pdf;
+
     /// <summary>
     /// Group the given slips for rendering: one group per bucket (in project bucket
     /// order, only buckets with slips) by default, or one group per declared
@@ -129,12 +148,13 @@ internal static class ZetlViewRenderer
             if (slipsByBucketId.TryGetValue(bucket.Id, out var bucketSlips) && bucketSlips.Count > 0)
             {
                 var depth = BucketDepth(bucket, bucketsById);
-                groups.Add(new ZetlViewGroup(bucket.Name.Trim(), depth, bucket, RenumberOrderedSlips(bucketSlips))
+                groups.Add(new ZetlViewGroup(bucket.Name.Trim(), depth, bucket, bucketSlips)
                 {
                     OutlineNumber = numberer.Next(depth),
                     HeadingAlign = bucket.HeadingAlign,
                     HeadingBold = bucket.HeadingBold,
-                    HeadingLevel = bucket.HeadingLevel
+                    HeadingLevel = bucket.HeadingLevel,
+                    RenderKind = NormalizeBucketRenderKind(bucket.RenderKind)
                 });
             }
         }
@@ -178,7 +198,7 @@ internal static class ZetlViewRenderer
             {
                 // Sections are flat (depth 0); the section title is the heading, with
                 // the section's optional heading styling carried onto the group.
-                groups.Add(new ZetlViewGroup(section.Title.Trim(), 0, headerBucket, RenumberOrderedSlips(sectionSlips))
+                groups.Add(new ZetlViewGroup(section.Title.Trim(), 0, headerBucket, sectionSlips)
                 {
                     OutlineNumber = numberer.Next(0),
                     HeadingAlign = section.HeadingAlign,
@@ -296,7 +316,6 @@ internal static class ZetlViewRenderer
         ZetlViewDocument view,
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures)
     {
-        var listStyle = ZetlViewListStyles.Normalize(view.ListStyle);
         var documentTitle = DocumentTitle(project, view);
         var parts = documentTitle is null
             ? new List<string>()
@@ -306,11 +325,14 @@ internal static class ZetlViewRenderer
             var level = group.EffectiveLevel;
             parts.Add($"{new string('#', level)} {HeadingText(group, view)}");
             parts.Add("");
-            var itemNumber = 1;
+            // Ordered notes are numbered over their run; any non-ordered note, picture,
+            // or block-structured note restarts the count.
+            var orderedRun = 0;
             foreach (var slip in group.Slips)
             {
                 if (slip.Type == ZetlSlipType.Picture)
                 {
+                    orderedRun = 0;
                     var caption = PictureCaption(slip);
                     if (pictures?.TryGetValue(slip.Id, out var picture) == true)
                     {
@@ -328,7 +350,19 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                var lines = SlipText(slip)
+                var slipText = SlipText(slip);
+                var kind = SlipListKind(slip);
+
+                // A divider note has no content: emit a thematic break and move on.
+                if (kind == "divider")
+                {
+                    orderedRun = 0;
+                    parts.Add("---");
+                    parts.Add("");
+                    continue;
+                }
+
+                var lines = slipText
                     .ReplaceLineEndings("\n")
                     .Split('\n')
                     .Select(line => line.TrimEnd())
@@ -338,39 +372,105 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                if (listStyle == ZetlViewListStyles.Paragraph)
+                // Whole-note block kinds emit as their own blocks: a heading softens to
+                // bold (kept out of the .md outline); quote and code use GFM syntax.
+                if (kind == "heading")
                 {
-                    parts.AddRange(lines);
+                    orderedRun = 0;
+                    parts.AddRange(lines.Where(line => line.Length > 0).Select(line => $"**{line}**"));
                     parts.Add("");
                     continue;
                 }
 
-                // A slip that already carries its own list markup (e.g. a checkbox
-                // list from the editor) is emitted verbatim, so GFM task items stay
-                // interactive instead of being nested under a redundant bucket marker
-                // (which produced "- - [ ] x": doubled and not a valid task item).
-                var firstContentLine = lines.First(line => line.Length > 0);
-                if (StartsWithMarkdownListMarker(firstContentLine))
+                if (kind == "quote")
                 {
-                    parts.AddRange(lines.Where(line => line.Length > 0));
+                    orderedRun = 0;
+                    parts.AddRange(lines.Select(line => line.Length == 0 ? ">" : $"> {line}"));
+                    parts.Add("");
                     continue;
                 }
 
-                var marker = listStyle switch
+                if (kind == "code")
                 {
-                    ZetlViewListStyles.Ordered => $"{itemNumber++}. ",
-                    ZetlViewListStyles.Task => "- [ ] ",
-                    _ => "- "
-                };
-                var indent = new string(' ', marker.Length);
-                parts.Add($"{marker}{lines[0].TrimStart()}");
-                parts.AddRange(lines.Skip(1).Select(line => $"{indent}{line}"));
+                    orderedRun = 0;
+                    parts.Add("```");
+                    parts.AddRange(lines);
+                    parts.Add("```");
+                    parts.Add("");
+                    continue;
+                }
+
+                // A note carrying in-body block markup (typed heading/quote/fence/divider)
+                // emits as its own blocks rather than under a list marker that would mangle
+                // it; softened sub-headings become bold so they stay out of the .md outline.
+                if (ZetlMarkdown.ContainsBlockStructure(slipText))
+                {
+                    orderedRun = 0;
+                    parts.AddRange(ZetlMarkdown.SoftenHeadingsForMarkdown(lines));
+                    parts.Add("");
+                    continue;
+                }
+
+                if (kind == "ordered")
+                {
+                    EmitMarkedSlipMarkdown(parts, $"{++orderedRun}. ", lines);
+                    continue;
+                }
+
+                orderedRun = 0;
+                switch (kind)
+                {
+                    case "bullet":
+                        EmitMarkedSlipMarkdown(parts, "- ", lines);
+                        break;
+                    case "task":
+                        EmitMarkedSlipMarkdown(parts, slip.Checked ? "- [x] " : "- [ ] ", lines);
+                        break;
+                    default:
+                        // A plain note. One that itself holds list markup is emitted
+                        // verbatim so its GFM list stays intact; otherwise its lines
+                        // flow as a paragraph block.
+                        var firstContentLine = lines.First(line => line.Length > 0);
+                        if (StartsWithMarkdownListMarker(firstContentLine))
+                        {
+                            parts.AddRange(lines.Where(line => line.Length > 0));
+                        }
+                        else
+                        {
+                            parts.AddRange(lines);
+                            parts.Add("");
+                        }
+
+                        break;
+                }
             }
 
             parts.Add("");
         }
 
-        return string.Join(Environment.NewLine, parts).TrimEnd();
+        // Collapse runs of blank lines so a paragraph's trailing blank and the group
+        // separator never stack into a gap (a single blank line is the GFM separator).
+        var collapsed = new List<string>(parts.Count);
+        foreach (var part in parts)
+        {
+            if (part.Length == 0 && collapsed.Count > 0 && collapsed[^1].Length == 0)
+            {
+                continue;
+            }
+
+            collapsed.Add(part);
+        }
+
+        return string.Join(Environment.NewLine, collapsed).TrimEnd();
+    }
+
+    // Emit one list-item note: the marker on the first line, continuation lines hung to
+    // the marker's width. No trailing blank, so a run of list notes stays one list.
+    private static void EmitMarkedSlipMarkdown(List<string> parts, string marker, IReadOnlyList<string> lines)
+    {
+        var indent = new string(' ', marker.Length);
+        parts.Add($"{marker}{lines[0].TrimStart()}");
+        parts.AddRange(lines.Skip(1).Select(line => $"{indent}{line}"));
     }
 
     private static string RenderHtml(
@@ -379,7 +479,6 @@ internal static class ZetlViewRenderer
         ZetlViewDocument view,
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures)
     {
-        var listStyle = ZetlViewListStyles.Normalize(view.ListStyle);
         var documentTitle = DocumentTitle(project, view);
         // The <title> tab label always needs a value, even when the on-page heading
         // is hidden; fall back to the project name there.
@@ -397,6 +496,8 @@ internal static class ZetlViewRenderer
             "figure { margin: 1rem 0 1.5rem; }",
             "img { display: block; max-width: 100%; height: auto; border-radius: .35rem; }",
             "figcaption { margin-top: .4rem; color: #666; font-size: .9rem; }",
+            "section.kastn-group { border: 1px solid #ccc; border-radius: 6px; "
+                + "padding: .1rem 1rem 1rem; margin: 1rem 0; }",
             "</style>",
             "</head>",
             "<body>"
@@ -406,35 +507,46 @@ internal static class ZetlViewRenderer
             parts.Add($"<h1>{Escape(documentTitle)}</h1>");
         }
 
-        var isList = listStyle != ZetlViewListStyles.Paragraph;
-        var openTag = listStyle switch
-        {
-            ZetlViewListStyles.Ordered => "<ol>",
-            ZetlViewListStyles.Task => "<ul style=\"list-style:none;padding-left:1.1em\">",
-            _ => "<ul>"
-        };
-        var closeTag = listStyle == ZetlViewListStyles.Ordered ? "</ol>" : "</ul>";
-
         foreach (var group in groups)
         {
+            // A container bucket ("group") wraps its heading and slips in a bordered box.
+            var isGroup = group.RenderKind == "group";
+            if (isGroup)
+            {
+                parts.Add("<section class=\"kastn-group\">");
+            }
+
             var level = group.EffectiveLevel;
             parts.Add($"<h{level}{HeadingStyleAttribute(group)}>{Escape(HeadingText(group, view))}</h{level}>");
 
             if (group.Slips.Count == 0)
             {
+                if (isGroup)
+                {
+                    parts.Add("</section>");
+                }
+
                 continue;
             }
 
-            var listOpen = false;
+            // The open list's kind ("bullet"/"ordered"/"task"), or null when no list is
+            // open. Each note carries its own kind, so a run of same-kind notes shares
+            // one <ul>/<ol> and a kind change (or a paragraph/picture) closes it.
+            string? openKind = null;
+            void CloseList()
+            {
+                if (openKind is not null)
+                {
+                    parts.Add(openKind == "ordered" ? "</ol>" : "</ul>");
+                    openKind = null;
+                }
+            }
+
             foreach (var slip in group.Slips)
             {
                 if (slip.Type == ZetlSlipType.Picture)
                 {
-                    if (listOpen)
-                    {
-                        parts.Add(closeTag);
-                        listOpen = false;
-                    }
+                    CloseList();
 
                     var caption = PictureCaption(slip);
                     if (pictures?.TryGetValue(slip.Id, out var picture) == true)
@@ -456,6 +568,18 @@ internal static class ZetlViewRenderer
                 }
 
                 var text = SlipText(slip);
+                var kind = SlipListKind(slip);
+
+                // A whole-note block (heading/quote/code/divider) renders its synthesized
+                // block on its own; a divider carries no text, so it is handled before the
+                // empty-text skip.
+                if (kind is "heading" or "quote" or "code" or "divider")
+                {
+                    CloseList();
+                    parts.Add(ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text)));
+                    continue;
+                }
+
                 if (text.Trim().Length == 0)
                 {
                     continue;
@@ -466,26 +590,33 @@ internal static class ZetlViewRenderer
                 var align = SlipAlignment(slip);
                 var style = align == "left" ? "" : $" style=\"text-align:{align}\"";
                 var inner = ZetlMarkdown.BlocksToHtml(text);
-                if (isList)
+                if (kind.Length == 0)
                 {
-                    if (!listOpen)
-                    {
-                        parts.Add(openTag);
-                        listOpen = true;
-                    }
-
-                    var glyph = listStyle == ZetlViewListStyles.Task ? "☐ " : "";
-                    parts.Add($"<li{style}>{glyph}{inner}</li>");
-                }
-                else
-                {
+                    CloseList();
                     parts.Add($"<div{style}>{inner}</div>");
+                    continue;
                 }
+
+                if (openKind != kind)
+                {
+                    CloseList();
+                    parts.Add(kind switch
+                    {
+                        "ordered" => "<ol>",
+                        "task" => "<ul style=\"list-style:none;padding-left:1.1em\">",
+                        _ => "<ul>"
+                    });
+                    openKind = kind;
+                }
+
+                var glyph = kind == "task" ? (slip.Checked ? "☑ " : "☐ ") : "";
+                parts.Add($"<li{style}>{glyph}{inner}</li>");
             }
 
-            if (listOpen)
+            CloseList();
+            if (isGroup)
             {
-                parts.Add(closeTag);
+                parts.Add("</section>");
             }
         }
 
@@ -537,71 +668,35 @@ internal static class ZetlViewRenderer
         return value is "center" or "right" ? value : "left";
     }
 
-    // Numbered slips each store an ordered marker, but the *displayed* number is
-    // computed here over the visible slips so a numbered list reads 1, 2, 3… in
-    // document order and re-flows when slips are hidden or reordered. A run of
-    // adjacent ordered slips counts up; any non-ordered slip (or picture) restarts it.
-    private static IReadOnlyList<ZetlSlipSnapshot> RenumberOrderedSlips(
-        IReadOnlyList<ZetlSlipSnapshot> slips)
+    // The note's own block kind in a rendered view — a list item ("bullet"/"ordered"/
+    // "task") or a whole-note block ("heading"/"quote"/"code"/"divider"); "" renders a
+    // plain paragraph. Authoritative per note: a view never markers slips uniformly.
+    public static string SlipListKind(ZetlSlipSnapshot slip)
     {
-        List<ZetlSlipSnapshot>? renumbered = null;
-        var run = 0;
-        for (var i = 0; i < slips.Count; i++)
-        {
-            var slip = slips[i];
-            string? rewritten = null;
-            if (slip.Type == ZetlSlipType.Text
-                && TryRenumberFirstOrdered(slip.Text, run + 1, out rewritten))
-            {
-                run++;
-            }
-            else
-            {
-                run = 0;
-            }
-
-            if (rewritten is not null)
-            {
-                renumbered ??= [.. slips.Take(i)];
-                renumbered.Add(slip with { Text = rewritten });
-            }
-            else
-            {
-                renumbered?.Add(slip);
-            }
-        }
-
-        return renumbered ?? slips;
+        var value = slip.ListKind?.Trim().ToLowerInvariant();
+        return value is "bullet" or "ordered" or "task"
+            or "heading" or "quote" or "code" or "divider"
+            ? value
+            : "";
     }
 
-    // If the slip's first non-empty line is an ordered marker ("N. …"), rewrite its
-    // number to <number>; leaves the text untouched and returns false otherwise.
-    private static bool TryRenumberFirstOrdered(string? text, int number, out string rewritten)
+    // A structural kind is a Kastn-only rendering element (divider, and later group/
+    // table/latex) with no authored content: Zetl skips these in capture, compile,
+    // Replay, and Pop, and Kastn's content-format controls do not apply to them. The
+    // content kinds (bullet/ordered/task/heading/quote/code) instead render a note's text.
+    public static bool IsStructuralKind(string? kind) =>
+        (kind ?? "").Trim().ToLowerInvariant() is "divider" or "group" or "table" or "latex";
+
+    // How Kastn renders a bucket's contents: "" (a normal section), "group" (a boxed
+    // container), "table", or "latex". Zetl ignores this; only Kastn's renderers read it.
+    public static string NormalizeBucketRenderKind(string? kind)
     {
-        rewritten = text ?? "";
-        var lines = rewritten.ReplaceLineEndings("\n").Split('\n');
-        for (var i = 0; i < lines.Length; i++)
-        {
-            var trimmed = lines[i].TrimStart();
-            if (trimmed.Length == 0)
-            {
-                continue;
-            }
-
-            var dot = trimmed.IndexOf(". ", StringComparison.Ordinal);
-            if (dot <= 0 || !trimmed[..dot].All(char.IsAsciiDigit))
-            {
-                return false;
-            }
-
-            var indent = lines[i][..(lines[i].Length - trimmed.Length)];
-            lines[i] = $"{indent}{number}. {trimmed[(dot + 2)..]}";
-            rewritten = string.Join("\n", lines);
-            return true;
-        }
-
-        return false;
+        var value = (kind ?? "").Trim().ToLowerInvariant();
+        return value is "group" or "table" or "latex" ? value : "";
     }
+
+    public static string BucketRenderKind(ZetlBucketSnapshot bucket) =>
+        NormalizeBucketRenderKind(bucket.RenderKind);
 
     private static string SlipText(ZetlSlipSnapshot slip) =>
         slip.Type == ZetlSlipType.Picture

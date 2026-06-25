@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using ZETL;
 using ZETL.Contracts;
 
 namespace KASTN;
@@ -26,7 +28,7 @@ internal enum KastnTreeNodeKind
 /// children) or a slip leaf. A view-agnostic projection of the snapshot so the
 /// tree's shape is unit-testable without the UI.
 /// </summary>
-internal sealed class KastnTreeNode
+internal sealed class KastnTreeNode : INotifyPropertyChanged
 {
     public required KastnTreeNodeKind Kind { get; init; }
     public required string Id { get; init; }
@@ -34,8 +36,16 @@ internal sealed class KastnTreeNode
     public ZetlBucketSnapshot? Bucket { get; init; }
     public ZetlSlipSnapshot? Slip { get; init; }
     public bool IsBucket => Kind == KastnTreeNodeKind.Bucket;
-    public bool IsText => Kind == KastnTreeNodeKind.Slip && !IsPicture;
+    // A container bucket (group/table/latex) Kastn renders specially; a plain bucket is
+    // an ordinary section. Both still count and toggle visibility as buckets.
+    public string BucketRenderKind { get; init; } = "";
+    public bool IsContainerBucket => IsBucket && BucketRenderKind.Length > 0;
+    public bool IsPlainBucket => IsBucket && BucketRenderKind.Length == 0;
+    public bool IsText => Kind == KastnTreeNodeKind.Slip && !IsPicture && !IsStructural;
     public bool IsPicture { get; init; }
+    // A Kastn-only structural element (a divider, later group/table/latex): no document
+    // icon, a named label instead of derived text.
+    public bool IsStructural { get; init; }
     public bool IsExcluded { get; init; }
     public bool IsDeletedBucket { get; init; }
 
@@ -60,6 +70,26 @@ internal sealed class KastnTreeNode
         ? IncludedCount.ToString()
         : $"{IncludedCount} · {HiddenCount} hidden";
     public IReadOnlyList<KastnTreeNode> Children { get; init; } = [];
+
+    // Transient drag-and-drop feedback: true while this row is the live drop target, so
+    // the template can draw a drop marker. Not part of the snapshot — set during a drag.
+    private bool isDropTarget;
+    public bool IsDropTarget
+    {
+        get => isDropTarget;
+        set
+        {
+            if (isDropTarget == value)
+            {
+                return;
+            }
+
+            isDropTarget = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDropTarget)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 internal static class KastnWorkbench
@@ -181,6 +211,7 @@ internal static class KastnWorkbench
                     Id = bucket.Id,
                     Label = bucket.Name,
                     Bucket = bucket,
+                    BucketRenderKind = ZetlViewRenderer.BucketRenderKind(bucket),
                     IsDeletedBucket = IsDeletedBucket(bucket),
                     IncludedCount = includedCount,
                     HiddenCount = hiddenCount,
@@ -201,6 +232,7 @@ internal static class KastnWorkbench
         Label = SlipNodeLabel(slip),
         Slip = slip,
         IsPicture = slip.Type == ZetlSlipType.Picture,
+        IsStructural = ZetlViewRenderer.IsStructuralKind(slip.ListKind),
         IsExcluded = slip.ExcludedFromViews
     };
 
@@ -217,6 +249,20 @@ internal static class KastnWorkbench
 
     private static string SlipLabelText(ZetlSlipSnapshot slip)
     {
+        // Structural elements have no authored content, so they read by their kind.
+        var kind = ZetlViewRenderer.SlipListKind(slip);
+        if (ZetlViewRenderer.IsStructuralKind(kind))
+        {
+            return kind switch
+            {
+                "divider" => "-- Divider",
+                "group" => "Group",
+                "table" => "Table",
+                "latex" => "LaTeX",
+                _ => "Element"
+            };
+        }
+
         if (!string.IsNullOrWhiteSpace(slip.Title))
         {
             return slip.Title.Trim();

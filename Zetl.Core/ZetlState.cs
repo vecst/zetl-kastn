@@ -87,6 +87,10 @@ internal sealed class ZetlBucket
     public string HeadingAlign { get; set; } = "";
     public bool HeadingBold { get; set; }
     public int HeadingLevel { get; set; }
+    // Kastn-only: how Kastn renders this bucket's contents — "" (a normal section),
+    // "group" (a boxed labeled container), "table", or "latex". Zetl treats the bucket
+    // as ordinary; only Kastn's renderers read this.
+    public string RenderKind { get; set; } = "";
     [System.Text.Json.Serialization.JsonPropertyName("notes")]
     public List<ZetlSlip> Slips { get; set; } = new();
 
@@ -144,6 +148,14 @@ internal sealed class ZetlSlip
     // "right". Null/absent means left (the default), so existing slips load
     // unchanged and a left slip writes no field.
     public string? Align { get; set; }
+
+    // Kastn-only: the note's own list-item kind in rendered views — "bullet",
+    // "ordered", or "task". "" (the default) renders as a plain paragraph, so
+    // existing notes load unchanged and a non-list note writes no marker.
+    public string ListKind { get; set; } = "";
+
+    // Kastn-only: checked state for a "task" note; ignored for other kinds.
+    public bool Checked { get; set; }
 
     public ZetlCaptureOrigin? CaptureOrigin { get; set; }
 
@@ -768,8 +780,10 @@ internal sealed class ZetlStateStore
         string? noteSessionId = null,
         DateTime? createdAtUtc = null,
         ZetlCaptureOrigin? captureOrigin = null,
-        string? title = null)
+        string? title = null,
+        string? listKind = null)
     {
+        var normalizedKind = (listKind ?? "").Trim().ToLowerInvariant();
         var note = new ZetlSlip
         {
             Id = NewId(),
@@ -778,7 +792,11 @@ internal sealed class ZetlStateStore
             Source = source,
             SessionId = noteSessionId ?? sessionId,
             CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow,
-            CaptureOrigin = captureOrigin
+            CaptureOrigin = captureOrigin,
+            ListKind = normalizedKind is "bullet" or "ordered" or "task"
+                or "heading" or "quote" or "code" or "divider"
+                ? normalizedKind
+                : ""
         };
         bucket.Slips.Add(note);
         PersistBucket(bucket);
@@ -972,7 +990,9 @@ internal sealed class ZetlStateStore
         string text,
         string? title = null,
         bool? excludedFromViews = null,
-        string? align = null)
+        string? align = null,
+        string? listKind = null,
+        bool? @checked = null)
     {
         note.Text = text.Trim();
         if (title is not null)
@@ -990,6 +1010,28 @@ internal sealed class ZetlStateStore
             // Normalize to keep JSON clean: left is the implicit default (null).
             var normalized = align.Trim().ToLowerInvariant();
             note.Align = normalized is "center" or "right" ? normalized : null;
+        }
+
+        if (listKind is not null)
+        {
+            // Normalize to a known kind; anything else (including "paragraph"/"none")
+            // clears it back to a plain paragraph.
+            var normalized = listKind.Trim().ToLowerInvariant();
+            note.ListKind = normalized is "bullet" or "ordered" or "task"
+                or "heading" or "quote" or "code" or "divider"
+                ? normalized
+                : "";
+        }
+
+        if (@checked is { } isChecked)
+        {
+            note.Checked = isChecked;
+        }
+
+        // Checked is meaningless for a non-task note; clear it so JSON stays honest.
+        if (note.ListKind != "task")
+        {
+            note.Checked = false;
         }
 
         note.Revision++;
@@ -1318,7 +1360,8 @@ internal sealed class ZetlStateStore
             return false;
         }
 
-        var last = bucket.Slips.LastOrDefault(IsCurrentSessionNote);
+        var last = bucket.Slips.LastOrDefault(
+            note => IsCurrentSessionNote(note) && !IsStructuralNote(note));
         if (last is null)
         {
             return false;
@@ -1349,7 +1392,8 @@ internal sealed class ZetlStateStore
             return false;
         }
 
-        var last = bucket.Slips.LastOrDefault(IsCurrentSessionNote);
+        var last = bucket.Slips.LastOrDefault(
+            note => IsCurrentSessionNote(note) && !IsStructuralNote(note));
         if (last?.IsImage != true
             || last.Image is null
             || !string.Equals(last.Image.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
@@ -1373,6 +1417,7 @@ internal sealed class ZetlStateStore
 
         note = bucket.Slips.FirstOrDefault(item =>
             IsCurrentSessionNote(item)
+            && !IsStructuralNote(item)
             && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
         return note is not null;
     }
@@ -1652,8 +1697,15 @@ internal sealed class ZetlStateStore
 
     private bool IsCompilableNote(ZetlSlip note, bool currentSessionOnly)
     {
-        return (!currentSessionOnly || IsCurrentSessionNote(note)) && !string.IsNullOrWhiteSpace(note.Text);
+        return (!currentSessionOnly || IsCurrentSessionNote(note))
+            && !IsStructuralNote(note)
+            && !string.IsNullOrWhiteSpace(note.Text);
     }
+
+    // A structural note (divider, and later group/table/latex) is a Kastn-only rendering
+    // element with no authored content, so Zetl's capture, compile, Replay, and Pop flows
+    // pass over it.
+    public static bool IsStructuralNote(ZetlSlip note) => ZetlViewRenderer.IsStructuralKind(note.ListKind);
 
     // The project most recently written to (its latest note), ignoring the
     // Zetl Logs infrastructure project, which is appended to constantly. Used to

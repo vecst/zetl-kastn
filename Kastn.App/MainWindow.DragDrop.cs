@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using ZETL;
 using ZETL.Contracts;
@@ -21,22 +22,48 @@ internal partial class MainWindow
     private const double DragThreshold = 4;
 
     private KastnTreeNode? dragCandidate;
+    // The selection captured at pointer-press (tunnel), before the TreeView collapses a
+    // multi-selection to the single pressed item — the basis for multi-slip drag.
+    private IReadOnlyList<KastnTreeNode> pressSelection = [];
     private KastnTreeNode? draggingNode;
+    // The full set being dragged (multiple slips when a multi-selection is grabbed);
+    // the primary draggingNode resolves the drop target, this set is what moves.
+    private IReadOnlyList<KastnTreeNode> draggingNodes = [];
     private Point dragStart;
     private bool dragInProgress;
+
+    // Edge auto-scroll while dragging: the tree scrolls when the pointer is held near
+    // its top/bottom edge, so a drag from the bottom can still reach items above.
+    private const double DragScrollEdge = 30;
+    private const double DragScrollStep = 20;
+    private DispatcherTimer? dragScrollTimer;
+    private double lastDragPointerY;
+    private bool dragPointerInsideTree;
+
+    // The row currently showing the drop marker.
+    private KastnTreeNode? dropTargetNode;
+    // When a press lands on an item that is part of a multi-selection, the collapse to
+    // that single item is deferred to pointer-release — so a drag in between keeps the
+    // whole selection (and a plain click still narrows to the one item).
+    private KastnTreeNode? deferredCollapseNode;
 
     private void SetupTreeDragDrop()
     {
         projectTree.AddHandler(PointerPressedEvent, OnTreePointerPressed, RoutingStrategies.Tunnel);
+        projectTree.AddHandler(PointerReleasedEvent, OnTreePointerReleased, RoutingStrategies.Tunnel);
         projectTree.AddHandler(PointerMovedEvent, OnTreePointerMoved, RoutingStrategies.Tunnel);
         DragDrop.SetAllowDrop(projectTree, true);
         projectTree.AddHandler(DragDrop.DragOverEvent, OnTreeDragOver);
+        projectTree.AddHandler(DragDrop.DragLeaveEvent, OnTreeDragLeave);
         projectTree.AddHandler(DragDrop.DropEvent, OnTreeDrop);
+        dragScrollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        dragScrollTimer.Tick += OnDragScrollTick;
     }
 
     private void OnTreePointerPressed(object? sender, PointerPressedEventArgs args)
     {
         dragCandidate = null;
+        pressSelection = [];
         if (!args.GetCurrentPoint(projectTree).Properties.IsLeftButtonPressed)
         {
             return;
@@ -49,7 +76,31 @@ internal partial class MainWindow
         }
 
         dragCandidate = node;
+        // Capture the live multi-selection now (tunnel phase): the TreeView is about to
+        // collapse it to this one item, but a drag should still move the whole selection.
+        pressSelection = projectTree.SelectedItems?.OfType<KastnTreeNode>().ToList() ?? [];
         dragStart = args.GetPosition(projectTree);
+
+        // Pressing a member of a multi-selection (no Ctrl/Shift): keep the selection now
+        // and defer the collapse to release, so a drag in between moves the whole set.
+        var unmodified = (args.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Shift)) == 0;
+        if (unmodified && pressSelection.Count > 1 && pressSelection.Any(item => item.Id == node.Id))
+        {
+            deferredCollapseNode = node;
+            args.Handled = true;
+        }
+    }
+
+    private void OnTreePointerReleased(object? sender, PointerReleasedEventArgs args)
+    {
+        // A press that deferred its collapse and did not turn into a drag was a plain
+        // click — narrow the selection to that one item now.
+        if (deferredCollapseNode is { } node && !dragInProgress)
+        {
+            projectTree.SelectedItem = node;
+        }
+
+        deferredCollapseNode = null;
     }
 
     private async void OnTreePointerMoved(object? sender, PointerEventArgs args)
@@ -74,8 +125,13 @@ internal partial class MainWindow
 
         var node = dragCandidate;
         dragCandidate = null;
+        // A drag began, so the deferred collapse must not fire on the post-drag release.
+        deferredCollapseNode = null;
         draggingNode = node;
+        draggingNodes = ResolveDragSet(node);
         dragInProgress = true;
+        dragPointerInsideTree = true;
+        dragScrollTimer?.Start();
         try
         {
             var data = new DataTransfer();
@@ -84,18 +140,112 @@ internal partial class MainWindow
         }
         finally
         {
+            dragScrollTimer?.Stop();
+            SetDropTarget(null);
             dragInProgress = false;
+            dragPointerInsideTree = false;
             draggingNode = null;
+            draggingNodes = [];
         }
+    }
+
+    // The nodes to move for this drag. Multi-drag applies only to slips: grabbing a slip
+    // that is part of a multi-selection drags every selected (non-deleted) slip, in
+    // document order; otherwise just the grabbed node moves.
+    private IReadOnlyList<KastnTreeNode> ResolveDragSet(KastnTreeNode node)
+    {
+        if (node.Kind != KastnTreeNodeKind.Slip)
+        {
+            return [node];
+        }
+
+        if (pressSelection.Count <= 1 || pressSelection.All(item => item.Id != node.Id))
+        {
+            return [node];
+        }
+
+        var slipNodes = pressSelection
+            .Where(item => item.Kind == KastnTreeNodeKind.Slip
+                && item.Slip is { } slip && !IsSlipInDeleted(slip))
+            .ToList();
+        if (slipNodes.Count <= 1)
+        {
+            return [node];
+        }
+
+        var order = currentProject is { } project
+            ? project.Slips.Select((slip, index) => (slip.Id, index))
+                .ToDictionary(entry => entry.Id, entry => entry.index, StringComparer.Ordinal)
+            : [];
+        slipNodes.Sort((a, b) =>
+            order.GetValueOrDefault(a.Id, int.MaxValue)
+                .CompareTo(order.GetValueOrDefault(b.Id, int.MaxValue)));
+        return slipNodes;
     }
 
     private void OnTreeDragOver(object? sender, DragEventArgs args)
     {
-        args.DragEffects = PlanDrop(args) is not null
-            ? DragDropEffects.Move
-            : DragDropEffects.None;
+        // Remember where the pointer is so the auto-scroll timer can keep scrolling even
+        // while the pointer is held still at the edge (DragOver only fires on movement).
+        lastDragPointerY = args.GetPosition(projectTree).Y;
+        dragPointerInsideTree = true;
+        var plan = PlanDrop(args);
+        args.DragEffects = plan is not null ? DragDropEffects.Move : DragDropEffects.None;
+        // Mark the row that would receive a valid drop (the node under the pointer); a
+        // bucket-promote onto empty space, or an invalid drop, marks nothing.
+        var marksRow = plan is { } valid
+            && (valid.DestinationBucketId is not null || valid.NewParentBucketId is not null);
+        SetDropTarget(marksRow ? NodeFromVisual(args.Source as Visual) : null);
         args.Handled = true;
     }
+
+    private void OnTreeDragLeave(object? sender, DragEventArgs args)
+    {
+        dragPointerInsideTree = false;
+        SetDropTarget(null);
+    }
+
+    // Move the drop marker to a new row, clearing the previous one.
+    private void SetDropTarget(KastnTreeNode? node)
+    {
+        if (ReferenceEquals(dropTargetNode, node))
+        {
+            return;
+        }
+
+        if (dropTargetNode is not null)
+        {
+            dropTargetNode.IsDropTarget = false;
+        }
+
+        dropTargetNode = node;
+        if (dropTargetNode is not null)
+        {
+            dropTargetNode.IsDropTarget = true;
+        }
+    }
+
+    private void OnDragScrollTick(object? sender, EventArgs args)
+    {
+        if (!dragInProgress || !dragPointerInsideTree || TreeScrollViewer() is not { } scroll)
+        {
+            return;
+        }
+
+        var height = projectTree.Bounds.Height;
+        var maxY = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
+        if (lastDragPointerY < DragScrollEdge)
+        {
+            scroll.Offset = scroll.Offset.WithY(Math.Max(0, scroll.Offset.Y - DragScrollStep));
+        }
+        else if (lastDragPointerY > height - DragScrollEdge)
+        {
+            scroll.Offset = scroll.Offset.WithY(Math.Min(maxY, scroll.Offset.Y + DragScrollStep));
+        }
+    }
+
+    private ScrollViewer? TreeScrollViewer() =>
+        projectTree.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
 
     private async void OnTreeDrop(object? sender, DragEventArgs args)
     {
@@ -224,49 +374,86 @@ internal partial class MainWindow
 
     private async Task ApplySlipDropAsync(DropPlan plan)
     {
-        if (currentProject is not { } project
-            || project.Slips.FirstOrDefault(slip => slip.Id == plan.Source.Id) is not { } slip)
+        if (currentProject is not { } project)
         {
             return;
         }
 
-        var revision = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
-            ? editorState.Revision
-            : slip.Revision;
-        pendingBucketSelectionId = plan.DestinationBucketId;
-
-        if (slip.BucketId != plan.DestinationBucketId)
+        // The dragged slip ids (the multi-selection set, or just the primary), resolved to
+        // current snapshots in document order. A slip dropped before itself is skipped.
+        var draggedIds = (draggingNodes.Count > 0 ? draggingNodes : [plan.Source])
+            .Where(node => node.Kind == KastnTreeNodeKind.Slip)
+            .Select(node => node.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var slips = project.Slips
+            .Where(slip => draggedIds.Contains(slip.Id)
+                && !string.Equals(slip.Id, plan.BeforeSlipId, StringComparison.Ordinal))
+            .ToList();
+        if (slips.Count == 0)
         {
-            var moveResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.MoveSlip,
-                new MoveSlipCommand { DestinationBucketId = plan.DestinationBucketId! },
-                project.Id,
-                slip.Id,
-                revision));
-            if (moveResponse.Status != ZetlResponseStatus.Success)
-            {
-                statusText.Text = moveResponse.Error?.Message ?? $"Move failed: {moveResponse.Status}.";
-                return;
-            }
-
-            revision = moveResponse.Payload?.Deserialize<ZetlSlipSnapshot>(
-                ZetlProtocolJson.Options)?.Revision ?? revision;
+            return;
         }
 
-        var statusMessage = "Slip moved.";
-        if (plan.BeforeSlipId is { } beforeId && !string.Equals(beforeId, slip.Id, StringComparison.Ordinal))
+        pendingBucketSelectionId = plan.DestinationBucketId;
+        var moved = 0;
+        string? failure = null;
+        // Send every move/reorder as a batch: the service publishes a snapshot per
+        // command, but dropping the intermediate pushes (one rebuild at the end) keeps a
+        // multi-slip move snappy instead of shuffling the slips in one at a time.
+        batching = true;
+        try
         {
-            var reorderResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.ReorderSlip,
-                new ReorderSlipCommand { BeforeSlipId = beforeId },
-                project.Id,
-                slip.Id,
-                revision));
-            statusMessage = reorderResponse.Status == ZetlResponseStatus.Success
-                ? "Slip moved."
-                : reorderResponse.Error?.Message ?? $"Reorder failed: {reorderResponse.Status}.";
+            // Iterating in document order and reordering each "before" the target lands
+            // the set contiguously in its original order; moves to a bucket append too.
+            foreach (var slip in slips)
+            {
+                var revision = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
+                    ? editorState.Revision
+                    : slip.Revision;
+
+                if (slip.BucketId != plan.DestinationBucketId)
+                {
+                    var moveResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                        Guid.NewGuid().ToString("N"),
+                        ZetlCommandKind.MoveSlip,
+                        new MoveSlipCommand { DestinationBucketId = plan.DestinationBucketId! },
+                        project.Id,
+                        slip.Id,
+                        revision));
+                    if (moveResponse.Status != ZetlResponseStatus.Success)
+                    {
+                        failure = moveResponse.Error?.Message ?? $"Move failed: {moveResponse.Status}.";
+                        break;
+                    }
+
+                    revision = moveResponse.Payload?.Deserialize<ZetlSlipSnapshot>(
+                        ZetlProtocolJson.Options)?.Revision ?? revision;
+                }
+
+                if (plan.BeforeSlipId is { } beforeId
+                    && !string.Equals(beforeId, slip.Id, StringComparison.Ordinal))
+                {
+                    var reorderResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                        Guid.NewGuid().ToString("N"),
+                        ZetlCommandKind.ReorderSlip,
+                        new ReorderSlipCommand { BeforeSlipId = beforeId },
+                        project.Id,
+                        slip.Id,
+                        revision));
+                    if (reorderResponse.Status != ZetlResponseStatus.Success)
+                    {
+                        failure = reorderResponse.Error?.Message
+                            ?? $"Reorder failed: {reorderResponse.Status}.";
+                        break;
+                    }
+                }
+
+                moved++;
+            }
+        }
+        finally
+        {
+            batching = false;
         }
 
         await connection.RefreshAsync();
@@ -274,8 +461,9 @@ internal partial class MainWindow
         // node is restored under the refresh guard, which never syncs the editor, so the
         // moved slip would otherwise show stale editor content. Selecting it here runs the
         // canonical OnTreeSelectionChanged path and syncs editor, inspector, and View.
-        ReselectSlipNode(slip.Id);
-        statusText.Text = statusMessage;
+        ReselectSlipNode(plan.Source.Id);
+        statusText.Text = failure
+            ?? (moved == 1 ? "Slip moved." : $"{moved} slips moved.");
     }
 
     private void ReselectSlipNode(string slipId)
