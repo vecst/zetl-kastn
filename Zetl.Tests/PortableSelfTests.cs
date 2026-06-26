@@ -128,6 +128,7 @@ internal static class PortableSelfTests
                 ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
                 ("Runtime cut hold defaults to today's journal bucket", RuntimeCutHoldDefaultsToTodaysJournalBucket),
                 ("Runtime select-all hold captures the selection", RuntimeSelectAllHoldCapturesTheSelection),
+                ("Runtime select-all shift hold captures the selection", RuntimeSelectAllShiftHoldCapturesTheSelection),
                 ("Runtime template hold requests the picker", RuntimeTemplateHoldRequestsPicker),
                 ("Runtime compile hold without a project requests the picker", RuntimeCompileHoldWithoutProjectRequestsPicker),
                 ("Runtime compile hold with an active project stays compile", RuntimeCompileHoldWithActiveProjectStaysCompile),
@@ -3182,6 +3183,32 @@ internal static class PortableSelfTests
                 "the whole field",
                 ((ZetlNoteCaptureRequest)request!).Text,
                 "It captures the freshly-copied selection.");
+        }
+
+        private static void RuntimeSelectAllShiftHoldCapturesTheSelection()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var clipboard = new FakeClipboard(null, changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _);
+            // Holding Ctrl+Shift+A injects a copy; simulate the app copying the selected field.
+            keyboard.OnSendChord = () => clipboard.SetText("the whole field on shift");
+
+            var request = coordinator.HandleHoldAsync(
+                ShortcutContext(VK_A, shifted: true, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+
+            AssertTrue(request is ZetlNoteCaptureRequest, "Holding Ctrl+Shift+A opens a capture.");
+            var note = (ZetlNoteCaptureRequest)request!;
+            AssertTrue(note.Shifted, "Should target the shift lane.");
+            AssertEqual(
+                "the whole field on shift",
+                note.Text,
+                "It captures the freshly-copied selection on the shift lane.");
         }
 
         private static void RuntimeTemplateHoldRequestsPicker()

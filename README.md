@@ -63,8 +63,10 @@ for the Zetl action.
 
 | Coldkey | Tap | Hold |
 | --- | --- | --- |
+| `Ctrl+A` | Normal select-all | Select all and capture it |
 | `Ctrl+B` | Normal `Ctrl+B` | Open the Board |
 | `Ctrl+C` | Copy; optionally capture into the active bucket | Open capture or project management |
+| `Ctrl+J` | Toggle between Journal and last project | (None) |
 | `Ctrl+P` | Normal `Ctrl+P` | Toggle Pop Mode |
 | `Ctrl+R` | Normal `Ctrl+R` | Toggle Replay Mode |
 | `Ctrl+T` | Normal `Ctrl+T` | Start a project from a template |
@@ -73,7 +75,7 @@ for the Zetl action.
 | `Ctrl+Z` | Normal undo | Undo the latest Zetl action |
 
 Add `Shift` to use the independent Shift project lane:
-`Ctrl+Shift+C`, `Ctrl+Shift+X`, `Ctrl+Shift+V`, and so on. This makes it
+`Ctrl+Shift+A`, `Ctrl+Shift+C`, `Ctrl+Shift+J`, `Ctrl+Shift+X`, `Ctrl+Shift+V`, and so on. This makes it
 possible to keep a Replay/data-entry project on one lane while using the other
 lane for ordinary capture—or leaving it inactive.
 

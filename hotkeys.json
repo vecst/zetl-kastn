@@ -9,6 +9,12 @@
       "dispatch": "None"
     },
     {
+      "name": "Ctrl+Shift+A",
+      "key": "A",
+      "modifiers": ["Ctrl", "Shift"],
+      "dispatch": "None"
+    },
+    {
       "name": "Ctrl+J",
       "key": "J",
       "modifiers": ["Ctrl"],
