@@ -174,6 +174,30 @@ internal partial class MainWindow
                 FontWeight = FontWeight.SemiBold,
                 Margin = new Avalonia.Thickness(0, 8, 0, 0)
             });
+            if (string.Equals(section.Heading, "Linked from", StringComparison.Ordinal))
+            {
+                foreach (var field in section.Fields)
+                {
+                    var targetSlipId = field.Value;
+                    var navigateButton = new Button
+                    {
+                        Content = field.Label,
+                        Padding = new Avalonia.Thickness(9, 3),
+                        Margin = new Avalonia.Thickness(0, 2, 0, 2),
+                        HorizontalAlignment = HorizontalAlignment.Left
+                    };
+                    navigateButton.Click += (_, _) =>
+                    {
+                        var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, targetSlipId);
+                        if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
+                        {
+                            projectTree.SelectedItem = node;
+                        }
+                    };
+                    slipInspectorFieldsPanel.Children.Add(navigateButton);
+                }
+                continue;
+            }
             foreach (var field in section.Fields)
             {
                 var fieldPanel = new StackPanel { Spacing = 1 };
@@ -678,6 +702,36 @@ internal partial class MainWindow
                     }
                     AppendInlines(linkSpan.Inlines, link.Children);
                     target.Add(linkSpan);
+                    break;
+                case ZetlWikiLink wiki:
+                    var resolved = currentProject?.Slips.Any(s => s.Id == wiki.TargetId) ?? false;
+                    if (resolved)
+                    {
+                        var linkBlock = new TextBlock
+                        {
+                            Text = wiki.CachedTitle,
+                            TextDecorations = TextDecorations.Underline,
+                            Cursor = new Cursor(StandardCursorType.Hand),
+                            Foreground = ThemeBrush("ZetlAccentBrush") ?? Brushes.Blue
+                        };
+                        var targetId = wiki.TargetId;
+                        linkBlock.PointerPressed += (s, e) =>
+                        {
+                            e.Handled = true;
+                            var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, targetId);
+                            if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
+                            {
+                                projectTree.SelectedItem = node;
+                            }
+                        };
+                        target.Add(new InlineUIContainer(linkBlock));
+                    }
+                    else
+                    {
+                        var unresolvedSpan = new Span { Foreground = Brushes.Gray };
+                        unresolvedSpan.Inlines.Add(new Run(wiki.CachedTitle));
+                        target.Add(unresolvedSpan);
+                    }
                     break;
             }
         }
