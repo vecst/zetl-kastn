@@ -35,6 +35,17 @@ The tree shows bucket hierarchy and persisted slip order. A bucket selection is
 navigation rather than a hidden View scope change. Search and explicit filters
 control which slips are rendered.
 
+## Board Mode
+
+Kastn provides an alternate Board Mode (Kanban board layout) projection next to the standard document list view. In Board Mode, buckets are mapped to horizontal columns, and slips inside each bucket are rendered as cards in that column.
+
+Key features of Board Mode:
+- **Layout Toggles**: Switch between List and Board Mode using the segmented buttons in the toolbar or the View menu.
+- **Auto-Hiding Panes**: Entering Board Mode automatically collapses the left Tree pane and the right Details pane, giving the columns full screen width. Returning to List Mode restores pane visibilities and original widths.
+- **Drag-and-Drop Column Reordering**: Cards can be dragged between columns or reordered within a column. Auto-scrolling scrolls the board horizontally when a card is dragged near the left or right boundaries.
+- **Quick Creation**: Each column features a `+` button to instantly add a new card directly to that bucket.
+- **Double-Click Modal Editor**: Double-clicking a board card opens a responsive popup editor, allowing rapid card modification without using the main pane editor. Adding a new card via the `+` button automatically triggers this dialog.
+
 ## Search And Filters
 
 Filters compose without mutating project state:
@@ -91,6 +102,37 @@ opens a conflict panel:
 
 There is no silent last-writer-wins overwrite.
 
+## Linked Slips
+
+Kastn supports wiki-style inter-slip linking using stable IDs.
+
+- **Syntax**: Wiki-links are written using double brackets: `[[targetId|cachedTitle]]`.
+- **Interactive On-Screen Rendering**:
+  - *Resolved Links*: Rendered inline as clickable accent-colored buttons. Clicking them navigates directly to the target slip.
+  - *Unresolved/Stubs*: Rendered in a muted gray with a "Slip not found" tooltip.
+- **Keyboard and Editor Navigation**:
+  - *Ctrl+Click*: In the slip editor, holding `Ctrl` and clicking on a wiki-link navigates to the target slip.
+  - *F12 (Go to Definition)*: Pressing `F12` with the caret inside a link navigates to the target slip.
+- **Backlinks Details Inspector**: The Details pane compiles and displays a "Linked from" section containing clickable button shortcuts for all slips linking to the currently active slip.
+- **Fidelity in Exports**: Resolving links translates correctly to HTML (`<a href="#id">`) and PDF bookmarks, allowing clickable cross-references in exports.
+
+## Column Styles and Formatting Inheritance
+
+Buckets can have an assigned formatting style (Column Style) configured in the bucket editor.
+
+Available styles:
+- **Standard (Notes)**: Standard default behavior.
+- **Checklist**: Plain child slips automatically inherit checklist (`task`) formatting and display checkboxes.
+- **Bullet List**: Plain child slips automatically inherit bullet formatting.
+- **Numbered List**: Plain child slips automatically inherit numbered formatting.
+- **Group Box**: Renders the bucket as a boxed container.
+- **Table**: Renders the bucket's slips in a tabular grid (reserved).
+- **LaTeX Block**: Renders the bucket as a LaTeX formatting block (reserved).
+
+### Inheritance Rules
+- Plain notes (slips with an empty/default block kind) automatically inherit the list formatting (Checklist, Bullet List, Numbered List) defined on their parent bucket/column.
+- A slip's own explicit block kind (e.g., Heading, Quote, Code Block) overrides any bucket-level formatting inheritance.
+
 ## Pictures And Details
 
 Picture slips render inline in the View and above their editable captions in the
@@ -140,7 +182,7 @@ constructs that Zetl ignores:
   section. Slips and whole buckets are dragged into it through the ordinary
   move/reparent drag-and-drop. A container is an otherwise normal bucket — Zetl
   still captures and compiles its contents; only the render kind is Kastn-only.
-  **Table** and **LaTeX** container kinds are reserved for later.
+  **Table** and **LaTeX** container kinds are reserved for later. See the **Column Styles and Formatting Inheritance** section above for details on list formatting kinds.
 
 ### Soft Delete
 

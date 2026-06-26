@@ -270,6 +270,8 @@ Kastn provides:
 - project cards, lifecycle actions, and direct Zetl handoff
 - live browsing while Zetl continues capturing
 - a bucket/slip tree with drag-and-drop organization
+- alternate **Board Mode** (Kanban board projection) with drag-and-drop, horizontal auto-scrolling, and double-click modal card editing
+- wiki-style **Linked Slips** navigation (Ctrl+Click/F12 to follow double-bracket stable-ID links) and backlink details index
 - search and source, session, and date filters
 - autosaving slip editing with explicit conflict resolution
 - optional slip titles and Markdown formatting
