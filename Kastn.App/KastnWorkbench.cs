@@ -232,7 +232,7 @@ internal static class KastnWorkbench
         Label = SlipNodeLabel(slip),
         Slip = slip,
         IsPicture = slip.Type == ZetlSlipType.Picture,
-        IsStructural = ZetlViewRenderer.IsStructuralKind(slip.ListKind),
+        IsStructural = ZetlViewRenderer.IsStructuralKind(slip.BlockKind),
         IsExcluded = slip.ExcludedFromViews
     };
 
@@ -249,18 +249,11 @@ internal static class KastnWorkbench
 
     private static string SlipLabelText(ZetlSlipSnapshot slip)
     {
-        // Structural elements have no authored content, so they read by their kind.
-        var kind = ZetlViewRenderer.SlipListKind(slip);
-        if (ZetlViewRenderer.IsStructuralKind(kind))
+        // A structural slip has no authored content, so it reads by its kind. Divider is
+        // the only structural slip kind (group/table/latex are container *buckets*).
+        if (ZetlViewRenderer.SlipBlockKind(slip) == ZetlBlockKinds.Divider)
         {
-            return kind switch
-            {
-                "divider" => "-- Divider",
-                "group" => "Group",
-                "table" => "Table",
-                "latex" => "LaTeX",
-                _ => "Element"
-            };
+            return "-- Divider";
         }
 
         if (!string.IsNullOrWhiteSpace(slip.Title))

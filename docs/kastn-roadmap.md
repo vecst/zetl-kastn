@@ -34,6 +34,11 @@ The two-application foundation is in place:
       actions, soft-delete, restore, and drag-and-drop
 - [x] Optional titles, Markdown formatting, alignment, lists, and document
       structure
+- [x] Per-note block kinds (paragraph / list / heading / quote / code) as a slip
+      property, blessed in-body Markdown, and an export-fidelity advisory
+- [x] Structural elements Zetl ignores: divider slips and container Group buckets
+      (Table / LaTeX reserved), with multi-select drag, a drop indicator, and
+      edge auto-scroll
 - [x] Formatted, Plain, TSV, Markdown, HTML, and PDF views
 - [x] Global and project-scoped view documents
 - [x] Template catalog, authoring, project creation, and Zetl template picker

@@ -95,7 +95,7 @@ internal static class KastnPdfRenderer
             heading.Format.LeftIndent = Unit.FromPoint(group.Depth * 14);
             // A container "group" reads as a shaded, boxed header bar so it is visibly a
             // grouping rather than an ordinary section.
-            if (group.RenderKind == "group")
+            if (group.RenderKind == ZetlBucketRenderKinds.Group)
             {
                 heading.Format.Shading.Color = new Color(0xF2, 0xF2, 0xF2);
                 heading.Format.Borders.Color = new Color(0xCC, 0xCC, 0xCC);
@@ -148,22 +148,22 @@ internal static class KastnPdfRenderer
                 }
 
                 var displayText = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-                var kind = ZetlViewRenderer.SlipListKind(slip);
+                var kind = ZetlViewRenderer.SlipBlockKind(slip);
                 // A divider note carries no text but still renders (as a rule); other
                 // empty notes are skipped.
-                if (kind != "divider" && string.IsNullOrWhiteSpace(displayText))
+                if (kind != ZetlBlockKinds.Divider && string.IsNullOrWhiteSpace(displayText))
                 {
                     continue;
                 }
 
                 var slipMarker = kind switch
                 {
-                    "ordered" => $"{++orderedRun}. ",
-                    "task" => slip.Checked ? "☑ " : "☐ ",
-                    "bullet" => "• ",
+                    ZetlBlockKinds.Ordered => $"{++orderedRun}. ",
+                    ZetlBlockKinds.Task => slip.Checked ? "☑ " : "☐ ",
+                    ZetlBlockKinds.Bullet => "• ",
                     _ => ""
                 };
-                if (kind != "ordered")
+                if (kind != ZetlBlockKinds.Ordered)
                 {
                     orderedRun = 0;
                 }
@@ -194,7 +194,7 @@ internal static class KastnPdfRenderer
         var placedSlipMarker = false;
 
         // A whole-note kind (heading/quote/code/divider) synthesizes its one block.
-        foreach (var block in ZetlMarkdown.BlocksForNote(slip.ListKind, text))
+        foreach (var block in ZetlMarkdown.BlocksForNote(slip.BlockKind, text))
         {
             if (block is ZetlParagraphBlock paragraphBlock)
             {

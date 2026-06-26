@@ -238,12 +238,12 @@ internal partial class MainWindow : Window
         codeButton.Click += (_, _) => WrapEditorSelection("`", "`", "code");
         linkButton.Click += (_, _) => InsertEditorLink();
         wikiLinkButton.Click += async (_, _) => await InsertSlipLinkAsync();
-        bulletListButton.Click += async (_, _) => await ListSlipsAsync("bullet");
-        numberListButton.Click += async (_, _) => await ListSlipsAsync("ordered");
-        taskListButton.Click += async (_, _) => await ListSlipsAsync("task");
-        headingButton.Click += async (_, _) => await ListSlipsAsync("heading");
-        quoteButton.Click += async (_, _) => await ListSlipsAsync("quote");
-        codeBlockButton.Click += async (_, _) => await ListSlipsAsync("code");
+        bulletListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Bullet);
+        numberListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Ordered);
+        taskListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Task);
+        headingButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Heading);
+        quoteButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Quote);
+        codeBlockButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Code);
         insertDividerButton.Click += async (_, _) => await InsertDividerSlipAsync();
         insertGroupButton.Click += async (_, _) => await InsertGroupBucketAsync();
         globalViews = viewStore.LoadAll();

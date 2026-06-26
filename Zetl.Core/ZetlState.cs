@@ -149,10 +149,12 @@ internal sealed class ZetlSlip
     // unchanged and a left slip writes no field.
     public string? Align { get; set; }
 
-    // Kastn-only: the note's own list-item kind in rendered views — "bullet",
-    // "ordered", or "task". "" (the default) renders as a plain paragraph, so
-    // existing notes load unchanged and a non-list note writes no marker.
-    public string ListKind { get; set; } = "";
+    // Kastn-only: the note's own block kind in rendered views — a list item
+    // ("bullet"/"ordered"/"task") or a structural leaf ("divider"); "" (the default)
+    // renders as a plain paragraph. The JSON key stays "listKind" (the field's original
+    // name) so existing projects keep loading their kinds after the rename to BlockKind.
+    [System.Text.Json.Serialization.JsonPropertyName("listKind")]
+    public string BlockKind { get; set; } = "";
 
     // Kastn-only: checked state for a "task" note; ignored for other kinds.
     public bool Checked { get; set; }
@@ -781,9 +783,8 @@ internal sealed class ZetlStateStore
         DateTime? createdAtUtc = null,
         ZetlCaptureOrigin? captureOrigin = null,
         string? title = null,
-        string? listKind = null)
+        string? blockKind = null)
     {
-        var normalizedKind = (listKind ?? "").Trim().ToLowerInvariant();
         var note = new ZetlSlip
         {
             Id = NewId(),
@@ -793,10 +794,7 @@ internal sealed class ZetlStateStore
             SessionId = noteSessionId ?? sessionId,
             CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow,
             CaptureOrigin = captureOrigin,
-            ListKind = normalizedKind is "bullet" or "ordered" or "task"
-                or "heading" or "quote" or "code" or "divider"
-                ? normalizedKind
-                : ""
+            BlockKind = ZetlBlockKinds.Normalize(blockKind)
         };
         bucket.Slips.Add(note);
         PersistBucket(bucket);
@@ -991,7 +989,7 @@ internal sealed class ZetlStateStore
         string? title = null,
         bool? excludedFromViews = null,
         string? align = null,
-        string? listKind = null,
+        string? blockKind = null,
         bool? @checked = null)
     {
         note.Text = text.Trim();
@@ -1012,15 +1010,11 @@ internal sealed class ZetlStateStore
             note.Align = normalized is "center" or "right" ? normalized : null;
         }
 
-        if (listKind is not null)
+        if (blockKind is not null)
         {
             // Normalize to a known kind; anything else (including "paragraph"/"none")
             // clears it back to a plain paragraph.
-            var normalized = listKind.Trim().ToLowerInvariant();
-            note.ListKind = normalized is "bullet" or "ordered" or "task"
-                or "heading" or "quote" or "code" or "divider"
-                ? normalized
-                : "";
+            note.BlockKind = ZetlBlockKinds.Normalize(blockKind);
         }
 
         if (@checked is { } isChecked)
@@ -1029,7 +1023,7 @@ internal sealed class ZetlStateStore
         }
 
         // Checked is meaningless for a non-task note; clear it so JSON stays honest.
-        if (note.ListKind != "task")
+        if (note.BlockKind != ZetlBlockKinds.Task)
         {
             note.Checked = false;
         }
@@ -1705,7 +1699,7 @@ internal sealed class ZetlStateStore
     // A structural note (divider, and later group/table/latex) is a Kastn-only rendering
     // element with no authored content, so Zetl's capture, compile, Replay, and Pop flows
     // pass over it.
-    public static bool IsStructuralNote(ZetlSlip note) => ZetlViewRenderer.IsStructuralKind(note.ListKind);
+    public static bool IsStructuralNote(ZetlSlip note) => ZetlViewRenderer.IsStructuralKind(note.BlockKind);
 
     // The project most recently written to (its latest note), ignoring the
     // Zetl Logs infrastructure project, which is appended to constantly. Used to

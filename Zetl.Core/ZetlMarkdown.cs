@@ -304,17 +304,17 @@ internal static class ZetlMarkdown
     // this, so the note-kind structure reuses the same heading/quote/code/divider output.
     public static IReadOnlyList<ZetlBlock> BlocksForNote(string? noteKind, string text)
     {
-        switch ((noteKind ?? "").Trim().ToLowerInvariant())
+        switch (ZetlBlockKinds.Normalize(noteKind))
         {
-            case "heading":
+            case ZetlBlockKinds.Heading:
                 return [new ZetlHeadingBlock(2, ParseInlines(text))];
-            case "quote":
+            case ZetlBlockKinds.Quote:
                 return [new ZetlQuoteBlock(
                     (text ?? "").ReplaceLineEndings("\n").Split('\n')
                         .Select(line => ParseInlines(line)).ToList())];
-            case "code":
+            case ZetlBlockKinds.Code:
                 return [new ZetlCodeBlock(text ?? "", "")];
-            case "divider":
+            case ZetlBlockKinds.Divider:
                 return [new ZetlDividerBlock()];
             default:
                 return ParseBlocks(text ?? "");

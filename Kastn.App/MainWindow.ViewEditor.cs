@@ -526,15 +526,15 @@ internal partial class MainWindow
             {
                 var kind = slip.Type == ZetlSlipType.Picture
                     ? ""
-                    : ZetlViewRenderer.SlipListKind(slip);
+                    : ZetlViewRenderer.SlipBlockKind(slip);
                 var marker = kind switch
                 {
-                    "ordered" => $"{++orderedRun}.",
-                    "bullet" => "•",
-                    "task" => slip.Checked ? "☑" : "☐",
+                    ZetlBlockKinds.Ordered => $"{++orderedRun}.",
+                    ZetlBlockKinds.Bullet => "•",
+                    ZetlBlockKinds.Task => slip.Checked ? "☑" : "☐",
                     _ => ""
                 };
-                if (kind != "ordered")
+                if (kind != ZetlBlockKinds.Ordered)
                 {
                     orderedRun = 0;
                 }

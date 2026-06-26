@@ -249,7 +249,7 @@ internal static class ZetlProjectServiceTests
         AssertTrue(note.Align is null, "The stored note should carry no alignment for left.");
     }
 
-    public static void SlipListKindAndCheckedRoundTrip()
+    public static void SlipBlockKindAndCheckedRoundTrip()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -263,25 +263,30 @@ internal static class ZetlProjectServiceTests
                 ?? throw new InvalidOperationException($"{id} did not return a slip.");
 
         // Become a task, then check it.
-        var task = Update("to-task", new UpdateSlipCommand { Text = note.Text, ListKind = "task" }, note.Revision);
-        AssertEqual("task", task.ListKind, "The snapshot should report the task kind.");
+        var task = Update("to-task", new UpdateSlipCommand { Text = note.Text, BlockKind = "task" }, note.Revision);
+        AssertEqual("task", task.BlockKind, "The snapshot should report the task kind.");
         var checkedSlip = Update("check", new UpdateSlipCommand { Text = task.Text, Checked = true }, task.Revision);
         AssertTrue(checkedSlip.Checked, "Checking a task should persist.");
 
         // Omitting the kind on a text edit preserves both kind and checked.
         var edited = Update("edit", new UpdateSlipCommand { Text = "done soon" }, checkedSlip.Revision);
-        AssertEqual("task", edited.ListKind, "Omitting the kind preserves it.");
+        AssertEqual("task", edited.BlockKind, "Omitting the kind preserves it.");
         AssertTrue(edited.Checked, "Omitting checked preserves it.");
 
         // Switching to a non-task kind clears the now-meaningless checked flag.
-        var bulleted = Update("to-bullet", new UpdateSlipCommand { Text = edited.Text, ListKind = "bullet" }, edited.Revision);
-        AssertEqual("bullet", bulleted.ListKind, "The kind should become bullet.");
+        var bulleted = Update("to-bullet", new UpdateSlipCommand { Text = edited.Text, BlockKind = "bullet" }, edited.Revision);
+        AssertEqual("bullet", bulleted.BlockKind, "The kind should become bullet.");
         AssertTrue(!bulleted.Checked, "Leaving task should clear the checked flag.");
 
         // An unknown kind normalizes to a plain paragraph ("").
-        var plain = Update("to-plain", new UpdateSlipCommand { Text = bulleted.Text, ListKind = "paragraph" }, bulleted.Revision);
-        AssertEqual("", plain.ListKind, "An unknown kind normalizes to no marker.");
-        AssertEqual("", note.ListKind, "The stored note carries no marker for an unknown kind.");
+        var plain = Update("to-plain", new UpdateSlipCommand { Text = bulleted.Text, BlockKind = "paragraph" }, bulleted.Revision);
+        AssertEqual("", plain.BlockKind, "An unknown kind normalizes to no marker.");
+        AssertEqual("", note.BlockKind, "The stored note carries no marker for an unknown kind.");
+
+        // Toggling a kind off sends "" explicitly — the editor's toggle-to-clear path.
+        var reBulleted = Update("re-bullet", new UpdateSlipCommand { Text = plain.Text, BlockKind = "bullet" }, plain.Revision);
+        var cleared = Update("clear", new UpdateSlipCommand { Text = reBulleted.Text, BlockKind = "" }, reBulleted.Revision);
+        AssertEqual("", cleared.BlockKind, "An explicit empty kind clears the marker (toggle off).");
     }
 
     public static void DividerNoteAddsWithoutContent()
@@ -294,12 +299,12 @@ internal static class ZetlProjectServiceTests
         var divider = service.Execute(ZetlCommandEnvelope.Create(
             "add-divider",
             ZetlCommandKind.AddSlip,
-            new AddSlipCommand { BucketId = bucket.Id, Text = "", Source = "kastn", ListKind = "divider" },
+            new AddSlipCommand { BucketId = bucket.Id, Text = "", Source = "kastn", BlockKind = "divider" },
             project.Id));
         AssertEqual(ZetlResponseStatus.Success, divider.Status, "A content-less divider note should be allowed.");
         var snapshot = divider.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
             ?? throw new InvalidOperationException("Divider add returned no slip.");
-        AssertEqual("divider", snapshot.ListKind, "The new note should carry the divider kind.");
+        AssertEqual("divider", snapshot.BlockKind, "The new note should carry the divider kind.");
 
         // Toggling a content-less divider's visibility re-sends its empty text, which must
         // not trip the title-or-note requirement.
@@ -331,7 +336,7 @@ internal static class ZetlProjectServiceTests
         store.SetActiveBucket(project, bucket.Id);
         store.SetBucketPopMode(bucket, true);
         var note = store.AddNote(bucket, "value", "copy");
-        store.AddNote(bucket, "", "copy", listKind: "divider");
+        store.AddNote(bucket, "", "copy", blockKind: "divider");
 
         // A trailing divider must not block popping the content note above it (Pop only
         // looks at the last note, so a structural one would otherwise shadow it).

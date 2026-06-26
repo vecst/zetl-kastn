@@ -147,9 +147,9 @@ public sealed record ZetlSlipSnapshot
     // Kastn-only: the note's own list-item kind in rendered views — "bullet",
     // "ordered", or "task"; "" / absent renders as a plain paragraph. Authoritative
     // per note (it is not inherited from a view-wide style).
-    public string ListKind { get; init; } = "";
+    public string BlockKind { get; init; } = "";
 
-    // Kastn-only: the checked state when ListKind is "task"; ignored otherwise.
+    // Kastn-only: the checked state when BlockKind is "task"; ignored otherwise.
     public bool Checked { get; init; }
 }
 

@@ -52,14 +52,31 @@ selection across snapshot refreshes where the selected item remains visible.
 Text slips have an optional title and body. Without an explicit title, Kastn
 derives a display title from the body. Title-only slips are valid.
 
-The editor supports:
+A slip's body is plain text — a small Markdown subset — and how the slip renders
+is governed by its **block kind**, a per-note property toggled from the editor
+toolbar. The marker is never written into the body:
 
-- idle autosave and `Ctrl+S`
-- optional include/exclude from views
-- left, center, or right block alignment
-- Markdown-backed bold, italic, strikethrough, inline code, and web links
-- bullet, numbered, and task lists
-- stable-ID wiki-link insertion
+- **Paragraph** — the default.
+- **Bullet**, **Numbered**, or **Task** list item. A task note carries a checked
+  flag toggled from its checkbox in the View.
+- **Heading** (a softened sub-heading), **Quote**, or **Code** block — the whole
+  note renders as that block.
+
+Pressing a block-kind button toggles that kind on the selected note (or every
+note in a multi-selection); pressing it again clears it, and the buttons
+highlight the active kind. Inline formatting — bold, italic, strikethrough,
+inline code, web links, and stable-ID wiki-links — wraps the current selection.
+Alignment (left, center, right) is a per-note property.
+
+Typing Markdown by hand in the body is also supported: `**bold**`, `## heading`,
+`> quote`, fenced code, `---` dividers, and `- ` / `1. ` lists all render. The
+buttons are the decision-free path; typing is the explicit one — both are valid.
+
+The on-screen View always renders the body richly; a view's kind only governs
+its Copy/Export artifact. So when the selected view would drop formatting on
+export (a Plain or TSV view, or alignment in Markdown), the toolbar shows a
+fidelity note. The editor also offers idle autosave, `Ctrl+S`, and optional
+include/exclude from views.
 
 `New` creates one title-only `Untitled` draft and focuses its title. Repeated
 creation attempts return to the untouched draft rather than accumulating empty
@@ -104,7 +121,26 @@ Drag-and-drop maps to ordinary Zetl commands:
 - bucket onto bucket → parent change
 - bucket onto root space → promote to top level
 
+Dragging a member of a multi-selection moves the whole selection (the selection
+is held through the press rather than collapsing). A drop-target marker shows
+where a drop will land, the tree auto-scrolls when a drag is held near its top or
+bottom edge, and a multi-slip move is sent as one batch so the tree rebuilds once.
 Cycle checks and protected-bucket rules remain enforced by Zetl.
+
+### Structural Elements
+
+A bar above the tree inserts **structural elements** — Kastn-only rendering
+constructs that Zetl ignores:
+
+- **Divider** is a content-less structural slip (rendered as a rule). It is
+  inserted as its own slip rather than by reformatting a note. Zetl skips
+  structural slips in capture, compile, Replay, and Pop, and the content-format
+  controls do not apply to one.
+- **Group** is a container *bucket* (a render kind) shown as a boxed, labelled
+  section. Slips and whole buckets are dragged into it through the ordinary
+  move/reparent drag-and-drop. A container is an otherwise normal bucket — Zetl
+  still captures and compiles its contents; only the render kind is Kastn-only.
+  **Table** and **LaTeX** container kinds are reserved for later.
 
 ### Soft Delete
 

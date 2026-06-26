@@ -21,6 +21,55 @@ internal static class ZetlViewKinds
     public const string Pdf = "PDF";
 }
 
+// A note's own block kind in Kastn's rendered views (the slip's BlockKind, persisted as
+// "listKind"): a list item (Bullet/Ordered/Task), an inline-content block (Heading/
+// Quote/Code), or the Divider structural leaf. None ("") renders as a plain paragraph.
+// This is the single source of truth for valid kinds — normalize through it everywhere.
+internal static class ZetlBlockKinds
+{
+    public const string None = "";
+    public const string Bullet = "bullet";
+    public const string Ordered = "ordered";
+    public const string Task = "task";
+    public const string Heading = "heading";
+    public const string Quote = "quote";
+    public const string Code = "code";
+    public const string Divider = "divider";
+
+    public static readonly string[] All = [Bullet, Ordered, Task, Heading, Quote, Code, Divider];
+
+    // Structural slip kinds: content-less elements Zetl ignores and Kastn renders.
+    public static readonly string[] Structural = [Divider];
+
+    public static string Normalize(string? value)
+    {
+        var lowered = value?.Trim().ToLowerInvariant();
+        return lowered is not null && All.Contains(lowered) ? lowered : None;
+    }
+
+    public static bool IsStructural(string? value) =>
+        Structural.Contains((value ?? "").Trim().ToLowerInvariant());
+}
+
+// How Kastn renders a container bucket's contents (the bucket's RenderKind): a boxed
+// Group, a Table, or a LaTeX block. None ("") is an ordinary section. Zetl ignores this;
+// the bucket is otherwise a normal bucket.
+internal static class ZetlBucketRenderKinds
+{
+    public const string None = "";
+    public const string Group = "group";
+    public const string Table = "table";
+    public const string Latex = "latex";
+
+    public static readonly string[] All = [Group, Table, Latex];
+
+    public static string Normalize(string? value)
+    {
+        var lowered = value?.Trim().ToLowerInvariant();
+        return lowered is not null && All.Contains(lowered) ? lowered : None;
+    }
+}
+
 // How a view arranges each bucket's slips in the document kinds. Stored as readable
 // text like the other view settings.
 internal static class ZetlViewListStyles

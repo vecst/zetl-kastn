@@ -172,7 +172,7 @@ internal static class ZetlProjectSnapshotMapper
                     DateTime.SpecifyKind(slip.DeletedAtUtc.Value, DateTimeKind.Utc)),
             ExcludedFromViews = slip.ExcludedFromViews,
             Align = slip.Align,
-            ListKind = slip.ListKind,
+            BlockKind = slip.BlockKind,
             Checked = slip.Checked
         };
     }

@@ -450,6 +450,34 @@ internal static class ZetlViewTests
         }
     }
 
+    public static void KindNormalizationIsCentralized()
+    {
+        // Block kinds: every declared kind round-trips; case and surrounding space are
+        // tolerated; anything else (including "paragraph"/null) collapses to None.
+        foreach (var kind in ZetlBlockKinds.All)
+        {
+            AssertEqual(kind, ZetlBlockKinds.Normalize(kind), $"'{kind}' is a valid block kind.");
+        }
+
+        AssertEqual(ZetlBlockKinds.Task, ZetlBlockKinds.Normalize("  TASK "), "Case- and space-tolerant.");
+        AssertEqual(ZetlBlockKinds.None, ZetlBlockKinds.Normalize("paragraph"), "Unknown kind collapses to none.");
+        AssertEqual(ZetlBlockKinds.None, ZetlBlockKinds.Normalize(null), "Null collapses to none.");
+        AssertTrue(ZetlBlockKinds.IsStructural(ZetlBlockKinds.Divider), "Divider is the structural slip kind.");
+        AssertTrue(!ZetlBlockKinds.IsStructural(ZetlBlockKinds.Bullet), "A list kind is not structural.");
+
+        // Bucket render kinds normalize the same way.
+        foreach (var kind in ZetlBucketRenderKinds.All)
+        {
+            AssertEqual(
+                kind,
+                ZetlBucketRenderKinds.Normalize(kind.ToUpperInvariant()),
+                $"'{kind}' is a valid container kind.");
+        }
+
+        AssertEqual(ZetlBucketRenderKinds.None, ZetlBucketRenderKinds.Normalize("carousel"),
+            "Unknown container kind collapses to none.");
+    }
+
     public static void NoteKindRendersAsWholeNoteBlock()
     {
         var project = Project(
@@ -484,7 +512,7 @@ internal static class ZetlViewTests
         AssertContains(markdown, "---");
     }
 
-    public static void PerSlipListKindRendersMarkdownMarkers()
+    public static void PerSlipBlockKindRendersMarkdownMarkers()
     {
         var project = Project(
             "Demo",
@@ -1022,7 +1050,7 @@ internal static class ZetlViewTests
     };
 
     private static ZetlSlipSnapshot Slip(
-        string bucketId, string text, string listKind = "", bool isChecked = false) => new()
+        string bucketId, string text, string blockKind = "", bool isChecked = false) => new()
     {
         Id = Guid.NewGuid().ToString("N"),
         Revision = 1,
@@ -1031,7 +1059,7 @@ internal static class ZetlViewTests
         Text = text,
         Source = "copy",
         CapturedAtUtc = DateTimeOffset.UnixEpoch,
-        ListKind = listKind,
+        BlockKind = blockKind,
         Checked = isChecked
     };
 

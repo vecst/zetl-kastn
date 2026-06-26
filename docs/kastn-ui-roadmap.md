@@ -54,10 +54,25 @@ Markdown, so Zetl capture stays decision-free.
 
 - [x] Optional block alignment stored as slip metadata
 - [x] Bold, italic, strikethrough, inline code, and web links
-- [x] Bullet, numbered, and task lists inside a slip
-- [x] Formatting toolbar that edits the plain-text representation
+- [x] Formatting toolbar (inline wraps a selection; the block kind is a property)
 - [x] Shared parsing across on-screen, HTML, and PDF renderers
 - [x] Literal Formatted/Plain/TSV behavior left unchanged
+- [x] Per-note **block kind** (paragraph / bullet / ordered / task / heading /
+      quote / code) toggled from the toolbar — the marker is a slip property, not
+      body text; task notes carry a checked flag toggled from the View
+- [x] Blessed in-body Markdown: typed `##` / `>` / fences / `---` / lists render
+- [x] Export-fidelity advisory when the selected view drops formatting on export
+
+### Note Kinds And Structural Elements
+
+- [x] `BlockKind` slip property + `RenderKind` bucket property, centralized in
+      `ZetlBlockKinds` / `ZetlBucketRenderKinds`
+- [x] **Divider** structural slip inserted from a tree-side bar; Zetl skips
+      structural slips in capture/compile/Replay/Pop and content controls disable
+- [x] **Group** container bucket rendered as a boxed section; slips and buckets
+      drag in through ordinary move/reparent (Table / LaTeX kinds reserved)
+- [x] Multi-select drag with deferred selection, a drop-target marker, edge
+      auto-scroll, and batched multi-slip moves
 
 ### View Structure And Authoring
 
@@ -135,7 +150,7 @@ or a second ordering model.
 
 ## Interaction Cleanup
 
-- [ ] Add a live insertion/parenting indicator during drag-and-drop.
+- [x] Add a live drop-target indicator during drag-and-drop.
 - [ ] Keep keyboard-accessible movement controls while reducing redundant
       always-visible Move/parent UI.
 - [ ] Improve reading width and font-size controls.
@@ -150,6 +165,8 @@ or a second ordering model.
 - Figure numbering, width, and alignment
 - Copy as Markdown/HTML and direct Print
 - Per-view document styling
-- Structural divider or heading slips
+- ~~Structural divider or heading slips~~ — divider landed; container Group
+  buckets landed (Table / LaTeX reserved)
 - Word/character count and project-wide find/replace
-- Headings, blockquotes, code blocks, and horizontal rules
+- ~~Headings, blockquotes, code blocks, and horizontal rules~~ — landed as
+  per-note block kinds plus blessed in-body Markdown

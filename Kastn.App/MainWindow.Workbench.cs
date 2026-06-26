@@ -325,7 +325,7 @@ internal partial class MainWindow
         var batchAlign = selected.Count >= 2
             && selected.Any(item => item.Type == ZetlSlipType.Text
                 && !IsSlipInDeleted(item)
-                && !ZetlViewRenderer.IsStructuralKind(item.ListKind));
+                && !ZetlViewRenderer.IsStructuralKind(item.BlockKind));
         var canAlign = IsOnline
             && !saving
             && editorState.ConflictCurrent is null
@@ -333,7 +333,7 @@ internal partial class MainWindow
                 || batchAlign
                 || (slip is { Type: ZetlSlipType.Text }
                     && !IsSlipInDeleted(slip)
-                    && !ZetlViewRenderer.IsStructuralKind(slip.ListKind)));
+                    && !ZetlViewRenderer.IsStructuralKind(slip.BlockKind)));
         alignLeftButton.IsEnabled = canAlign;
         alignCenterButton.IsEnabled = canAlign;
         alignRightButton.IsEnabled = canAlign;
@@ -353,19 +353,19 @@ internal partial class MainWindow
         var selected = SelectedSlips();
         var slip = selected.Count == 1 ? selected[0] : null;
         var active = slip is { Type: ZetlSlipType.Text } && !IsSlipInDeleted(slip)
-            ? ZetlViewRenderer.SlipListKind(slip)
+            ? ZetlViewRenderer.SlipBlockKind(slip)
             : "";
-        bulletListButton.FontWeight = active == "bullet" ? FontWeight.Bold : FontWeight.Normal;
-        numberListButton.FontWeight = active == "ordered" ? FontWeight.Bold : FontWeight.Normal;
-        taskListButton.FontWeight = active == "task" ? FontWeight.Bold : FontWeight.Normal;
-        headingButton.FontWeight = active == "heading" ? FontWeight.Bold : FontWeight.Normal;
-        quoteButton.FontWeight = active == "quote" ? FontWeight.Bold : FontWeight.Normal;
-        codeBlockButton.FontWeight = active == "code" ? FontWeight.Bold : FontWeight.Normal;
+        bulletListButton.FontWeight = active == ZetlBlockKinds.Bullet ? FontWeight.Bold : FontWeight.Normal;
+        numberListButton.FontWeight = active == ZetlBlockKinds.Ordered ? FontWeight.Bold : FontWeight.Normal;
+        taskListButton.FontWeight = active == ZetlBlockKinds.Task ? FontWeight.Bold : FontWeight.Normal;
+        headingButton.FontWeight = active == ZetlBlockKinds.Heading ? FontWeight.Bold : FontWeight.Normal;
+        quoteButton.FontWeight = active == ZetlBlockKinds.Quote ? FontWeight.Bold : FontWeight.Normal;
+        codeBlockButton.FontWeight = active == ZetlBlockKinds.Code ? FontWeight.Bold : FontWeight.Normal;
     }
 
     // Set the selected note's kind, toggling it off when already that kind. The kind is
     // the note's render property — nothing is written into its body text.
-    private Task SetSlipListKindAsync(string kind)
+    private Task SetSlipBlockKindAsync(string kind)
     {
         var selected = SelectedSlips();
         if (selected.Count != 1)
@@ -374,12 +374,12 @@ internal partial class MainWindow
         }
 
         var slip = selected[0];
-        var target = ZetlViewRenderer.SlipListKind(slip) == kind ? "" : kind;
+        var target = ZetlViewRenderer.SlipBlockKind(slip) == kind ? "" : kind;
         var label = target.Length == 0
             ? "Note kind cleared."
             : $"Note {NoteKindActionLabel(target)}.";
         return UpdateSlipPropertyAsync(
-            slip, text => new UpdateSlipCommand { Text = text, ListKind = target }, label);
+            slip, text => new UpdateSlipCommand { Text = text, BlockKind = target }, label);
     }
 
     // Toggle a task note's checked state from a checkbox click in the View. Targets the
@@ -703,7 +703,7 @@ internal partial class MainWindow
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.AddBucket,
-            new AddBucketCommand { Name = "Group", ParentBucketId = parentId, RenderKind = "group" },
+            new AddBucketCommand { Name = "Group", ParentBucketId = parentId, RenderKind = ZetlBucketRenderKinds.Group },
             currentProject.Id));
         if (response.Status == ZetlResponseStatus.Success)
         {
@@ -763,7 +763,7 @@ internal partial class MainWindow
                     BucketId = bucketId,
                     Text = "",
                     Source = "kastn",
-                    ListKind = "divider"
+                    BlockKind = ZetlBlockKinds.Divider
                 },
                 currentProject.Id));
             if (response.Status != ZetlResponseStatus.Success)
@@ -1263,7 +1263,7 @@ internal partial class MainWindow
             ?? currentProject?.Slips.FirstOrDefault(item => item.Id == editorState.SlipId);
         slipMetadataText.Text = slip is null
             ? "Select a slip to read or edit it."
-            : ZetlViewRenderer.IsStructuralKind(slip.ListKind)
+            : ZetlViewRenderer.IsStructuralKind(slip.BlockKind)
                 ? "Structural element — a divider Kastn renders and Zetl ignores. It has no text to edit; use Delete to remove it."
                 : SlipMetadata(slip);
         SetEditingEnabled();
@@ -1281,7 +1281,7 @@ internal partial class MainWindow
         // element with no authored content, so the editor and content-format controls
         // do not apply to it — only move/delete remain.
         var selectedIsStructural = selectedSlips.Count == 1
-            && ZetlViewRenderer.IsStructuralKind(selectedSlips[0].ListKind);
+            && ZetlViewRenderer.IsStructuralKind(selectedSlips[0].BlockKind);
         var canEdit = IsOnline
             && editorState.SlipId is not null
             && !hasMultipleSelectedSlips

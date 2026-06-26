@@ -639,7 +639,7 @@ internal sealed class ZetlProjectService
         }
 
         var (project, bucket) = found.Value;
-        var isDivider = string.Equals(payload.ListKind, "divider", StringComparison.OrdinalIgnoreCase);
+        var isDivider = string.Equals(payload.BlockKind, ZetlBlockKinds.Divider, StringComparison.OrdinalIgnoreCase);
         // A divider is a structural note with no authored content, so it is exempt from
         // the title-or-note requirement; every other kind still needs content.
         if (!isDivider
@@ -666,7 +666,7 @@ internal sealed class ZetlProjectService
             payload.SessionId,
             payload.CapturedAtUtc?.UtcDateTime,
             title: payload.Title,
-            listKind: payload.ListKind);
+            blockKind: payload.BlockKind);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Created, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);
@@ -697,7 +697,7 @@ internal sealed class ZetlProjectService
         // A structural note (divider, etc.) is content-less by design, so it is exempt
         // from the title-or-note rule — otherwise toggling its visibility or alignment,
         // which re-sends its empty text, would be rejected.
-        var resultingKind = payload.ListKind ?? note.ListKind;
+        var resultingKind = payload.BlockKind ?? note.BlockKind;
         if (!ZetlViewRenderer.IsStructuralKind(resultingKind)
             && string.IsNullOrWhiteSpace(payload.Text)
             && string.IsNullOrWhiteSpace(title)
@@ -708,7 +708,7 @@ internal sealed class ZetlProjectService
 
         store.UpdateNote(
             note, payload.Text, payload.Title, payload.ExcludedFromViews,
-            payload.Align, payload.ListKind, payload.Checked);
+            payload.Align, payload.BlockKind, payload.Checked);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);

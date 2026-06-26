@@ -243,7 +243,7 @@ internal partial class MainWindow
         {
             // A container bucket ("group") wraps its heading and slips in a bordered box;
             // otherwise they go straight into the document.
-            var isGroup = group.RenderKind == "group";
+            var isGroup = group.RenderKind == ZetlBucketRenderKinds.Group;
             var groupBox = isGroup ? new StackPanel { Spacing = 2 } : null;
             var target = (Panel?)groupBox ?? viewerDocumentPanel;
 
@@ -270,21 +270,21 @@ internal partial class MainWindow
             {
                 var kind = slip.Type == ZetlSlipType.Picture
                     ? ""
-                    : ZetlViewRenderer.SlipListKind(slip);
+                    : ZetlViewRenderer.SlipBlockKind(slip);
                 var marker = kind switch
                 {
-                    "ordered" => $"{++orderedRun}.",
-                    "bullet" => "•",
-                    "task" => slip.Checked ? "☑" : "☐",
+                    ZetlBlockKinds.Ordered => $"{++orderedRun}.",
+                    ZetlBlockKinds.Bullet => "•",
+                    ZetlBlockKinds.Task => slip.Checked ? "☑" : "☐",
                     _ => ""
                 };
-                if (kind != "ordered")
+                if (kind != ZetlBlockKinds.Ordered)
                 {
                     orderedRun = 0;
                 }
 
                 target.Children.Add(
-                    BuildSlipBlock(slip, isGroup ? 0 : group.Depth, generation, marker, checkable: kind == "task"));
+                    BuildSlipBlock(slip, isGroup ? 0 : group.Depth, generation, marker, checkable: kind == ZetlBlockKinds.Task));
             }
 
             if (groupBox is not null)
@@ -489,7 +489,7 @@ internal partial class MainWindow
         var alignment = SlipTextAlignment(slip);
         // A whole-note kind (heading/quote/code/divider) synthesizes its one block; any
         // other kind parses the body normally.
-        foreach (var block in ZetlMarkdown.BlocksForNote(slip.ListKind, text))
+        foreach (var block in ZetlMarkdown.BlocksForNote(slip.BlockKind, text))
         {
             if (block is ZetlParagraphBlock paragraph)
             {

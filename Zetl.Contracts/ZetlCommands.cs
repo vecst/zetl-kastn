@@ -93,7 +93,7 @@ public sealed record AddSlipCommand
 
     // Optional block kind for the new note. "divider" creates a content-less structural
     // note (a rendered rule); the list/heading/quote/code kinds are normally set later.
-    public string? ListKind { get; init; }
+    public string? BlockKind { get; init; }
 }
 
 public sealed record UpdateSlipCommand
@@ -111,7 +111,7 @@ public sealed record UpdateSlipCommand
 
     // Null preserves the current list kind; "" clears it (plain paragraph) and
     // "bullet" / "ordered" / "task" set the note's own list-item kind.
-    public string? ListKind { get; init; }
+    public string? BlockKind { get; init; }
 
     // Null preserves the current checked state; true/false set it (only meaningful
     // when the note's list kind is "task").

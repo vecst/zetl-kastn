@@ -351,10 +351,10 @@ internal static class ZetlViewRenderer
                 }
 
                 var slipText = SlipText(slip);
-                var kind = SlipListKind(slip);
+                var kind = SlipBlockKind(slip);
 
                 // A divider note has no content: emit a thematic break and move on.
-                if (kind == "divider")
+                if (kind == ZetlBlockKinds.Divider)
                 {
                     orderedRun = 0;
                     parts.Add("---");
@@ -374,7 +374,7 @@ internal static class ZetlViewRenderer
 
                 // Whole-note block kinds emit as their own blocks: a heading softens to
                 // bold (kept out of the .md outline); quote and code use GFM syntax.
-                if (kind == "heading")
+                if (kind == ZetlBlockKinds.Heading)
                 {
                     orderedRun = 0;
                     parts.AddRange(lines.Where(line => line.Length > 0).Select(line => $"**{line}**"));
@@ -382,7 +382,7 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                if (kind == "quote")
+                if (kind == ZetlBlockKinds.Quote)
                 {
                     orderedRun = 0;
                     parts.AddRange(lines.Select(line => line.Length == 0 ? ">" : $"> {line}"));
@@ -390,7 +390,7 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                if (kind == "code")
+                if (kind == ZetlBlockKinds.Code)
                 {
                     orderedRun = 0;
                     parts.Add("```");
@@ -411,7 +411,7 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                if (kind == "ordered")
+                if (kind == ZetlBlockKinds.Ordered)
                 {
                     EmitMarkedSlipMarkdown(parts, $"{++orderedRun}. ", lines);
                     continue;
@@ -420,10 +420,10 @@ internal static class ZetlViewRenderer
                 orderedRun = 0;
                 switch (kind)
                 {
-                    case "bullet":
+                    case ZetlBlockKinds.Bullet:
                         EmitMarkedSlipMarkdown(parts, "- ", lines);
                         break;
-                    case "task":
+                    case ZetlBlockKinds.Task:
                         EmitMarkedSlipMarkdown(parts, slip.Checked ? "- [x] " : "- [ ] ", lines);
                         break;
                     default:
@@ -510,7 +510,7 @@ internal static class ZetlViewRenderer
         foreach (var group in groups)
         {
             // A container bucket ("group") wraps its heading and slips in a bordered box.
-            var isGroup = group.RenderKind == "group";
+            var isGroup = group.RenderKind == ZetlBucketRenderKinds.Group;
             if (isGroup)
             {
                 parts.Add("<section class=\"kastn-group\">");
@@ -537,7 +537,7 @@ internal static class ZetlViewRenderer
             {
                 if (openKind is not null)
                 {
-                    parts.Add(openKind == "ordered" ? "</ol>" : "</ul>");
+                    parts.Add(openKind == ZetlBlockKinds.Ordered ? "</ol>" : "</ul>");
                     openKind = null;
                 }
             }
@@ -568,12 +568,13 @@ internal static class ZetlViewRenderer
                 }
 
                 var text = SlipText(slip);
-                var kind = SlipListKind(slip);
+                var kind = SlipBlockKind(slip);
 
                 // A whole-note block (heading/quote/code/divider) renders its synthesized
                 // block on its own; a divider carries no text, so it is handled before the
                 // empty-text skip.
-                if (kind is "heading" or "quote" or "code" or "divider")
+                if (kind is ZetlBlockKinds.Heading or ZetlBlockKinds.Quote
+                    or ZetlBlockKinds.Code or ZetlBlockKinds.Divider)
                 {
                     CloseList();
                     parts.Add(ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text)));
@@ -602,14 +603,14 @@ internal static class ZetlViewRenderer
                     CloseList();
                     parts.Add(kind switch
                     {
-                        "ordered" => "<ol>",
-                        "task" => "<ul style=\"list-style:none;padding-left:1.1em\">",
+                        ZetlBlockKinds.Ordered => "<ol>",
+                        ZetlBlockKinds.Task => "<ul style=\"list-style:none;padding-left:1.1em\">",
                         _ => "<ul>"
                     });
                     openKind = kind;
                 }
 
-                var glyph = kind == "task" ? (slip.Checked ? "☑ " : "☐ ") : "";
+                var glyph = kind == ZetlBlockKinds.Task ? (slip.Checked ? "☑ " : "☐ ") : "";
                 parts.Add($"<li{style}>{glyph}{inner}</li>");
             }
 
@@ -668,32 +669,17 @@ internal static class ZetlViewRenderer
         return value is "center" or "right" ? value : "left";
     }
 
-    // The note's own block kind in a rendered view — a list item ("bullet"/"ordered"/
-    // "task") or a whole-note block ("heading"/"quote"/"code"/"divider"); "" renders a
-    // plain paragraph. Authoritative per note: a view never markers slips uniformly.
-    public static string SlipListKind(ZetlSlipSnapshot slip)
-    {
-        var value = slip.ListKind?.Trim().ToLowerInvariant();
-        return value is "bullet" or "ordered" or "task"
-            or "heading" or "quote" or "code" or "divider"
-            ? value
-            : "";
-    }
+    // The note's own block kind in a rendered view, normalized — see ZetlBlockKinds.
+    // Authoritative per note: a view never markers slips uniformly.
+    public static string SlipBlockKind(ZetlSlipSnapshot slip) => ZetlBlockKinds.Normalize(slip.BlockKind);
 
-    // A structural kind is a Kastn-only rendering element (divider, and later group/
-    // table/latex) with no authored content: Zetl skips these in capture, compile,
-    // Replay, and Pop, and Kastn's content-format controls do not apply to them. The
-    // content kinds (bullet/ordered/task/heading/quote/code) instead render a note's text.
-    public static bool IsStructuralKind(string? kind) =>
-        (kind ?? "").Trim().ToLowerInvariant() is "divider" or "group" or "table" or "latex";
+    // Whether a slip's block kind is a structural element (a divider): content-less, so
+    // Zetl skips it in capture/compile/Replay/Pop and Kastn's content controls don't
+    // apply. The content kinds render the note's text instead.
+    public static bool IsStructuralKind(string? kind) => ZetlBlockKinds.IsStructural(kind);
 
-    // How Kastn renders a bucket's contents: "" (a normal section), "group" (a boxed
-    // container), "table", or "latex". Zetl ignores this; only Kastn's renderers read it.
-    public static string NormalizeBucketRenderKind(string? kind)
-    {
-        var value = (kind ?? "").Trim().ToLowerInvariant();
-        return value is "group" or "table" or "latex" ? value : "";
-    }
+    // How Kastn renders a bucket's contents, normalized — see ZetlBucketRenderKinds.
+    public static string NormalizeBucketRenderKind(string? kind) => ZetlBucketRenderKinds.Normalize(kind);
 
     public static string BucketRenderKind(ZetlBucketSnapshot bucket) =>
         NormalizeBucketRenderKind(bucket.RenderKind);

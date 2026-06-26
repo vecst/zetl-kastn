@@ -51,22 +51,22 @@ internal partial class MainWindow
     {
         if (!HasBatchSelection())
         {
-            await SetSlipListKindAsync(kind);
+            await SetSlipBlockKindAsync(kind);
             return;
         }
 
         await ApplyBatchAsync(
             NoteKindActionLabel(kind),
-            (slip, _) => new UpdateSlipCommand { Text = slip.Text, ListKind = kind });
+            (slip, _) => new UpdateSlipCommand { Text = slip.Text, BlockKind = kind });
     }
 
     private static string NoteKindActionLabel(string kind) => kind switch
     {
-        "ordered" => "numbered",
-        "task" => "made a checklist",
-        "heading" => "made a heading",
-        "quote" => "made a quote",
-        "code" => "made a code block",
+        ZetlBlockKinds.Ordered => "numbered",
+        ZetlBlockKinds.Task => "made a checklist",
+        ZetlBlockKinds.Heading => "made a heading",
+        ZetlBlockKinds.Quote => "made a quote",
+        ZetlBlockKinds.Code => "made a code block",
         _ => "bulleted"
     };
 
@@ -87,7 +87,7 @@ internal partial class MainWindow
             .Where(slip => selectedIds.Contains(slip.Id)
                 && slip.Type == ZetlSlipType.Text
                 && !IsSlipInDeleted(slip)
-                && !ZetlViewRenderer.IsStructuralKind(slip.ListKind))
+                && !ZetlViewRenderer.IsStructuralKind(slip.BlockKind))
             .ToList();
         if (ordered.Count == 0)
         {
