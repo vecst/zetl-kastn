@@ -21,6 +21,8 @@ namespace KASTN;
 
 internal partial class MainWindow
 {
+    private bool lastBoardModeActive;
+
     private void RefreshViewer()
     {
         if (currentProject is null)
@@ -47,14 +49,22 @@ internal partial class MainWindow
         // could have changed (a project mutation, the filters, or the chosen view) — a
         // pure selection change just re-highlights, so picture blocks never reload.
         var signature = ViewSignature(visible);
-        var rebuilt = signature != lastViewSignature || viewSlipBlocks.Count == 0;
+        var rebuilt = signature != lastViewSignature || viewSlipBlocks.Count == 0 || boardModeActive != lastBoardModeActive;
         var sameProject = string.Equals(lastViewerProjectId, currentProject.Id, StringComparison.Ordinal);
         lastViewerProjectId = currentProject.Id;
         var savedOffset = viewerDocumentScroll.Offset;
         if (rebuilt)
         {
-            BuildViewDocument(visible);
+            if (boardModeActive)
+            {
+                BuildBoardView(visible);
+            }
+            else
+            {
+                BuildViewDocument(visible);
+            }
             lastViewSignature = signature;
+            lastBoardModeActive = boardModeActive;
         }
 
         // A rebuild resets the document scroll to the top. For an in-place change to
@@ -271,6 +281,10 @@ internal partial class MainWindow
                 var kind = slip.Type == ZetlSlipType.Picture
                     ? ""
                     : ZetlViewRenderer.SlipBlockKind(slip);
+                if (string.IsNullOrEmpty(kind) && group.RenderKind is "bullet" or "ordered" or "task")
+                {
+                    kind = group.RenderKind;
+                }
                 var marker = kind switch
                 {
                     ZetlBlockKinds.Ordered => $"{++orderedRun}.",
@@ -425,6 +439,12 @@ internal partial class MainWindow
     // half of the bridge). A pure selection change reaches here without a rebuild.
     private void UpdateViewSelectionHighlight(bool scrollIntoView = true)
     {
+        if (boardModeActive)
+        {
+            UpdateBoardSelectionHighlight(scrollIntoView);
+            return;
+        }
+
         if (highlightedViewSlipId is not null
             && viewSlipBlocks.TryGetValue(highlightedViewSlipId, out var previous))
         {
@@ -1258,6 +1278,480 @@ internal partial class MainWindow
     {
         RefreshViewCatalog(currentProject, selectId);
         RefreshViewer();
+    }
+
+    private List<KastnTreeNode> FlattenBucketNodes(IEnumerable<KastnTreeNode> nodes)
+    {
+        var list = new List<KastnTreeNode>();
+        foreach (var node in nodes)
+        {
+            if (node.Kind == KastnTreeNodeKind.Bucket)
+            {
+                list.Add(node);
+                list.AddRange(FlattenBucketNodes(node.Children));
+            }
+        }
+        return list;
+    }
+
+    private void BuildBoardView(IReadOnlyList<ZetlSlipSnapshot> visible)
+    {
+        var generation = ++pictureRenderGeneration;
+        DisposeDisplayedPictures();
+        boardColumnsPanel.Children.Clear();
+        boardSlipCards.Clear();
+        highlightedBoardSlipId = null;
+
+        if (currentProject is null)
+        {
+            return;
+        }
+
+        // 1. Build the active tree nodes (which excludes Deleted bucket)
+        var treeNodes = KastnWorkbench.BuildProjectTree(currentProject, currentProject.Slips, deletedOnly: false);
+        // 2. Flatten to get all buckets in pre-order traversal tree layout order
+        var buckets = FlattenBucketNodes(treeNodes);
+
+        // 3. For each bucket, render a column!
+        // Group the visible slips by bucket ID for fast card rendering
+        var visibleSlipsByBucket = visible
+            .Where(slip => !IsSlipInDeleted(slip))
+            .GroupBy(slip => slip.BucketId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ZetlSlipSnapshot>)g.ToList(), StringComparer.Ordinal);
+
+        foreach (var bucketNode in buckets)
+        {
+            var bucket = bucketNode.Bucket;
+            if (bucket is null) continue;
+
+            var slips = visibleSlipsByBucket.TryGetValue(bucket.Id, out var found) ? found : [];
+
+            // Render the column
+            var columnControl = CreateBoardColumn(bucket, slips);
+            boardColumnsPanel.Children.Add(columnControl);
+        }
+    }
+
+    private Control CreateBoardColumn(ZetlBucketSnapshot bucket, IReadOnlyList<ZetlSlipSnapshot> slips)
+    {
+        var laneNode = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, bucket.Id);
+
+        // Header elements
+        var titleText = new TextBlock
+        {
+            Text = bucket.Name,
+            FontWeight = FontWeight.Bold,
+            FontSize = 14,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+
+        var countText = new TextBlock
+        {
+            Text = $"({slips.Count})",
+            Classes = { "muted" },
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 0, 0)
+        };
+
+        var addCardButton = new Button
+        {
+            Content = "+",
+            Width = 24,
+            Height = 24,
+            Padding = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
+        ToolTip.SetTip(addCardButton, "Add slip to this bucket");
+        addCardButton.Click += async (_, _) =>
+        {
+            await AddSlipAsync(bucket.Id);
+        };
+
+        var headerGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        Grid.SetColumn(titleText, 0);
+        Grid.SetColumn(countText, 1);
+        Grid.SetColumn(addCardButton, 2);
+        headerGrid.Children.Add(titleText);
+        headerGrid.Children.Add(countText);
+        headerGrid.Children.Add(addCardButton);
+
+        // Cards list
+        var cardsPanel = new StackPanel
+        {
+            Spacing = 6
+        };
+
+        foreach (var slip in slips)
+        {
+            var card = CreateBoardCard(slip);
+            cardsPanel.Children.Add(card);
+        }
+
+        var scrollViewer = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            Content = cardsPanel
+        };
+
+        var mainGrid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*")
+        };
+        Grid.SetRow(headerGrid, 0);
+        Grid.SetRow(scrollViewer, 1);
+        mainGrid.Children.Add(headerGrid);
+        mainGrid.Children.Add(scrollViewer);
+
+        var columnBorder = new Border
+        {
+            DataContext = laneNode,
+            Background = ThemeBrush("ZetlSurfaceBrush"),
+            BorderBrush = ThemeBrush("ZetlBorderBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Width = 280,
+            Padding = new Thickness(8),
+            Child = mainGrid,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        // Hook up drop events on the column border so users can drop cards onto empty column space
+        DragDrop.SetAllowDrop(columnBorder, true);
+        columnBorder.AddHandler(DragDrop.DragOverEvent, OnBoardDragOver);
+        columnBorder.AddHandler(DragDrop.DragLeaveEvent, OnBoardDragLeave);
+        columnBorder.AddHandler(DragDrop.DropEvent, OnBoardDrop);
+
+        return columnBorder;
+    }
+
+    private Control CreateBoardCard(ZetlSlipSnapshot slip)
+    {
+        var slipNode = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, slip.Id);
+
+        // Preview text
+        var previewText = new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(slip.Text) ? UntitledSlipTitle : slip.Text,
+            TextWrapping = TextWrapping.Wrap,
+            MaxLines = 3,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            FontSize = 13,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
+
+        var kind = ZetlViewRenderer.SlipBlockKind(slip);
+        if (string.IsNullOrEmpty(kind))
+        {
+            var bucket = currentProject?.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
+            if (bucket is not null && bucket.RenderKind is "bullet" or "ordered" or "task")
+            {
+                kind = bucket.RenderKind;
+            }
+        }
+
+        // Footer layout (contains tags/markers/checkbox)
+        var footer = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+
+        // Task checkbox
+        if (kind == ZetlBlockKinds.Task)
+        {
+            var taskCheck = new TextBlock
+            {
+                Text = slip.Checked ? "☑" : "☐",
+                FontWeight = FontWeight.Bold,
+                Foreground = slip.Checked ? ThemeBrush("ZetlAccentBrush") : ThemeBrush("ZetlMutedTextBrush"),
+                Cursor = new Cursor(StandardCursorType.Hand),
+                Margin = new Thickness(0, 0, 4, 0)
+            };
+            taskCheck.PointerPressed += async (sender, args) =>
+            {
+                args.Handled = true;
+                await ToggleSlipCheckedAsync(slip.Id);
+            };
+            footer.Children.Add(taskCheck);
+        }
+
+        // Display checkmarks for task lists or bullet/ordered indicator
+        else if (kind == ZetlBlockKinds.Bullet)
+        {
+            footer.Children.Add(new TextBlock { Text = "•", Classes = { "muted" } });
+        }
+        else if (kind == ZetlBlockKinds.Ordered)
+        {
+            footer.Children.Add(new TextBlock { Text = "1.", Classes = { "muted" } });
+        }
+
+        // Capture origin icon/text if present
+        if (slip.CaptureOrigin is { } origin)
+        {
+            var appName = !string.IsNullOrWhiteSpace(origin.ApplicationName) ? origin.ApplicationName : origin.ProcessName;
+            if (!string.IsNullOrWhiteSpace(appName))
+            {
+                footer.Children.Add(new TextBlock
+                {
+                    Text = $"[{appName}]",
+                    Classes = { "muted" },
+                    FontSize = 10,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+            }
+        }
+
+        var mainPanel = new StackPanel { Spacing = 4 };
+        mainPanel.Children.Add(previewText);
+
+        // Picture thumbnail
+        if (slip.Type == ZetlSlipType.Picture && slip.Picture is not null)
+        {
+            var image = new Image
+            {
+                MaxWidth = 240,
+                MaxHeight = 120,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+            var statusText = new TextBlock
+            {
+                Text = "Loading...",
+                Classes = { "muted" },
+                FontSize = 11
+            };
+            mainPanel.Children.Add(image);
+            mainPanel.Children.Add(statusText);
+
+            // Load picture thumbnail asynchronously
+            LoadBoardCardPictureAsync(slip, image, statusText);
+        }
+
+        if (footer.Children.Count > 0)
+        {
+            mainPanel.Children.Add(footer);
+        }
+
+        var cardBorder = new Border
+        {
+            DataContext = slipNode,
+            Background = ThemeBrush("ZetlSurfaceAltBrush"),
+            BorderBrush = ThemeBrush("ZetlBorderBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8),
+            Child = mainPanel,
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+
+        // Track UI element for selection highlight
+        boardSlipCards[slip.Id] = cardBorder;
+
+        // Selection click
+        cardBorder.PointerPressed += (sender, args) =>
+        {
+            ReselectSlipNode(slip.Id);
+        };
+
+        // Setup dragging for the card
+        cardBorder.PointerPressed += OnBoardCardPointerPressed;
+        cardBorder.PointerMoved += OnBoardCardPointerMoved;
+        cardBorder.PointerReleased += OnBoardCardPointerReleased;
+
+        // Double click editor
+        cardBorder.DoubleTapped += async (sender, args) =>
+        {
+            await EditBoardSlipAsync(slip);
+        };
+
+        // Setup drop target on the card (to reorder slips)
+        DragDrop.SetAllowDrop(cardBorder, true);
+        cardBorder.AddHandler(DragDrop.DragOverEvent, OnBoardDragOver);
+        cardBorder.AddHandler(DragDrop.DragLeaveEvent, OnBoardDragLeave);
+        cardBorder.AddHandler(DragDrop.DropEvent, OnBoardDrop);
+
+        return cardBorder;
+    }
+
+    private async Task EditBoardSlipAsync(ZetlSlipSnapshot slip)
+    {
+        if (currentProject is null || !IsOnline)
+        {
+            return;
+        }
+
+        // Open the dialog
+        var result = await KastnDialogs.EditSlipDialogAsync(this, slip, currentProject.Buckets);
+        if (result is null)
+        {
+            return; // Cancelled
+        }
+
+        if (result.Delete)
+        {
+            // Execute DeleteSlip command
+            var deleteResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.DeleteSlip,
+                new DeleteSlipCommand(),
+                currentProject.Id,
+                slip.Id,
+                slip.Revision));
+
+            if (deleteResponse.Status == ZetlResponseStatus.Success)
+            {
+                // If the deleted slip was selected in editor, deselect it
+                if (string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal))
+                {
+                    editorState.Select(null);
+                    UpdateEditorFromState();
+                }
+                await connection.RefreshAsync();
+                statusText.Text = "Slip moved to Deleted.";
+            }
+            else
+            {
+                await KastnDialogs.MessageAsync(this, "Delete Failed", deleteResponse.Error?.Message ?? $"Failed to delete slip: {deleteResponse.Status}.");
+            }
+            return;
+        }
+
+        if (result.Save)
+        {
+            // Update slip content and column/bucket and block kind
+            var revision = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
+                ? editorState.Revision
+                : slip.Revision;
+
+            // Send MoveSlip if bucket changed
+            if (result.DestinationBucketId is not null && result.DestinationBucketId != slip.BucketId)
+            {
+                var moveResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                    Guid.NewGuid().ToString("N"),
+                    ZetlCommandKind.MoveSlip,
+                    new MoveSlipCommand { DestinationBucketId = result.DestinationBucketId },
+                    currentProject.Id,
+                    slip.Id,
+                    revision));
+
+                if (moveResponse.Status != ZetlResponseStatus.Success)
+                {
+                    await KastnDialogs.MessageAsync(this, "Move Failed", moveResponse.Error?.Message ?? $"Failed to move slip: {moveResponse.Status}.");
+                    return;
+                }
+
+                revision = moveResponse.Payload?.Deserialize<ZetlSlipSnapshot>(
+                    ZetlProtocolJson.Options)?.Revision ?? revision;
+            }
+
+            // Send UpdateSlip command for Text and BlockKind
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.UpdateSlip,
+                new UpdateSlipCommand
+                {
+                    Text = result.Text.Trim(),
+                    BlockKind = result.BlockKind
+                },
+                currentProject.Id,
+                slip.Id,
+                revision));
+
+            if (response.Status == ZetlResponseStatus.Success)
+            {
+                // If editing the active slip in the details editor, update the editor state too
+                if (string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal))
+                {
+                    var saved = response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options);
+                    if (saved is not null)
+                    {
+                        editorState.AcceptSaved(saved);
+                        UpdateEditorFromState();
+                    }
+                }
+
+                await connection.RefreshAsync();
+                statusText.Text = "Slip saved.";
+            }
+            else
+            {
+                await KastnDialogs.MessageAsync(this, "Save Failed", response.Error?.Message ?? $"Failed to save slip: {response.Status}.");
+            }
+        }
+    }
+
+    private void UpdateBoardSelectionHighlight(bool scrollIntoView = true)
+    {
+        if (highlightedBoardSlipId is not null
+            && boardSlipCards.TryGetValue(highlightedBoardSlipId, out var previous))
+        {
+            previous.BorderBrush = ThemeBrush("ZetlBorderBrush");
+        }
+
+        highlightedBoardSlipId = null;
+        var selectedId = SelectedTreeNode?.Slip?.Id ?? editorState.SlipId;
+        if (selectedId is null || !boardSlipCards.TryGetValue(selectedId, out var card))
+        {
+            return;
+        }
+
+        card.BorderBrush = ThemeBrush("ZetlAccentBrush");
+        highlightedBoardSlipId = selectedId;
+
+        if (scrollIntoView)
+        {
+            card.BringIntoView();
+            Dispatcher.UIThread.Post(card.BringIntoView, DispatcherPriority.Background);
+        }
+    }
+
+    private async void LoadBoardCardPictureAsync(
+        ZetlSlipSnapshot slip,
+        Avalonia.Controls.Image image,
+        TextBlock status)
+    {
+        var generation = pictureRenderGeneration;
+        try
+        {
+            var content = await GetPictureContentAsync(slip);
+            if (generation != pictureRenderGeneration || content is null)
+            {
+                if (generation == pictureRenderGeneration)
+                {
+                    status.Text = "Picture unavailable.";
+                }
+                return;
+            }
+
+            using var stream = new MemoryStream(content.Bytes, writable: false);
+            var bitmap = Bitmap.DecodeToWidth(stream, 260); // smaller width for board card thumbnails!
+            if (generation != pictureRenderGeneration)
+            {
+                bitmap.Dispose();
+                return;
+            }
+
+            displayedPictureBitmaps.Add(bitmap);
+            image.Source = bitmap;
+            status.IsVisible = false;
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            if (generation == pictureRenderGeneration)
+            {
+                status.Text = "Picture unavailable.";
+            }
+        }
     }
 
     // ---- Creation types (template + default view) ----

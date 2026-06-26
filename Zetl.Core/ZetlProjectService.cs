@@ -232,7 +232,7 @@ internal sealed class ZetlProjectService
                 bucket,
                 definition.Name,
                 definition.ParentBucketId,
-                definition.Settings ?? new ZetlBucketSettings());
+                definition.Settings ?? new ZETL.Contracts.ZetlBucketSettings());
         }
 
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
@@ -501,7 +501,7 @@ internal sealed class ZetlProjectService
             bucket,
             payload.Name,
             payload.ParentBucketId,
-            payload.Settings ?? new ZetlBucketSettings());
+            payload.Settings ?? new ZETL.Contracts.ZetlBucketSettings());
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket);
         Publish(project, ZetlChangeKind.Created, ZetlEntityKind.Bucket, bucket.Id, bucket.Revision);
         return Success(command, project, snapshot);
@@ -541,7 +541,7 @@ internal sealed class ZetlProjectService
                 "A bucket cannot be moved beneath one of its descendants.");
         }
 
-        var settings = payload.Settings ?? new ZetlBucketSettings();
+        var settings = payload.Settings ?? new ZETL.Contracts.ZetlBucketSettings();
         store.UpdateBucket(
             project,
             bucket,
@@ -554,6 +554,10 @@ internal sealed class ZetlProjectService
             settings.DefaultTsvRowLength,
             settings.PopMode,
             settings.ReplayReviewBucketId);
+        if (payload.RenderKind is not null)
+        {
+            bucket.RenderKind = ZetlBucketRenderKinds.Normalize(payload.RenderKind);
+        }
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Bucket, bucket.Id, bucket.Revision);
         return Success(command, project, snapshot);
@@ -845,7 +849,7 @@ internal sealed class ZetlProjectService
         ZetlBucket bucket,
         string name,
         string? parentBucketId,
-        ZetlBucketSettings settings)
+        ZETL.Contracts.ZetlBucketSettings settings)
     {
         store.UpdateBucket(
             project,

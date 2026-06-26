@@ -289,7 +289,7 @@ internal partial class BoardWindow : ZetlPopupWindow
             bucketKindBox.SelectedItem = ZetlStateStore.IsReplayBucket(bucket)
                 ? "Replay"
                 : "Standard";
-            popModeBox.IsChecked = bucket.PopMode;
+            popModeBox.IsChecked = bucket.Settings.PopMode;
             popModeBox.IsEnabled = !ZetlStateStore.IsReplayBucket(bucket);
             createNoteButton.IsEnabled = true;
 

@@ -31,6 +31,7 @@ internal static class PortableSelfTests
                 ("Chord injection suppresses a held Shift for a plain chord", ChordInjectionSuppressesHeldShiftForPlainChord),
                 ("Zetl state creates projects and scratch buckets", StateCreatesProjectAndScratch),
                 ("Zetl state creates the journal default home", StateCreatesJournalDefaultProject),
+                ("Zetl state configures and rolls journal intervals", StateJournalIntervalConfiguresAndRolls),
                 ("Zetl state reuses the journal default home", StateReusesDatedDefaultProject),
                 ("Zetl state finish starts a fresh journal", StateFinishStartsFreshJournal),
                 ("Zetl state finish with no active project is a no-op", StateFinishWithNoActiveProjectIsNoop),
@@ -195,6 +196,7 @@ internal static class PortableSelfTests
                 ("View list style and heading numbers render", ZetlViewTests.ViewListStyleAndHeadingNumbersRender),
                 ("Markdown preserves a slip's own list markup", ZetlViewTests.MarkdownPreservesSlipOwnListMarkup),
                 ("Per-slip list kind renders Markdown markers", ZetlViewTests.PerSlipBlockKindRendersMarkdownMarkers),
+                ("Bucket-level list kind inherits to slips", ZetlViewTests.BucketLevelFormattingInheritsToSlips),
                 ("Note kind renders as a whole-note block", ZetlViewTests.NoteKindRendersAsWholeNoteBlock),
                 ("Structural kind classification", ZetlViewTests.StructuralKindClassification),
                 ("Kind normalization is centralized", ZetlViewTests.KindNormalizationIsCentralized),
@@ -206,6 +208,7 @@ internal static class PortableSelfTests
                 ("Slip links parse and resolve stable ids", ZetlSlipLinkTests.ParsesAndResolvesStableIdLinks),
                 ("Slip links refresh caches safely", ZetlSlipLinkTests.RefreshesCachesWithoutDamagingUnresolvedOrMalformedText),
                 ("Slip backlinks are computed from forward links", ZetlSlipLinkTests.ComputesBacklinksWithoutPersistedReverseEdges),
+                ("Slip wiki-links parse and render correctly", ZetlSlipLinkTests.ParsesWikiLinksAsInlinesAndRendersThem),
                 ("View renderer embeds pictures in Markdown and HTML", ZetlViewTests.RendererEmbedsPictures),
                 ("View store loads, saves, and deletes user views", ZetlViewTests.StoreLoadsSavesAndDeletesUserViews),
                 ("View sections rename, reorder, and omit buckets", ZetlViewTests.SectionsRenameReorderAndOmitBuckets),
@@ -680,8 +683,8 @@ internal static class PortableSelfTests
             var newer = store.CreateProject("Newer", ["Inbox"], "Inbox");
             var olderNote = store.AddNote(older.Buckets.First(), "old", "copy");
             var newerNote = store.AddNote(newer.Buckets.First(), "new", "copy");
-            olderNote.CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            newerNote.CreatedAtUtc = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+            olderNote.CreatedAtUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            newerNote.CreatedAtUtc = new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
 
             AssertEqual("Newer", store.GetMostRecentlyWrittenProject()?.Name, "The project with the latest note should win.");
 
@@ -953,7 +956,7 @@ internal static class PortableSelfTests
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.GetOrCreateDefaultProject();
-            AssertEqual("Journal", project.Name, "The default capture home is the Journal.");
+            AssertEqual(store.DefaultProjectName(), project.Name, "The default capture home is the Journal.");
             AssertTrue(project.JournalMode, "The default home is journal-mode.");
             AssertEqual(DateTime.Now.ToString("yyyy-MM-dd"), store.ActiveBucket?.Name, "Capture lands in today's dated bucket.");
 
@@ -963,6 +966,59 @@ internal static class PortableSelfTests
             AssertEqual("Renamed", store.CompilePlainText(project, [store.ActiveBucket!]).Split(Environment.NewLine)[0], "Compile should use the updated project name.");
             store.ClearActiveProject();
             AssertEqual(project.Id, store.GetOrCreateDefaultProject().Id, "The renamed journal is still the default home.");
+        }
+
+        private static void StateJournalIntervalConfiguresAndRolls()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+
+            // Test name format mapping directly
+            var testDate = new DateTime(2026, 6, 26, 12, 0, 0); // Friday, Week 26 of 2026
+
+            // 1. Daily
+            store.Defaults = store.Defaults with { JournalInterval = "Daily", DayStartHour = 0 };
+            AssertEqual("Journal 2026-06-26", store.ExpectedJournalProjectName(testDate, false), "Daily interval name matches");
+            AssertEqual("Journal Shift 2026-06-26", store.ExpectedJournalProjectName(testDate, true), "Shifted daily interval name matches");
+
+            // 2. Weekly
+            store.Defaults = store.Defaults with { JournalInterval = "Weekly", DayStartHour = 0 };
+            AssertEqual("Journal Week 26 2026", store.ExpectedJournalProjectName(testDate, false), "Weekly interval name matches");
+            AssertEqual("Journal Shift Week 26 2026", store.ExpectedJournalProjectName(testDate, true), "Shifted weekly interval name matches");
+
+            // 3. Monthly
+            store.Defaults = store.Defaults with { JournalInterval = "Monthly", DayStartHour = 0 };
+            AssertEqual("Journal 2026-06", store.ExpectedJournalProjectName(testDate, false), "Monthly interval name matches");
+            AssertEqual("Journal Shift 2026-06", store.ExpectedJournalProjectName(testDate, true), "Shifted monthly interval name matches");
+
+            // 4. DayStartHour offset shift
+            // A time like 3am on Friday 2026-06-26 with DayStartHour = 4 should land in Thursday 2026-06-25 (which is still week 26)
+            var earlyMorning = new DateTime(2026, 6, 26, 3, 0, 0);
+            store.Defaults = store.Defaults with { JournalInterval = "Daily", DayStartHour = 4 };
+            AssertEqual("Journal 2026-06-25", store.ExpectedJournalProjectName(earlyMorning, false), "DayStartHour shifts daily name back");
+
+            // An early morning time like 3am on Monday 2026-06-22 (Week 26 starts on Monday) with DayStartHour = 4 should land in Sunday 2026-06-21 (Week 25)
+            var earlyMonday = new DateTime(2026, 6, 22, 3, 0, 0);
+            store.Defaults = store.Defaults with { JournalInterval = "Weekly", DayStartHour = 4 };
+            AssertEqual("Journal Week 25 2026", store.ExpectedJournalProjectName(earlyMonday, false), "DayStartHour shifts weekly name back");
+
+            // 5. Verify rolling on interval change / rollover
+            store.Defaults = store.Defaults with { JournalInterval = "Daily", DayStartHour = 0 };
+            var dailyProject = store.GetOrCreateDefaultProject();
+            AssertEqual(store.DefaultProjectName(), dailyProject.Name, "Daily project has correct name");
+
+            // Change interval to weekly. Next default project call should roll to a new project because the expected name doesn't match daily project's name.
+            store.Defaults = store.Defaults with { JournalInterval = "Weekly", DayStartHour = 0 };
+            var weeklyProject = store.GetOrCreateDefaultProject();
+            AssertTrue(dailyProject.Id != weeklyProject.Id, "Changing interval rolls to a new default project");
+            AssertEqual(store.DefaultProjectName(), weeklyProject.Name, "Weekly project has correct name");
+
+            // Verify rolling via manual name change (simulating a calendar rollover)
+            // Rename active weekly project to simulate an older week
+            store.UpdateProjectName(weeklyProject, "Journal Week 01 2020");
+            var rolledProject = store.GetOrCreateDefaultProject();
+            AssertTrue(weeklyProject.Id != rolledProject.Id, "Old journal project name triggers rollover and mints fresh project");
+            AssertEqual(store.DefaultProjectName(), rolledProject.Name, "Rolled project has current week's name");
         }
 
         private static void StateCanStartWithoutActiveProject()
@@ -990,7 +1046,7 @@ internal static class PortableSelfTests
             AssertFalse(normal.Id == shifted.Id, "Normal and Shift lanes should use different default projects.");
             AssertEqual(normal.Id, store.GetActiveProject()?.Id, "Normal lane should keep its active project.");
             AssertEqual(shifted.Id, store.GetActiveProject(shifted: true)?.Id, "Shift lane should keep its active project.");
-            AssertTrue(shifted.Name.EndsWith(" Shift", StringComparison.Ordinal), "Shift default project should be named distinctly.");
+            AssertEqual(store.DefaultProjectName(shifted: true), shifted.Name, "Shift default project should be named distinctly.");
         }
 
         private static void StateSwitchesActiveBucket()
@@ -1090,8 +1146,8 @@ internal static class PortableSelfTests
                 Buckets =
                 [
                     // Child deliberately listed before its parent.
-                    new ZetlBucket { Id = childId, Name = "Sub", ParentBucketId = parentId, Kind = "Standard" },
-                    new ZetlBucket { Id = parentId, Name = "Group", Kind = "Standard" }
+                    new ZetlBucket { Id = childId, Name = "Sub", ParentBucketId = parentId, Settings = new ZETL.ZetlBucketSettings { Kind = "Standard" } },
+                    new ZetlBucket { Id = parentId, Name = "Group", Settings = new ZETL.ZetlBucketSettings { Kind = "Standard" } }
                 ]
             });
             store.ClearActiveProject();
@@ -1319,7 +1375,7 @@ internal static class PortableSelfTests
             store.AddNote(deleted, "removed", "kastn-delete");
 
             AssertEqual("Deleted", deleted.Name, "Deleted bucket should have a readable name.");
-            AssertEqual("Deleted", deleted.Kind, "Deleted bucket should use a protected kind.");
+            AssertEqual("Deleted", deleted.Settings.Kind, "Deleted bucket should use a protected kind.");
             AssertTrue(project.Buckets.Any(bucket => bucket.Id == deleted.Id), "Deleted bucket should remain human-readable in project JSON.");
             AssertFalse(store.GetBucketDisplayItems(project).Any(item => item.Bucket.Id == deleted.Id), "Normal bucket lists should hide Deleted.");
             AssertTrue(store.GetBucketDisplayItems(project, includeDeleted: true).Any(item => item.Bucket.Id == deleted.Id), "Explicit bucket lists may show Deleted.");
@@ -1336,15 +1392,15 @@ internal static class PortableSelfTests
             store.SetBucketPopMode(deleted, true);
             store.DeleteBucket(project, deleted.Id);
             AssertEqual("Deleted", deleted.Name, "Deleted should not be renamable.");
-            AssertEqual("Deleted", deleted.Kind, "Deleted should not change kind.");
-            AssertFalse(deleted.PopMode, "Deleted should not enable Pop.");
+            AssertEqual("Deleted", deleted.Settings.Kind, "Deleted should not change kind.");
+            AssertFalse(deleted.Settings.PopMode, "Deleted should not enable Pop.");
             AssertTrue(project.Buckets.Any(bucket => bucket.Id == deleted.Id), "Deleted should not be deletable.");
 
             var loaded = new ZetlStateStore(temp.Path);
             var loadedProject = loaded.State.Projects.Single(project => project.Name == "Demo");
             var loadedDeleted = loadedProject.Buckets.Single(bucket => bucket.Id == deleted.Id);
             AssertEqual("Deleted", loadedDeleted.Name, "Deleted name should persist.");
-            AssertEqual("Deleted", loadedDeleted.Kind, "Deleted kind should persist.");
+            AssertEqual("Deleted", loadedDeleted.Settings.Kind, "Deleted kind should persist.");
             AssertFalse(loaded.GetBucketDisplayItems(loadedProject).Any(item => item.Bucket.Id == loadedDeleted.Id), "Reloaded normal bucket lists should hide Deleted.");
         }
 
@@ -1426,20 +1482,20 @@ internal static class PortableSelfTests
 
             AssertEqual("Vehicle Entry", bucket.Name, "Bucket settings should rename the bucket.");
             AssertTrue(ZetlStateStore.IsReplayBucket(bucket), "Bucket settings should set the current kind.");
-            AssertFalse(bucket.PopMode, "Replay bucket settings should disable pop mode.");
-            AssertEqual("Replay", bucket.DefaultKind, "Default kind should persist in memory.");
-            AssertEqual("TSV", bucket.DefaultCompileMode, "Compile mode should persist in memory.");
+            AssertFalse(bucket.Settings.PopMode, "Replay bucket settings should disable pop mode.");
+            AssertEqual("Replay", bucket.Settings.DefaultKind, "Default kind should persist in memory.");
+            AssertEqual("TSV", bucket.Settings.DefaultCompileMode, "Compile mode should persist in memory.");
             AssertEqual(3, store.GetBucketTsvRowLength(bucket), "Header count should infer TSV row length.");
 
             store.SetBucketKind(bucket, "Standard");
-            AssertEqual("Replay", bucket.DefaultKind, "Changing current kind should not erase default kind.");
+            AssertEqual("Replay", bucket.Settings.DefaultKind, "Changing current kind should not erase default kind.");
 
             var loaded = new ZetlStateStore(temp.Path);
             var loadedBucket = loaded.ActiveBucket!;
             AssertEqual("Vehicle Entry", loadedBucket.Name, "Bucket settings name should round-trip.");
-            AssertEqual("Replay", loadedBucket.DefaultKind, "Default kind should round-trip.");
-            AssertEqual("TSV", loadedBucket.DefaultCompileMode, "Compile mode should round-trip.");
-            AssertEqual("VIN\nMake\nModel", loadedBucket.DefaultStartingText.ReplaceLineEndings("\n"), "Starting text should round-trip.");
+            AssertEqual("Replay", loadedBucket.Settings.DefaultKind, "Default kind should round-trip.");
+            AssertEqual("TSV", loadedBucket.Settings.DefaultCompileMode, "Compile mode should round-trip.");
+            AssertEqual("VIN\nMake\nModel", loadedBucket.Settings.DefaultStartingText.ReplaceLineEndings("\n"), "Starting text should round-trip.");
             AssertEqual(3, loaded.GetBucketTsvRowLength(loadedBucket), "Inferred TSV length should round-trip.");
         }
 
@@ -1611,7 +1667,7 @@ internal static class PortableSelfTests
             AssertTrue(reviewBucket is not null, "Replay consume should create a review bucket.");
             AssertEqual(queue.Id, project.ActiveBucketId, "Review archive should not steal the active bucket.");
             AssertEqual("Queue Review", reviewBucket!.Name, "Review bucket should be named from the Replay bucket.");
-            AssertEqual("Standard", reviewBucket.Kind, "Review bucket should stay standard.");
+            AssertEqual("Standard", reviewBucket.Settings.Kind, "Review bucket should stay standard.");
             AssertEqual("posted", reviewBucket.Notes.Single().Text, "Review bucket should keep consumed text.");
             AssertEqual("replay", reviewBucket.Notes.Single().Source, "Review note should be tagged as replay.");
             AssertFalse(store.TryPeekNextReplayNote(queue, out _), "Consumed Replay slip should leave the queue.");
@@ -1657,11 +1713,11 @@ internal static class PortableSelfTests
             var queue = store.ActiveBucket!;
 
             store.SetBucketPopMode(queue, true);
-            AssertTrue(queue.PopMode, "Standard bucket should accept pop mode.");
+            AssertTrue(queue.Settings.PopMode, "Standard bucket should accept pop mode.");
             store.SetBucketKind(queue, "Replay");
-            AssertFalse(queue.PopMode, "Switching to Replay should turn pop mode off.");
+            AssertFalse(queue.Settings.PopMode, "Switching to Replay should turn pop mode off.");
             store.SetBucketPopMode(queue, true);
-            AssertFalse(queue.PopMode, "Replay bucket should reject pop mode.");
+            AssertFalse(queue.Settings.PopMode, "Replay bucket should reject pop mode.");
         }
 
         private static void StateMapsLegacyFifoKindToReplay()
@@ -1677,12 +1733,12 @@ internal static class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var queue = store.ActiveBucket!;
             AssertEqual("Queue", queue.Name, "Legacy bucket should load.");
-            AssertEqual("Replay", queue.Kind, "Legacy Fifo kind should load as Replay.");
-            AssertEqual("Replay", queue.DefaultKind, "Legacy Fifo default kind should load as Replay.");
+            AssertEqual("Replay", queue.Settings.Kind, "Legacy Fifo kind should load as Replay.");
+            AssertEqual("Replay", queue.Settings.DefaultKind, "Legacy Fifo default kind should load as Replay.");
             AssertTrue(ZetlStateStore.IsReplayBucket(queue), "Legacy Fifo bucket should still be a Replay bucket.");
-            AssertEqual("b2", queue.ReplayReviewBucketId, "Legacy Replay review links should load.");
+            AssertEqual("b2", queue.Settings.ReplayReviewBucketId, "Legacy Replay review links should load.");
 
-            store.SetBucketKind(queue, queue.Kind);
+            store.SetBucketKind(queue, queue.Settings.Kind);
             var projectPath = Directory.GetFiles(
                 System.IO.Path.GetDirectoryName(temp.Path)!,
                 "project.json",
@@ -2266,12 +2322,12 @@ internal static class PortableSelfTests
             var project = store.GetOrCreateDefaultProject();
             AssertTrue(project.JournalMode, "The default capture home is journal-mode.");
             var today = store.ActiveBucket!;
-            AssertEqual("TSV", today.DefaultCompileMode, "Today's bucket should take the default compile mode.");
-            AssertEqual(4, today.DefaultTsvRowLength, "Today's bucket should take the default TSV row length.");
+            AssertEqual("TSV", today.Settings.DefaultCompileMode, "Today's bucket should take the default compile mode.");
+            AssertEqual(4, today.Settings.DefaultTsvRowLength, "Today's bucket should take the default TSV row length.");
 
             var added = store.AddBucket(project, "Extra");
-            AssertEqual("TSV", added.DefaultCompileMode, "Added bucket should take the default compile mode.");
-            AssertEqual(4, added.DefaultTsvRowLength, "Added bucket should take the default TSV row length.");
+            AssertEqual("TSV", added.Settings.DefaultCompileMode, "Added bucket should take the default compile mode.");
+            AssertEqual(4, added.Settings.DefaultTsvRowLength, "Added bucket should take the default TSV row length.");
         }
 
         private static void JournalModeRollsIntoDatedBuckets()
@@ -2387,7 +2443,7 @@ internal static class PortableSelfTests
             AssertFalse(ZetlSlipClassifier.LooksLikeUrl("just a plain note"), "Plain text is not a link.");
 
             // The mapper derives the slip type from the note text — no stored field.
-            var bucket = new ZetlBucket { Id = "b", Name = "Links", Kind = "Standard" };
+            var bucket = new ZetlBucket { Id = "b", Name = "Links", Settings = new ZETL.ZetlBucketSettings { Kind = "Standard" } };
             AssertEqual(
                 ZETL.Contracts.ZetlSlipType.Url,
                 ZetlProjectSnapshotMapper.ToSnapshot(bucket, new ZetlSlip { Id = "u", Text = "https://example.com" }).Type,
@@ -2803,9 +2859,9 @@ internal static class PortableSelfTests
             AssertEqual(1, keyboard.PasteCount, "Replay tap should send one synthetic paste.");
             AssertEqual("user clipboard", clipboard.Text, "Replay should restore the user's clipboard.");
             AssertEqual(0, queue.Notes.Count, "Replay should consume the queued note.");
-            var review = project.Buckets.Single(bucket => bucket.Id == queue.ReplayReviewBucketId);
+            var review = project.Buckets.Single(bucket => bucket.Id == queue.Settings.ReplayReviewBucketId);
             AssertEqual("queued value", review.Notes.Single().Text, "Replay should archive the consumed note.");
-            AssertEqual("Standard", queue.Kind, "An empty Replay bucket should return to Standard.");
+            AssertEqual("Standard", queue.Settings.Kind, "An empty Replay bucket should return to Standard.");
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
@@ -2843,7 +2899,7 @@ internal static class PortableSelfTests
                 clipboard.Image?.PngBytes.SequenceEqual(userBytes) == true,
                 "Image Replay should restore the user's previous image clipboard.");
             AssertEqual(0, queue.Notes.Count, "Successful image Replay should consume the queued slip.");
-            var review = project.Buckets.Single(bucket => bucket.Id == queue.ReplayReviewBucketId);
+            var review = project.Buckets.Single(bucket => bucket.Id == queue.Settings.ReplayReviewBucketId);
             AssertTrue(review.Notes.Single().IsImage, "Replay review should preserve the image slip type.");
             AssertEqual(
                 queuedBytes.Length,
@@ -2918,7 +2974,7 @@ internal static class PortableSelfTests
 
             AssertTrue(handled, "An empty Replay tap is handled; it suppresses the physical paste.");
             AssertEqual(1, keyboard.PasteCount, "The final pass-through paste should be attempted.");
-            AssertEqual("Standard", queue.Kind, "An empty Replay bucket returns to Standard.");
+            AssertEqual("Standard", queue.Settings.Kind, "An empty Replay bucket returns to Standard.");
             AssertTrue(
                 sink.Messages.Exists(message => message.Contains("didn't land", StringComparison.OrdinalIgnoreCase)),
                 "A failed final paste should be reported, not silently called complete.");
@@ -3205,10 +3261,10 @@ internal static class PortableSelfTests
                 out var undo);
 
             coordinator.HandleHoldAsync(ShortcutContext(VK_P)).GetAwaiter().GetResult();
-            AssertTrue(store.GetActiveBucket()!.PopMode, "Ctrl+P hold should enable Pop.");
+            AssertTrue(store.GetActiveBucket()!.Settings.PopMode, "Ctrl+P hold should enable Pop.");
             coordinator.HandleHoldAsync(ShortcutContext(VK_R)).GetAwaiter().GetResult();
-            AssertEqual("Replay", store.GetActiveBucket()!.Kind, "Ctrl+R hold should enable Replay.");
-            AssertFalse(store.GetActiveBucket()!.PopMode, "Replay should disable Pop.");
+            AssertEqual("Replay", store.GetActiveBucket()!.Settings.Kind, "Ctrl+R hold should enable Replay.");
+            AssertFalse(store.GetActiveBucket()!.Settings.PopMode, "Replay should disable Pop.");
 
             var undone = false;
             undo.Push(false, "Undone.", () => undone = true);

@@ -599,7 +599,7 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         store.ToggleActiveBucketPopMode(shifted);
-        notifications.Show($"{bucket.Name} pop is {(bucket.PopMode ? "on" : "off")}.");
+        notifications.Show($"{bucket.Name} pop is {(bucket.Settings.PopMode ? "on" : "off")}.");
         return null;
     }
 

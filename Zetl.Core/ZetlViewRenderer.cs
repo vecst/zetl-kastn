@@ -350,8 +350,16 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                var slipText = SlipText(slip);
+                var slipText = ZetlMarkdown.ResolveWikiLinksInNote(SlipText(slip), id => project.Slips.Any(s => s.Id == id));
                 var kind = SlipBlockKind(slip);
+                if (string.IsNullOrEmpty(kind))
+                {
+                    var bucket = project.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
+                    if (bucket is not null && bucket.RenderKind is "bullet" or "ordered" or "task")
+                    {
+                        kind = bucket.RenderKind;
+                    }
+                }
 
                 // A divider note has no content: emit a thematic break and move on.
                 if (kind == ZetlBlockKinds.Divider)
@@ -547,11 +555,10 @@ internal static class ZetlViewRenderer
                 if (slip.Type == ZetlSlipType.Picture)
                 {
                     CloseList();
-
                     var caption = PictureCaption(slip);
                     if (pictures?.TryGetValue(slip.Id, out var picture) == true)
                     {
-                        parts.Add("<figure>");
+                        parts.Add($"<figure id=\"{slip.Id}\">");
                         parts.Add($"<img src=\"{DataUri(picture)}\" alt=\"{EscapeAttribute(caption)}\" />");
                         if (!string.IsNullOrWhiteSpace(slip.Text))
                         {
@@ -561,7 +568,7 @@ internal static class ZetlViewRenderer
                     }
                     else
                     {
-                        parts.Add($"<p>[Picture: {Escape(caption)}]</p>");
+                        parts.Add($"<p id=\"{slip.Id}\">[Picture: {Escape(caption)}]</p>");
                     }
 
                     continue;
@@ -569,6 +576,14 @@ internal static class ZetlViewRenderer
 
                 var text = SlipText(slip);
                 var kind = SlipBlockKind(slip);
+                if (string.IsNullOrEmpty(kind))
+                {
+                    var bucket = project.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
+                    if (bucket is not null && bucket.RenderKind is "bullet" or "ordered" or "task")
+                    {
+                        kind = bucket.RenderKind;
+                    }
+                }
 
                 // A whole-note block (heading/quote/code/divider) renders its synthesized
                 // block on its own; a divider carries no text, so it is handled before the
@@ -577,7 +592,7 @@ internal static class ZetlViewRenderer
                     or ZetlBlockKinds.Code or ZetlBlockKinds.Divider)
                 {
                     CloseList();
-                    parts.Add(ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text)));
+                    parts.Add($"<div id=\"{slip.Id}\">" + ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text), id => project.Slips.Any(s => s.Id == id)) + "</div>");
                     continue;
                 }
 
@@ -590,11 +605,11 @@ internal static class ZetlViewRenderer
                 // HTML (the parser escapes literal runs). Literal views stay verbatim.
                 var align = SlipAlignment(slip);
                 var style = align == "left" ? "" : $" style=\"text-align:{align}\"";
-                var inner = ZetlMarkdown.BlocksToHtml(text);
+                var inner = ZetlMarkdown.BlocksToHtml(text, id => project.Slips.Any(s => s.Id == id));
                 if (kind.Length == 0)
                 {
                     CloseList();
-                    parts.Add($"<div{style}>{inner}</div>");
+                    parts.Add($"<div id=\"{slip.Id}\"{style}>{inner}</div>");
                     continue;
                 }
 
@@ -611,7 +626,7 @@ internal static class ZetlViewRenderer
                 }
 
                 var glyph = kind == ZetlBlockKinds.Task ? (slip.Checked ? "☑ " : "☐ ") : "";
-                parts.Add($"<li{style}>{glyph}{inner}</li>");
+                parts.Add($"<li id=\"{slip.Id}\"{style}>{glyph}{inner}</li>");
             }
 
             CloseList();

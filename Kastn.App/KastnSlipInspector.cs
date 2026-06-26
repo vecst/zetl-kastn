@@ -1,4 +1,5 @@
 using ZETL.Contracts;
+using ZETL;
 
 namespace KASTN;
 
@@ -75,6 +76,17 @@ internal static class KastnSlipInspector
                 lifecycle.Add(new("Deleted", deletedAt.ToLocalTime().ToString("F")));
             }
             sections.Add(new("Lifecycle", lifecycle));
+        }
+
+        var backlinksIndex = ZetlSlipLinks.BuildBacklinkIndex(project);
+        if (backlinksIndex.TryGetValue(slip.Id, out var backlinks) && backlinks.Count > 0)
+        {
+            var backlinksFields = new List<KastnInspectorField>();
+            foreach (var backlink in backlinks)
+            {
+                backlinksFields.Add(new KastnInspectorField(backlink.SourceTitle, backlink.SourceSlipId));
+            }
+            sections.Add(new KastnInspectorSection("Linked from", backlinksFields));
         }
 
         var technical = new List<KastnInspectorField>

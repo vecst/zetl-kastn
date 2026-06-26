@@ -28,6 +28,8 @@
         <MenuItem x:Name="focusProjectsMenuItem" Header="Focus Project _Cards" />
         <MenuItem x:Name="focusBucketsMenuItem" Header="Focus _Buckets" />
         <MenuItem x:Name="focusSlipsMenuItem" Header="Focus _Main View" />
+        <Separator />
+        <MenuItem x:Name="boardModeMenuItem" Header="_Board Mode" ToggleType="CheckBox" InputGesture="Ctrl+B" />
       </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem x:Name="aboutMenuItem" Header="_About Kastn" />
@@ -361,6 +363,21 @@
                            Classes="muted"
                            VerticalAlignment="Center" />
               </StackPanel>
+              <StackPanel Grid.Column="1"
+                          Orientation="Horizontal"
+                          Spacing="0"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Center">
+                <Button x:Name="viewModeListButton"
+                        Content="List"
+                        Padding="14,5"
+                        CornerRadius="4,0,0,4"
+                        Classes="view-format-active" />
+                <Button x:Name="viewModeBoardButton"
+                        Content="Board"
+                        Padding="14,5"
+                        CornerRadius="0,4,4,0" />
+              </StackPanel>
               <TextBox Grid.Column="2"
                        x:Name="searchBox"
                        Watermark="Search slips"
@@ -419,12 +436,12 @@
                       VerticalAlignment="Center" />
             </Grid>
 
-            <Grid Grid.Row="2" ColumnDefinitions="300,8,*,8,360">
-              <Border Grid.Column="0"
+            <Grid x:Name="mainColumnsGrid" Grid.Row="2" ColumnDefinitions="300,8,*,8,360">
+              <Border x:Name="treePaneBorder" Grid.Column="0"
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">
-                <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
+                <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto">
                   <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" Margin="0,0,0,8">
                     <TextBlock Grid.Column="0"
                                Text="Buckets &amp; slips"
@@ -598,18 +615,25 @@
                            Watermark="Bucket name"
                            Margin="0,10,0,0" />
                   <ComboBox Grid.Row="4"
+                            x:Name="bucketRenderKindBox"
+                            Margin="0,8,0,0">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <ComboBox Grid.Row="5"
                             x:Name="parentBucketBox"
                             Margin="0,8,0,0">
                     <ComboBox.ItemTemplate>
                       <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                     </ComboBox.ItemTemplate>
                   </ComboBox>
-                  <TextBlock Grid.Row="5"
+                  <TextBlock Grid.Row="6"
                              x:Name="parentBucketHintText"
                              Classes="muted"
                              FontSize="12"
                              Margin="0,4,0,0" />
-                  <StackPanel Grid.Row="6"
+                  <StackPanel Grid.Row="7"
                               x:Name="bucketHeadingPanel"
                               Spacing="4"
                               Margin="0,8,0,0"
@@ -623,7 +647,7 @@
                                 VerticalAlignment="Center" />
                     </WrapPanel>
                   </StackPanel>
-                  <Grid Grid.Row="7"
+                  <Grid Grid.Row="8"
                         ColumnDefinitions="*,*,*"
                         ColumnSpacing="6"
                         Margin="0,8,0,0">
@@ -634,14 +658,16 @@
                 </Grid>
               </Border>
 
-              <GridSplitter Grid.Column="1" Width="8" ResizeDirection="Columns" />
+              <GridSplitter x:Name="leftSplitter" Grid.Column="1" Width="8" ResizeDirection="Columns" />
 
               <Border Grid.Column="2"
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">
+                <Panel>
                   <Grid x:Name="viewerPanel"
-                        RowDefinitions="Auto,Auto,*">
+                        RowDefinitions="Auto,Auto,*"
+                        IsVisible="True">
                     <StackPanel Grid.Row="0"
                                 Orientation="Horizontal"
                                 Spacing="8"
@@ -676,11 +702,29 @@
                         </ScrollViewer>
                     </Grid>
                   </Grid>
+
+                  <Grid x:Name="boardPanel"
+                        RowDefinitions="Auto,*"
+                        IsVisible="False">
+                    <Grid Grid.Row="0" Margin="0,0,0,8" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                      <TextBlock Grid.Column="0" Text="Board" Classes="heading" VerticalAlignment="Center" />
+                    </Grid>
+                    <ScrollViewer x:Name="boardScrollViewer"
+                                  Grid.Row="1"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled">
+                      <StackPanel x:Name="boardColumnsPanel"
+                                  Orientation="Horizontal"
+                                  Spacing="12" />
+                    </ScrollViewer>
+                  </Grid>
+                </Panel>
               </Border>
 
-              <GridSplitter Grid.Column="3" Width="8" ResizeDirection="Columns" />
+              <GridSplitter x:Name="rightSplitter" Grid.Column="3" Width="8" ResizeDirection="Columns" />
 
-              <Border Grid.Column="4"
+              <Border x:Name="rightPaneBorder"
+                      Grid.Column="4"
                       Background="{DynamicResource ZetlSurfaceAltBrush}"
                       CornerRadius="5"
                       Padding="12">

@@ -505,7 +505,7 @@ internal static class KastnWorkbenchTests
             Revision = 1,
             Name = name,
             ParentBucketId = parentId,
-            Settings = new ZetlBucketSettings { Kind = kind, DefaultKind = kind }
+            Settings = new ZETL.Contracts.ZetlBucketSettings { Kind = kind, DefaultKind = kind }
         };
     }
 

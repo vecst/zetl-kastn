@@ -77,29 +77,15 @@ SQLite implementation can live behind Zetl without changing kastn. SQLite is
 reconsidered only if measured project sizes or future transaction requirements
 show that JSON is the limiting factor.
 
-## Possible storage evolution: typed capture log
+## Storage evolution: single project file affirmed
 
-If measurements justify a storage migration, the current model can evolve from
-bucket-owned slip containment to a **typed capture log**:
+The previously proposed "typed capture log" storage evolution (splitting capture types into separate JSON files like text, url, picture, etc.) has been explicitly rejected. Reconstructing buckets and slips from multiple type-scoped files introduces significant complexity, query overhead, and state-reconstruction lag.
 
-- One JSON per clipboard type (text, url, picture, file) per project.
-- Each captured item is stamped with its bucket and capture time. A **bucket
-  becomes a time-ordered query** over the typed files, not a container.
-- Payoff: direct faceted queries ("all URLs in this project", "all pictures")
-  and smaller type-scoped reads and writes. Co-editing safety comes from Zetl's
-  sole-writer role, not from relying on the applications to touch different
-  files.
-- Buckets keep their settings in a small per-project metadata file. Binary
-  captures (pictures, files) are copied into the project folder and
-  path-referenced, keeping each project directory a self-contained export.
-- Capture stays decision-free because the clipboard format itself declares the
-  type.
-
-Image capture establishes the first typed-slip bridge without yet moving to the
-full per-type log: text slips load unchanged, picture slips reference
-content-addressed PNG assets inside the project folder, and Board/export paths
-understand those assets. This compatibility step can migrate into the typed
-capture log without changing the asset references or package layout.
+Instead, the single-file `project.json` design is affirmed:
+- Each project directory remains self-contained with a single canonical `project.json` file.
+- Buckets explicitly contain ordered lists of slips.
+- Binary assets (pictures, files) are stored in the project's `assets/` subfolder and referenced by content-addressable hashes in the main JSON file.
+- Measurements confirm that even at 20,000 slips, atomic reads and writes of a single file are well below the threshold of user perception, rendering file partitioning unnecessary.
 
 ## Two extension points authored in kastn
 
@@ -156,10 +142,9 @@ it is running or launch it when it is not.
 ## The project lifecycle ties it together
 
 The Compile window's `Finish Project` action is the **seam** between the two
-apps: it sets the project aside, clears its lane, and lets the dated default
-advance to the next session of the day. Finishing is reversible—set aside, not
-locked. Combining finish with a default copy/fire output remains an open
-workflow decision.
+apps: it sets the project aside, clears its lane, and automatically returns the lane
+to the rolling Journal. Finishing is reversible—set aside, not locked. Combining finish
+with a default copy/fire output remains an open workflow decision.
 
 ## Groundwork already in place
 

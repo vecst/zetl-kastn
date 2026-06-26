@@ -60,8 +60,11 @@ internal static class ZetlBucketRenderKinds
     public const string Group = "group";
     public const string Table = "table";
     public const string Latex = "latex";
+    public const string Bullet = "bullet";
+    public const string Ordered = "ordered";
+    public const string Task = "task";
 
-    public static readonly string[] All = [Group, Table, Latex];
+    public static readonly string[] All = [Group, Table, Latex, Bullet, Ordered, Task];
 
     public static string Normalize(string? value)
     {

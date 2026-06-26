@@ -224,6 +224,149 @@ internal static class KastnDialogs
         return preview.Length <= 70 ? preview : $"{preview[..67]}...";
     }
 
+    public static async Task<EditSlipResult?> EditSlipDialogAsync(
+        Window owner,
+        ZetlSlipSnapshot slip,
+        IReadOnlyList<ZetlBucketSnapshot> buckets)
+    {
+        var topGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,12,*"),
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+
+        var columnCombo = new ComboBox
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var activeBuckets = buckets.Where(b => !KastnWorkbench.IsDeletedBucket(b)).ToList();
+        var bucketItems = activeBuckets.Select(b => new BucketItem(b)).ToList();
+        columnCombo.ItemsSource = bucketItems;
+        columnCombo.SelectedItem = bucketItems.FirstOrDefault(item => item.Bucket.Id == slip.BucketId);
+
+        var columnStack = new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                new TextBlock { Text = "Move to Column", Classes = { "muted" }, FontSize = 11 },
+                columnCombo
+            }
+        };
+        Grid.SetColumn(columnStack, 0);
+
+        var kindCombo = new ComboBox
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var kindItems = new List<BlockKindItem>
+        {
+            new BlockKindItem(ZetlBlockKinds.None, "Note"),
+            new BlockKindItem(ZetlBlockKinds.Task, "Task / Checklist"),
+            new BlockKindItem(ZetlBlockKinds.Bullet, "Bullet List"),
+            new BlockKindItem(ZetlBlockKinds.Ordered, "Numbered List"),
+            new BlockKindItem(ZetlBlockKinds.Heading, "Heading"),
+            new BlockKindItem(ZetlBlockKinds.Quote, "Quote"),
+            new BlockKindItem(ZetlBlockKinds.Code, "Code Block")
+        };
+        kindCombo.ItemsSource = kindItems;
+        kindCombo.SelectedItem = kindItems.FirstOrDefault(item => item.Kind == slip.BlockKind) ?? kindItems[0];
+
+        var kindStack = new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                new TextBlock { Text = "Card Type", Classes = { "muted" }, FontSize = 11 },
+                kindCombo
+            }
+        };
+        Grid.SetColumn(kindStack, 2);
+
+        topGrid.Children.Add(columnStack);
+        topGrid.Children.Add(kindStack);
+
+        var input = new TextBox
+        {
+            Text = slip.Text,
+            AcceptsReturn = true,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            AcceptsTab = true
+        };
+        ScrollViewer.SetVerticalScrollBarVisibility(input, Avalonia.Controls.Primitives.ScrollBarVisibility.Auto);
+
+        var ok = new Button { Content = "Save", Width = 84, IsDefault = true };
+        var cancel = new Button { Content = "Cancel", Width = 84, IsCancel = true };
+        var deleteBtn = new Button
+        {
+            Content = "Delete Slip",
+            Width = 110,
+            Foreground = Avalonia.Media.Brushes.OrangeRed
+        };
+
+        var dialog = Dialog($"Edit Slip ({slip.Id})", 600, 480);
+        dialog.CanResize = true;
+
+        ok.Click += (_, _) =>
+        {
+            var selectedBucket = (columnCombo.SelectedItem as BucketItem)?.Bucket.Id;
+            var selectedKind = (kindCombo.SelectedItem as BlockKindItem)?.Kind ?? ZetlBlockKinds.None;
+            dialog.Close(new EditSlipResult
+            {
+                Save = true,
+                Text = input.Text ?? "",
+                DestinationBucketId = selectedBucket,
+                BlockKind = selectedKind
+            });
+        };
+
+        cancel.Click += (_, _) => dialog.Close(null);
+
+        deleteBtn.Click += (_, _) =>
+        {
+            dialog.Close(new EditSlipResult
+            {
+                Delete = true
+            });
+        };
+
+        var rightButtons = Buttons(ok, cancel);
+        var bottomGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+            Children =
+            {
+                deleteBtn,
+                rightButtons
+            }
+        };
+        Grid.SetColumn(deleteBtn, 0);
+        Grid.SetColumn(rightButtons, 2);
+
+        dialog.Content = new Grid
+        {
+            Margin = new Thickness(18),
+            RowDefinitions = new RowDefinitions("Auto,*,12,Auto"),
+            Children =
+            {
+                topGrid,
+                input,
+                bottomGrid
+            }
+        };
+        Grid.SetRow(topGrid, 0);
+        Grid.SetRow(input, 1);
+        Grid.SetRow(bottomGrid, 3);
+
+        dialog.Opened += (_, _) =>
+        {
+            input.Focus();
+            input.CaretIndex = input.Text?.Length ?? 0;
+        };
+
+        return await dialog.ShowDialog<EditSlipResult?>(owner);
+    }
+
     private static Window Dialog(string title, double width, double height)
     {
         return new Window
@@ -251,4 +394,26 @@ internal static class KastnDialogs
 
         return panel;
     }
+}
+
+public sealed class EditSlipResult
+{
+    public bool Save { get; init; }
+    public bool Delete { get; init; }
+    public string Text { get; init; } = "";
+    public string? DestinationBucketId { get; init; }
+    public string BlockKind { get; init; } = "";
+}
+
+internal sealed class BucketItem(ZetlBucketSnapshot bucket)
+{
+    public ZetlBucketSnapshot Bucket => bucket;
+    public override string ToString() => bucket.Name;
+}
+
+internal sealed class BlockKindItem(string kind, string label)
+{
+    public string Kind => kind;
+    public string Label => label;
+    public override string ToString() => label;
 }

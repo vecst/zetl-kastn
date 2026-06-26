@@ -113,15 +113,15 @@ internal static class ZetlProjectSnapshotMapper
             Revision = bucket.Revision,
             Name = bucket.Name,
             ParentBucketId = bucket.ParentBucketId,
-            Settings = new ZetlBucketSettings
+            Settings = new ZETL.Contracts.ZetlBucketSettings
             {
-                Kind = bucket.Kind,
-                DefaultKind = bucket.DefaultKind,
-                DefaultCompileMode = bucket.DefaultCompileMode,
-                DefaultStartingText = bucket.DefaultStartingText,
-                DefaultTsvRowLength = bucket.DefaultTsvRowLength,
-                PopMode = bucket.PopMode,
-                ReplayReviewBucketId = bucket.ReplayReviewBucketId
+                Kind = bucket.Settings.Kind,
+                DefaultKind = bucket.Settings.DefaultKind,
+                DefaultCompileMode = bucket.Settings.DefaultCompileMode,
+                DefaultStartingText = bucket.Settings.DefaultStartingText,
+                DefaultTsvRowLength = bucket.Settings.DefaultTsvRowLength,
+                PopMode = bucket.Settings.PopMode,
+                ReplayReviewBucketId = bucket.Settings.ReplayReviewBucketId
             },
             HeadingAlign = bucket.HeadingAlign,
             HeadingBold = bucket.HeadingBold,
@@ -136,9 +136,7 @@ internal static class ZetlProjectSnapshotMapper
         {
             Id = slip.Id,
             Revision = slip.Revision,
-            Type = slip.IsImage
-                ? ZetlSlipType.Picture
-                : ZetlSlipClassifier.LooksLikeUrl(slip.Text) ? ZetlSlipType.Url : ZetlSlipType.Text,
+            Type = slip.Type,
             BucketId = bucket.Id,
             Title = slip.Title,
             Text = slip.Text,
@@ -163,13 +161,9 @@ internal static class ZetlProjectSnapshotMapper
                 },
             Source = slip.Source,
             SessionId = slip.SessionId,
-            CapturedAtUtc = new DateTimeOffset(
-                DateTime.SpecifyKind(slip.CreatedAtUtc, DateTimeKind.Utc)),
+            CapturedAtUtc = slip.CreatedAtUtc,
             DeletedFromBucketId = slip.DeletedFromBucketId,
-            DeletedAtUtc = slip.DeletedAtUtc is null
-                ? null
-                : new DateTimeOffset(
-                    DateTime.SpecifyKind(slip.DeletedAtUtc.Value, DateTimeKind.Utc)),
+            DeletedAtUtc = slip.DeletedAtUtc,
             ExcludedFromViews = slip.ExcludedFromViews,
             Align = slip.Align,
             BlockKind = slip.BlockKind,
@@ -198,8 +192,6 @@ internal static class ZetlProjectSnapshotMapper
     {
         return visibleSlips.Count == 0
             ? null
-            : new DateTimeOffset(DateTime.SpecifyKind(
-                visibleSlips.Max(slip => slip.CreatedAtUtc),
-                DateTimeKind.Utc));
+            : visibleSlips.Max(slip => slip.CreatedAtUtc);
     }
 }

@@ -527,6 +527,14 @@ internal partial class MainWindow
                 var kind = slip.Type == ZetlSlipType.Picture
                     ? ""
                     : ZetlViewRenderer.SlipBlockKind(slip);
+                if (string.IsNullOrEmpty(kind))
+                {
+                    var bucket = currentProject.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
+                    if (bucket is not null && bucket.RenderKind is "bullet" or "ordered" or "task")
+                    {
+                        kind = bucket.RenderKind;
+                    }
+                }
                 var marker = kind switch
                 {
                     ZetlBlockKinds.Ordered => $"{++orderedRun}.",

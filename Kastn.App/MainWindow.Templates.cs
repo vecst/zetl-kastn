@@ -218,7 +218,7 @@ internal partial class MainWindow
             .Select(bucket => new ZetlTemplateBucketDocument
             {
                 Name = bucket.Name,
-                Settings = new ZetlBucketSettings
+                Settings = new ZETL.ZetlBucketSettings
                 {
                     Kind = bucket.Settings.DefaultKind,
                     DefaultKind = bucket.Settings.DefaultKind,
@@ -316,7 +316,7 @@ internal partial class MainWindow
 
         var kind = templateBucketKindBox.SelectedItem as string ?? "Standard";
         bucket.Name = templateBucketNameBox.Text?.Trim() ?? "";
-        bucket.Settings = new ZetlBucketSettings
+        bucket.Settings = new ZETL.ZetlBucketSettings
         {
             Kind = kind,
             DefaultKind = kind,

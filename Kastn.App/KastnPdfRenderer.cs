@@ -149,6 +149,14 @@ internal static class KastnPdfRenderer
 
                 var displayText = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
                 var kind = ZetlViewRenderer.SlipBlockKind(slip);
+                if (string.IsNullOrEmpty(kind))
+                {
+                    var bucket = project.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
+                    if (bucket is not null && bucket.RenderKind is "bullet" or "ordered" or "task")
+                    {
+                        kind = bucket.RenderKind;
+                    }
+                }
                 // A divider note carries no text but still renders (as a rule); other
                 // empty notes are skipped.
                 if (kind != ZetlBlockKinds.Divider && string.IsNullOrWhiteSpace(displayText))
@@ -168,7 +176,7 @@ internal static class KastnPdfRenderer
                     orderedRun = 0;
                 }
 
-                AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker);
+                AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker, id => project.Slips.Any(s => s.Id == id));
             }
         }
 
@@ -183,7 +191,8 @@ internal static class KastnPdfRenderer
         ZetlSlipSnapshot slip,
         string text,
         int depth,
-        string slipMarker)
+        string slipMarker,
+        Func<string, bool> isResolved)
     {
         var alignment = ZetlViewRenderer.SlipAlignment(slip) switch
         {
@@ -192,6 +201,16 @@ internal static class KastnPdfRenderer
             _ => ParagraphAlignment.Left
         };
         var placedSlipMarker = false;
+        var addedBookmark = false;
+
+        void AddBookmarkIfFirst(Paragraph p)
+        {
+            if (!addedBookmark)
+            {
+                p.AddBookmark(slip.Id);
+                addedBookmark = true;
+            }
+        }
 
         // A whole-note kind (heading/quote/code/divider) synthesizes its one block.
         foreach (var block in ZetlMarkdown.BlocksForNote(slip.BlockKind, text))
@@ -199,6 +218,7 @@ internal static class KastnPdfRenderer
             if (block is ZetlParagraphBlock paragraphBlock)
             {
                 var paragraph = section.AddParagraph();
+                AddBookmarkIfFirst(paragraph);
                 paragraph.Format.LeftIndent = Unit.FromPoint((depth + 1) * 14);
                 paragraph.Format.SpaceAfter = Unit.FromPoint(4);
                 paragraph.Format.Alignment = alignment;
@@ -219,7 +239,7 @@ internal static class KastnPdfRenderer
                         placedSlipMarker = true;
                     }
 
-                    AppendInlines(paragraph.AddFormattedText(), paragraphBlock.Lines[line]);
+                    AppendInlines(paragraph.AddFormattedText(), paragraphBlock.Lines[line], isResolved);
                 }
             }
             else if (block is ZetlListBlock listBlock)
@@ -228,6 +248,7 @@ internal static class KastnPdfRenderer
                 foreach (var item in listBlock.Items)
                 {
                     var paragraph = section.AddParagraph();
+                    AddBookmarkIfFirst(paragraph);
                     paragraph.Format.LeftIndent = Unit.FromPoint((depth + 2) * 14);
                     paragraph.Format.SpaceAfter = Unit.FromPoint(2);
                     paragraph.Format.Alignment = alignment;
@@ -238,7 +259,7 @@ internal static class KastnPdfRenderer
                         _ => "• "
                     };
                     paragraph.AddText(marker);
-                    AppendInlines(paragraph.AddFormattedText(), item.Inlines);
+                    AppendInlines(paragraph.AddFormattedText(), item.Inlines, isResolved);
                 }
 
                 placedSlipMarker = true;
@@ -247,6 +268,7 @@ internal static class KastnPdfRenderer
             {
                 // Softened sub-heading: bold and a touch larger, not a document heading.
                 var paragraph = section.AddParagraph();
+                AddBookmarkIfFirst(paragraph);
                 paragraph.Format.LeftIndent = Unit.FromPoint((depth + 1) * 14);
                 paragraph.Format.SpaceBefore = Unit.FromPoint(6);
                 paragraph.Format.SpaceAfter = Unit.FromPoint(2);
@@ -264,11 +286,12 @@ internal static class KastnPdfRenderer
                 var headingText = paragraph.AddFormattedText();
                 headingText.Bold = true;
                 headingText.Font.Size = headingBlock.Level <= 1 ? 13 : headingBlock.Level == 2 ? 12 : 11.5;
-                AppendInlines(headingText, headingBlock.Inlines);
+                AppendInlines(headingText, headingBlock.Inlines, isResolved);
             }
             else if (block is ZetlQuoteBlock quoteBlock)
             {
                 var paragraph = section.AddParagraph();
+                AddBookmarkIfFirst(paragraph);
                 paragraph.Format.LeftIndent = Unit.FromPoint((depth + 2) * 14);
                 paragraph.Format.SpaceBefore = Unit.FromPoint(2);
                 paragraph.Format.SpaceAfter = Unit.FromPoint(2);
@@ -285,7 +308,7 @@ internal static class KastnPdfRenderer
                         quoteText.AddLineBreak();
                     }
 
-                    AppendInlines(quoteText, quoteBlock.Lines[line]);
+                    AppendInlines(quoteText, quoteBlock.Lines[line], isResolved);
                 }
 
                 placedSlipMarker = true;
@@ -293,6 +316,7 @@ internal static class KastnPdfRenderer
             else if (block is ZetlCodeBlock codeBlock)
             {
                 var paragraph = section.AddParagraph();
+                AddBookmarkIfFirst(paragraph);
                 paragraph.Format.LeftIndent = Unit.FromPoint((depth + 2) * 14);
                 paragraph.Format.SpaceBefore = Unit.FromPoint(3);
                 paragraph.Format.SpaceAfter = Unit.FromPoint(3);
@@ -316,6 +340,7 @@ internal static class KastnPdfRenderer
             {
                 // An empty paragraph with a bottom border reads as a horizontal rule.
                 var paragraph = section.AddParagraph();
+                AddBookmarkIfFirst(paragraph);
                 paragraph.Format.LeftIndent = Unit.FromPoint((depth + 1) * 14);
                 paragraph.Format.SpaceBefore = Unit.FromPoint(4);
                 paragraph.Format.SpaceAfter = Unit.FromPoint(4);
@@ -328,8 +353,8 @@ internal static class KastnPdfRenderer
 
     // Walk the Markdown inline AST into MigraDoc formatted text. Bold/italic and web
     // hyperlinks are honored; inline code and strikethrough have no MigraDoc face, so
-    // they render as plain text (their content is preserved).
-    private static void AppendInlines(FormattedText target, IReadOnlyList<ZetlInline> inlines)
+    // they fall back to normal text.
+    private static void AppendInlines(FormattedText target, IReadOnlyList<ZetlInline> inlines, Func<string, bool> isResolved)
     {
         foreach (var inline in inlines)
         {
@@ -351,14 +376,31 @@ internal static class KastnPdfRenderer
                     {
                         formatted.Italic = true;
                     }
-                    AppendInlines(formatted, emphasis.Children);
+                    AppendInlines(formatted, emphasis.Children, isResolved);
                     break;
                 case ZetlLink link:
                     var hyperlink = target.AddHyperlink(link.Url, HyperlinkType.Web);
                     var linkText = hyperlink.AddFormattedText();
                     linkText.Font.Underline = Underline.Single;
                     linkText.Font.Color = Colors.Blue;
-                    AppendInlines(linkText, link.Children);
+                    AppendInlines(linkText, link.Children, isResolved);
+                    break;
+                case ZetlWikiLink wiki:
+                    var resolved = isResolved(wiki.TargetId);
+                    if (resolved)
+                    {
+                        var wikiLink = target.AddHyperlink(wiki.TargetId, HyperlinkType.Bookmark);
+                        var wikiLinkText = wikiLink.AddFormattedText();
+                        wikiLinkText.Font.Underline = Underline.Single;
+                        wikiLinkText.Font.Color = Colors.Blue;
+                        wikiLinkText.AddText(wiki.CachedTitle);
+                    }
+                    else
+                    {
+                        var wikiLinkText = target.AddFormattedText();
+                        wikiLinkText.Font.Color = Colors.Gray;
+                        wikiLinkText.AddText(wiki.CachedTitle);
+                    }
                     break;
             }
         }

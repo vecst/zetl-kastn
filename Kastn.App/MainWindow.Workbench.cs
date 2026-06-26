@@ -601,7 +601,7 @@ internal partial class MainWindow
         }
     }
 
-    private async Task AddSlipAsync()
+    private async Task AddSlipAsync(string? targetBucketId = null)
     {
         if (!IsOnline || currentProject is null || addingSlip)
         {
@@ -612,6 +612,7 @@ internal partial class MainWindow
             slip.Source == "kastn"
             && string.Equals(slip.Title, UntitledSlipTitle, StringComparison.Ordinal)
             && string.IsNullOrWhiteSpace(slip.Text)
+            && (targetBucketId is null || slip.BucketId == targetBucketId)
             && !KastnWorkbench.IsDeletedBucket(currentProject.Buckets.FirstOrDefault(
                 bucket => bucket.Id == slip.BucketId)));
         if (existingDraft is not null)
@@ -625,6 +626,11 @@ internal partial class MainWindow
             await connection.RefreshAsync();
             SetDetailPaneMode(showDetails: false);
             statusText.Text = "Finish the current untitled slip before creating another.";
+
+            if (boardModeActive)
+            {
+                await EditBoardSlipAsync(existingDraft);
+            }
             return;
         }
 
@@ -638,10 +644,10 @@ internal partial class MainWindow
                 return;
             }
 
-            var destinationBucketId = SelectedBucketId
-                is { } selectedBucketId && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
+            var destinationBucketId = targetBucketId
+                ?? (SelectedBucketId is { } selectedBucketId && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
                     ? selectedBucketId
-                    : null;
+                    : null);
             destinationBucketId ??= currentProject.ActiveBucketId
                 ?? currentProject.Buckets.FirstOrDefault(
                     bucket => !KastnWorkbench.IsDeletedBucket(bucket))?.Id;
@@ -675,6 +681,10 @@ internal partial class MainWindow
                     await connection.RefreshAsync();
                     SetDetailPaneMode(showDetails: false);
                     statusText.Text = "Slip created.";
+                    if (boardModeActive)
+                    {
+                        await EditBoardSlipAsync(created);
+                    }
                     return;
                 }
             }
@@ -831,6 +841,7 @@ internal partial class MainWindow
         }
 
         var parentId = (parentBucketBox.SelectedItem as KastnBucketItem)?.Id;
+        var renderKind = (bucketRenderKindBox.SelectedItem as KastnRenderKindItem)?.Value ?? "";
         pendingBucketSelectionId = bucket.Id;
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
@@ -839,7 +850,8 @@ internal partial class MainWindow
             {
                 Name = name,
                 ParentBucketId = parentId,
-                Settings = bucket.Settings
+                Settings = bucket.Settings,
+                RenderKind = renderKind
             },
             currentProject.Id,
             bucket.Id,

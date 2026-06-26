@@ -62,7 +62,7 @@ internal sealed class ZetlCaptureOrigin
         return origin.HasDisplayValue ? origin : null;
     }
 
-    public string FormatDisplay(DateTime capturedAtUtc)
+    public string FormatDisplay(DateTimeOffset capturedAt)
     {
         var application = !string.IsNullOrWhiteSpace(ApplicationName)
             ? ApplicationName
@@ -79,7 +79,7 @@ internal sealed class ZetlCaptureOrigin
             parts.Add(WindowTitle!);
         }
 
-        parts.Add(capturedAtUtc.ToLocalTime().ToString("t"));
+        parts.Add(capturedAt.ToLocalTime().ToString("t"));
         return string.Join(" · ", parts);
     }
 

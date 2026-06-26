@@ -92,21 +92,14 @@ A slip may contain text or a picture, plus optional metadata:
 - originating application and window title
 - picture dimensions, content hash, and asset information
 
-Zetl starts with no active project, so launching it never silently begins
-collecting copied content. A held gesture, template action, or Board action can
-start or activate a project.
+The normal and Shift lanes each have their own active project. When no deliberate
+project has been started or activated, Zetl falls back to the rolling Journal
+as the always-present default capture home (`Journal` and `Journal Shift`). The
+Journal organizes captured slips into dated day buckets (e.g. `2026-06-01`).
 
-The normal and Shift lanes each have their own active project. New default
-projects use the current date, with counters when more than one session is
-finished on the same day:
-
-```text
-2026-06-01
-2026-06-01 (2)
-```
-
-Finishing a project sets it aside and clears it from its lane. It does not
-delete or lock the project; it can be reactivated later.
+Finishing a deliberate project sets it aside, clears it from its lane, and
+automatically returns the lane back to the rolling Journal. Setting a project
+aside does not delete or lock it; it can be reactivated later.
 
 ## Capture
 
@@ -136,13 +129,12 @@ there is no copied content, the held gesture opens project management instead.
 Hold `Ctrl+X` to open a quick note. The dialog uses cut text when available and
 otherwise starts empty.
 
-Without an active project, the note goes to the dated project's protected
-`Scratch` bucket. The project does not become active unless `Start project` is
-enabled.
+When the rolling Journal is active, the note goes to today's dated day bucket.
 
-With an active project, the dialog remembers the last quick-note bucket used
-for that project. `Alt+B` focuses inline bucket creation, and `Ctrl+Enter`
-saves.
+When a deliberate project is active, quick notes default to its protected
+`Scratch` bucket (unless another bucket is selected), and the dialog remembers
+the last quick-note bucket used for that project. `Alt+B` focuses inline
+bucket creation, and `Ctrl+Enter` saves.
 
 Quick notes leave the clipboard unchanged by default. This can be changed in
 Settings.
@@ -255,8 +247,8 @@ The Board is Zetl's quick project workspace. It supports:
 - opening the selected project in Kastn
 
 `Scratch` and `Deleted` are protected buckets. `Scratch` is the quick-note
-fallback; `Deleted` holds slips soft-deleted through Kastn and stays out of
-normal capture, compile, Replay, and Pop flows.
+fallback inside deliberate projects; `Deleted` holds slips soft-deleted through
+Kastn and stays out of normal capture, compile, Replay, and Pop flows.
 
 Useful Board shortcuts:
 

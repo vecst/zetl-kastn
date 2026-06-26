@@ -58,6 +58,13 @@ internal partial class MainWindow
         projectTree.AddHandler(DragDrop.DropEvent, OnTreeDrop);
         dragScrollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
         dragScrollTimer.Tick += OnDragScrollTick;
+
+        DragDrop.SetAllowDrop(boardScrollViewer, true);
+        boardScrollViewer.AddHandler(DragDrop.DragOverEvent, OnBoardDragOver);
+        boardScrollViewer.AddHandler(DragDrop.DragLeaveEvent, OnBoardDragLeave);
+        boardScrollViewer.AddHandler(DragDrop.DropEvent, OnBoardDrop);
+        boardDragScrollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        boardDragScrollTimer.Tick += OnBoardDragScrollTick;
     }
 
     private void OnTreePointerPressed(object? sender, PointerPressedEventArgs args)
@@ -300,7 +307,15 @@ internal partial class MainWindow
                 }
 
                 // Drop onto a bucket appends to its end; a no-op if already last there.
-                return slip.BucketId == bucket.Id
+                var dragIds = draggingNodes.Count > 0
+                    ? draggingNodes.Where(n => n.Kind == KastnTreeNodeKind.Slip).Select(n => n.Id).ToHashSet(StringComparer.Ordinal)
+                    : new HashSet<string>(StringComparer.Ordinal) { slip.Id };
+
+                var bucketSlips = project.Slips.Where(s => s.BucketId == bucket.Id).ToList();
+                var isNoOp = dragIds.Count > 0 && bucketSlips.Count >= dragIds.Count &&
+                             bucketSlips.Skip(bucketSlips.Count - dragIds.Count).All(s => dragIds.Contains(s.Id));
+
+                return isNoOp
                     ? null
                     : new DropPlan(DropAction.SlipMove, source, bucket.Id, null, null);
             }
@@ -430,13 +445,17 @@ internal partial class MainWindow
                         ZetlProtocolJson.Options)?.Revision ?? revision;
                 }
 
-                if (plan.BeforeSlipId is { } beforeId
-                    && !string.Equals(beforeId, slip.Id, StringComparison.Ordinal))
+                var isSameBucket = slip.BucketId == plan.DestinationBucketId;
+                var needsEndReorder = isSameBucket && plan.BeforeSlipId is null &&
+                                      (slips.Count > 1 || project.Slips.LastOrDefault(s => s.BucketId == plan.DestinationBucketId)?.Id != slip.Id);
+
+                if ((plan.BeforeSlipId is { } beforeId && !string.Equals(beforeId, slip.Id, StringComparison.Ordinal))
+                    || needsEndReorder)
                 {
                     var reorderResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
                         Guid.NewGuid().ToString("N"),
                         ZetlCommandKind.ReorderSlip,
-                        new ReorderSlipCommand { BeforeSlipId = beforeId },
+                        new ReorderSlipCommand { BeforeSlipId = plan.BeforeSlipId },
                         project.Id,
                         slip.Id,
                         revision));
@@ -530,5 +549,130 @@ internal partial class MainWindow
         }
 
         return null;
+    }
+
+    private KastnTreeNode? boardDragCandidate;
+    private Point boardDragStart;
+    private bool boardDragInProgress;
+
+    private void OnBoardCardPointerPressed(object? sender, PointerPressedEventArgs args)
+    {
+        boardDragCandidate = null;
+        if (!args.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        var border = sender as Border;
+        var node = border?.DataContext as KastnTreeNode;
+        if (node is null || node.Kind != KastnTreeNodeKind.Slip || node.Slip is null || IsSlipInDeleted(node.Slip))
+        {
+            return;
+        }
+
+        boardDragCandidate = node;
+        boardDragStart = args.GetPosition(this);
+    }
+
+    private void OnBoardCardPointerReleased(object? sender, PointerReleasedEventArgs args)
+    {
+        boardDragCandidate = null;
+    }
+
+    private async void OnBoardCardPointerMoved(object? sender, PointerEventArgs args)
+    {
+        if (boardDragCandidate is null || boardDragInProgress)
+        {
+            return;
+        }
+
+        if (!args.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            boardDragCandidate = null;
+            return;
+        }
+
+        var position = args.GetPosition(this);
+        if (Math.Abs(position.X - boardDragStart.X) < DragThreshold
+            && Math.Abs(position.Y - boardDragStart.Y) < DragThreshold)
+        {
+            return;
+        }
+
+        var node = boardDragCandidate;
+        boardDragCandidate = null;
+
+        draggingNode = node;
+        draggingNodes = [node];
+        boardDragInProgress = true;
+        boardDragPointerInsideBoard = true;
+        boardDragScrollTimer?.Start();
+        try
+        {
+            var data = new DataTransfer();
+            data.Add(DataTransferItem.Create(DragNodeFormat, node.Id));
+            await DragDrop.DoDragDropAsync(args, data, DragDropEffects.Move);
+        }
+        finally
+        {
+            boardDragScrollTimer?.Stop();
+            draggingNode = null;
+            draggingNodes = [];
+            boardDragInProgress = false;
+            boardDragPointerInsideBoard = false;
+        }
+    }
+
+    private void OnBoardDragOver(object? sender, DragEventArgs args)
+    {
+        lastBoardDragPointerX = args.GetPosition(boardScrollViewer).X;
+        boardDragPointerInsideBoard = true;
+
+        var plan = PlanDrop(args);
+        args.DragEffects = plan is not null ? DragDropEffects.Move : DragDropEffects.None;
+        args.Handled = true;
+    }
+
+    private void OnBoardDragLeave(object? sender, RoutedEventArgs args)
+    {
+        boardDragPointerInsideBoard = false;
+        args.Handled = true;
+    }
+
+    private async void OnBoardDrop(object? sender, DragEventArgs args)
+    {
+        if (PlanDrop(args) is not { } plan)
+        {
+            return;
+        }
+
+        args.Handled = true;
+        await ApplyDropAsync(plan);
+    }
+
+    private DispatcherTimer? boardDragScrollTimer;
+    private double lastBoardDragPointerX;
+    private bool boardDragPointerInsideBoard;
+
+    private void OnBoardDragScrollTick(object? sender, EventArgs args)
+    {
+        if (!boardDragInProgress || !boardDragPointerInsideBoard || boardScrollViewer is not { } scroll)
+        {
+            return;
+        }
+
+        var width = scroll.Bounds.Width;
+        var maxX = Math.Max(0, scroll.Extent.Width - scroll.Viewport.Width);
+        const double edge = 40;
+        const double step = 20;
+
+        if (lastBoardDragPointerX < edge)
+        {
+            scroll.Offset = scroll.Offset.WithX(Math.Max(0, scroll.Offset.X - step));
+        }
+        else if (lastBoardDragPointerX > width - edge)
+        {
+            scroll.Offset = scroll.Offset.WithX(Math.Min(maxX, scroll.Offset.X + step));
+        }
     }
 }

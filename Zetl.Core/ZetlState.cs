@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using ZETL.Contracts;
 
 namespace ZETL;
 
@@ -64,22 +65,43 @@ internal sealed class ZetlProject
             : $"{Name}  ·  {Status}";
 }
 
-internal sealed class ZetlBucket
+internal sealed class ZetlBucketSettings
 {
-    public string Id { get; set; } = "";
-    public long Revision { get; set; } = 1;
-    public string Name { get; set; } = "";
-    public string? ParentBucketId { get; set; }
     public string Kind { get; set; } = "Standard";
     public string DefaultKind { get; set; } = "Standard";
     public string DefaultCompileMode { get; set; } = "Formatted";
     public string DefaultStartingText { get; set; } = "";
     public int DefaultTsvRowLength { get; set; } = 5;
     public bool PopMode { get; set; }
-    // Preserve the historical JSON field name while using Replay terminology
-    // throughout active code.
     [System.Text.Json.Serialization.JsonPropertyName("fifoReviewBucketId")]
     public string? ReplayReviewBucketId { get; set; }
+}
+
+internal sealed class ZetlBucket
+{
+    public string Id { get; set; } = "";
+    public long Revision { get; set; } = 1;
+    public string Name { get; set; } = "";
+    public string? ParentBucketId { get; set; }
+    
+    public ZetlBucketSettings Settings { get; set; } = new();
+
+    // Legacy flat properties for backward compatibility on deserialization:
+    [System.Text.Json.Serialization.JsonPropertyName("kind")]
+    public string? LegacyKind { set { if (value is not null) Settings.Kind = value; } }
+    [System.Text.Json.Serialization.JsonPropertyName("defaultKind")]
+    public string? LegacyDefaultKind { set { if (value is not null) Settings.DefaultKind = value; } }
+    [System.Text.Json.Serialization.JsonPropertyName("defaultCompileMode")]
+    public string? LegacyDefaultCompileMode { set { if (value is not null) Settings.DefaultCompileMode = value; } }
+    [System.Text.Json.Serialization.JsonPropertyName("defaultStartingText")]
+    public string? LegacyDefaultStartingText { set { if (value is not null) Settings.DefaultStartingText = value; } }
+    [System.Text.Json.Serialization.JsonPropertyName("defaultTsvRowLength")]
+    public int? LegacyDefaultTsvRowLength { set { if (value is not null) Settings.DefaultTsvRowLength = value.Value; } }
+    [System.Text.Json.Serialization.JsonPropertyName("popMode")]
+    public bool? LegacyPopMode { set { if (value is not null) Settings.PopMode = value.Value; } }
+    [System.Text.Json.Serialization.JsonPropertyName("fifoReviewBucketId")]
+    public string? LegacyReplayReviewBucketId { set { if (value is not null) Settings.ReplayReviewBucketId = value; } }
+
     // Per-bucket heading styling for rendered views (the bucket's title in the
     // all-buckets layouts). Align "" (left) / "center" / "right"; Bold; Level 1/2/3
     // sizes the heading (0 = automatic). Honored by HTML/PDF/on-screen; Markdown
@@ -124,20 +146,68 @@ internal sealed record SlipDisplayItem(ZetlBucket Bucket, ZetlSlip Slip, string 
 
 internal sealed class ZetlSlip
 {
-    public const string TextKind = "Text";
-    public const string ImageKind = "Image";
-
     public string Id { get; set; } = "";
     public long Revision { get; set; } = 1;
-    public string ContentKind { get; set; } = TextKind;
+    private ZetlSlipType type = ZetlSlipType.Text;
+    public ZetlSlipType Type
+    {
+        get => type;
+        set => type = value;
+    }
     public string Title { get; set; } = "";
-    public string Text { get; set; } = "";
-    public ZetlImageAsset? Image { get; set; }
+
+    private string text = "";
+    public string Text
+    {
+        get => text;
+        set
+        {
+            text = value;
+            if (type == ZetlSlipType.Text && ZetlSlipClassifier.LooksLikeUrl(text))
+            {
+                type = ZetlSlipType.Url;
+            }
+            else if (type == ZetlSlipType.Url && !ZetlSlipClassifier.LooksLikeUrl(text))
+            {
+                type = ZetlSlipType.Text;
+            }
+        }
+    }
+
+    private ZetlImageAsset? image;
+    public ZetlImageAsset? Image
+    {
+        get => image;
+        set
+        {
+            image = value;
+            if (image is not null)
+            {
+                type = ZetlSlipType.Picture;
+            }
+            else if (type == ZetlSlipType.Picture)
+            {
+                type = ZetlSlipClassifier.LooksLikeUrl(Text) ? ZetlSlipType.Url : ZetlSlipType.Text;
+            }
+        }
+    }
     public string Source { get; set; } = "";
     public string? SessionId { get; set; }
-    public DateTime CreatedAtUtc { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; }
     public string? DeletedFromBucketId { get; set; }
-    public DateTime? DeletedAtUtc { get; set; }
+    public DateTimeOffset? DeletedAtUtc { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("contentKind")]
+    public string? LegacyContentKind
+    {
+        set
+        {
+            if (value is not null)
+            {
+                Type = value.Equals("Image", StringComparison.OrdinalIgnoreCase) ? ZetlSlipType.Picture : ZetlSlipType.Text;
+            }
+        }
+    }
 
     // Kastn-only: when true, this slip is held out of rendered views and exports
     // (a deliberate-workbench choice). It still appears in the tree and in Zetl's
@@ -168,7 +238,7 @@ internal sealed class ZetlSlip
     public string CaptureOriginLabel => CaptureOrigin?.FormatDisplay(CreatedAtUtc) ?? "";
 
     [System.Text.Json.Serialization.JsonIgnore]
-    public bool IsImage => ContentKind == ImageKind && Image is not null;
+    public bool IsImage => Type == ZetlSlipType.Picture && Image is not null;
 
     [System.Text.Json.Serialization.JsonIgnore]
     public string DisplayText => IsImage
@@ -204,6 +274,8 @@ internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, 
     // Hours of no capture after which a deliberate project auto-returns capture to
     // the Journal. 0 = off.
     public int JournalAutoReturnHours { get; init; }
+
+    public string JournalInterval { get; init; } = "Weekly";
 
     public static ZetlBucketDefaults Standard { get; } = new(new[] { "Inbox", "Scratch" }, "Formatted", 5);
 
@@ -365,15 +437,30 @@ internal sealed class ZetlStateStore
     {
         if (GetActiveProject(shifted) is { } activeProject)
         {
-            if (!ShouldAutoReturnToJournal(activeProject))
+            if (activeProject.JournalMode)
+            {
+                var expectedName = ExpectedJournalProjectName(DateTime.Now, shifted);
+                if (IsFormattedJournalName(activeProject.Name, shifted) && !string.Equals(activeProject.Name, expectedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    SetActiveProjectId(null, shifted);
+                    PersistWorkspace();
+                }
+                else
+                {
+                    return activeProject;
+                }
+            }
+            else if (!ShouldAutoReturnToJournal(activeProject))
             {
                 return activeProject;
             }
-
-            // The active deliberate project has gone quiet past the configured window:
-            // hand capture back to the Journal so a forgotten project never traps notes.
-            SetActiveProjectId(null, shifted);
-            PersistWorkspace();
+            else
+            {
+                // The active deliberate project has gone quiet past the configured window:
+                // hand capture back to the Journal so a forgotten project never traps notes.
+                SetActiveProjectId(null, shifted);
+                PersistWorkspace();
+            }
         }
 
         // No deliberate project is active: fall to the Journal, the always-present
@@ -412,12 +499,13 @@ internal sealed class ZetlStateStore
     private ZetlProject GetOrCreateJournalProject(bool shifted)
     {
         var pointerId = shifted ? State.ShiftDefaultJournalProjectId : State.DefaultJournalProjectId;
-        // Reuse the journal only while it is still Active. If it was finished or
-        // archived (a non-Active project is never lane-active), capture mints a fresh
-        // journal rather than reopening the sealed one.
+        var expectedName = ExpectedJournalProjectName(DateTime.Now, shifted);
+        // Reuse the journal only while it is still Active and matches the current expected name.
+        // If it was finished, archived, or the interval rolled, capture mints a fresh journal.
         if (pointerId is not null
             && State.Projects.FirstOrDefault(project => project.Id == pointerId) is { } existing
-            && IsActiveStatus(existing))
+            && IsActiveStatus(existing)
+            && (!IsFormattedJournalName(existing.Name, shifted) || string.Equals(existing.Name, expectedName, StringComparison.OrdinalIgnoreCase)))
         {
             SetActiveProjectId(existing.Id, shifted);
             PersistWorkspace();
@@ -427,7 +515,7 @@ internal sealed class ZetlStateStore
         var journal = new ZetlProject
         {
             Id = NewId(),
-            Name = shifted ? "Journal Shift" : "Journal",
+            Name = expectedName,
             JournalMode = true
         };
         State.Projects.Add(journal);
@@ -827,7 +915,7 @@ internal sealed class ZetlStateStore
         var note = new ZetlSlip
         {
             Id = NewId(),
-            ContentKind = ZetlSlip.ImageKind,
+            Type = ZetlSlipType.Picture,
             Text = (caption ?? "").Trim(),
             Image = new ZetlImageAsset
             {
@@ -840,7 +928,7 @@ internal sealed class ZetlStateStore
             },
             Source = source,
             SessionId = sessionId,
-            CreatedAtUtc = DateTime.UtcNow,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
             CaptureOrigin = captureOrigin
         };
         bucket.Slips.Add(note);
@@ -1074,7 +1162,7 @@ internal sealed class ZetlStateStore
     {
         if (IsDeletedBucket(bucket))
         {
-            bucket.PopMode = false;
+            bucket.Settings.PopMode = false;
             bucket.Revision++;
             PersistBucket(bucket);
             return;
@@ -1082,13 +1170,13 @@ internal sealed class ZetlStateStore
 
         if (IsReplayBucket(bucket))
         {
-            bucket.PopMode = false;
+            bucket.Settings.PopMode = false;
             bucket.Revision++;
             PersistBucket(bucket);
             return;
         }
 
-        bucket.PopMode = popMode;
+        bucket.Settings.PopMode = popMode;
         bucket.Revision++;
         PersistBucket(bucket);
     }
@@ -1104,10 +1192,10 @@ internal sealed class ZetlStateStore
             return;
         }
 
-        bucket.Kind = NormalizeBucketKind(kind);
+        bucket.Settings.Kind = NormalizeBucketKind(kind);
         if (IsReplayBucket(bucket))
         {
-            bucket.PopMode = false;
+            bucket.Settings.PopMode = false;
         }
 
         bucket.Revision++;
@@ -1131,26 +1219,26 @@ internal sealed class ZetlStateStore
         else if (!IsScratchBucket(bucket))
         {
             bucket.Name = NormalizeName(name, "Bucket");
-            bucket.DefaultKind = NormalizeBucketKind(defaultKind);
-            bucket.Kind = bucket.DefaultKind;
-            bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
-            bucket.DefaultStartingText = (defaultStartingText ?? "").Trim();
-            bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
+            bucket.Settings.DefaultKind = NormalizeBucketKind(defaultKind);
+            bucket.Settings.Kind = bucket.Settings.DefaultKind;
+            bucket.Settings.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
+            bucket.Settings.DefaultStartingText = (defaultStartingText ?? "").Trim();
+            bucket.Settings.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
             if (IsReplayBucket(bucket))
             {
-                bucket.PopMode = false;
+                bucket.Settings.PopMode = false;
             }
         }
         else
         {
-            bucket.DefaultKind = NormalizeBucketKind(defaultKind);
-            bucket.Kind = bucket.DefaultKind;
-            bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
-            bucket.DefaultStartingText = (defaultStartingText ?? "").Trim();
-            bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
+            bucket.Settings.DefaultKind = NormalizeBucketKind(defaultKind);
+            bucket.Settings.Kind = bucket.Settings.DefaultKind;
+            bucket.Settings.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
+            bucket.Settings.DefaultStartingText = (defaultStartingText ?? "").Trim();
+            bucket.Settings.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
             if (IsReplayBucket(bucket))
             {
-                bucket.PopMode = false;
+                bucket.Settings.PopMode = false;
             }
         }
 
@@ -1194,13 +1282,13 @@ internal sealed class ZetlStateStore
             && project.Buckets.Any(item => item.Id == parentBucketId && !IsDeletedBucket(item))
                 ? parentBucketId
                 : null;
-        bucket.Kind = NormalizeBucketKind(kind);
-        bucket.DefaultKind = NormalizeBucketKind(defaultKind);
-        bucket.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
-        bucket.DefaultStartingText = (defaultStartingText ?? "").Trim();
-        bucket.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
-        bucket.PopMode = !IsReplayBucket(bucket) && popMode;
-        bucket.ReplayReviewBucketId = replayReviewBucketId != bucket.Id
+        bucket.Settings.Kind = NormalizeBucketKind(kind);
+        bucket.Settings.DefaultKind = NormalizeBucketKind(defaultKind);
+        bucket.Settings.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
+        bucket.Settings.DefaultStartingText = (defaultStartingText ?? "").Trim();
+        bucket.Settings.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
+        bucket.Settings.PopMode = !IsReplayBucket(bucket) && popMode;
+        bucket.Settings.ReplayReviewBucketId = replayReviewBucketId != bucket.Id
             && project.Buckets.Any(item => item.Id == replayReviewBucketId && !IsDeletedBucket(item))
                 ? replayReviewBucketId
                 : null;
@@ -1287,7 +1375,7 @@ internal sealed class ZetlStateStore
             return;
         }
 
-        bucket.PopMode = !bucket.PopMode;
+        bucket.Settings.PopMode = !bucket.Settings.PopMode;
         bucket.Revision++;
         PersistBucket(bucket);
     }
@@ -1349,7 +1437,7 @@ internal sealed class ZetlStateStore
     {
         bucket = GetActiveBucket(shifted);
         note = null;
-        if (bucket is null || IsReplayBucket(bucket) || !bucket.PopMode || bucket.Slips.Count == 0)
+        if (bucket is null || IsReplayBucket(bucket) || !bucket.Settings.PopMode || bucket.Slips.Count == 0)
         {
             return false;
         }
@@ -1381,7 +1469,7 @@ internal sealed class ZetlStateStore
     {
         bucket = GetActiveBucket(shifted);
         note = null;
-        if (bucket is null || IsReplayBucket(bucket) || !bucket.PopMode)
+        if (bucket is null || IsReplayBucket(bucket) || !bucket.Settings.PopMode)
         {
             return false;
         }
@@ -1483,7 +1571,7 @@ internal sealed class ZetlStateStore
             reviewNote = new ZetlSlip
             {
                 Id = NewId(),
-                ContentKind = note.ContentKind,
+                Type = note.Type,
                 Text = note.Text.Trim(),
                 Image = note.Image is null
                     ? null
@@ -1499,7 +1587,7 @@ internal sealed class ZetlStateStore
                     },
                 Source = "replay",
                 SessionId = sessionId,
-                CreatedAtUtc = DateTime.UtcNow,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
                 CaptureOrigin = note.CaptureOrigin
             };
             reviewBucket.Slips.Add(reviewNote);
@@ -1532,8 +1620,8 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void RestoreReplayConsumedNote(ZetlBucket bucket, ZetlSlip note, ZetlBucket? reviewBucket, string? reviewNoteId)
     {
-        bucket.Kind = "Replay";
-        bucket.PopMode = false;
+        bucket.Settings.Kind = "Replay";
+        bucket.Settings.PopMode = false;
         bucket.Revision++;
         if (reviewBucket is not null && reviewNoteId is not null)
         {
@@ -1620,7 +1708,7 @@ internal sealed class ZetlStateStore
     public int GetBucketTsvRowLength(ZetlBucket bucket)
     {
         var headerLength = GetBucketHeaderCells(bucket).Count;
-        return headerLength > 0 ? headerLength : Math.Max(1, bucket.DefaultTsvRowLength);
+        return headerLength > 0 ? headerLength : Math.Max(1, bucket.Settings.DefaultTsvRowLength);
     }
 
     public IReadOnlyList<BucketDisplayItem> GetBucketDisplayItems(
@@ -1715,7 +1803,7 @@ internal sealed class ZetlStateStore
                 latest = project.Buckets
                     .Where(bucket => !IsDeletedBucket(bucket))
                     .SelectMany(bucket => bucket.Slips)
-                    .Select(note => (DateTime?)note.CreatedAtUtc)
+                    .Select(note => (DateTimeOffset?)note.CreatedAtUtc)
                     .Max()
             })
             .Where(item => item.latest is not null)
@@ -1934,17 +2022,17 @@ internal sealed class ZetlStateStore
                 bucket.ParentBucketId = null;
             }
 
-            if (bucket.ReplayReviewBucketId == bucket.Id
-                || project.Buckets.All(candidate => candidate.Id != bucket.ReplayReviewBucketId || IsDeletedBucket(candidate)))
+            if (bucket.Settings.ReplayReviewBucketId == bucket.Id
+                || project.Buckets.All(candidate => candidate.Id != bucket.Settings.ReplayReviewBucketId || IsDeletedBucket(candidate)))
             {
-                bucket.ReplayReviewBucketId = null;
+                bucket.Settings.ReplayReviewBucketId = null;
             }
 
-            bucket.Kind = NormalizeBucketKind(bucket.Kind);
-            bucket.DefaultKind = NormalizeBucketKind(string.IsNullOrWhiteSpace(bucket.DefaultKind) ? bucket.Kind : bucket.DefaultKind);
-            bucket.DefaultCompileMode = NormalizeCompileMode(bucket.DefaultCompileMode);
-            bucket.DefaultStartingText ??= "";
-            bucket.DefaultTsvRowLength = bucket.DefaultTsvRowLength <= 0 ? 5 : bucket.DefaultTsvRowLength;
+            bucket.Settings.Kind = NormalizeBucketKind(bucket.Settings.Kind);
+            bucket.Settings.DefaultKind = NormalizeBucketKind(string.IsNullOrWhiteSpace(bucket.Settings.DefaultKind) ? bucket.Settings.Kind : bucket.Settings.DefaultKind);
+            bucket.Settings.DefaultCompileMode = NormalizeCompileMode(bucket.Settings.DefaultCompileMode);
+            bucket.Settings.DefaultStartingText ??= "";
+            bucket.Settings.DefaultTsvRowLength = bucket.Settings.DefaultTsvRowLength <= 0 ? 5 : bucket.Settings.DefaultTsvRowLength;
             var headingAlign = ZetlViewRenderer.NormalizeHeadingAlign(bucket.HeadingAlign);
             bucket.HeadingAlign = headingAlign == "left" ? "" : headingAlign;
             bucket.HeadingLevel = Math.Clamp(bucket.HeadingLevel, 0, 6);
@@ -1955,7 +2043,7 @@ internal sealed class ZetlStateStore
 
             if (IsReplayBucket(bucket))
             {
-                bucket.PopMode = false;
+                bucket.Settings.PopMode = false;
             }
             bucket.Slips ??= new List<ZetlSlip>();
             foreach (var note in bucket.Slips)
@@ -1964,13 +2052,18 @@ internal sealed class ZetlStateStore
                 note.Revision = Math.Max(note.Revision, 1);
                 note.Title ??= "";
                 note.Text ??= "";
-                note.ContentKind = note.Image is not null
-                    ? ZetlSlip.ImageKind
-                    : ZetlSlip.TextKind;
+                if (note.Type == ZetlSlipType.Text && note.Image is not null)
+                {
+                    note.Type = ZetlSlipType.Picture;
+                }
+                else if (note.Type == ZetlSlipType.Text && ZetlSlipClassifier.LooksLikeUrl(note.Text))
+                {
+                    note.Type = ZetlSlipType.Url;
+                }
                 note.Source ??= "";
                 if (note.CreatedAtUtc == default)
                 {
-                    note.CreatedAtUtc = DateTime.UtcNow;
+                    note.CreatedAtUtc = DateTimeOffset.UtcNow;
                 }
             }
         }
@@ -2009,10 +2102,13 @@ internal sealed class ZetlStateStore
         {
             Id = NewId(),
             Name = NormalizeName(name, "Bucket"),
-            Kind = "Standard",
-            DefaultKind = "Standard",
-            DefaultCompileMode = "Formatted",
-            DefaultTsvRowLength = 5
+            Settings = new ZetlBucketSettings
+            {
+                Kind = "Standard",
+                DefaultKind = "Standard",
+                DefaultCompileMode = "Formatted",
+                DefaultTsvRowLength = 5
+            }
         };
     }
 
@@ -2026,18 +2122,18 @@ internal sealed class ZetlStateStore
     {
         bucket.Name = DeletedBucketName;
         bucket.ParentBucketId = null;
-        bucket.Kind = DeletedBucketKind;
-        bucket.DefaultKind = DeletedBucketKind;
-        bucket.PopMode = false;
-        bucket.ReplayReviewBucketId = null;
+        bucket.Settings.Kind = DeletedBucketKind;
+        bucket.Settings.DefaultKind = DeletedBucketKind;
+        bucket.Settings.PopMode = false;
+        bucket.Settings.ReplayReviewBucketId = null;
     }
 
     // Stamp a freshly created bucket with the user's default compile mode and
     // TSV row length.
     private void ApplyBucketDefaults(ZetlBucket bucket)
     {
-        bucket.DefaultCompileMode = NormalizeCompileMode(Defaults.CompileMode);
-        bucket.DefaultTsvRowLength = Math.Max(1, Defaults.TsvRowLength);
+        bucket.Settings.DefaultCompileMode = NormalizeCompileMode(Defaults.CompileMode);
+        bucket.Settings.DefaultTsvRowLength = Math.Max(1, Defaults.TsvRowLength);
     }
 
     private ZetlProject? ConsolidateProjectsNamed(string projectName)
@@ -2111,7 +2207,7 @@ internal sealed class ZetlStateStore
             var targetBucket = targetProject.Buckets.FirstOrDefault(bucket =>
                 string.Equals(bucket.Name, sourceBucket.Name, StringComparison.OrdinalIgnoreCase)
                 && bucket.ParentBucketId == parentBucket?.Id);
-            var sourceKind = NormalizeBucketKind(sourceBucket.Kind);
+            var sourceKind = NormalizeBucketKind(sourceBucket.Settings.Kind);
             if (targetBucket is null)
             {
                 targetBucket = new ZetlBucket
@@ -2119,12 +2215,15 @@ internal sealed class ZetlStateStore
                     Id = NewId(),
                     Name = NormalizeName(sourceBucket.Name, "Bucket"),
                     ParentBucketId = parentBucket?.Id,
-                    Kind = sourceKind,
-                    DefaultKind = NormalizeBucketKind(sourceBucket.DefaultKind),
-                    DefaultCompileMode = NormalizeCompileMode(sourceBucket.DefaultCompileMode),
-                    DefaultStartingText = (sourceBucket.DefaultStartingText ?? "").Trim(),
-                    DefaultTsvRowLength = sourceBucket.DefaultTsvRowLength <= 0 ? 5 : sourceBucket.DefaultTsvRowLength,
-                    PopMode = !IsReplayKindValue(sourceKind) && sourceBucket.PopMode,
+                    Settings = new ZetlBucketSettings
+                    {
+                        Kind = sourceKind,
+                        DefaultKind = NormalizeBucketKind(sourceBucket.Settings.DefaultKind),
+                        DefaultCompileMode = NormalizeCompileMode(sourceBucket.Settings.DefaultCompileMode),
+                        DefaultStartingText = (sourceBucket.Settings.DefaultStartingText ?? "").Trim(),
+                        DefaultTsvRowLength = sourceBucket.Settings.DefaultTsvRowLength <= 0 ? 5 : sourceBucket.Settings.DefaultTsvRowLength,
+                        PopMode = !IsReplayKindValue(sourceKind) && sourceBucket.Settings.PopMode
+                    },
                     Slips = new List<ZetlSlip>()
                 };
                 targetProject.Buckets.Add(targetBucket);
@@ -2133,21 +2232,21 @@ internal sealed class ZetlStateStore
             {
                 if (IsReplayKindValue(sourceKind))
                 {
-                    targetBucket.Kind = sourceKind;
-                    targetBucket.PopMode = false;
+                    targetBucket.Settings.Kind = sourceKind;
+                    targetBucket.Settings.PopMode = false;
                 }
                 else if (!IsReplayBucket(targetBucket))
                 {
-                    targetBucket.PopMode |= sourceBucket.PopMode;
+                    targetBucket.Settings.PopMode |= sourceBucket.Settings.PopMode;
                 }
 
-                targetBucket.DefaultCompileMode = NormalizeCompileMode(sourceBucket.DefaultCompileMode);
-                if (string.IsNullOrWhiteSpace(targetBucket.DefaultStartingText))
+                targetBucket.Settings.DefaultCompileMode = NormalizeCompileMode(sourceBucket.Settings.DefaultCompileMode);
+                if (string.IsNullOrWhiteSpace(targetBucket.Settings.DefaultStartingText))
                 {
-                    targetBucket.DefaultStartingText = (sourceBucket.DefaultStartingText ?? "").Trim();
+                    targetBucket.Settings.DefaultStartingText = (sourceBucket.Settings.DefaultStartingText ?? "").Trim();
                 }
 
-                targetBucket.DefaultTsvRowLength = sourceBucket.DefaultTsvRowLength <= 0 ? 5 : sourceBucket.DefaultTsvRowLength;
+                targetBucket.Settings.DefaultTsvRowLength = sourceBucket.Settings.DefaultTsvRowLength <= 0 ? 5 : sourceBucket.Settings.DefaultTsvRowLength;
             }
 
             foreach (var note in sourceBucket.Slips)
@@ -2160,12 +2259,12 @@ internal sealed class ZetlStateStore
 
         foreach (var sourceBucket in sourceProject.Buckets)
         {
-            if (sourceBucket.ReplayReviewBucketId is not null
+            if (sourceBucket.Settings.ReplayReviewBucketId is not null
                 && bucketMap.TryGetValue(sourceBucket.Id, out var targetBucket)
-                && bucketMap.TryGetValue(sourceBucket.ReplayReviewBucketId, out var targetReviewBucket)
+                && bucketMap.TryGetValue(sourceBucket.Settings.ReplayReviewBucketId, out var targetReviewBucket)
                 && targetBucket.Id != targetReviewBucket.Id)
             {
-                targetBucket.ReplayReviewBucketId = targetReviewBucket.Id;
+                targetBucket.Settings.ReplayReviewBucketId = targetReviewBucket.Id;
             }
         }
 
@@ -2319,7 +2418,7 @@ internal sealed class ZetlStateStore
 
     public static bool IsReplayBucket(ZetlBucket bucket)
     {
-        return IsReplayKindValue(bucket.Kind);
+        return IsReplayKindValue(bucket.Settings.Kind);
     }
 
     // The Scratch bucket is special (always present, the quick-note default)
@@ -2331,7 +2430,7 @@ internal sealed class ZetlStateStore
 
     public static bool IsDeletedBucket(ZetlBucket bucket)
     {
-        return string.Equals(bucket.Kind, DeletedBucketKind, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(bucket.Settings.Kind, DeletedBucketKind, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsDeletedBucketName(string? name)
@@ -2414,10 +2513,10 @@ internal sealed class ZetlStateStore
 
     private ZetlBucket GetOrCreateReplayReviewBucket(ZetlProject project, ZetlBucket replayBucket)
     {
-        if (replayBucket.ReplayReviewBucketId is not null)
+        if (replayBucket.Settings.ReplayReviewBucketId is not null)
         {
             var existingReviewBucket = project.Buckets.FirstOrDefault(bucket =>
-                bucket.Id == replayBucket.ReplayReviewBucketId && bucket.Id != replayBucket.Id);
+                bucket.Id == replayBucket.Settings.ReplayReviewBucketId && bucket.Id != replayBucket.Id);
             if (existingReviewBucket is not null)
             {
                 return existingReviewBucket;
@@ -2434,9 +2533,9 @@ internal sealed class ZetlStateStore
             project.Buckets.Add(reviewBucket);
         }
 
-        reviewBucket.Kind = "Standard";
-        reviewBucket.PopMode = false;
-        replayBucket.ReplayReviewBucketId = reviewBucket.Id;
+        reviewBucket.Settings.Kind = "Standard";
+        reviewBucket.Settings.PopMode = false;
+        replayBucket.Settings.ReplayReviewBucketId = reviewBucket.Id;
         replayBucket.Revision++;
         return reviewBucket;
     }
@@ -2457,8 +2556,8 @@ internal sealed class ZetlStateStore
 
     private static IReadOnlyList<string> GetBucketHeaderCells(ZetlBucket bucket)
     {
-        return (bucket.DefaultStartingText ?? "")
-            .Split(["\r\n", "\n", "\r"], StringSplitOptions.None)
+        return (bucket.Settings.DefaultStartingText ?? "")
+            .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None)
             .Select(NormalizeTsvCell)
             .Where(text => text.Length > 0)
             .ToList();
@@ -2498,10 +2597,71 @@ internal sealed class ZetlStateStore
         return Guid.NewGuid().ToString("N");
     }
 
-    public static string DefaultProjectName(bool shifted = false)
+    public string ExpectedJournalProjectName(DateTime localNow, bool shifted)
     {
-        var name = DateTime.Now.ToString("yyyy-MM-dd");
-        return shifted ? $"{name} Shift" : name;
+        var interval = ZetlJournalInterval.Normalize(Defaults.JournalInterval);
+        var baseName = shifted ? "Journal Shift" : "Journal";
+        var shiftedNow = localNow.AddHours(-Math.Clamp(Defaults.DayStartHour, 0, 23));
+
+        if (interval == ZetlJournalInterval.Weekly)
+        {
+            var week = System.Globalization.ISOWeek.GetWeekOfYear(shiftedNow);
+            var year = System.Globalization.ISOWeek.GetYear(shiftedNow);
+            return $"{baseName} Week {week:D2} {year}";
+        }
+        else if (interval == ZetlJournalInterval.Monthly)
+        {
+            return $"{baseName} {shiftedNow:yyyy-MM}";
+        }
+        else
+        {
+            return $"{baseName} {shiftedNow:yyyy-MM-dd}";
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public string DefaultProjectName(bool shifted = false)
+    {
+        return ExpectedJournalProjectName(DateTime.Now, shifted);
+    }
+
+    public bool IsFormattedJournalName(string name, bool shifted)
+    {
+        var prefix = shifted ? "Journal Shift" : "Journal";
+        if (string.Equals(name, prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        var suffix = name.Substring(prefix.Length).Trim();
+        if (suffix.StartsWith("Week ", StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = suffix.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 3 && int.TryParse(parts[1], out _) && int.TryParse(parts[2], out _))
+            {
+                return true;
+            }
+        }
+        else if (suffix.Length == 10 && suffix[4] == '-' && suffix[7] == '-')
+        {
+            var parts = suffix.Split('-');
+            if (parts.Length == 3 && int.TryParse(parts[0], out _) && int.TryParse(parts[1], out _) && int.TryParse(parts[2], out _))
+            {
+                return true;
+            }
+        }
+        else if (suffix.Length == 7 && suffix[4] == '-')
+        {
+            var parts = suffix.Split('-');
+            if (parts.Length == 2 && int.TryParse(parts[0], out _) && int.TryParse(parts[1], out _))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     // The journal "day" a capture belongs to: clock time shifted back by the

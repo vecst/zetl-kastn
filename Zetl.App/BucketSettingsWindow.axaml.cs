@@ -17,14 +17,14 @@ internal partial class BucketSettingsWindow : Window
         bucketNameBox.Text = bucket.Name;
         bucketNameBox.IsEnabled = !ZetlStateStore.IsScratchBucket(bucket);
         defaultKindBox.ItemsSource = new[] { "Standard", "Replay" };
-        defaultKindBox.SelectedItem = ZetlStateStore.IsReplayKind(bucket.DefaultKind)
+        defaultKindBox.SelectedItem = ZetlStateStore.IsReplayKind(bucket.Settings.DefaultKind)
             ? "Replay"
             : "Standard";
         compileModeBox.ItemsSource = new[] { "Formatted", "Plain", "TSV" };
-        compileModeBox.SelectedItem = bucket.DefaultCompileMode is "Plain" or "TSV"
-            ? bucket.DefaultCompileMode
+        compileModeBox.SelectedItem = bucket.Settings.DefaultCompileMode is "Plain" or "TSV"
+            ? bucket.Settings.DefaultCompileMode
             : "Formatted";
-        defaultStartingTextBox.Text = bucket.DefaultStartingText ?? "";
+        defaultStartingTextBox.Text = bucket.Settings.DefaultStartingText ?? "";
         tsvRowLengthBox.Value = Math.Clamp(store.GetBucketTsvRowLength(bucket), 1, 1000);
 
         defaultStartingTextBox.TextChanged += (_, _) =>

@@ -192,10 +192,12 @@ internal static class ZetlViewTests
 
     public static void RendererBuildsEscapedHtml()
     {
+        var slip1 = Slip("b1", "first <b>idea</b> & more", "bullet");
+        var slip2 = Slip("b2", "do this", "bullet");
         var project = Project(
             "Demo",
             [Bucket("b1", "Ideas"), Bucket("b2", "Steps", parent: "b1")],
-            [Slip("b1", "first <b>idea</b> & more", "bullet"), Slip("b2", "do this", "bullet")]);
+            [slip1, slip2]);
 
         var view = new ZetlViewDocument { Id = "v", Name = "V", Kind = ZetlViewKinds.Html };
         var html = ZetlViewRenderer.Render(project, project.Slips, view);
@@ -204,28 +206,27 @@ internal static class ZetlViewTests
         AssertContains(html, "<h1>Demo</h1>");
         AssertContains(html, "<h2>Ideas</h2>");
         AssertContains(html, "<h3>Steps</h3>");
-        AssertContains(html, "<li>first &lt;b&gt;idea&lt;/b&gt; &amp; more</li>");
-        AssertContains(html, "<li>do this</li>");
+        AssertContains(html, $"<li id=\"{slip1.Id}\">first &lt;b&gt;idea&lt;/b&gt; &amp; more</li>");
+        AssertContains(html, $"<li id=\"{slip2.Id}\">do this</li>");
     }
 
     public static void RendererHonorsSlipAlignment()
     {
+        var slipLeft = Slip("b1", "left one", "bullet");
+        var slipMiddle = Slip("b1", "middle one", "bullet") with { Align = "center" };
+        var slipRight = Slip("b1", "right one", "bullet") with { Align = "right" };
         var project = Project(
             "Demo",
             [Bucket("b1", "Ideas")],
-            [
-                Slip("b1", "left one", "bullet"),
-                Slip("b1", "middle one", "bullet") with { Align = "center" },
-                Slip("b1", "right one", "bullet") with { Align = "right" },
-            ]);
+            [slipLeft, slipMiddle, slipRight]);
 
         var html = ZetlViewRenderer.Render(
             project,
             project.Slips,
             new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
-        AssertContains(html, "<li>left one</li>");
-        AssertContains(html, "<li style=\"text-align:center\">middle one</li>");
-        AssertContains(html, "<li style=\"text-align:right\">right one</li>");
+        AssertContains(html, $"<li id=\"{slipLeft.Id}\">left one</li>");
+        AssertContains(html, $"<li id=\"{slipMiddle.Id}\" style=\"text-align:center\">middle one</li>");
+        AssertContains(html, $"<li id=\"{slipRight.Id}\" style=\"text-align:right\">right one</li>");
 
         // Markdown has no alignment, so the list renders plain regardless of Align.
         AssertRender(
@@ -257,15 +258,16 @@ internal static class ZetlViewTests
         AssertEqual("2 ** 3", ZetlMarkdown.InlinesToHtml("2 ** 3"), "Unmatched double star is literal.");
 
         // The HTML view applies inline formatting inside its list items.
+        var slip = Slip("b1", "see **this** and [x](http://h)", "bullet");
         var project = Project(
             "Demo",
             [Bucket("b1", "Ideas")],
-            [Slip("b1", "see **this** and [x](http://h)", "bullet")]);
+            [slip]);
         var html = ZetlViewRenderer.Render(
             project,
             project.Slips,
             new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
-        AssertContains(html, "<li>see <strong>this</strong> and <a href=\"http://h\">x</a></li>");
+        AssertContains(html, $"<li id=\"{slip.Id}\">see <strong>this</strong> and <a href=\"http://h\">x</a></li>");
     }
 
     public static void MarkdownBlockListsRenderToHtml()
@@ -336,10 +338,12 @@ internal static class ZetlViewTests
     {
         // Per-note list kind drives the markers (the view no longer carries a bucket-
         // wide style); cascading heading numbers still come from the view.
+        var slip1 = Slip("b1", "first", "ordered");
+        var slip2 = Slip("b2", "second", "ordered");
         var ordered = Project(
             "Demo",
             [Bucket("b1", "Ideas"), Bucket("b2", "Steps", parent: "b1")],
-            [Slip("b1", "first", "ordered"), Slip("b2", "second", "ordered")]);
+            [slip1, slip2]);
         var html = ZetlViewRenderer.Render(
             ordered,
             ordered.Slips,
@@ -352,30 +356,33 @@ internal static class ZetlViewTests
             });
         AssertContains(html, "<h2>1 Ideas</h2>");
         AssertContains(html, "<ol>");
-        AssertContains(html, "<li>first</li>");
+        AssertContains(html, $"<li id=\"{slip1.Id}\">first</li>");
         AssertContains(html, "<h3>1.1 Steps</h3>");
-        AssertContains(html, "<li>second</li>");
+        AssertContains(html, $"<li id=\"{slip2.Id}\">second</li>");
 
         // Task notes: checkbox glyphs reflecting each note's checked state.
+        var task1 = Slip("b1", "first", "task");
+        var task2 = Slip("b1", "second", "task", isChecked: true);
         var tasks = Project(
             "Demo",
             [Bucket("b1", "Ideas")],
-            [Slip("b1", "first", "task"), Slip("b1", "second", "task", isChecked: true)]);
+            [task1, task2]);
         var taskHtml = ZetlViewRenderer.Render(
             tasks,
             tasks.Slips,
             new ZetlViewDocument { Id = "t", Name = "T", Kind = ZetlViewKinds.Html });
         AssertContains(taskHtml, "<ul style=\"list-style:none;padding-left:1.1em\">");
-        AssertContains(taskHtml, "<li>☐ first</li>");
-        AssertContains(taskHtml, "<li>☑ second</li>");
+        AssertContains(taskHtml, $"<li id=\"{task1.Id}\">☐ first</li>");
+        AssertContains(taskHtml, $"<li id=\"{task2.Id}\">☑ second</li>");
 
         // Plain notes: no list wrapper at all.
-        var plain = Project("Demo", [Bucket("b1", "Ideas")], [Slip("b1", "first")]);
+        var plainSlip = Slip("b1", "first");
+        var plain = Project("Demo", [Bucket("b1", "Ideas")], [plainSlip]);
         var paragraphHtml = ZetlViewRenderer.Render(
             plain,
             plain.Slips,
             new ZetlViewDocument { Id = "p", Name = "P", Kind = ZetlViewKinds.Html });
-        AssertContains(paragraphHtml, "<div>first</div>");
+        AssertContains(paragraphHtml, $"<div id=\"{plainSlip.Id}\">first</div>");
         AssertTrue(
             !paragraphHtml.Contains("<ul", StringComparison.Ordinal)
                 && !paragraphHtml.Contains("<ol>", StringComparison.Ordinal),
@@ -531,18 +538,49 @@ internal static class ZetlViewTests
             "# Demo\n\n## B\n\n- a\n- [ ] b\n- [x] c");
     }
 
+    public static void BucketLevelFormattingInheritsToSlips()
+    {
+        var project = Project(
+            "InheritDemo",
+            [
+                Bucket("b1", "Tasks", renderKind: "task"),
+                Bucket("b2", "Bullets", renderKind: "bullet"),
+                Bucket("b3", "Ordered", renderKind: "ordered")
+            ],
+            [
+                // b1 slips inherit task
+                Slip("b1", "task 1"),
+                Slip("b1", "task 2", isChecked: true),
+                Slip("b1", "header override", blockKind: "heading"), // override
+                // b2 slips inherit bullet
+                Slip("b2", "bullet 1"),
+                // b3 slips inherit ordered
+                Slip("b3", "ordered 1"),
+                Slip("b3", "ordered 2"),
+            ]);
+
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# InheritDemo\n\n## Tasks\n\n- [ ] task 1\n- [x] task 2\n**header override**\n\n## Bullets\n\n- bullet 1\n\n## Ordered\n\n1. ordered 1\n2. ordered 2");
+    }
+
     public static void OrderedSlipsRenumberContinuouslyOverVisibleSlips()
     {
         // Ordered notes are numbered over their run (computed at render time) and a
         // non-ordered note restarts the count.
+        var slipAlpha = Slip("b1", "alpha", "ordered");
+        var slipBeta = Slip("b1", "beta", "ordered");
+        var slipNote = Slip("b1", "note");
+        var slipGamma = Slip("b1", "gamma", "ordered");
         var project = Project(
             "Demo",
             [Bucket("b1", "Steps")],
             [
-                Slip("b1", "alpha", "ordered"),
-                Slip("b1", "beta", "ordered"),
-                Slip("b1", "note"),
-                Slip("b1", "gamma", "ordered")
+                slipAlpha,
+                slipBeta,
+                slipNote,
+                slipGamma
             ]);
         AssertRender(
             project,
@@ -567,9 +605,9 @@ internal static class ZetlViewTests
             project.Slips,
             new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html }).ReplaceLineEndings("\n");
         AssertContains(html, "<ol>");
-        AssertContains(html, "<li>alpha</li>");
-        AssertContains(html, "<li>beta</li>");
-        AssertContains(html, "<div>note</div>");
+        AssertContains(html, $"<li id=\"{slipAlpha.Id}\">alpha</li>");
+        AssertContains(html, $"<li id=\"{slipBeta.Id}\">beta</li>");
+        AssertContains(html, $"<div id=\"{slipNote.Id}\">note</div>");
     }
 
     public static void DocumentTitleHidesOrOverridesProjectName()
@@ -1045,7 +1083,7 @@ internal static class ZetlViewTests
         Revision = 1,
         Name = name,
         ParentBucketId = parent,
-        Settings = new ZetlBucketSettings { DefaultStartingText = startingText },
+        Settings = new ZETL.Contracts.ZetlBucketSettings { DefaultStartingText = startingText },
         RenderKind = renderKind
     };
 

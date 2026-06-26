@@ -45,6 +45,8 @@ internal partial class ZetlSettingsWindow : Window
         tsvRowLengthBox.Value = Clamp(settings.DefaultTsvRowLength, 1, 50);
         dayStartHourBox.Value = Clamp(settings.DayStartHour, 0, 23);
         autoReturnHoursBox.Value = Clamp(settings.JournalAutoReturnHours, 0, 168);
+        journalIntervalBox.ItemsSource = new[] { "Daily", "Weekly", "Monthly" };
+        journalIntervalBox.SelectedItem = ZetlJournalInterval.Normalize(settings.JournalInterval);
 
         // Kastn workbench preferences (consumed by the Kastn process via the shared
         // settings file; Zetl just hosts the one settings surface).
@@ -115,6 +117,8 @@ internal partial class ZetlSettingsWindow : Window
     public int DayStartHour => (int)(dayStartHourBox.Value ?? 0);
 
     public int JournalAutoReturnHours => (int)(autoReturnHoursBox.Value ?? 0);
+
+    public string JournalInterval => journalIntervalBox.SelectedItem as string ?? "Weekly";
 
     public bool KastnAutosave => kastnAutosaveBox.IsChecked == true;
 

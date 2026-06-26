@@ -19,6 +19,8 @@ internal sealed record ZetlEmphasis(string Kind, IReadOnlyList<ZetlInline> Child
 
 internal sealed record ZetlLink(string Url, IReadOnlyList<ZetlInline> Children) : ZetlInline;
 
+internal sealed record ZetlWikiLink(string TargetId, string CachedTitle) : ZetlInline;
+
 // Block-level structure within one slip: consecutive plain lines form a paragraph,
 // consecutive same-kind list lines form a list. Lists are flat (no nesting inside a
 // slip — bucket nesting is the renderer's job).
@@ -81,6 +83,28 @@ internal static class ZetlMarkdown
                     i = close + 1;
                     textStart = i;
                     continue;
+                }
+            }
+            // Wiki-link: [[targetId|cachedTitle]].
+            else if (c == '[' && i + 1 < end && s[i + 1] == '[')
+            {
+                var close = s.IndexOf("]]", i + 2, StringComparison.Ordinal);
+                if (close >= 0 && close < end)
+                {
+                    var sep = s.IndexOf('|', i + 2, close - i - 2);
+                    if (sep > i + 2)
+                    {
+                        var targetId = s[(i + 2)..sep].Trim();
+                        var cachedTitle = s[(sep + 1)..close].Trim();
+                        if (targetId.Length > 0)
+                        {
+                            FlushText(i);
+                            result.Add(new ZetlWikiLink(targetId, cachedTitle.Length == 0 ? "Untitled" : cachedTitle));
+                            i = close + 2;
+                            textStart = i;
+                            continue;
+                        }
+                    }
                 }
             }
             // Link: [text](url). Bracket text is parsed; the URL is literal.
@@ -485,9 +509,9 @@ internal static class ZetlMarkdown
 
     // Render a slip's blocks to the inner HTML of its list item: paragraphs as text
     // with line breaks, lists as <ul>/<ol> (task lists use checkbox glyphs).
-    public static string BlocksToHtml(string text) => BlocksToHtml(ParseBlocks(text));
+    public static string BlocksToHtml(string text, Func<string, bool>? isResolved = null) => BlocksToHtml(ParseBlocks(text), isResolved);
 
-    public static string BlocksToHtml(IReadOnlyList<ZetlBlock> blocks)
+    public static string BlocksToHtml(IReadOnlyList<ZetlBlock> blocks, Func<string, bool>? isResolved = null)
     {
         var builder = new StringBuilder();
         foreach (var block in blocks)
@@ -495,19 +519,19 @@ internal static class ZetlMarkdown
             switch (block)
             {
                 case ZetlParagraphBlock paragraph:
-                    builder.Append(string.Join("<br />", paragraph.Lines.Select(InlinesToHtml)));
+                    builder.Append(string.Join("<br />", paragraph.Lines.Select(lines => InlinesToHtml(lines, isResolved))));
                     break;
                 case ZetlHeadingBlock heading:
                     // Softened: a bold, slightly larger lead — never a real <h*> — so it
                     // stays out of the document outline and any future table of contents.
                     var headingSize = heading.Level <= 1 ? "1.15em" : heading.Level == 2 ? "1.05em" : "1em";
                     builder.Append($"<p style=\"font-weight:700;font-size:{headingSize};margin:0.5em 0 0.2em\">")
-                        .Append(InlinesToHtml(heading.Inlines))
+                        .Append(InlinesToHtml(heading.Inlines, isResolved))
                         .Append("</p>");
                     break;
                 case ZetlQuoteBlock quote:
                     builder.Append("<blockquote>")
-                        .Append(string.Join("<br />", quote.Lines.Select(InlinesToHtml)))
+                        .Append(string.Join("<br />", quote.Lines.Select(lines => InlinesToHtml(lines, isResolved))))
                         .Append("</blockquote>");
                     break;
                 case ZetlCodeBlock code:
@@ -520,7 +544,7 @@ internal static class ZetlMarkdown
                     builder.Append(ordered.Start > 1 ? $"<ol start=\"{ordered.Start}\">" : "<ol>");
                     foreach (var item in ordered.Items)
                     {
-                        builder.Append("<li>").Append(InlinesToHtml(item.Inlines)).Append("</li>");
+                        builder.Append("<li>").Append(InlinesToHtml(item.Inlines, isResolved)).Append("</li>");
                     }
                     builder.Append("</ol>");
                     break;
@@ -530,7 +554,7 @@ internal static class ZetlMarkdown
                     {
                         builder.Append("<li>")
                             .Append(item.Checked ? "☑ " : "☐ ")
-                            .Append(InlinesToHtml(item.Inlines))
+                            .Append(InlinesToHtml(item.Inlines, isResolved))
                             .Append("</li>");
                     }
                     builder.Append("</ul>");
@@ -539,7 +563,7 @@ internal static class ZetlMarkdown
                     builder.Append("<ul>");
                     foreach (var item in bullet.Items)
                     {
-                        builder.Append("<li>").Append(InlinesToHtml(item.Inlines)).Append("</li>");
+                        builder.Append("<li>").Append(InlinesToHtml(item.Inlines, isResolved)).Append("</li>");
                     }
                     builder.Append("</ul>");
                     break;
@@ -549,20 +573,22 @@ internal static class ZetlMarkdown
         return builder.ToString();
     }
 
-    public static string InlinesToHtml(IReadOnlyList<ZetlInline> inlines)
+    public static string InlinesToHtml(IReadOnlyList<ZetlInline> inlines) => InlinesToHtml(inlines, null);
+
+    public static string InlinesToHtml(IReadOnlyList<ZetlInline> inlines, Func<string, bool>? isResolved)
     {
         var builder = new StringBuilder();
         foreach (var inline in inlines)
         {
-            AppendHtml(builder, inline);
+            AppendHtml(builder, inline, isResolved);
         }
 
         return builder.ToString();
     }
 
-    public static string InlinesToHtml(string text) => InlinesToHtml(ParseInlines(text));
+    public static string InlinesToHtml(string text, Func<string, bool>? isResolved = null) => InlinesToHtml(ParseInlines(text), isResolved);
 
-    private static void AppendHtml(StringBuilder builder, ZetlInline inline)
+    private static void AppendHtml(StringBuilder builder, ZetlInline inline, Func<string, bool>? isResolved)
     {
         switch (inline)
         {
@@ -583,7 +609,7 @@ internal static class ZetlMarkdown
                 builder.Append('<').Append(tag).Append('>');
                 foreach (var child in emphasis.Children)
                 {
-                    AppendHtml(builder, child);
+                    AppendHtml(builder, child, isResolved);
                 }
                 builder.Append("</").Append(tag).Append('>');
                 break;
@@ -591,10 +617,139 @@ internal static class ZetlMarkdown
                 builder.Append("<a href=\"").Append(EscapeAttribute(link.Url)).Append("\">");
                 foreach (var child in link.Children)
                 {
-                    AppendHtml(builder, child);
+                    AppendHtml(builder, child, isResolved);
                 }
                 builder.Append("</a>");
                 break;
+            case ZetlWikiLink wiki:
+                var resolved = isResolved?.Invoke(wiki.TargetId) ?? false;
+                if (resolved)
+                {
+                    builder.Append("<a href=\"#").Append(EscapeAttribute(wiki.TargetId)).Append("\">")
+                        .Append(Escape(wiki.CachedTitle))
+                        .Append("</a>");
+                }
+                else
+                {
+                    builder.Append("<span class=\"kastn-unresolved-link\" style=\"color:#666;text-decoration:underline;cursor:help;\" title=\"Slip not found\">")
+                        .Append(Escape(wiki.CachedTitle))
+                        .Append("</span>");
+                }
+                break;
+        }
+    }
+
+    public static string ResolveWikiLinksInNote(string text, Func<string, bool> isResolved)
+    {
+        var blocks = ParseBlocks(text);
+        return BlocksToMarkdown(blocks, isResolved);
+    }
+
+    public static string BlocksToMarkdown(IReadOnlyList<ZetlBlock> blocks, Func<string, bool> isResolved)
+    {
+        var builder = new StringBuilder();
+        for (var i = 0; i < blocks.Count; i++)
+        {
+            var block = blocks[i];
+            if (i > 0)
+            {
+                builder.AppendLine();
+            }
+            switch (block)
+            {
+                case ZetlParagraphBlock p:
+                    for (var line = 0; line < p.Lines.Count; line++)
+                    {
+                        if (line > 0) builder.AppendLine();
+                        builder.Append(InlinesToMarkdown(p.Lines[line], isResolved));
+                    }
+                    builder.AppendLine();
+                    break;
+                case ZetlListBlock list:
+                    var number = list.Start;
+                    foreach (var item in list.Items)
+                    {
+                        var marker = list.Kind switch
+                        {
+                            "ordered" => $"{number++}. ",
+                            "task" => item.Checked ? "- [x] " : "- [ ] ",
+                            _ => "- "
+                        };
+                        builder.Append(marker).Append(InlinesToMarkdown(item.Inlines, isResolved)).AppendLine();
+                    }
+                    break;
+                case ZetlHeadingBlock h:
+                    builder.Append(new string('#', h.Level)).Append(' ').Append(InlinesToMarkdown(h.Inlines, isResolved)).AppendLine();
+                    break;
+                case ZetlQuoteBlock q:
+                    for (var line = 0; line < q.Lines.Count; line++)
+                    {
+                        if (line > 0) builder.AppendLine();
+                        builder.Append("> ").Append(InlinesToMarkdown(q.Lines[line], isResolved));
+                    }
+                    builder.AppendLine();
+                    break;
+                case ZetlCodeBlock code:
+                    builder.Append("```").AppendLine(code.Language);
+                    builder.Append(code.Text);
+                    if (!code.Text.EndsWith('\n')) builder.AppendLine();
+                    builder.AppendLine("```");
+                    break;
+                case ZetlDividerBlock:
+                    builder.AppendLine("---");
+                    break;
+            }
+        }
+        return builder.ToString().TrimEnd('\r', '\n');
+    }
+
+    public static string InlinesToMarkdown(IReadOnlyList<ZetlInline> inlines, Func<string, bool> isResolved)
+    {
+        var builder = new StringBuilder();
+        AppendMarkdown(builder, inlines, isResolved);
+        return builder.ToString();
+    }
+
+    private static void AppendMarkdown(StringBuilder builder, IReadOnlyList<ZetlInline> inlines, Func<string, bool> isResolved)
+    {
+        foreach (var inline in inlines)
+        {
+            switch (inline)
+            {
+                case ZetlTextRun run:
+                    builder.Append(run.Text);
+                    break;
+                case ZetlCodeRun code:
+                    builder.Append('`').Append(code.Text).Append('`');
+                    break;
+                case ZetlEmphasis emphasis:
+                    var marker = emphasis.Kind switch
+                    {
+                        "bold" => "**",
+                        "italic" => "*",
+                        "strike" => "~~",
+                        _ => ""
+                    };
+                    builder.Append(marker);
+                    AppendMarkdown(builder, emphasis.Children, isResolved);
+                    builder.Append(marker);
+                    break;
+                case ZetlLink link:
+                    builder.Append('[');
+                    AppendMarkdown(builder, link.Children, isResolved);
+                    builder.Append("](").Append(link.Url).Append(')');
+                    break;
+                case ZetlWikiLink wiki:
+                    if (isResolved(wiki.TargetId))
+                    {
+                        builder.Append('[').Append(wiki.CachedTitle).Append("](#").Append(wiki.TargetId).Append(')');
+                    }
+                    else
+                    {
+                        builder.Append(wiki.CachedTitle);
+                    }
+                    break;
+            }
         }
     }
 

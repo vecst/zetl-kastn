@@ -94,7 +94,7 @@ internal static class StorageBaselineScenario
         const int bucketCount = 10;
         var notesPerBucket = noteCount / bucketCount;
         var remainder = noteCount % bucketCount;
-        var createdAt = new DateTime(2026, 6, 15, 12, 0, 0, DateTimeKind.Utc);
+        var createdAt = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
         var project = new ZetlProject
         {
             Id = "baseline-project",
@@ -107,7 +107,7 @@ internal static class StorageBaselineScenario
             {
                 Id = $"bucket-{bucketIndex:D2}",
                 Name = $"Bucket {bucketIndex + 1}",
-                DefaultStartingText = "Header One\nHeader Two"
+                Settings = new ZETL.ZetlBucketSettings { DefaultStartingText = "Header One\nHeader Two" }
             };
             var count = notesPerBucket + (bucketIndex < remainder ? 1 : 0);
             for (var noteIndex = 0; noteIndex < count; noteIndex++)

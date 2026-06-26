@@ -101,10 +101,10 @@ public partial class App : Application
                 ?? store.CreateProject("Preview", new[] { "Inbox", "Ideas", "Scratch" }, "Inbox");
             var bucket = store.GetActiveBucket()
                 ?? project.Buckets.First();
-            bucket.DefaultKind = "Replay";
-            bucket.DefaultCompileMode = "TSV";
-            bucket.DefaultStartingText = "Name\nEmail\nStatus";
-            bucket.DefaultTsvRowLength = 3;
+            bucket.Settings.DefaultKind = "Replay";
+            bucket.Settings.DefaultCompileMode = "TSV";
+            bucket.Settings.DefaultStartingText = "Name\nEmail\nStatus";
+            bucket.Settings.DefaultTsvRowLength = 3;
             var notifications = new[]
             {
                 new ZetlNotificationEntry(DateTime.Now.AddMinutes(-8), "Captured to Inbox in Preview."),

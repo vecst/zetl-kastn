@@ -104,10 +104,10 @@ internal static class ZetlParityScenario
                         && bucketNames.TryGetValue(bucket.ParentBucketId, out var parentName)
                             ? parentName
                             : null,
-                    bucket.Kind,
-                    bucket.PopMode,
-                    bucket.DefaultCompileMode,
-                    bucket.DefaultTsvRowLength,
+                    bucket.Settings.Kind,
+                    bucket.Settings.PopMode,
+                    bucket.Settings.DefaultCompileMode,
+                    bucket.Settings.DefaultTsvRowLength,
                     bucket.Slips
                         .Select(note => new ParityNote(note.Text, note.Source))
                         .ToList()))

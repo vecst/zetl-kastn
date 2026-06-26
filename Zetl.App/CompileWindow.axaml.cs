@@ -290,8 +290,8 @@ internal partial class CompileWindow : ZetlPopupWindow
     private void ApplyBucketCompileDefaults()
     {
         var bucket = DefaultCompileBucket;
-        compileModeBox.SelectedItem = bucket?.DefaultCompileMode is "Plain" or "TSV"
-            ? bucket.DefaultCompileMode
+        compileModeBox.SelectedItem = bucket?.Settings.DefaultCompileMode is "Plain" or "TSV"
+            ? bucket.Settings.DefaultCompileMode
             : "Formatted";
         if (bucket is not null)
         {

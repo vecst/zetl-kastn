@@ -383,7 +383,7 @@ internal static class ZetlProjectServiceTests
             new AddBucketCommand
             {
                 Name = "Drafts",
-                Settings = new ZetlBucketSettings
+                Settings = new ZETL.Contracts.ZetlBucketSettings
                 {
                     Kind = "Standard",
                     DefaultKind = "Replay",
@@ -548,7 +548,7 @@ internal static class ZetlProjectServiceTests
             new UpdateBucketCommand
             {
                 Name = "Research",
-                Settings = new ZetlBucketSettings
+                Settings = new ZETL.Contracts.ZetlBucketSettings
                 {
                     Kind = "Replay",
                     DefaultKind = "Replay",
@@ -708,12 +708,12 @@ internal static class ZetlProjectServiceTests
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
         var first = store.AddNote(bucket, "first visible note", "copy");
-        first.CreatedAtUtc = new DateTime(2026, 6, 15, 12, 0, 0, DateTimeKind.Utc);
+        first.CreatedAtUtc = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
         var second = store.AddNote(bucket, "second visible note", "copy");
-        second.CreatedAtUtc = new DateTime(2026, 6, 16, 12, 0, 0, DateTimeKind.Utc);
+        second.CreatedAtUtc = new DateTimeOffset(2026, 6, 16, 12, 0, 0, TimeSpan.Zero);
         var deletedBucket = store.GetDeletedBucket(project);
         var deleted = store.AddNote(deletedBucket, "deleted should stay out", "copy");
-        deleted.CreatedAtUtc = new DateTime(2026, 6, 17, 12, 0, 0, DateTimeKind.Utc);
+        deleted.CreatedAtUtc = new DateTimeOffset(2026, 6, 17, 12, 0, 0, TimeSpan.Zero);
         var service = new ZetlProjectService(store);
 
         var response = service.Execute(new ZetlCommandEnvelope

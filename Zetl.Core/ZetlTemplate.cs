@@ -68,7 +68,16 @@ internal sealed class ZetlTemplateDocument
                 .Select(bucket => new CreateBucketDefinition
                 {
                     Name = bucket.Name,
-                    Settings = bucket.Settings
+                    Settings = new ZETL.Contracts.ZetlBucketSettings
+                    {
+                        Kind = bucket.Settings.Kind,
+                        DefaultKind = bucket.Settings.DefaultKind,
+                        DefaultCompileMode = bucket.Settings.DefaultCompileMode,
+                        DefaultStartingText = bucket.Settings.DefaultStartingText,
+                        DefaultTsvRowLength = bucket.Settings.DefaultTsvRowLength,
+                        PopMode = bucket.Settings.PopMode,
+                        ReplayReviewBucketId = bucket.Settings.ReplayReviewBucketId
+                    }
                 })
                 .ToList()
         };

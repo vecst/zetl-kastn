@@ -70,6 +70,7 @@ public sealed record UpdateBucketCommand
     public required string Name { get; init; }
     public string? ParentBucketId { get; init; }
     public ZetlBucketSettings Settings { get; init; } = new();
+    public string? RenderKind { get; init; }
 }
 
 public sealed record SetBucketHeadingCommand

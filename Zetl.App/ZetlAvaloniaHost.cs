@@ -328,7 +328,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             return TrayIconState.Replay;
         }
 
-        return bucket.PopMode ? TrayIconState.Pop : TrayIconState.Active;
+        return bucket.Settings.PopMode ? TrayIconState.Pop : TrayIconState.Active;
     }
 
     private void UpdateTrayIcon()
@@ -895,6 +895,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.DefaultTsvRowLength = window.DefaultTsvRowLength;
         settings.DayStartHour = window.DayStartHour;
         settings.JournalAutoReturnHours = window.JournalAutoReturnHours;
+        settings.JournalInterval = window.JournalInterval;
         settings.KastnAutosave = window.KastnAutosave;
         settings.KastnStartup = window.KastnStartup;
         settings.KastnDefaultViewId = window.KastnDefaultViewId;
@@ -948,7 +949,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
         store.ToggleActiveBucketPopMode();
         notifications.Show(store.ActiveBucket is { } active
-            ? $"{active.Name} pop mode is {(active.PopMode ? "on" : "off")}."
+            ? $"{active.Name} pop mode is {(active.Settings.PopMode ? "on" : "off")}."
             : "No active bucket yet.");
     }
 

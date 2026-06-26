@@ -82,6 +82,16 @@ internal partial class MainWindow : Window
     private readonly ObservableCollection<DateFilterItem> dates = [];
     private readonly ObservableCollection<KastnBucketItem> parentBuckets = [];
     private readonly ObservableCollection<KastnBucketItem> moveBuckets = [];
+    private readonly List<KastnRenderKindItem> bucketRenderKinds =
+    [
+        new KastnRenderKindItem("", "Standard (Notes)"),
+        new KastnRenderKindItem("task", "Checklist"),
+        new KastnRenderKindItem("bullet", "Bullet List"),
+        new KastnRenderKindItem("ordered", "Numbered List"),
+        new KastnRenderKindItem("group", "Group Box"),
+        new KastnRenderKindItem("table", "Table"),
+        new KastnRenderKindItem("latex", "LaTeX Block")
+    ];
     private readonly KastnEditorState editorState = new();
     private readonly Dictionary<string, ZetlPictureContent> pictureCache = new(StringComparer.Ordinal);
     private readonly Queue<string> pictureCacheOrder = [];
@@ -108,6 +118,13 @@ internal partial class MainWindow : Window
     // When true the project tree shows only the Deleted bucket's slips (browse +
     // restore), instead of the normal working tree.
     private bool showingDeleted;
+    private bool boardModeActive;
+    private readonly Dictionary<string, Border> boardSlipCards = new(StringComparer.Ordinal);
+    private string? highlightedBoardSlipId;
+    private GridLength treeColumnWidth = new GridLength(300, GridUnitType.Pixel);
+    private GridLength leftSplitterWidth = new GridLength(8, GridUnitType.Pixel);
+    private GridLength rightColumnWidth = new GridLength(360, GridUnitType.Pixel);
+    private GridLength rightSplitterWidth = new GridLength(8, GridUnitType.Pixel);
     // The bucket whose slips are "expanded" (second click). When null, a selected
     // bucket is in title mode: its slips are not batch-selected and the heading
     // controls edit the bucket's title. Reset on any fresh selection.
@@ -150,6 +167,7 @@ internal partial class MainWindow : Window
         dateFilterBox.ItemsSource = dates;
         parentBucketBox.ItemsSource = parentBuckets;
         moveBucketBox.ItemsSource = moveBuckets;
+        bucketRenderKindBox.ItemsSource = bucketRenderKinds;
 
         dates.Add(new DateFilterItem(KastnDateFilter.All, "All time"));
         dates.Add(new DateFilterItem(KastnDateFilter.Today, "Today"));
@@ -206,6 +224,7 @@ internal partial class MainWindow : Window
             InputElement.KeyDownEvent,
             OnSlipEditorPreviewKeyDown,
             RoutingStrategies.Tunnel);
+        slipEditor.PointerReleased += OnSlipEditorPointerReleased;
 
         refreshMenuItem.Click += async (_, _) => await RefreshAsync();
         journalModeMenuItem.Click += async (_, _) => await ToggleJournalModeAsync();
@@ -225,6 +244,9 @@ internal partial class MainWindow : Window
         deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
         closeProjectButton.Click += async (_, _) => await CloseProjectAsync();
         newSlipButton.Click += async (_, _) => await AddSlipAsync();
+        viewModeListButton.Click += (_, _) => SetBoardMode(false);
+        viewModeBoardButton.Click += (_, _) => SetBoardMode(true);
+        boardModeMenuItem.Click += (_, _) => SetBoardMode(boardModeMenuItem.IsChecked);
         // Alignment, strikethrough, and the list markers fork: a single selected slip
         // edits its text in the editor; a multi-slip / bucket selection applies the
         // change to every selected slip at once (batch). Bold/italic/code/link wrap a
@@ -829,6 +851,13 @@ internal partial class MainWindow : Window
                 item => item.Id == selected?.ParentBucketId)
             ?? parentBuckets[0];
         parentBucketBox.IsEnabled = selected is not null && !isDeleted && IsOnline;
+
+        var renderKind = selected?.RenderKind ?? "";
+        bucketRenderKindBox.SelectedItem = bucketRenderKinds.FirstOrDefault(
+            item => string.Equals(item.Value, renderKind, StringComparison.OrdinalIgnoreCase))
+            ?? bucketRenderKinds[0];
+        bucketRenderKindBox.IsEnabled = selected is not null && !isDeleted && IsOnline;
+
         RefreshParentBucketHint(selected);
 
         // The heading-style controls appear when a (non-deleted) bucket node is the
@@ -1217,6 +1246,32 @@ internal partial class MainWindow : Window
             e.Handled = true;
             await SaveEditorKeepingFocusAsync();
         }
+        else if (e.Key == Key.F12 && currentProject is not null)
+        {
+            var text = slipEditor.Text ?? "";
+            var caret = slipEditor.CaretIndex;
+            var link = ZetlSlipLinks.FindAt(text, caret);
+            if (link is not null && currentProject.Slips.Any(slip => slip.Id == link.TargetId))
+            {
+                e.Handled = true;
+                ReselectSlipNode(link.TargetId);
+            }
+        }
+    }
+
+    private void OnSlipEditorPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (e.KeyModifiers == KeyModifiers.Control && currentProject is not null)
+        {
+            var text = slipEditor.Text ?? "";
+            var caret = slipEditor.CaretIndex;
+            var link = ZetlSlipLinks.FindAt(text, caret);
+            if (link is not null && currentProject.Slips.Any(slip => slip.Id == link.TargetId))
+            {
+                ReselectSlipNode(link.TargetId);
+                e.Handled = true;
+            }
+        }
     }
 
     // Save the current slip without losing the editor: a save can trigger a snapshot
@@ -1409,4 +1464,73 @@ internal partial class MainWindow : Window
     private sealed record FilterItem(string? Value, string Label);
     private sealed record TypeFilterItem(ZetlSlipType? Value, string Label);
     private sealed record DateFilterItem(KastnDateFilter Value, string Label);
+
+    private void SetBoardMode(bool active)
+    {
+        boardModeActive = active;
+        boardModeMenuItem.IsChecked = active;
+
+        viewerPanel.IsVisible = !active;
+        boardPanel.IsVisible = active;
+
+        if (active)
+        {
+            if (viewModeListButton.Classes.Contains("view-format-active"))
+            {
+                viewModeListButton.Classes.Remove("view-format-active");
+            }
+            if (!viewModeBoardButton.Classes.Contains("view-format-active"))
+            {
+                viewModeBoardButton.Classes.Add("view-format-active");
+            }
+
+            // Save current widths
+            treeColumnWidth = mainColumnsGrid.ColumnDefinitions[0].Width;
+            leftSplitterWidth = mainColumnsGrid.ColumnDefinitions[1].Width;
+            rightSplitterWidth = mainColumnsGrid.ColumnDefinitions[3].Width;
+            rightColumnWidth = mainColumnsGrid.ColumnDefinitions[4].Width;
+
+            // Hide pane borders and splitters
+            treePaneBorder.IsVisible = false;
+            leftSplitter.IsVisible = false;
+            rightPaneBorder.IsVisible = false;
+            rightSplitter.IsVisible = false;
+
+            // Collapse columns
+            mainColumnsGrid.ColumnDefinitions[0].Width = new GridLength(0, GridUnitType.Pixel);
+            mainColumnsGrid.ColumnDefinitions[1].Width = new GridLength(0, GridUnitType.Pixel);
+            mainColumnsGrid.ColumnDefinitions[3].Width = new GridLength(0, GridUnitType.Pixel);
+            mainColumnsGrid.ColumnDefinitions[4].Width = new GridLength(0, GridUnitType.Pixel);
+        }
+        else
+        {
+            if (!viewModeListButton.Classes.Contains("view-format-active"))
+            {
+                viewModeListButton.Classes.Add("view-format-active");
+            }
+            if (viewModeBoardButton.Classes.Contains("view-format-active"))
+            {
+                viewModeBoardButton.Classes.Remove("view-format-active");
+            }
+
+            // Show pane borders and splitters
+            treePaneBorder.IsVisible = true;
+            leftSplitter.IsVisible = true;
+            rightPaneBorder.IsVisible = true;
+            rightSplitter.IsVisible = true;
+
+            // Restore columns
+            mainColumnsGrid.ColumnDefinitions[0].Width = treeColumnWidth;
+            mainColumnsGrid.ColumnDefinitions[1].Width = leftSplitterWidth;
+            mainColumnsGrid.ColumnDefinitions[3].Width = rightSplitterWidth;
+            mainColumnsGrid.ColumnDefinitions[4].Width = rightColumnWidth;
+        }
+
+        RefreshViewer();
+    }
+}
+
+internal sealed record KastnRenderKindItem(string Value, string Label)
+{
+    public override string ToString() => Label;
 }

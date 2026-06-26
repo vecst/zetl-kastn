@@ -127,8 +127,8 @@ The detailed lifecycle is in
 
 ## Priority 4: Project Lifecycle Polish
 
-The durable lifecycle model is implemented, including lane clearing and dated
-project advancement.
+The durable lifecycle model is implemented, including lane clearing and auto-return
+to the rolling Journal.
 
 Remaining:
 
@@ -138,27 +138,17 @@ Remaining:
 - [ ] Verify the complete template → capture → finish → Kastn → render path as
       one documented workflow.
 
-## Priority 5: Storage Evolution
+## Priority 5: Storage Consolidation (Single File Affirmed)
 
-Typed slips already bridge text and picture content inside the current
-per-project `project.json`. Splitting captures into type-specific files remains
-a strategic option, not a prerequisite for ordinary product work.
+The single-file `project.json` model is affirmed as the canonical live store. Splitting project storage into multiple type-scoped JSON files has been explicitly rejected to avoid overhead and keep bucket hierarchies easy to rebuild.
 
-Before changing the live format:
+Remaining focus:
+- [x] Verify baseline JSON performance under load (completed via storage baseline scenario).
+- [ ] Implement asset clean-up utility to purge orphaned files from the project's `assets/` subfolder.
+- [ ] Define missing-asset detection and handling behavior during load.
+- [ ] Keep copied project folders completely readable and self-contained.
 
-- [ ] Reconfirm that measured JSON behavior or query needs justify the
-      migration.
-- [ ] Finalize metadata and typed-file schemas.
-- [ ] Design an atomic, restartable migration with backup and rollback.
-- [ ] Preserve slip order, bucket hierarchy, Replay review links, sessions,
-      revisions, and asset references.
-- [ ] Define URL and file capture semantics.
-- [ ] Define missing-asset and orphan-cleanup behavior.
-- [ ] Keep copied project folders readable and self-contained.
-
-SQLite is not scheduled. Reconsider it only when measurements show that JSON,
-rather than UI/query design, is the actual bottleneck. If introduced, Zetl
-remains the sole writer and the IPC protocol stays storage-agnostic.
+SQLite is not scheduled. Reconsider it only when measurements show that JSON, rather than UI/query design, is the actual bottleneck. If introduced, Zetl remains the sole writer and the IPC protocol stays storage-agnostic.
 
 ## Backlog
 

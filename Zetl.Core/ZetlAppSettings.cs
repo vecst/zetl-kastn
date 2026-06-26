@@ -18,6 +18,7 @@ internal sealed class ZetlAppSettings
     public int JournalAutoReturnHours { get; set; }
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
     public string ThemeVariant { get; set; } = "System";
+    public string JournalInterval { get; set; } = ZetlJournalInterval.Weekly;
 
     // Kastn workbench preferences. Edited from Zetl's Settings window (the single
     // settings surface) and consumed by the Kastn process, which shares this file.
@@ -36,6 +37,18 @@ internal static class ZetlKastnStartup
         string.Equals(value?.Trim(), LastProject, StringComparison.OrdinalIgnoreCase)
             ? LastProject
             : Landing;
+}
+
+internal static class ZetlJournalInterval
+{
+    public const string Daily = "Daily";
+    public const string Weekly = "Weekly";
+    public const string Monthly = "Monthly";
+
+    public static string Normalize(string? value) =>
+        string.Equals(value?.Trim(), Weekly, StringComparison.OrdinalIgnoreCase) ? Weekly
+        : string.Equals(value?.Trim(), Monthly, StringComparison.OrdinalIgnoreCase) ? Monthly
+        : Daily;
 }
 
 internal sealed class ZetlAppSettingsStore

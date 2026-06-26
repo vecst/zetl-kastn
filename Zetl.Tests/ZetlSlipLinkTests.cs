@@ -57,6 +57,37 @@ internal static class ZetlSlipLinkTests
         AssertTrue(!index.ContainsKey("missing"), "Unknown targets should not create backlink entries.");
     }
 
+    public static void ParsesWikiLinksAsInlinesAndRendersThem()
+    {
+        var project = Project(
+            Slip("source", "Source", "See [[target|Target slip]] and [[missing|Stale stub]].", "a"),
+            Slip("target", "Target Title", "Target body", "b"));
+
+        // 1. Parse Inlines
+        var inlines = ZetlMarkdown.ParseInlines(project.Slips[0].Text);
+        AssertEqual(5, inlines.Count, "Should parse into text and wiki-link inline runs.");
+        AssertTrue(inlines[1] is ZetlWikiLink, "First wiki-link should parse as ZetlWikiLink.");
+        var wiki1 = (ZetlWikiLink)inlines[1];
+        AssertEqual("target", wiki1.TargetId, "Target ID should be correct.");
+        AssertEqual("Target slip", wiki1.CachedTitle, "Cached title should be correct.");
+
+        AssertTrue(inlines[3] is ZetlWikiLink, "Second wiki-link should parse as ZetlWikiLink.");
+        var wiki2 = (ZetlWikiLink)inlines[3];
+        AssertEqual("missing", wiki2.TargetId, "Target ID should be correct.");
+        AssertEqual("Stale stub", wiki2.CachedTitle, "Cached title should be correct.");
+
+        // 2. HTML output
+        Func<string, bool> isResolved = id => project.Slips.Any(s => s.Id == id);
+        var html = ZetlMarkdown.BlocksToHtml(project.Slips[0].Text, isResolved);
+        AssertContains(html, "<a href=\"#target\">Target slip</a>", "Resolved wiki-link should generate local HTML anchor.");
+        AssertContains(html, "<span class=\"kastn-unresolved-link\"", "Unresolved wiki-link should render as stub.");
+        AssertContains(html, "Stale stub", "Unresolved wiki-link stub should display cached title.");
+
+        // 3. Markdown round-trip/resolve
+        var resolvedMarkdown = ZetlMarkdown.ResolveWikiLinksInNote(project.Slips[0].Text, isResolved);
+        AssertEqual("See [Target slip](#target) and Stale stub.", resolvedMarkdown, "Markdown export should resolve wiki-links.");
+    }
+
     private static ZetlProjectSnapshot Project(params ZetlSlipSnapshot[] slips) => new()
     {
         Id = "project",
