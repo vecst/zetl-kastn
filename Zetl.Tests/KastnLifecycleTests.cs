@@ -2,11 +2,14 @@ using System.Collections.Concurrent;
 using KASTN;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class KastnLifecycleTests
+public class KastnLifecycleTests
 {
-    public static void ActivationHandoffCarriesProjectId()
+    [Fact] public void ActivationHandoffCarriesProjectId()
     {
         RunAsync(async () =>
         {
@@ -30,7 +33,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void ShutdownRequestClosesWhenHandlerAgrees()
+    [Fact] public void ShutdownRequestClosesWhenHandlerAgrees()
     {
         RunAsync(async () =>
         {
@@ -55,7 +58,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void ShutdownRequestCancelsWhenHandlerDeclines()
+    [Fact] public void ShutdownRequestCancelsWhenHandlerDeclines()
     {
         RunAsync(async () =>
         {
@@ -79,7 +82,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void ShutdownRequestReturnsNoKastnWhenAbsent()
+    [Fact] public void ShutdownRequestReturnsNoKastnWhenAbsent()
     {
         RunAsync(async () =>
         {
@@ -95,7 +98,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void BeginShutdownStopsZetlRelaunch()
+    [Fact] public void BeginShutdownStopsZetlRelaunch()
     {
         RunAsync(async () =>
         {
@@ -129,7 +132,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void ControllerLaunchesZetlAndLoadsProject()
+    [Fact] public void ControllerLaunchesZetlAndLoadsProject()
     {
         RunAsync(async () =>
         {
@@ -160,7 +163,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void ControllerLaunchesToProjectSelectionWithoutHandoff()
+    [Fact] public void ControllerLaunchesToProjectSelectionWithoutHandoff()
     {
         RunAsync(async () =>
         {
@@ -195,7 +198,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void ControllerRefreshesAfterProjectChange()
+    [Fact] public void ControllerRefreshesAfterProjectChange()
     {
         RunAsync(async () =>
         {
@@ -222,7 +225,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void ControllerReconnectsAfterZetlRestart()
+    [Fact] public void ControllerReconnectsAfterZetlRestart()
     {
         RunAsync(async () =>
         {
@@ -255,7 +258,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void ControllerRelaunchesZetlAfterItExits()
+    [Fact] public void ControllerRelaunchesZetlAfterItExits()
     {
         RunAsync(async () =>
         {
@@ -304,7 +307,7 @@ internal static class KastnLifecycleTests
         });
     }
 
-    public static void ClosingControllerLeavesZetlAvailable()
+    [Fact] public void ClosingControllerLeavesZetlAvailable()
     {
         RunAsync(async () =>
         {
@@ -378,23 +381,6 @@ internal static class KastnLifecycleTests
     private static void RunAsync(Func<Task> action)
     {
         action().GetAwaiter().GetResult();
-    }
-
-    private static void AssertTrue(bool condition, string message)
-    {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
-    }
-
-    private static void AssertEqual<T>(T expected, T actual, string message)
-    {
-        if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        {
-            throw new InvalidOperationException(
-                $"{message} Expected '{expected}', got '{actual}'.");
-        }
     }
 
     private sealed class LifecycleFixture : IDisposable

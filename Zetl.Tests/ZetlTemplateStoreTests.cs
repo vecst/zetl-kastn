@@ -1,11 +1,14 @@
 using ZETL;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class ZetlTemplateStoreTests
+public class ZetlTemplateStoreTests
 {
-    public static void LoadsBuiltInsWhenNoDirectory()
+    [Fact] public void LoadsBuiltInsWhenNoDirectory()
     {
         var missing = Path.Combine(
             Path.GetTempPath(), "ZetlTemplateStoreTests", Guid.NewGuid().ToString("N"));
@@ -19,7 +22,7 @@ internal static class ZetlTemplateStoreTests
             "With no templates directory, the catalog is exactly the built-ins.");
     }
 
-    public static void LoadsValidUserTemplatesAndSkipsBadOnes()
+    [Fact] public void LoadsValidUserTemplatesAndSkipsBadOnes()
     {
         using var dir = new TempDir();
         var logs = new List<string>();
@@ -63,7 +66,7 @@ internal static class ZetlTemplateStoreTests
             "Skipping a built-in id collision should leave a diagnostic.");
     }
 
-    public static void RemovingAFileDropsTheTemplateAfterRefresh()
+    [Fact] public void RemovingAFileDropsTheTemplateAfterRefresh()
     {
         using var dir = new TempDir();
         var store = new ZetlTemplateStore(dir.Path);
@@ -86,7 +89,7 @@ internal static class ZetlTemplateStoreTests
             "After removal only the built-ins remain.");
     }
 
-    public static void SaveRoundTripsAndRefusesBuiltInIds()
+    [Fact] public void SaveRoundTripsAndRefusesBuiltInIds()
     {
         using var dir = new TempDir();
         var store = new ZetlTemplateStore(dir.Path);
@@ -115,7 +118,7 @@ internal static class ZetlTemplateStoreTests
             "Saving an invalid template should be refused.");
     }
 
-    public static void DuplicateMakesAnIndependentEditableCopy()
+    [Fact] public void DuplicateMakesAnIndependentEditableCopy()
     {
         var builtIn = ZetlTemplateDefaults.FindBuiltIn("research-board")
             ?? throw new InvalidOperationException("research-board built-in is missing.");
@@ -141,7 +144,7 @@ internal static class ZetlTemplateStoreTests
             "Editing a duplicate must not mutate the source.");
     }
 
-    public static void DeleteRemovesUserTemplatesButNotBuiltIns()
+    [Fact] public void DeleteRemovesUserTemplatesButNotBuiltIns()
     {
         using var dir = new TempDir();
         var store = new ZetlTemplateStore(dir.Path);
@@ -173,37 +176,6 @@ internal static class ZetlTemplateStoreTests
     private static void Write(TempDir dir, string fileName, ZetlTemplateDocument template)
     {
         JsonFile.WriteAtomic(Path.Combine(dir.Path, fileName), template);
-    }
-
-    private static void AssertTrue(bool condition, string message)
-    {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
-    }
-
-    private static void AssertEqual<T>(T expected, T actual, string message)
-    {
-        if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        {
-            throw new InvalidOperationException($"{message} Expected '{expected}', got '{actual}'.");
-        }
-    }
-
-    private static void AssertThrows<TException>(Action action, string message)
-        where TException : Exception
-    {
-        try
-        {
-            action();
-        }
-        catch (TException)
-        {
-            return;
-        }
-
-        throw new InvalidOperationException($"{message} (expected {typeof(TException).Name})");
     }
 
     private sealed class TempDir : IDisposable

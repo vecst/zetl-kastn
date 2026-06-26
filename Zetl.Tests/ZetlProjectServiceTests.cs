@@ -2,11 +2,14 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class ZetlProjectServiceTests
+public class ZetlProjectServiceTests
 {
-    public static void RetriedAddDoesNotDuplicate()
+    [Fact] public void RetriedAddDoesNotDuplicate()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -25,7 +28,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual(1, bucket.Notes.Count, "Retrying an add must not duplicate the slip.");
     }
 
-    public static void StaleEditReturnsCurrentSlip()
+    [Fact] public void StaleEditReturnsCurrentSlip()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -58,7 +61,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual("newer", note.Text, "A stale edit must not overwrite the slip.");
     }
 
-    public static void UnrelatedCaptureDoesNotConflictWithRename()
+    [Fact] public void UnrelatedCaptureDoesNotConflictWithRename()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -83,7 +86,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual(metadataRevision + 1, project.MetadataRevision, "Rename should advance only metadata revision.");
     }
 
-    public static void ConcurrentAddsAreSerialized()
+    [Fact] public void ConcurrentAddsAreSerialized()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -119,7 +122,7 @@ internal static class ZetlProjectServiceTests
             "Every acknowledged add should be durable.");
     }
 
-    public static void DirectAndServiceMutationsShareOneWriter()
+    [Fact] public void DirectAndServiceMutationsShareOneWriter()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -157,7 +160,7 @@ internal static class ZetlProjectServiceTests
             "The shared writer monitor should make every mixed mutation durable.");
     }
 
-    public static void SlipInclusionToggleRoundTrips()
+    [Fact] public void SlipInclusionToggleRoundTrips()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -203,7 +206,7 @@ internal static class ZetlProjectServiceTests
         AssertTrue(!note.ExcludedFromViews, "The stored note should be included again.");
     }
 
-    public static void SlipAlignmentRoundTrips()
+    [Fact] public void SlipAlignmentRoundTrips()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -249,7 +252,7 @@ internal static class ZetlProjectServiceTests
         AssertTrue(note.Align is null, "The stored note should carry no alignment for left.");
     }
 
-    public static void SlipBlockKindAndCheckedRoundTrip()
+    [Fact] public void SlipBlockKindAndCheckedRoundTrip()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -289,7 +292,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual("", cleared.BlockKind, "An explicit empty kind clears the marker (toggle off).");
     }
 
-    public static void DividerNoteAddsWithoutContent()
+    [Fact] public void DividerNoteAddsWithoutContent()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -326,7 +329,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual(ZetlResponseStatus.ValidationError, empty.Status, "A content-less plain note is still rejected.");
     }
 
-    public static void StructuralNoteIsSkippedByPop()
+    [Fact] public void StructuralNoteIsSkippedByPop()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -345,7 +348,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual(note.Id, poppedNote?.Id, "Pop should remove the content note, not the divider.");
     }
 
-    public static void BucketRenderKindRoundTrips()
+    [Fact] public void BucketRenderKindRoundTrips()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out _);
@@ -371,7 +374,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual("", weirdSnapshot.RenderKind, "An unknown render kind normalizes to a normal bucket.");
     }
 
-    public static void BucketAndSlipCommandsRoundTrip()
+    [Fact] public void BucketAndSlipCommandsRoundTrip()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var inbox);
@@ -520,7 +523,7 @@ internal static class ZetlProjectServiceTests
         AssertTrue(snapshot.Buckets.Any(item => item.Id == deletedBucket.Id), "Deleted bucket should remain visible in project snapshots.");
     }
 
-    public static void ProjectAndBucketCommandsHonorRevisions()
+    [Fact] public void ProjectAndBucketCommandsHonorRevisions()
     {
         using var temp = new TempStateDirectory();
         var store = new ZetlStateStore(temp.StatePath, "service-session");
@@ -592,7 +595,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual(0, store.State.Projects.Count, "Deleted project should leave the store.");
     }
 
-    public static void RevisionsPersistAcrossReload()
+    [Fact] public void RevisionsPersistAcrossReload()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -612,7 +615,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual(2L, loadedNote.Revision, "Slip revision should persist.");
     }
 
-    public static void SuccessfulMutationPublishesOneDetailedEvent()
+    [Fact] public void SuccessfulMutationPublishesOneDetailedEvent()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -635,7 +638,7 @@ internal static class ZetlProjectServiceTests
             "Response and event should report the same durable sequence.");
     }
 
-    public static void FailedMutationPublishesNoEvent()
+    [Fact] public void FailedMutationPublishesNoEvent()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -656,7 +659,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual(0, events.Count, "A rejected mutation must not publish a change.");
     }
 
-    public static void SubscriberFailureDoesNotChangeAcknowledgement()
+    [Fact] public void SubscriberFailureDoesNotChangeAcknowledgement()
     {
         using var temp = new TempStateDirectory();
         var logs = new List<string>();
@@ -682,7 +685,7 @@ internal static class ZetlProjectServiceTests
         AssertTrue(logs.Count >= 2, "Subscriber failures should be logged.");
     }
 
-    public static void DirectCapturePublishesProjectChange()
+    [Fact] public void DirectCapturePublishesProjectChange()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -703,7 +706,7 @@ internal static class ZetlProjectServiceTests
             "Direct capture notification should carry the durable sequence.");
     }
 
-    public static void ListProjectsIncludesCheapPreviewText()
+    [Fact] public void ListProjectsIncludesCheapPreviewText()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -745,7 +748,7 @@ internal static class ZetlProjectServiceTests
             "Project summary previews should skip Deleted content.");
     }
 
-    public static void ReorderSlipMovesWithinBucket()
+    [Fact] public void ReorderSlipMovesWithinBucket()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var inbox);
@@ -797,7 +800,7 @@ internal static class ZetlProjectServiceTests
             "A null anchor should move the slip to the end of its bucket.");
     }
 
-    public static void PictureContentIsReadOnly()
+    [Fact] public void PictureContentIsReadOnly()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -842,7 +845,7 @@ internal static class ZetlProjectServiceTests
             "A text slip should not be exposed as picture content.");
     }
 
-    public static void ProjectStatusRoundTripsAcrossReload()
+    [Fact] public void ProjectStatusRoundTripsAcrossReload()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out _);
@@ -897,7 +900,7 @@ internal static class ZetlProjectServiceTests
             "Lifecycle status should persist across reload.");
     }
 
-    public static void BucketHeadingRoundTripsAcrossReload()
+    [Fact] public void BucketHeadingRoundTripsAcrossReload()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
@@ -935,7 +938,7 @@ internal static class ZetlProjectServiceTests
         AssertEqual(1, loaded.HeadingLevel, "Heading level should persist across reload.");
     }
 
-    public static void ProjectJournalModeRoundTripsThroughService()
+    [Fact] public void ProjectJournalModeRoundTripsThroughService()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out _);

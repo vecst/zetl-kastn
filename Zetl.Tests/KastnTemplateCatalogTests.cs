@@ -3,11 +3,14 @@ using KASTN;
 using ZETL;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class KastnTemplateCatalogTests
+public class KastnTemplateCatalogTests
 {
-    public static void BuiltInTemplatesAreValid()
+    [Fact] public void BuiltInTemplatesAreValid()
     {
         var builtIns = KastnTemplateCatalog.BuiltIns;
         foreach (var template in builtIns)
@@ -24,7 +27,7 @@ internal static class KastnTemplateCatalogTests
             "The catalog should ship at least the three built-in templates.");
     }
 
-    public static void TemplateCreatesProjectThroughService()
+    [Fact] public void TemplateCreatesProjectThroughService()
     {
         using var temp = new TempDir();
         var store = new ZetlStateStore(temp.StatePath, "template-tests");
@@ -67,7 +70,7 @@ internal static class KastnTemplateCatalogTests
             "Sources should carry the template's TSV header starting text.");
     }
 
-    public static void ConsumableTemplateSeedsOrderedReplayQueue()
+    [Fact] public void ConsumableTemplateSeedsOrderedReplayQueue()
     {
         using var temp = new TempDir();
         var store = new ZetlStateStore(temp.StatePath, "template-tests");
@@ -124,7 +127,7 @@ internal static class KastnTemplateCatalogTests
             "Seeds should keep order: the last field replays last.");
     }
 
-    public static void BlankTemplateCreatesMinimalProject()
+    [Fact] public void BlankTemplateCreatesMinimalProject()
     {
         using var temp = new TempDir();
         var store = new ZetlStateStore(temp.StatePath, "template-tests");
@@ -139,29 +142,11 @@ internal static class KastnTemplateCatalogTests
             ZetlProtocolJson.Options)
             ?? throw new InvalidOperationException("CreateProject returned no snapshot.");
 
-        AssertEqual(ZetlResponseStatus.Success, response.Status, "Blank creation should succeed.");
-        AssertTrue(
-            snapshot.Buckets.Any(bucket => bucket.Name == "Inbox"),
-            "Blank should create the Inbox bucket.");
-        AssertTrue(
-            snapshot.Buckets.Any(bucket => bucket.Name == "Scratch"),
-            "Blank should still get the protected Scratch bucket.");
-    }
-
-    private static void AssertTrue(bool condition, string message)
-    {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
-    }
-
-    private static void AssertEqual<T>(T expected, T actual, string message)
-    {
-        if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        {
-            throw new InvalidOperationException($"{message} Expected '{expected}', got '{actual}'.");
-        }
+        Assert.Equal(ZetlResponseStatus.Success, response.Status);
+        Assert.True(
+            snapshot.Buckets.Any(bucket => bucket.Name == "Inbox"));
+        Assert.True(
+            snapshot.Buckets.Any(bucket => bucket.Name == "Scratch"));
     }
 
     private sealed class TempDir : IDisposable

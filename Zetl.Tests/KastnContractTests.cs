@@ -1,11 +1,14 @@
 using System.Text.Json;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class KastnContractTests
+public class KastnContractTests
 {
-    public static void CommandEnvelopeRoundTrips()
+    [Fact] public void CommandEnvelopeRoundTrips()
     {
         var command = ZetlCommandEnvelope.Create(
             commandId: "command-1",
@@ -31,7 +34,7 @@ internal static class KastnContractTests
             "Typed payload should round-trip.");
     }
 
-    public static void ValidationEnforcesMutationScope()
+    [Fact] public void ValidationEnforcesMutationScope()
     {
         var missingScope = new ZetlCommandEnvelope
         {
@@ -53,7 +56,7 @@ internal static class KastnContractTests
         AssertTrue(ZetlContractRules.Validate(valid).IsValid, "A complete revision-checked mutation should validate.");
     }
 
-    public static void UnsupportedProtocolIsDistinct()
+    [Fact] public void UnsupportedProtocolIsDistinct()
     {
         var command = new ZetlCommandEnvelope
         {
@@ -68,7 +71,7 @@ internal static class KastnContractTests
         AssertEqual("unsupported_protocol", validation.Code, "Protocol mismatch should have a stable code.");
     }
 
-    public static void SnapshotKeepsRevisionScopesSeparate()
+    [Fact] public void SnapshotKeepsRevisionScopesSeparate()
     {
         var snapshot = new ZetlProjectSnapshot
         {
@@ -121,7 +124,7 @@ internal static class KastnContractTests
             "Slip deleted timestamp should round-trip.");
     }
 
-    public static void ConflictCarriesCurrentRecord()
+    [Fact] public void ConflictCarriesCurrentRecord()
     {
         var current = new ZetlSlipSnapshot
         {
@@ -162,7 +165,7 @@ internal static class KastnContractTests
         AssertEqual("newer text", conflictSlip?.Text, "Conflict should contain the current record.");
     }
 
-    public static void ContractsExposeNoStoragePaths()
+    [Fact] public void ContractsExposeNoStoragePaths()
     {
         var mutationTypes = new[]
         {
@@ -186,27 +189,6 @@ internal static class KastnContractTests
             .Where(name => name.Contains("Path", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        AssertEqual(0, pathProperties.Count, "Kastn contracts must use domain values and content, not storage paths.");
-    }
-
-    private static void AssertTrue(bool condition, string message)
-    {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
-    }
-
-    private static void AssertFalse(bool condition, string message)
-    {
-        AssertTrue(!condition, message);
-    }
-
-    private static void AssertEqual<T>(T expected, T actual, string message)
-    {
-        if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        {
-            throw new InvalidOperationException($"{message} Expected '{expected}', got '{actual}'.");
-        }
+        Assert.Empty(pathProperties);
     }
 }

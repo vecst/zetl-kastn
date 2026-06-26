@@ -2,11 +2,14 @@ using System.Text.Json;
 using ZETL;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class ZetlViewTests
+public class ZetlViewTests
 {
-    public static void BuiltInViewsAreValidAndRoundTrip()
+    [Fact] public void BuiltInViewsAreValidAndRoundTrip()
     {
         var builtIns = ZetlViewDefaults.CreateAll();
         AssertTrue(builtIns.Count >= 5, "The catalog should ship the built-in views.");
@@ -30,7 +33,7 @@ internal static class ZetlViewTests
             "View kind should serialize as a readable word.");
     }
 
-    public static void RendererOmitsSlipsExcludedFromViews()
+    [Fact] public void RendererOmitsSlipsExcludedFromViews()
     {
         var project = Project(
             "Demo",
@@ -47,7 +50,7 @@ internal static class ZetlViewTests
         AssertRender(project, ZetlViewKinds.Plain, "kept idea");
     }
 
-    public static void InvalidViewsReportErrors()
+    [Fact] public void InvalidViewsReportErrors()
     {
         AssertTrue(ZetlViewValidator.Validate(null).Count > 0, "Null view is invalid.");
 
@@ -62,7 +65,7 @@ internal static class ZetlViewTests
             "A non-positive TSV row length should be rejected.");
     }
 
-    public static void RendererFormatsNestedBucketsAndSlips()
+    [Fact] public void RendererFormatsNestedBucketsAndSlips()
     {
         var project = Project(
             "Demo",
@@ -86,7 +89,7 @@ internal static class ZetlViewTests
             "# Demo\n\n## Ideas\n\nfirst idea\n\nsecond idea\n\n### Steps\n\ndo this");
     }
 
-    public static void ExportFidelityMatchesRenderedKinds()
+    [Fact] public void ExportFidelityMatchesRenderedKinds()
     {
         // Formatting carries only into the kinds that translate the Markdown AST;
         // the literal compile kinds emit slip text verbatim.
@@ -121,7 +124,7 @@ internal static class ZetlViewTests
         }
     }
 
-    public static void RendererBuildsTsvRowsUsingBucketHeaders()
+    [Fact] public void RendererBuildsTsvRowsUsingBucketHeaders()
     {
         var project = Project(
             "Cat",
@@ -134,7 +137,7 @@ internal static class ZetlViewTests
             "Cat\nRows\nName\tNumber\nx\t1\ny\t2");
     }
 
-    public static void StoreLoadsSavesAndDeletesUserViews()
+    [Fact] public void StoreLoadsSavesAndDeletesUserViews()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ZetlViewTests", Guid.NewGuid().ToString("N"));
         try
@@ -190,7 +193,7 @@ internal static class ZetlViewTests
         }
     }
 
-    public static void RendererBuildsEscapedHtml()
+    [Fact] public void RendererBuildsEscapedHtml()
     {
         var slip1 = Slip("b1", "first <b>idea</b> & more", "bullet");
         var slip2 = Slip("b2", "do this", "bullet");
@@ -210,7 +213,7 @@ internal static class ZetlViewTests
         AssertContains(html, $"<li id=\"{slip2.Id}\">do this</li>");
     }
 
-    public static void RendererHonorsSlipAlignment()
+    [Fact] public void RendererHonorsSlipAlignment()
     {
         var slipLeft = Slip("b1", "left one", "bullet");
         var slipMiddle = Slip("b1", "middle one", "bullet") with { Align = "center" };
@@ -235,7 +238,7 @@ internal static class ZetlViewTests
             "# Demo\n\n## Ideas\n\n- left one\n- middle one\n- right one");
     }
 
-    public static void MarkdownInlineFormattingRendersToHtml()
+    [Fact] public void MarkdownInlineFormattingRendersToHtml()
     {
         AssertEqual("<strong>bold</strong>", ZetlMarkdown.InlinesToHtml("**bold**"), "Bold.");
         AssertEqual("<em>it</em>", ZetlMarkdown.InlinesToHtml("*it*"), "Italic.");
@@ -270,7 +273,7 @@ internal static class ZetlViewTests
         AssertContains(html, $"<li id=\"{slip.Id}\">see <strong>this</strong> and <a href=\"http://h\">x</a></li>");
     }
 
-    public static void MarkdownBlockListsRenderToHtml()
+    [Fact] public void MarkdownBlockListsRenderToHtml()
     {
         AssertEqual(
             "<ul><li>one</li><li>two</li></ul>",
@@ -293,7 +296,7 @@ internal static class ZetlViewTests
         AssertEqual("a<br />b", ZetlMarkdown.BlocksToHtml("a\nb"), "Plain text stays a paragraph.");
     }
 
-    public static void MarkdownBlockStructuresRenderToHtml()
+    [Fact] public void MarkdownBlockStructuresRenderToHtml()
     {
         AssertEqual(
             "<p style=\"font-weight:700;font-size:1.05em;margin:0.5em 0 0.2em\">Section</p>",
@@ -319,7 +322,7 @@ internal static class ZetlViewTests
             "Inline code is not mistaken for a code fence.");
     }
 
-    public static void MarkdownExportSoftensHeadingsAndKeepsBlocks()
+    [Fact] public void MarkdownExportSoftensHeadingsAndKeepsBlocks()
     {
         var project = Project(
             "Doc",
@@ -334,7 +337,7 @@ internal static class ZetlViewTests
             "# Doc\n\n## B\n\n**Section**\n\n```\nx = 1\n```");
     }
 
-    public static void ViewListStyleAndHeadingNumbersRender()
+    [Fact] public void ViewListStyleAndHeadingNumbersRender()
     {
         // Per-note list kind drives the markers (the view no longer carries a bucket-
         // wide style); cascading heading numbers still come from the view.
@@ -405,7 +408,7 @@ internal static class ZetlViewTests
             "Markdown ordered notes with cascading numbered headings.");
     }
 
-    public static void MarkdownPreservesSlipOwnListMarkup()
+    [Fact] public void MarkdownPreservesSlipOwnListMarkup()
     {
         var project = Project(
             "Demo",
@@ -420,7 +423,7 @@ internal static class ZetlViewTests
             "# Demo\n\n## Tasks\n\n- [ ] todo\n- [x] done\nplain item");
     }
 
-    public static void GroupBucketRendersAsBoxedSection()
+    [Fact] public void GroupBucketRendersAsBoxedSection()
     {
         var project = Project(
             "Demo",
@@ -446,7 +449,7 @@ internal static class ZetlViewTests
             "A normal bucket should not render a group box.");
     }
 
-    public static void StructuralKindClassification()
+    [Fact] public void StructuralKindClassification()
     {
         AssertTrue(ZetlViewRenderer.IsStructuralKind("divider"), "A divider is a structural kind.");
         foreach (var kind in new[] { "", "bullet", "ordered", "task", "heading", "quote", "code" })
@@ -457,7 +460,7 @@ internal static class ZetlViewTests
         }
     }
 
-    public static void KindNormalizationIsCentralized()
+    [Fact] public void KindNormalizationIsCentralized()
     {
         // Block kinds: every declared kind round-trips; case and surrounding space are
         // tolerated; anything else (including "paragraph"/null) collapses to None.
@@ -485,7 +488,7 @@ internal static class ZetlViewTests
             "Unknown container kind collapses to none.");
     }
 
-    public static void NoteKindRendersAsWholeNoteBlock()
+    [Fact] public void NoteKindRendersAsWholeNoteBlock()
     {
         var project = Project(
             "Demo",
@@ -519,7 +522,7 @@ internal static class ZetlViewTests
         AssertContains(markdown, "---");
     }
 
-    public static void PerSlipBlockKindRendersMarkdownMarkers()
+    [Fact] public void PerSlipBlockKindRendersMarkdownMarkers()
     {
         var project = Project(
             "Demo",
@@ -538,7 +541,7 @@ internal static class ZetlViewTests
             "# Demo\n\n## B\n\n- a\n- [ ] b\n- [x] c");
     }
 
-    public static void BucketLevelFormattingInheritsToSlips()
+    [Fact] public void BucketLevelFormattingInheritsToSlips()
     {
         var project = Project(
             "InheritDemo",
@@ -565,7 +568,7 @@ internal static class ZetlViewTests
             "# InheritDemo\n\n## Tasks\n\n- [ ] task 1\n- [x] task 2\n**header override**\n\n## Bullets\n\n- bullet 1\n\n## Ordered\n\n1. ordered 1\n2. ordered 2");
     }
 
-    public static void OrderedSlipsRenumberContinuouslyOverVisibleSlips()
+    [Fact] public void OrderedSlipsRenumberContinuouslyOverVisibleSlips()
     {
         // Ordered notes are numbered over their run (computed at render time) and a
         // non-ordered note restarts the count.
@@ -610,7 +613,7 @@ internal static class ZetlViewTests
         AssertContains(html, $"<div id=\"{slipNote.Id}\">note</div>");
     }
 
-    public static void DocumentTitleHidesOrOverridesProjectName()
+    [Fact] public void DocumentTitleHidesOrOverridesProjectName()
     {
         var project = Project("Demo", [Bucket("b1", "Ideas")], [Slip("b1", "one")]);
 
@@ -654,7 +657,7 @@ internal static class ZetlViewTests
         AssertContains(htmlHidden, "<title>Demo</title>");
     }
 
-    public static void SectionHeadingStyleRendersAcrossKinds()
+    [Fact] public void SectionHeadingStyleRendersAcrossKinds()
     {
         var project = Project("Demo", [Bucket("b1", "Ideas")], [Slip("b1", "one")]);
 
@@ -697,7 +700,7 @@ internal static class ZetlViewTests
         AssertEqual("# Big Centered\n\none", markdown, "Markdown uses only the section level.");
     }
 
-    public static void BucketHeadingStyleRendersInAllBucketsView()
+    [Fact] public void BucketHeadingStyleRendersInAllBucketsView()
     {
         var project = Project(
             "Demo",
@@ -721,7 +724,7 @@ internal static class ZetlViewTests
         }
     }
 
-    public static void ProjectRemembersDefaultViewAcrossReload()
+    [Fact] public void ProjectRemembersDefaultViewAcrossReload()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ZetlViewTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -777,7 +780,7 @@ internal static class ZetlViewTests
         }
     }
 
-    public static void ProjectScopedViewsPersistAndStayIsolated()
+    [Fact] public void ProjectScopedViewsPersistAndStayIsolated()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ZetlProjectViewTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -882,7 +885,7 @@ internal static class ZetlViewTests
         }
     }
 
-    public static void CreationTypeStoreLoadsSavesAndDeletes()
+    [Fact] public void CreationTypeStoreLoadsSavesAndDeletes()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ZetlCreationTypeTests", Guid.NewGuid().ToString("N"));
         try
@@ -938,7 +941,7 @@ internal static class ZetlViewTests
         }
     }
 
-    public static void SectionsRenameReorderAndOmitBuckets()
+    [Fact] public void SectionsRenameReorderAndOmitBuckets()
     {
         var project = Project(
             "Demo",
@@ -965,7 +968,7 @@ internal static class ZetlViewTests
             "Sections should rename, reorder, and omit buckets.");
     }
 
-    public static void RendererEmbedsPictures()
+    [Fact] public void RendererEmbedsPictures()
     {
         var picture = PictureSlip("b1", "Diagram", "picture-1", "hash-1");
         var project = Project("Demo", [Bucket("b1", "Ideas")], [picture]);
@@ -1005,7 +1008,7 @@ internal static class ZetlViewTests
             "Text-only views should retain a readable picture marker.");
     }
 
-    public static void PdfRendererProducesAPdfDocument()
+    [Fact] public void PdfRendererProducesAPdfDocument()
     {
         var project = Project(
             "Demo",
@@ -1022,7 +1025,7 @@ internal static class ZetlViewTests
         AssertEqual("%PDF-", header, "Output should be a PDF document.");
     }
 
-    public static void PdfRendererEmbedsPictures()
+    [Fact] public void PdfRendererEmbedsPictures()
     {
         var png = Convert.FromBase64String(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
@@ -1124,34 +1127,4 @@ internal static class ZetlViewTests
         CapturedAtUtc = DateTimeOffset.UnixEpoch
     };
 
-    private static void AssertTrue(bool condition, string message)
-    {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
-    }
-
-    private static void AssertEqual<T>(T expected, T actual, string message)
-    {
-        if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        {
-            throw new InvalidOperationException($"{message} Expected '{expected}', got '{actual}'.");
-        }
-    }
-
-    private static void AssertThrows<TException>(Action action, string message)
-        where TException : Exception
-    {
-        try
-        {
-            action();
-        }
-        catch (TException)
-        {
-            return;
-        }
-
-        throw new InvalidOperationException($"{message} (expected {typeof(TException).Name})");
-    }
 }

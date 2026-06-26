@@ -321,6 +321,7 @@ The live store is human-readable JSON:
       project.json
       assets\
   templates\
+  creation-types\
   themes\
   views\
 ```

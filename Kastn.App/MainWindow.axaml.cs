@@ -92,7 +92,7 @@ internal partial class MainWindow : Window
         new KastnRenderKindItem("table", "Table"),
         new KastnRenderKindItem("latex", "LaTeX Block")
     ];
-    private readonly KastnEditorState editorState = new();
+    internal readonly KastnEditorState editorState = new();
     private readonly Dictionary<string, ZetlPictureContent> pictureCache = new(StringComparer.Ordinal);
     private readonly Queue<string> pictureCacheOrder = [];
     private readonly Dictionary<string, Task<ZetlPictureContent?>> pictureLoads = new(StringComparer.Ordinal);

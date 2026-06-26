@@ -2,13 +2,16 @@ using System.Text.Json;
 using ZETL;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class ZetlTemplateDocumentTests
+public class ZetlTemplateDocumentTests
 {
     // A copied template document must survive a JSON round-trip unchanged and
     // stay human-readable (type and bucket settings as words, not numbers).
-    public static void BuiltInsRoundTripThroughJson()
+    [Fact] public void BuiltInsRoundTripThroughJson()
     {
         foreach (var original in ZetlTemplateDefaults.CreateAll())
         {
@@ -54,7 +57,7 @@ internal static class ZetlTemplateDocumentTests
 
     // A document written by a newer build (higher version, fields this build does
     // not know) must load, validate, and keep its unknown fields on re-save.
-    public static void FutureVersionAndUnknownFieldsArePreserved()
+    [Fact] public void FutureVersionAndUnknownFieldsArePreserved()
     {
         const string futureJson = """
         {
@@ -90,7 +93,7 @@ internal static class ZetlTemplateDocumentTests
             "Re-saving must not lose a newer build's unknown fields.");
     }
 
-    public static void InvalidTemplatesReportActionableErrors()
+    [Fact] public void InvalidTemplatesReportActionableErrors()
     {
         AssertError(null, "missing", "A null document should report missing data.");
 
@@ -207,19 +210,5 @@ internal static class ZetlTemplateDocumentTests
                 + string.Join("; ", errors));
     }
 
-    private static void AssertTrue(bool condition, string message)
-    {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
-    }
 
-    private static void AssertEqual<T>(T expected, T actual, string message)
-    {
-        if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        {
-            throw new InvalidOperationException($"{message} Expected '{expected}', got '{actual}'.");
-        }
-    }
 }

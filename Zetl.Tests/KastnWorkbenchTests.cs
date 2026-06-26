@@ -2,11 +2,14 @@ using KASTN;
 using System.Text.Json;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class KastnWorkbenchTests
+public class KastnWorkbenchTests
 {
-    public static void FiltersPreserveSnapshotOrderAndHierarchy()
+    [Fact] public void FiltersPreserveSnapshotOrderAndHierarchy()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
         var project = Project(
@@ -69,7 +72,7 @@ internal static class KastnWorkbenchTests
             "Source, session, and date filters should compose.");
     }
 
-    public static void DirtyEditorSurvivesUnrelatedChanges()
+    [Fact] public void DirtyEditorSurvivesUnrelatedChanges()
     {
         var editor = new KastnEditorState();
         var original = Slip(
@@ -90,7 +93,7 @@ internal static class KastnWorkbenchTests
         AssertEqual(null, editor.ConflictCurrent, "An unchanged slip should not conflict.");
     }
 
-    public static void SameSlipChangesRequireExplicitResolution()
+    [Fact] public void SameSlipChangesRequireExplicitResolution()
     {
         var editor = new KastnEditorState();
         var original = Slip(
@@ -129,7 +132,7 @@ internal static class KastnWorkbenchTests
         AssertTrue(!localSave.IsDirty, "An acknowledged local save event should clean the editor.");
     }
 
-    public static void ProjectTreeNestsBucketsSlipsAndCounts()
+    [Fact] public void ProjectTreeNestsBucketsSlipsAndCounts()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
         var project = Project(
@@ -177,7 +180,7 @@ internal static class KastnWorkbenchTests
         AssertEqual("Picture", pictureLeaf.Label, "A textless picture labels as Picture.");
     }
 
-    public static void ProjectTreeSeparatesDeletedBucket()
+    [Fact] public void ProjectTreeSeparatesDeletedBucket()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
         var project = Project(
@@ -205,7 +208,7 @@ internal static class KastnWorkbenchTests
             "Deleted slips appear under the Deleted bucket.");
     }
 
-    public static void BatchFormatRewritesMarkersAndStrike()
+    [Fact] public void BatchFormatRewritesMarkersAndStrike()
     {
         // Strikethrough toggles. (List-item kind is now a per-note property, not body
         // markup, so there is no marker-rewriting helper to test here.)
@@ -213,7 +216,7 @@ internal static class KastnWorkbenchTests
         AssertEqual("done", KastnBatchFormat.ToggleStrike("~~done~~"), "Unwrap strike.");
     }
 
-    public static void SelectionComputesSlipsTitleAndNone()
+    [Fact] public void SelectionComputesSlipsTitleAndNone()
     {
         var s1 = SlipTreeNode("s1");
         var s2 = SlipTreeNode("s2");
@@ -266,7 +269,7 @@ internal static class KastnWorkbenchTests
         Children = children,
     };
 
-    public static void SlipLabelTruncatesLongText()
+    [Fact] public void SlipLabelTruncatesLongText()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
         var project = Project(
@@ -279,7 +282,7 @@ internal static class KastnWorkbenchTests
         AssertTrue(label.Length <= 24, "A truncated slip label should respect the max length.");
     }
 
-    public static void ViewerFormatsVisibleSlipsAsReadableOutline()
+    [Fact] public void ViewerFormatsVisibleSlipsAsReadableOutline()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
         var project = Project(
@@ -314,7 +317,7 @@ internal static class KastnWorkbenchTests
         AssertEqual(expected, text, "Viewer text should outline visible slips by nested bucket.");
     }
 
-    public static void InspectorSurfacesCaptureAndPictureMetadata()
+    [Fact] public void InspectorSurfacesCaptureAndPictureMetadata()
     {
         var captured = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
         var project = Project(
@@ -370,7 +373,38 @@ internal static class KastnWorkbenchTests
         AssertEqual("4", fields["Revision"], "Technical details should expose the current revision.");
     }
 
-    public static void CommandsOrganizeThroughZetl()
+    [Fact] public void InspectorSurfacesBacklinkMetadata()
+    {
+        var captured = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
+        var project = Project(
+            buckets:
+            [
+                Bucket("b1", "Inbox"),
+                Bucket("b2", "Notes")
+            ],
+            slips:
+            [
+                Slip("source-id", "b1", "See [[target-id|Link]]", "copy", "session-one", captured, revision: 1) with
+                {
+                    Title = "Source Note"
+                },
+                Slip("target-id", "b2", "Target body", "copy", "session-one", captured, revision: 1) with
+                {
+                    Title = "Target Note"
+                }
+            ]);
+
+        var targetSlip = project.Slips.First(s => s.Id == "target-id");
+        var sections = KastnSlipInspector.Build(project, targetSlip);
+
+        var backlinkSection = sections.FirstOrDefault(section => section.Heading == "Linked from");
+        AssertNotNull(backlinkSection, "Backlink section should be generated.");
+        AssertEqual(1, backlinkSection.Fields.Count, "There should be exactly one backlink.");
+        AssertEqual("Source Note", backlinkSection.Fields[0].Label, "The label should be the source slip's title.");
+        AssertEqual("source-id", backlinkSection.Fields[0].Value, "The value should be the source slip's ID.");
+    }
+
+    [Fact] public void CommandsOrganizeThroughZetl()
     {
         RunAsync(async () =>
         {
@@ -478,6 +512,11 @@ internal static class KastnWorkbenchTests
         });
     }
 
+    private static void RunAsync(Func<Task> action)
+    {
+        action().GetAwaiter().GetResult();
+    }
+
     private static ZetlProjectSnapshot Project(
         IReadOnlyList<ZetlBucketSnapshot> buckets,
         IReadOnlyList<ZetlSlipSnapshot> slips)
@@ -568,11 +607,6 @@ internal static class KastnWorkbenchTests
         {
             controller.SnapshotChanged -= handler;
         }
-    }
-
-    private static void RunAsync(Func<Task> action)
-    {
-        action().GetAwaiter().GetResult();
     }
 
     private static void AssertTrue(bool condition, string message)

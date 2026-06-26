@@ -6,11 +6,14 @@ using System.Text;
 using System.Text.Json;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class ZetlIpcTests
+public class ZetlIpcTests
 {
-    public static void ClientListsOpensAndMutatesProject()
+    [Fact] public void ClientListsOpensAndMutatesProject()
     {
         RunAsync(async () =>
         {
@@ -52,7 +55,7 @@ internal static class ZetlIpcTests
         });
     }
 
-    public static void ClientRetrievesPictureContent()
+    [Fact] public void ClientRetrievesPictureContent()
     {
         RunAsync(async () =>
         {
@@ -81,7 +84,7 @@ internal static class ZetlIpcTests
         });
     }
 
-    public static void TwoClientsReceiveOrderedChanges()
+    [Fact] public void TwoClientsReceiveOrderedChanges()
     {
         RunAsync(async () =>
         {
@@ -129,7 +132,7 @@ internal static class ZetlIpcTests
         });
     }
 
-    public static void MalformedMessageDoesNotStopServer()
+    [Fact] public void MalformedMessageDoesNotStopServer()
     {
         RunAsync(async () =>
         {
@@ -179,7 +182,7 @@ internal static class ZetlIpcTests
         });
     }
 
-    public static void ProtocolMismatchIsRejectedWithoutStoppingServer()
+    [Fact] public void ProtocolMismatchIsRejectedWithoutStoppingServer()
     {
         RunAsync(async () =>
         {
@@ -223,7 +226,7 @@ internal static class ZetlIpcTests
         });
     }
 
-    public static void OversizedFrameIsRejected()
+    [Fact] public void OversizedFrameIsRejected()
     {
         RunAsync(async () =>
         {
@@ -243,7 +246,7 @@ internal static class ZetlIpcTests
         });
     }
 
-    public static void DisconnectedClientDoesNotAffectCaptureOrPeers()
+    [Fact] public void DisconnectedClientDoesNotAffectCaptureOrPeers()
     {
         RunAsync(async () =>
         {
@@ -263,7 +266,7 @@ internal static class ZetlIpcTests
         });
     }
 
-    public static void RealZetlProcessHostsIpc()
+    [Fact] public void RealZetlProcessHostsIpc()
     {
         RunAsync(async () =>
         {
@@ -429,21 +432,7 @@ internal static class ZetlIpcTests
         }
     }
 
-    private static void AssertTrue(bool condition, string message)
-    {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
-    }
 
-    private static void AssertEqual<T>(T expected, T actual, string message)
-    {
-        if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        {
-            throw new InvalidOperationException($"{message} Expected '{expected}', got '{actual}'.");
-        }
-    }
 
     private sealed class IpcFixture : IDisposable
     {

@@ -1,11 +1,14 @@
 using ZETL;
 using ZETL.Contracts;
 
+using Xunit;
+using static ZETL.Tests.XunitAsserts;
+
 namespace ZETL.Tests;
 
-internal static class ZetlSlipLinkTests
+public class ZetlSlipLinkTests
 {
-    public static void ParsesAndResolvesStableIdLinks()
+    [Fact] public void ParsesAndResolvesStableIdLinks()
     {
         var project = Project(
             Slip("source", "Source", "See [[target|Old title]] and [[missing|Remember me]].", "a"),
@@ -27,7 +30,7 @@ internal static class ZetlSlipLinkTests
             "The picker should serialize the stable id with a readable cache.");
     }
 
-    public static void RefreshesCachesWithoutDamagingUnresolvedOrMalformedText()
+    [Fact] public void RefreshesCachesWithoutDamagingUnresolvedOrMalformedText()
     {
         var project = Project(Slip("target", "Renamed target", "Body", "moved-bucket"));
         var source = "Broken [[no pipe]] nested [[oops [[target|Stale]]; "
@@ -40,7 +43,7 @@ internal static class ZetlSlipLinkTests
         AssertEqual(3, ZetlSlipLinks.Parse(source).Count, "A nested malformed opener should not hide later links.");
     }
 
-    public static void ComputesBacklinksWithoutPersistedReverseEdges()
+    [Fact] public void ComputesBacklinksWithoutPersistedReverseEdges()
     {
         var project = Project(
             Slip("one", "One", "[[target|T]] and again [[target|T]]", "a"),
@@ -57,7 +60,7 @@ internal static class ZetlSlipLinkTests
         AssertTrue(!index.ContainsKey("missing"), "Unknown targets should not create backlink entries.");
     }
 
-    public static void ParsesWikiLinksAsInlinesAndRendersThem()
+    [Fact] public void ParsesWikiLinksAsInlinesAndRendersThem()
     {
         var project = Project(
             Slip("source", "Source", "See [[target|Target slip]] and [[missing|Stale stub]].", "a"),
@@ -124,19 +127,5 @@ internal static class ZetlSlipLinkTests
         }
     }
 
-    private static void AssertTrue(bool condition, string message)
-    {
-        if (!condition)
-        {
-            throw new InvalidOperationException(message);
-        }
-    }
 
-    private static void AssertEqual<T>(T expected, T actual, string message)
-    {
-        if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        {
-            throw new InvalidOperationException($"{message} Expected '{expected}', got '{actual}'.");
-        }
-    }
 }

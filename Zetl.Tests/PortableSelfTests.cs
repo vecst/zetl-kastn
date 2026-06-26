@@ -1,11 +1,14 @@
 using Chordl;
 using static Chordl.ChordlKeys;
+using Xunit;
+using System;
+using System.Collections.Generic;
 
 namespace ZETL.Tests;
 
-internal static class PortableSelfTests
+public class PortableSelfTests
 {
-    public static int Run()
+    public static IEnumerable<object[]> GetTests()
     {
         var tests = new (string Name, Action Test)[]
         {
@@ -145,135 +148,21 @@ internal static class PortableSelfTests
                 ("Runtime returns copy and paste compile outcomes", RuntimeReturnsCopyAndPasteCompileOutcomes),
                 ("Runtime compile does not paste when the clipboard write fails", RuntimeCompileDoesNotPasteWhenClipboardWriteFails),
                 ("Runtime reports rejected compiled paste", RuntimeReportsRejectedCompiledPaste),
-                ("Runtime parity scenario writes a reloadable snapshot", RuntimeParityScenarioWritesSnapshot),
-                ("Kastn command envelope round-trips", KastnContractTests.CommandEnvelopeRoundTrips),
-                ("Kastn command validation enforces mutation scope", KastnContractTests.ValidationEnforcesMutationScope),
-                ("Kastn unsupported protocol has a distinct result", KastnContractTests.UnsupportedProtocolIsDistinct),
-                ("Kastn snapshot keeps revision scopes separate", KastnContractTests.SnapshotKeepsRevisionScopesSeparate),
-                ("Kastn conflict carries the current record", KastnContractTests.ConflictCarriesCurrentRecord),
-                ("Kastn contracts expose no storage paths", KastnContractTests.ContractsExposeNoStoragePaths),
-                ("Project service deduplicates retried adds", ZetlProjectServiceTests.RetriedAddDoesNotDuplicate),
-                ("Project service returns current slip for stale edits", ZetlProjectServiceTests.StaleEditReturnsCurrentSlip),
-                ("Project service allows rename after unrelated capture", ZetlProjectServiceTests.UnrelatedCaptureDoesNotConflictWithRename),
-                ("Project service serializes concurrent adds", ZetlProjectServiceTests.ConcurrentAddsAreSerialized),
-                ("Project service shares one writer with existing mutations", ZetlProjectServiceTests.DirectAndServiceMutationsShareOneWriter),
-                ("Project service bucket and slip commands round-trip", ZetlProjectServiceTests.BucketAndSlipCommandsRoundTrip),
-                ("Project service slip inclusion toggle round-trips", ZetlProjectServiceTests.SlipInclusionToggleRoundTrips),
-                ("Project service slip alignment round-trips", ZetlProjectServiceTests.SlipAlignmentRoundTrips),
-                ("Project service slip list kind and checked round-trip", ZetlProjectServiceTests.SlipBlockKindAndCheckedRoundTrip),
-                ("Project service divider note adds without content", ZetlProjectServiceTests.DividerNoteAddsWithoutContent),
-                ("Project service structural note is skipped by pop", ZetlProjectServiceTests.StructuralNoteIsSkippedByPop),
-                ("Project service bucket render kind round-trips", ZetlProjectServiceTests.BucketRenderKindRoundTrips),
-                ("Project service returns picture content read-only", ZetlProjectServiceTests.PictureContentIsReadOnly),
-                ("Project service reorders slips within a bucket", ZetlProjectServiceTests.ReorderSlipMovesWithinBucket),
-                ("Project service lifecycle status round-trips across reload", ZetlProjectServiceTests.ProjectStatusRoundTripsAcrossReload),
-                ("Project service journal-mode round-trips", ZetlProjectServiceTests.ProjectJournalModeRoundTripsThroughService),
-                ("Project service bucket heading round-trips across reload", ZetlProjectServiceTests.BucketHeadingRoundTripsAcrossReload),
-                ("Kastn built-in templates are well-formed", KastnTemplateCatalogTests.BuiltInTemplatesAreValid),
-                ("Kastn template creates a project through Zetl", KastnTemplateCatalogTests.TemplateCreatesProjectThroughService),
-                ("Kastn consumable template seeds an ordered Replay queue", KastnTemplateCatalogTests.ConsumableTemplateSeedsOrderedReplayQueue),
-                ("Kastn blank template creates a minimal project", KastnTemplateCatalogTests.BlankTemplateCreatesMinimalProject),
-                ("Template documents round-trip through JSON", ZetlTemplateDocumentTests.BuiltInsRoundTripThroughJson),
-                ("Template documents preserve future versions and unknown fields", ZetlTemplateDocumentTests.FutureVersionAndUnknownFieldsArePreserved),
-                ("Template validation reports actionable errors", ZetlTemplateDocumentTests.InvalidTemplatesReportActionableErrors),
-                ("Template store loads built-ins without a directory", ZetlTemplateStoreTests.LoadsBuiltInsWhenNoDirectory),
-                ("Template store loads valid user templates and skips bad ones", ZetlTemplateStoreTests.LoadsValidUserTemplatesAndSkipsBadOnes),
-                ("Template store drops a removed user template after refresh", ZetlTemplateStoreTests.RemovingAFileDropsTheTemplateAfterRefresh),
-                ("Template store saves user templates and refuses built-in ids", ZetlTemplateStoreTests.SaveRoundTripsAndRefusesBuiltInIds),
-                ("Template duplicate makes an independent editable copy", ZetlTemplateStoreTests.DuplicateMakesAnIndependentEditableCopy),
-                ("Template store deletes user templates but not built-ins", ZetlTemplateStoreTests.DeleteRemovesUserTemplatesButNotBuiltIns),
-                ("View built-ins are valid and round-trip", ZetlViewTests.BuiltInViewsAreValidAndRoundTrip),
-                ("View validation reports errors", ZetlViewTests.InvalidViewsReportErrors),
-                ("View renderer formats nested buckets and slips", ZetlViewTests.RendererFormatsNestedBucketsAndSlips),
-                ("View renderer omits slips excluded from views", ZetlViewTests.RendererOmitsSlipsExcludedFromViews),
-                ("View renderer builds TSV rows using bucket headers", ZetlViewTests.RendererBuildsTsvRowsUsingBucketHeaders),
-                ("Export fidelity matches rendered kinds", ZetlViewTests.ExportFidelityMatchesRenderedKinds),
-                ("View renderer builds escaped HTML", ZetlViewTests.RendererBuildsEscapedHtml),
-                ("View renderer honors slip alignment", ZetlViewTests.RendererHonorsSlipAlignment),
-                ("Markdown inline formatting renders to HTML", ZetlViewTests.MarkdownInlineFormattingRendersToHtml),
-                ("Markdown block lists render to HTML", ZetlViewTests.MarkdownBlockListsRenderToHtml),
-                ("Markdown block structures render to HTML", ZetlViewTests.MarkdownBlockStructuresRenderToHtml),
-                ("Markdown export softens headings and keeps blocks", ZetlViewTests.MarkdownExportSoftensHeadingsAndKeepsBlocks),
-                ("View list style and heading numbers render", ZetlViewTests.ViewListStyleAndHeadingNumbersRender),
-                ("Markdown preserves a slip's own list markup", ZetlViewTests.MarkdownPreservesSlipOwnListMarkup),
-                ("Per-slip list kind renders Markdown markers", ZetlViewTests.PerSlipBlockKindRendersMarkdownMarkers),
-                ("Bucket-level list kind inherits to slips", ZetlViewTests.BucketLevelFormattingInheritsToSlips),
-                ("Note kind renders as a whole-note block", ZetlViewTests.NoteKindRendersAsWholeNoteBlock),
-                ("Structural kind classification", ZetlViewTests.StructuralKindClassification),
-                ("Kind normalization is centralized", ZetlViewTests.KindNormalizationIsCentralized),
-                ("Group bucket renders as a boxed section", ZetlViewTests.GroupBucketRendersAsBoxedSection),
-                ("Ordered slips renumber over visible slips", ZetlViewTests.OrderedSlipsRenumberContinuouslyOverVisibleSlips),
-                ("Document title hides or overrides the project name", ZetlViewTests.DocumentTitleHidesOrOverridesProjectName),
-                ("Section heading style renders across kinds", ZetlViewTests.SectionHeadingStyleRendersAcrossKinds),
-                ("Bucket heading style renders in the all-buckets view", ZetlViewTests.BucketHeadingStyleRendersInAllBucketsView),
-                ("Slip links parse and resolve stable ids", ZetlSlipLinkTests.ParsesAndResolvesStableIdLinks),
-                ("Slip links refresh caches safely", ZetlSlipLinkTests.RefreshesCachesWithoutDamagingUnresolvedOrMalformedText),
-                ("Slip backlinks are computed from forward links", ZetlSlipLinkTests.ComputesBacklinksWithoutPersistedReverseEdges),
-                ("Slip wiki-links parse and render correctly", ZetlSlipLinkTests.ParsesWikiLinksAsInlinesAndRendersThem),
-                ("View renderer embeds pictures in Markdown and HTML", ZetlViewTests.RendererEmbedsPictures),
-                ("View store loads, saves, and deletes user views", ZetlViewTests.StoreLoadsSavesAndDeletesUserViews),
-                ("View sections rename, reorder, and omit buckets", ZetlViewTests.SectionsRenameReorderAndOmitBuckets),
-                ("Project remembers its default view across reload", ZetlViewTests.ProjectRemembersDefaultViewAcrossReload),
-                ("Project-scoped views persist and stay isolated", ZetlViewTests.ProjectScopedViewsPersistAndStayIsolated),
-                ("Creation type store loads, saves, and deletes", ZetlViewTests.CreationTypeStoreLoadsSavesAndDeletes),
-                ("View PDF renderer produces a PDF document", ZetlViewTests.PdfRendererProducesAPdfDocument),
-                ("View PDF renderer embeds pictures", ZetlViewTests.PdfRendererEmbedsPictures),
-                ("Project service project and bucket commands honor revisions", ZetlProjectServiceTests.ProjectAndBucketCommandsHonorRevisions),
-                ("Project service persists revisions", ZetlProjectServiceTests.RevisionsPersistAcrossReload),
-                ("Project service publishes detailed durable events", ZetlProjectServiceTests.SuccessfulMutationPublishesOneDetailedEvent),
-                ("Project service publishes no event for rejected mutations", ZetlProjectServiceTests.FailedMutationPublishesNoEvent),
-                ("Project service subscriber failures do not change acknowledgement", ZetlProjectServiceTests.SubscriberFailureDoesNotChangeAcknowledgement),
-                ("Project service publishes direct capture changes", ZetlProjectServiceTests.DirectCapturePublishesProjectChange),
-                ("Project service lists cheap preview text", ZetlProjectServiceTests.ListProjectsIncludesCheapPreviewText),
-                ("IPC client lists, opens, and mutates a project", ZetlIpcTests.ClientListsOpensAndMutatesProject),
-                ("IPC client retrieves picture content", ZetlIpcTests.ClientRetrievesPictureContent),
-                ("IPC two clients receive ordered changes", ZetlIpcTests.TwoClientsReceiveOrderedChanges),
-                ("IPC malformed message does not stop server", ZetlIpcTests.MalformedMessageDoesNotStopServer),
-                ("IPC protocol mismatch is rejected without stopping server", ZetlIpcTests.ProtocolMismatchIsRejectedWithoutStoppingServer),
-                ("IPC oversized frame is rejected", ZetlIpcTests.OversizedFrameIsRejected),
-                ("IPC disconnected client does not affect capture or peers", ZetlIpcTests.DisconnectedClientDoesNotAffectCaptureOrPeers),
-                ("IPC real Zetl process hosts and persists commands", ZetlIpcTests.RealZetlProcessHostsIpc),
-                ("Kastn activation handoff carries project ID", KastnLifecycleTests.ActivationHandoffCarriesProjectId),
-                ("Kastn launches Zetl and loads requested project", KastnLifecycleTests.ControllerLaunchesZetlAndLoadsProject),
-                ("Kastn launches to project selection without handoff", KastnLifecycleTests.ControllerLaunchesToProjectSelectionWithoutHandoff),
-                ("Kastn refreshes after project changes", KastnLifecycleTests.ControllerRefreshesAfterProjectChange),
-                ("Kastn reconnects after Zetl restarts", KastnLifecycleTests.ControllerReconnectsAfterZetlRestart),
-                ("Kastn relaunches Zetl after it exits", KastnLifecycleTests.ControllerRelaunchesZetlAfterItExits),
-                ("Kastn shutdown request closes when confirmed", KastnLifecycleTests.ShutdownRequestClosesWhenHandlerAgrees),
-                ("Kastn shutdown request cancels when declined", KastnLifecycleTests.ShutdownRequestCancelsWhenHandlerDeclines),
-                ("Kastn shutdown request reports no Kastn when absent", KastnLifecycleTests.ShutdownRequestReturnsNoKastnWhenAbsent),
-                ("Kastn shutdown suppresses Zetl relaunch", KastnLifecycleTests.BeginShutdownStopsZetlRelaunch),
-                ("Closing Kastn leaves Zetl available", KastnLifecycleTests.ClosingControllerLeavesZetlAvailable),
-                ("Kastn filters preserve order and hierarchy", KastnWorkbenchTests.FiltersPreserveSnapshotOrderAndHierarchy),
-                ("Kastn project tree nests buckets, slips, and counts", KastnWorkbenchTests.ProjectTreeNestsBucketsSlipsAndCounts),
-                ("Kastn project tree separates the Deleted bucket", KastnWorkbenchTests.ProjectTreeSeparatesDeletedBucket),
-                ("Kastn batch format rewrites markers and strike", KastnWorkbenchTests.BatchFormatRewritesMarkersAndStrike),
-                ("Kastn selection computes slips, title, and none", KastnWorkbenchTests.SelectionComputesSlipsTitleAndNone),
-                ("Kastn tree truncates long slip labels", KastnWorkbenchTests.SlipLabelTruncatesLongText),
-                ("Kastn dirty editor survives unrelated changes", KastnWorkbenchTests.DirtyEditorSurvivesUnrelatedChanges),
-                ("Kastn same-slip changes require resolution", KastnWorkbenchTests.SameSlipChangesRequireExplicitResolution),
-                ("Kastn viewer formats visible slips", KastnWorkbenchTests.ViewerFormatsVisibleSlipsAsReadableOutline),
-                ("Kastn inspector surfaces rich slip metadata", KastnWorkbenchTests.InspectorSurfacesCaptureAndPictureMetadata),
-                ("Kastn organizes through Zetl commands", KastnWorkbenchTests.CommandsOrganizeThroughZetl)
+                ("Runtime parity scenario writes a reloadable snapshot", RuntimeParityScenarioWritesSnapshot)
         };
 
-        var failures = new List<string>();
-        foreach (var (name, test) in tests)
+        foreach (var t in tests)
         {
-            try
-            {
-                test();
-                Console.WriteLine($"PASS {name}");
-            }
-            catch (Exception ex)
-            {
-                failures.Add($"{name}: {ex.Message}");
-                Console.WriteLine($"FAIL {name}: {ex.Message}");
-            }
+            yield return new object[] { t.Name, t.Test };
         }
+    }
 
-        Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} portable tests passed.");
-        return failures.Count == 0 ? 0 : 1;
+    [Theory]
+    [MemberData(nameof(GetTests))]
+    public void RunPortableTest(string name, Action test)
+    {
+        Assert.NotNull(name);
+        test();
     }
 
         private static void CopyPassThroughSuppressesRepeats()
