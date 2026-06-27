@@ -120,6 +120,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             undoStack,
             () => settingsStore.Settings.AutoCaptureOnCopy,
             () => settingsStore.Settings.QuickNoteToClipboard,
+            () => settingsStore.Settings.ReplayResumeClipboard,
             Log,
             config.HoldDelay,
             imageUrlResolver);
@@ -888,6 +889,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.ToastDisplayMs = window.ToastDisplayMs;
         settings.AutoCaptureOnCopy = window.AutoCaptureOnCopy;
         settings.QuickNoteToClipboard = window.QuickNoteToClipboard;
+        settings.ReplayResumeClipboard = window.ReplayResumeClipboard;
         settings.CaptureOriginDetail = window.CaptureOriginDetail;
         settings.DefaultProjectBuckets =
             ZetlBucketDefaults.ResolveProjectBuckets(window.DefaultProjectBuckets).ToList();

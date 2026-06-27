@@ -24,6 +24,7 @@ internal sealed class ZetlShortcutCoordinator
     private readonly ZetlUndoStack undoStack;
     private readonly Func<bool> autoCaptureOnCopy;
     private readonly Func<bool> quickNoteToClipboard;
+    private readonly Func<bool> replayResumeClipboard;
     private readonly Action<string> log;
     private readonly TimeSpan holdDelay;
     private readonly IImageUrlResolver? imageUrlResolver;
@@ -38,6 +39,7 @@ internal sealed class ZetlShortcutCoordinator
         ZetlUndoStack undoStack,
         Func<bool> autoCaptureOnCopy,
         Func<bool> quickNoteToClipboard,
+        Func<bool> replayResumeClipboard,
         Action<string> log,
         TimeSpan holdDelay,
         IImageUrlResolver? imageUrlResolver = null)
@@ -51,6 +53,7 @@ internal sealed class ZetlShortcutCoordinator
         this.undoStack = undoStack;
         this.autoCaptureOnCopy = autoCaptureOnCopy;
         this.quickNoteToClipboard = quickNoteToClipboard;
+        this.replayResumeClipboard = replayResumeClipboard;
         this.log = log;
         this.holdDelay = holdDelay;
         this.imageUrlResolver = imageUrlResolver;
@@ -380,6 +383,21 @@ internal sealed class ZetlShortcutCoordinator
         replayInjectedClipboard[index] = null;
     }
 
+    private void RestoreOriginalClipboard(bool shifted)
+    {
+        var index = shifted ? 1 : 0;
+        var restoreTo = replayUserClipboard[index];
+        if (restoreTo is null)
+        {
+            return;
+        }
+        var injected = replayInjectedClipboard[index];
+        if (injected is not null && ZetlClipboardSnapshot.ContentEquals(ReadClipboardSnapshot(), injected))
+        {
+            WriteClipboardSnapshot(restoreTo);
+        }
+    }
+
     // Held Ctrl+A: the physical select-all already passed through (dispatch None), so
     // the field is selected. Select-all leaves nothing on the clipboard, so — unlike
     // copy-hold, where the user's own Ctrl+C already copied — Zetl copies the selection
@@ -594,6 +612,11 @@ internal sealed class ZetlShortcutCoordinator
         {
             store.SetBucketKind(bucket, "Standard");
             store.SetBucketPopMode(bucket, true);
+            if (replayResumeClipboard())
+            {
+                RestoreOriginalClipboard(shifted);
+            }
+            ResetReplayClipboardTracking(shifted);
             notifications.Show($"{bucket.Name} pop is on.");
             return null;
         }
@@ -615,6 +638,10 @@ internal sealed class ZetlShortcutCoordinator
         if (ZetlStateStore.IsReplayBucket(bucket))
         {
             store.SetBucketKind(bucket, "Standard");
+            if (replayResumeClipboard())
+            {
+                RestoreOriginalClipboard(shifted);
+            }
             ResetReplayClipboardTracking(shifted);
             notifications.Show($"{bucket.Name} replay is off.");
             return null;
@@ -833,7 +860,11 @@ internal sealed class ZetlShortcutCoordinator
             return;
         }
 
-        RememberUserClipboardBeforeReplay(shifted);
+        var resumeClipboard = replayResumeClipboard();
+        if (resumeClipboard)
+        {
+            RememberUserClipboardBeforeReplay(shifted);
+        }
         // If the clipboard write itself fails, don't paste -- the foreground app
         // would receive whatever stale text was there instead of the replay item.
         if (!SetReplayClipboard(shifted, replayItem))
@@ -892,8 +923,11 @@ internal sealed class ZetlShortcutCoordinator
                 store.SetBucketKind(activeBucket, "Standard");
             }
 
-            ZetlAsync.RunLogged(
-                () => RestoreUserClipboardAfterReplayAsync(shifted, replayItem), "replay clipboard restore", log);
+            if (resumeClipboard)
+            {
+                ZetlAsync.RunLogged(
+                    () => RestoreUserClipboardAfterReplayAsync(shifted, replayItem), "replay clipboard restore", log);
+            }
             notifications.Show(replayComplete
                 ? $"{bucketName} replay complete."
                 : $"Pasted next item from {bucketName}.");

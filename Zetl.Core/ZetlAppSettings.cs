@@ -6,6 +6,7 @@ internal sealed class ZetlAppSettings
     public int ToastDisplayMs { get; set; } = 950;
     public bool AutoCaptureOnCopy { get; set; } = true;
     public bool QuickNoteToClipboard { get; set; }
+    public bool ReplayResumeClipboard { get; set; } = true;
     public string CaptureOriginDetail { get; set; } = ZetlCaptureOriginDetail.ApplicationAndWindowTitle;
     public List<string> DefaultProjectBuckets { get; set; } = new() { "Inbox", "Scratch" };
     public string DefaultCompileMode { get; set; } = "Formatted";

@@ -123,6 +123,8 @@ public class PortableSelfTests
                 ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
                 ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
                 ("Runtime empty Replay reports a failed final paste", RuntimeEmptyReplayReportsFinalPasteFailure),
+                ("Runtime Replay resumes clipboard when enabled", RuntimeReplayResumesClipboardWhenEnabled),
+                ("Runtime Replay keeps last paste when disabled", RuntimeReplayKeepsLastPasteWhenDisabled),
                 ("Runtime logged fire-and-forget records async failures", RuntimeRunLoggedRecordsAsyncFailure),
                 ("Runtime logged fire-and-forget records delayed async failures", RuntimeRunLoggedRecordsDelayedAsyncFailure),
                 ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
@@ -2755,6 +2757,52 @@ public class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
+        private static void RuntimeReplayResumesClipboardWhenEnabled()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out var undo,
+                replayResumeClipboard: true);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Replay tap should suppress the physical paste.");
+            AssertEqual("user clipboard", clipboard.Text, "Replay should restore the user's clipboard when setting is enabled.");
+        }
+
+        private static void RuntimeReplayKeepsLastPasteWhenDisabled()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out var undo,
+                replayResumeClipboard: false);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Replay tap should suppress the physical paste.");
+            AssertEqual("queued value", clipboard.Text, "Replay should NOT restore the user's clipboard and keep the last paste when setting is disabled.");
+        }
+
         private static void RuntimeReplayHandlesImagesAndRestoresImageClipboard()
         {
             using var temp = new TempStateFile();
@@ -3727,6 +3775,7 @@ public class PortableSelfTests
             out ZetlUndoStack undo,
             IZetlDelay? delay = null,
             bool quickNoteToClipboard = false,
+            bool replayResumeClipboard = true,
             IZetlDispatcher? dispatcher = null,
             IImageUrlResolver? imageUrlResolver = null)
         {
@@ -3742,6 +3791,7 @@ public class PortableSelfTests
                 undo,
                 () => true,
                 () => quickNoteToClipboard,
+                () => replayResumeClipboard,
                 _ => { },
                 TimeSpan.FromMilliseconds(60),
                 imageUrlResolver);
