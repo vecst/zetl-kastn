@@ -36,5 +36,9 @@ These are the authoritative places to answer “what remains?”
 - [`kastn-templates-roadmap.md`](kastn-templates-roadmap.md) — template and
   creation-type design, including temporary consumables
 
+- [`kastn-project-board-roadmap.md`](kastn-project-board-roadmap.md) - proposed
+  project-level board, workspace asset store, and cross-project link/export
+  design
+
 Focused design records are not the master project queue. Their remaining work
 is summarized in [`kastn-roadmap.md`](kastn-roadmap.md).

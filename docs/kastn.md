@@ -87,6 +87,24 @@ Instead, the single-file `project.json` design is affirmed:
 - Binary assets (pictures, files) are stored in the project's `assets/` subfolder and referenced by content-addressable hashes in the main JSON file.
 - Measurements confirm that even at 20,000 slips, atomic reads and writes of a single file are well below the threshold of user perception, rendering file partitioning unnecessary.
 
+## Future direction: project-level board
+
+The proposed Project Board is a portfolio view across projects: projects become
+columns, buckets become expandable cards, and slips can move or copy between
+projects. It complements the current project-local Board Mode rather than
+replacing it.
+
+That surface should be built on two storage/link evolutions:
+
+- live binary assets move toward a workspace-level content-addressed asset store,
+  while project export/import remains self-contained with local `assets/`
+  folders;
+- wiki-links gain cross-project addressing internally, while single-project
+  Markdown exports can still emit clean Obsidian-style local wiki-links.
+
+The detailed design is in
+[`kastn-project-board-roadmap.md`](kastn-project-board-roadmap.md).
+
 ## Two extension points authored in kastn
 
 These are authored in kastn and modeled like the theme system: versioned JSON

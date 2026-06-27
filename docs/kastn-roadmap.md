@@ -106,7 +106,29 @@ picture, and include state rather than introducing board-specific content.
       is comfortably accessible.
 - [ ] Make nested bucket creation and placement faster in Zetl's quick Board.
 
-## Priority 3: Temporary Consumable Templates
+## Priority 3: Project Board And Cross-Project Organization
+
+Add a project-level board where projects are columns, buckets are expandable
+cards, and slips can move or copy across projects. This depends on explicit
+Zetl-owned cross-project transfer commands, a workspace-level asset store, and
+cross-project wiki-link/export rules.
+
+- [ ] Add a read-only Project Board projection over projects, buckets, and
+      slips.
+- [ ] Move live picture/file assets toward a workspace-level content-addressed
+      asset store while keeping project exports self-contained.
+- [ ] Add cross-project slip copy/move commands with active-project copy
+      defaults.
+- [ ] Add cross-project bucket copy/move commands, starting with leaf buckets
+      and then bucket subtrees.
+- [ ] Extend wiki-links to resolve cross-project targets while keeping
+      single-project exports clean for Obsidian-style wiki-links.
+- [ ] Add cohesive multi-project export rules for included linked material.
+
+The detailed design is in
+[`kastn-project-board-roadmap.md`](kastn-project-board-roadmap.md).
+
+## Priority 4: Temporary Consumable Templates
 
 Consumable templates already seed ordered Replay queues. A temporary consumable
 should instantiate a disposable project, activate it in a chosen lane, and
@@ -125,7 +147,7 @@ delete it when it leaves that lane.
 The detailed lifecycle is in
 [`kastn-templates-roadmap.md`](kastn-templates-roadmap.md).
 
-## Priority 4: Project Lifecycle Polish
+## Priority 5: Project Lifecycle Polish
 
 The durable lifecycle model is implemented, including lane clearing and auto-return
 to the rolling Journal.
@@ -138,13 +160,14 @@ Remaining:
 - [ ] Verify the complete template → capture → finish → Kastn → render path as
       one documented workflow.
 
-## Priority 5: Storage Consolidation (Single File Affirmed)
+## Priority 6: Storage Consolidation (Single File Affirmed)
 
 The single-file `project.json` model is affirmed as the canonical live store. Splitting project storage into multiple type-scoped JSON files has been explicitly rejected to avoid overhead and keep bucket hierarchies easy to rebuild.
 
 Remaining focus:
 - [x] Verify baseline JSON performance under load (completed via storage baseline scenario).
-- [ ] Implement asset clean-up utility to purge orphaned files from the project's `assets/` subfolder.
+- [ ] Implement asset clean-up utility to purge orphaned files from the live
+      asset store.
 - [ ] Define missing-asset detection and handling behavior during load.
 - [ ] Keep copied project folders completely readable and self-contained.
 
