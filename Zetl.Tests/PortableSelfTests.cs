@@ -33,6 +33,9 @@ public class PortableSelfTests
                 ("Synthetic modifier injection uses an unheld side", SyntheticModifierUsesUnheldSide),
                 ("Chord injection suppresses a held Shift for a plain chord", ChordInjectionSuppressesHeldShiftForPlainChord),
                 ("Zetl state creates projects and scratch buckets", StateCreatesProjectAndScratch),
+                ("Zetl state keeps active temporary consumables", StateKeepsActiveTemporaryConsumables),
+                ("Zetl state disposes temporary consumables when lane clears", StateDisposesTemporaryConsumablesWhenLaneClears),
+                ("Zetl state disposes abandoned temporary consumables on load", StateDisposesAbandonedTemporaryConsumablesOnLoad),
                 ("Zetl state creates the journal default home", StateCreatesJournalDefaultProject),
                 ("Zetl state configures and rolls journal intervals", StateJournalIntervalConfiguresAndRolls),
                 ("Zetl state reuses the journal default home", StateReusesDatedDefaultProject),
@@ -542,6 +545,78 @@ public class PortableSelfTests
             AssertEqual("Demo", project.Name, "Project name should persist.");
             AssertTrue(project.Buckets.Any(bucket => bucket.Name == "Scratch"), "Scratch bucket should be created.");
             AssertEqual("Inbox", store.ActiveBucket?.Name, "Requested active bucket should be active.");
+        }
+
+        private static void StateKeepsActiveTemporaryConsumables()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject(
+                "One Shot",
+                ["Queue"],
+                "Queue",
+                kind: ZetlStateStore.TemporaryConsumableProjectKind,
+                sourceTemplateId: "template",
+                temporaryLane: ZetlStateStore.NormalLane);
+
+            AssertEqual(project.Id, store.ActiveProject?.Id, "The temporary project should stay active in its lane.");
+            AssertTrue(
+                store.State.Projects.Any(item => item.Id == project.Id),
+                "An active temporary project should remain in the workspace.");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            AssertEqual(project.Id, reloaded.ActiveProject?.Id, "Reload should keep an active temporary project.");
+            AssertTrue(
+                reloaded.State.Projects.Any(item => item.Id == project.Id),
+                "Reload should not dispose a temporary project that still owns its lane.");
+        }
+
+        private static void StateDisposesTemporaryConsumablesWhenLaneClears()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject(
+                "One Shot",
+                ["Queue"],
+                "Queue",
+                kind: ZetlStateStore.TemporaryConsumableProjectKind,
+                sourceTemplateId: "template",
+                temporaryLane: ZetlStateStore.NormalLane);
+
+            store.ClearActiveProject();
+
+            AssertEqual<ZetlProject?>(null, store.ActiveProject, "Clearing the lane should leave no active project.");
+            AssertFalse(
+                store.State.Projects.Any(item => item.Id == project.Id),
+                "Clearing the lane should dispose the temporary project.");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            AssertFalse(
+                reloaded.State.Projects.Any(item => item.Id == project.Id),
+                "Disposed temporary projects should not return after reload.");
+        }
+
+        private static void StateDisposesAbandonedTemporaryConsumablesOnLoad()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject(
+                "One Shot",
+                ["Queue"],
+                "Queue",
+                shifted: true,
+                kind: ZetlStateStore.TemporaryConsumableProjectKind,
+                sourceTemplateId: "template",
+                temporaryLane: ZetlStateStore.ShiftLane);
+            JsonFile.WriteAtomic(
+                System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "workspace.json"),
+                new ZetlWorkspaceFile { Version = 1 });
+
+            var reloaded = new ZetlStateStore(temp.Path);
+
+            AssertFalse(
+                reloaded.State.Projects.Any(item => item.Id == project.Id),
+                "A temporary project that is not active in its assigned lane should be disposed on load.");
         }
 
         private static void StatePopModeRemovesLastMatchingNote()
@@ -1950,10 +2025,15 @@ public class PortableSelfTests
             AssertTrue(
                 store.Settings.KastnMinimizeAfterTemplate,
                 "Kastn should default to stepping aside after a template create.");
+            AssertEqual(
+                ZetlKastnTemplateLaneDefault.Ask,
+                store.Settings.KastnTemporaryTemplateLaneDefault,
+                "Temporary template lane should default to asking.");
             store.Settings.KastnAutosave = false;
             store.Settings.KastnStartup = ZetlKastnStartup.LastProject;
             store.Settings.KastnDefaultViewId = "markdown";
             store.Settings.KastnMinimizeAfterTemplate = false;
+            store.Settings.KastnTemporaryTemplateLaneDefault = ZetlStateStore.ShiftLane;
             store.Save();
 
             var loaded = new ZetlAppSettingsStore(settingsPath);
@@ -1980,6 +2060,10 @@ public class PortableSelfTests
             AssertFalse(
                 loaded.Settings.KastnMinimizeAfterTemplate,
                 "Kastn minimize-after-template flag should round-trip.");
+            AssertEqual(
+                ZetlStateStore.ShiftLane,
+                loaded.Settings.KastnTemporaryTemplateLaneDefault,
+                "Kastn temporary template lane default should round-trip.");
         }
 
         private static void KastnStateRoundTripsLastProject()
@@ -1990,10 +2074,17 @@ public class PortableSelfTests
 
             var store = new KASTN.KastnStateStore(statePath);
             AssertEqual("", store.LastProjectId, "Last project id should default to empty.");
+            AssertFalse(store.IsPinned("proj-42"), "Projects should default to unpinned.");
             store.LastProjectId = "proj-42";
+            store.SetPinned("proj-42", true);
 
             var loaded = new KASTN.KastnStateStore(statePath);
             AssertEqual("proj-42", loaded.LastProjectId, "Last project id should round-trip.");
+            AssertTrue(loaded.IsPinned("proj-42"), "Pinned project ids should round-trip.");
+            loaded.SetPinned("proj-42", false);
+
+            var unpinned = new KASTN.KastnStateStore(statePath);
+            AssertFalse(unpinned.IsPinned("proj-42"), "Unpinning should round-trip.");
         }
 
         private static void JournalBucketRollsAtDayStartHour()

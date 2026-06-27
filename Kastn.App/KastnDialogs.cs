@@ -8,6 +8,8 @@ namespace KASTN;
 
 internal static class KastnDialogs
 {
+    public sealed record TemporaryTemplateLaneResult(string Lane, bool Remember);
+
     private sealed record SlipChoice(ZetlSlipSnapshot Slip, string Label)
     {
         public override string ToString() => Label;
@@ -104,6 +106,64 @@ internal static class KastnDialogs
             }
         };
         return await dialog.ShowDialog<bool>(owner);
+    }
+
+    public static async Task<TemporaryTemplateLaneResult?> PickTemporaryTemplateLaneAsync(
+        Window owner,
+        string templateName)
+    {
+        var main = new RadioButton
+        {
+            Content = "Main",
+            GroupName = "temporary-template-lane",
+            IsChecked = true
+        };
+        var alternate = new RadioButton
+        {
+            Content = "Alternate",
+            GroupName = "temporary-template-lane"
+        };
+        var remember = new CheckBox
+        {
+            Content = "Remember this choice"
+        };
+        var dialog = Dialog("Use Temporary Template", 440, 250);
+        var use = new Button
+        {
+            Content = "Use Template",
+            Width = 112,
+            IsDefault = true
+        };
+        var cancel = new Button { Content = "Cancel", Width = 84, IsCancel = true };
+        use.Click += (_, _) => dialog.Close(new TemporaryTemplateLaneResult(
+            alternate.IsChecked == true ? ZetlStateStore.ShiftLane : ZetlStateStore.NormalLane,
+            remember.IsChecked == true));
+        cancel.Click += (_, _) => dialog.Close(null);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(18),
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = $"Use '{templateName}' in which lane?",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                },
+                new StackPanel
+                {
+                    Spacing = 6,
+                    Children =
+                    {
+                        main,
+                        alternate
+                    }
+                },
+                remember,
+                Buttons(use, cancel)
+            }
+        };
+        return await dialog.ShowDialog<TemporaryTemplateLaneResult?>(owner);
     }
 
     public static async Task MessageAsync(

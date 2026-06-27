@@ -658,16 +658,30 @@ internal partial class MainWindow : Window
                 continue;
             }
 
+            var pinned = stateStore.IsPinned(project.Id);
             projects.Add(new ProjectListItem(
                 project.Id,
                 project.Name,
                 project.MetadataRevision,
+                LandingProjectSection(project, pinned),
+                LandingProjectSectionRank(project, pinned),
                 LandingProjectDetail(project),
                 string.IsNullOrWhiteSpace(project.PreviewText)
                     ? "No slips yet"
                     : project.PreviewText,
                 LandingProjectActivity(project),
-                project.Status));
+                project.Status,
+                pinned));
+        }
+
+        var ordered = projects
+            .OrderBy(project => project.SectionRank)
+            .ThenBy(project => project.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        projects.Clear();
+        foreach (var project in ordered)
+        {
+            projects.Add(project);
         }
     }
 
@@ -692,9 +706,54 @@ internal partial class MainWindow : Window
     {
         var detail = $"{project.VisibleSlipCount} slip{Plural(project.VisibleSlipCount)}"
             + $" | {project.VisibleBucketCount} bucket{Plural(project.VisibleBucketCount)}";
+        if (string.Equals(project.Kind, ZetlStateStore.TemporaryConsumableProjectKind, StringComparison.Ordinal))
+        {
+            detail = $"Temporary | {detail}";
+        }
+
         return project.DeletedSlipCount == 0
             ? detail
             : $"{detail} | {project.DeletedSlipCount} deleted";
+    }
+
+    private static string LandingProjectSection(ZetlProjectSummary project, bool pinned)
+    {
+        if (pinned)
+        {
+            return "Pinned";
+        }
+
+        if (string.Equals(project.ActiveLane, ZetlStateStore.NormalLane, StringComparison.Ordinal))
+        {
+            return "Main";
+        }
+
+        if (string.Equals(project.ActiveLane, ZetlStateStore.ShiftLane, StringComparison.Ordinal))
+        {
+            return "Alternate";
+        }
+
+        return "Projects";
+    }
+
+    private static int LandingProjectSectionRank(ZetlProjectSummary project, bool pinned)
+    {
+        if (pinned)
+        {
+            return 0;
+        }
+
+        if (string.Equals(project.ActiveLane, ZetlStateStore.NormalLane, StringComparison.Ordinal))
+        {
+            return 1;
+        }
+
+        if (string.Equals(project.ActiveLane, ZetlStateStore.ShiftLane, StringComparison.Ordinal))
+        {
+            return 2;
+        }
+
+        return 3;
     }
 
     private static string LandingProjectActivity(ZetlProjectSummary project)
@@ -1113,6 +1172,27 @@ internal partial class MainWindow : Window
         }
     }
 
+    private void OnProjectCardPinClick(object? sender, RoutedEventArgs args)
+    {
+        args.Handled = true;
+        if ((sender as Control)?.DataContext is ProjectListItem project)
+        {
+            stateStore.SetPinned(project.Id, !project.IsPinned);
+            refreshing = true;
+            try
+            {
+                PopulateProjectCards();
+            }
+            finally
+            {
+                refreshing = false;
+            }
+
+            RefreshLandingGridLayout();
+            RefreshLandingMode();
+        }
+    }
+
     private async void OnProjectCardDeleteClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
@@ -1393,10 +1473,13 @@ internal partial class MainWindow : Window
         string Id,
         string Name,
         long MetadataRevision,
+        string Section,
+        int SectionRank,
         string Detail,
         string PreviewText,
         string ActivityText,
-        string Status)
+        string Status,
+        bool IsPinned)
     {
         public bool IsActive =>
             string.Equals(Status, "Active", StringComparison.OrdinalIgnoreCase);
@@ -1413,6 +1496,8 @@ internal partial class MainWindow : Window
         public string StatusActionLabel => IsActive ? "Archive" : "Reactivate";
 
         public string StatusActionTarget => IsActive ? "Archived" : "Active";
+
+        public string PinActionLabel => IsPinned ? "Unpin" : "Pin";
     }
 
     private sealed record TemplateListItem(

@@ -124,6 +124,13 @@ internal partial class MainWindow
                 ApplyTemplateSeedsVisibility();
             }
         };
+        templateTemporaryBox.IsCheckedChanged += (_, _) =>
+        {
+            if (!templateEditorUpdating && !IsTemplateConsumableSelection())
+            {
+                templateTemporaryBox.IsChecked = false;
+            }
+        };
         templateBucketNameBox.TextChanged += (_, _) => CommitBucketFields(renamed: true);
         templateBucketKindBox.SelectionChanged += (_, _) => CommitBucketFields();
         templateBucketCompileBox.SelectionChanged += (_, _) => CommitBucketFields();
@@ -148,6 +155,7 @@ internal partial class MainWindow
         templateTypeBox.SelectedItem = working.IsConsumable
             ? ZetlTemplateTypes.Consumable
             : ZetlTemplateTypes.Capture;
+        templateTemporaryBox.IsChecked = working.Temporary && working.IsConsumable;
         templateEditorUpdating = false;
 
         if (working.Buckets.Count == 0)
@@ -173,7 +181,7 @@ internal partial class MainWindow
             return "";
         }
 
-        var consumable = (templateTypeBox.SelectedItem as string) == ZetlTemplateTypes.Consumable;
+        var consumable = IsTemplateConsumableSelection();
         var doc = ZetlTemplateDefaults.Clone(editingTemplate);
         doc.Name = templateNameBox.Text?.Trim() ?? "";
         doc.Category = string.IsNullOrWhiteSpace(templateCategoryBox.Text)
@@ -181,6 +189,7 @@ internal partial class MainWindow
             : templateCategoryBox.Text.Trim();
         doc.Description = templateDescriptionBox.Text?.Trim() ?? "";
         doc.Type = consumable ? ZetlTemplateTypes.Consumable : ZetlTemplateTypes.Capture;
+        doc.Temporary = consumable && templateTemporaryBox.IsChecked == true;
         return JsonSerializer.Serialize(doc, JsonFile.Options);
     }
 
@@ -391,6 +400,13 @@ internal partial class MainWindow
 
     private void ApplyTemplateSeedsVisibility()
     {
+        var consumable = IsTemplateConsumableSelection();
+        templateTemporaryBox.IsEnabled = consumable;
+        if (!consumable)
+        {
+            templateTemporaryBox.IsChecked = false;
+        }
+
         templateSeedsPanel.IsVisible = true;
     }
 
@@ -401,13 +417,14 @@ internal partial class MainWindow
             return;
         }
 
-        var consumable = (templateTypeBox.SelectedItem as string) == ZetlTemplateTypes.Consumable;
+        var consumable = IsTemplateConsumableSelection();
         template.Name = templateNameBox.Text?.Trim() ?? "";
         template.Category = string.IsNullOrWhiteSpace(templateCategoryBox.Text)
             ? "Custom"
             : templateCategoryBox.Text.Trim();
         template.Description = templateDescriptionBox.Text?.Trim() ?? "";
         template.Type = consumable ? ZetlTemplateTypes.Consumable : ZetlTemplateTypes.Capture;
+        template.Temporary = consumable && templateTemporaryBox.IsChecked == true;
         if (string.IsNullOrEmpty(template.Id))
         {
             template.Id = ZetlTemplateDefaults.CreateId(template.Name);
@@ -475,6 +492,9 @@ internal partial class MainWindow
     private static string BucketLabel(ZetlTemplateBucketDocument bucket) =>
         string.IsNullOrWhiteSpace(bucket.Name) ? "(unnamed bucket)" : bucket.Name;
 
+    private bool IsTemplateConsumableSelection() =>
+        (templateTypeBox.SelectedItem as string) == ZetlTemplateTypes.Consumable;
+
     private static List<ZetlTemplateSlipDocument> ParseTemplateCards(string? text) =>
         (text ?? "")
             .Replace("\r\n", "\n")
@@ -513,6 +533,12 @@ internal partial class MainWindow
             return;
         }
 
+        var temporaryLane = await ResolveTemporaryTemplateLaneAsync(template);
+        if (template.Temporary && template.IsConsumable && temporaryLane is null)
+        {
+            return;
+        }
+
         var name = await KastnDialogs.PromptAsync(
             this,
             $"New {template.Name} Project",
@@ -527,10 +553,18 @@ internal partial class MainWindow
             return;
         }
 
+        var create = template.ToCreateProjectCommand(
+            name.Trim(),
+            temporaryLane);
+        create = create with
+        {
+            ActivateShifted = string.Equals(temporaryLane, ZetlStateStore.ShiftLane, StringComparison.Ordinal)
+        };
+
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.CreateProject,
-            template.ToCreateProjectCommand(name.Trim())));
+            create));
         if (response.Status == ZetlResponseStatus.Success)
         {
             var created = response.Payload?.Deserialize<ZetlProjectSnapshot>(
@@ -565,6 +599,38 @@ internal partial class MainWindow
         }
 
         HandleSimpleResponse(response, $"Created a project from the {template.Name} template.");
+    }
+
+    private async Task<string?> ResolveTemporaryTemplateLaneAsync(ZetlTemplateDocument template)
+    {
+        if (!template.Temporary || !template.IsConsumable)
+        {
+            return null;
+        }
+
+        var settingsStore = new ZetlAppSettingsStore();
+        var configured = ZetlKastnTemplateLaneDefault.Normalize(
+            settingsStore.Settings.KastnTemporaryTemplateLaneDefault);
+        if (configured.Length > 0)
+        {
+            return configured;
+        }
+
+        var choice = await KastnDialogs.PickTemporaryTemplateLaneAsync(this, template.Name);
+        if (choice is null)
+        {
+            return null;
+        }
+
+        var lane = ZetlStateStore.CanonicalTemporaryLane(choice.Lane)
+            ?? ZetlStateStore.NormalLane;
+        if (choice.Remember)
+        {
+            settingsStore.Settings.KastnTemporaryTemplateLaneDefault = lane;
+            settingsStore.Save();
+        }
+
+        return lane;
     }
 
     // Seed a consumable template's ordered slips into their buckets through Zetl,

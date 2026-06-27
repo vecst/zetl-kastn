@@ -9,6 +9,10 @@ public sealed record GetSlipPictureCommand;
 public sealed record CreateProjectCommand
 {
     public required string Name { get; init; }
+    public string Kind { get; init; } = "Standard";
+    public string? SourceTemplateId { get; init; }
+    public string? TemporaryLane { get; init; }
+    public bool ActivateShifted { get; init; }
     public IReadOnlyList<CreateBucketDefinition> Buckets { get; init; } = [];
 }
 

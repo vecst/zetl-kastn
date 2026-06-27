@@ -908,10 +908,13 @@ internal partial class MainWindow
             currentProject.Id,
             currentProject.Name,
             currentProject.MetadataRevision,
+            "Projects",
+            3,
             "",
             "",
             "",
-            currentProject.Status));
+            currentProject.Status,
+            false));
     }
 
     private async Task RenameProjectAsync(ProjectListItem project)

@@ -107,6 +107,14 @@ internal partial class ZetlSettingsWindow : Window
             ?? viewChoices[0];
 
         kastnMinimizeAfterTemplateBox.IsChecked = settings.KastnMinimizeAfterTemplate;
+        kastnTemporaryTemplateLaneBox.ItemsSource = new[] { "Ask every time", "Main", "Alternate" };
+        kastnTemporaryTemplateLaneBox.SelectedIndex =
+            ZetlKastnTemplateLaneDefault.Normalize(settings.KastnTemporaryTemplateLaneDefault) switch
+            {
+                ZetlStateStore.NormalLane => 1,
+                ZetlStateStore.ShiftLane => 2,
+                _ => 0
+            };
         kastnMinimizeToTrayBox.IsChecked = settings.KastnMinimizeToTray;
 
         // Kastn Advanced Settings binding
@@ -262,6 +270,12 @@ internal partial class ZetlSettingsWindow : Window
         : ZetlKastnStartup.Landing;
     public string KastnDefaultViewId => (kastnDefaultViewBox.SelectedItem as ViewChoice)?.Id ?? "";
     public bool KastnMinimizeAfterTemplate => kastnMinimizeAfterTemplateBox.IsChecked == true;
+    public string KastnTemporaryTemplateLaneDefault => kastnTemporaryTemplateLaneBox.SelectedIndex switch
+    {
+        1 => ZetlStateStore.NormalLane,
+        2 => ZetlStateStore.ShiftLane,
+        _ => ZetlKastnTemplateLaneDefault.Ask
+    };
     public bool KastnMinimizeToTray => kastnMinimizeToTrayBox.IsChecked == true;
 
     // Kastn Advanced getters

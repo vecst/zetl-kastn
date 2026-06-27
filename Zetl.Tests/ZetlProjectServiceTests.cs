@@ -160,6 +160,84 @@ public class ZetlProjectServiceTests
             "The shared writer monitor should make every mixed mutation durable.");
     }
 
+    [Fact] public void CreateProjectCanMarkNormalLaneTemporaryConsumable()
+    {
+        using var temp = new TempStateDirectory();
+        var store = new ZetlStateStore(temp.StatePath);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "create-temp",
+            ZetlCommandKind.CreateProject,
+            new CreateProjectCommand
+            {
+                Name = "One Shot",
+                Kind = ZetlStateStore.TemporaryConsumableProjectKind,
+                SourceTemplateId = "template",
+                TemporaryLane = ZetlStateStore.NormalLane,
+                Buckets = [new CreateBucketDefinition { Name = "Queue" }]
+            }));
+        var snapshot = response.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Create did not return a project snapshot.");
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Normal-lane temporary creation should succeed.");
+        AssertEqual(ZetlStateStore.TemporaryConsumableProjectKind, snapshot.Kind, "Snapshot should expose the project kind.");
+        AssertEqual("template", snapshot.SourceTemplateId, "Snapshot should expose the source template id.");
+        AssertEqual(ZetlStateStore.NormalLane, snapshot.TemporaryLane, "Snapshot should expose the owning lane.");
+        AssertEqual(snapshot.Id, store.ActiveProject?.Id, "The created temporary project should be normal-lane active.");
+    }
+
+    [Fact] public void CreateProjectCanMarkShiftLaneTemporaryConsumable()
+    {
+        using var temp = new TempStateDirectory();
+        var store = new ZetlStateStore(temp.StatePath);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "create-temp-shift",
+            ZetlCommandKind.CreateProject,
+            new CreateProjectCommand
+            {
+                Name = "One Shot",
+                Kind = ZetlStateStore.TemporaryConsumableProjectKind,
+                SourceTemplateId = "template",
+                TemporaryLane = ZetlStateStore.ShiftLane,
+                ActivateShifted = true,
+                Buckets = [new CreateBucketDefinition { Name = "Queue" }]
+            }));
+        var snapshot = response.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Create did not return a project snapshot.");
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Shift-lane temporary creation should succeed when activated in Shift.");
+        AssertEqual(ZetlStateStore.TemporaryConsumableProjectKind, snapshot.Kind, "Snapshot should expose the project kind.");
+        AssertEqual(ZetlStateStore.ShiftLane, snapshot.TemporaryLane, "Snapshot should expose the owning lane.");
+        AssertEqual(snapshot.Id, store.ShiftActiveProject?.Id, "The created temporary project should be Shift-lane active.");
+        AssertEqual<ZetlProject?>(null, store.ActiveProject, "Creating in Shift should not activate the normal lane.");
+    }
+
+    [Fact] public void CreateProjectRejectsTemporaryLaneMismatch()
+    {
+        using var temp = new TempStateDirectory();
+        var store = new ZetlStateStore(temp.StatePath);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "create-temp-mismatch",
+            ZetlCommandKind.CreateProject,
+            new CreateProjectCommand
+            {
+                Name = "One Shot",
+                Kind = ZetlStateStore.TemporaryConsumableProjectKind,
+                SourceTemplateId = "template",
+                TemporaryLane = ZetlStateStore.ShiftLane,
+                Buckets = [new CreateBucketDefinition { Name = "Queue" }]
+            }));
+
+        AssertEqual(ZetlResponseStatus.ValidationError, response.Status, "Temporary lane metadata must match activation.");
+        AssertEqual("temporary_lane_mismatch", response.Error?.Code, "Lane mismatch should fail explicitly.");
+        AssertEqual(0, store.State.Projects.Count, "Rejected creation should not leave a project behind.");
+    }
+
     [Fact] public void SlipInclusionToggleRoundTrips()
     {
         using var temp = new TempStateDirectory();
@@ -746,6 +824,40 @@ public class ZetlProjectServiceTests
         AssertTrue(
             !summary.PreviewText.Contains("deleted should stay out", StringComparison.Ordinal),
             "Project summary previews should skip Deleted content.");
+    }
+
+    [Fact] public void ListProjectsReportsActiveLanes()
+    {
+        using var temp = new TempStateDirectory();
+        var store = new ZetlStateStore(temp.StatePath);
+        var main = store.CreateProject("Main Work", ["Inbox"], "Inbox");
+        var alternate = store.CreateProject("Alternate Work", ["Queue"], "Queue", shifted: true);
+        var other = store.CreateProject("Other Work", ["Notes"], "Notes");
+        store.SetActiveProject(main.Id);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(new ZetlCommandEnvelope
+        {
+            CommandId = "list-lanes",
+            Kind = ZetlCommandKind.ListProjects
+        });
+        var summaries = response.Payload?.Deserialize<List<ZetlProjectSummary>>(
+                ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("ListProjects returned no summaries.");
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "ListProjects should succeed.");
+        AssertEqual(
+            ZetlStateStore.NormalLane,
+            summaries.Single(project => project.Id == main.Id).ActiveLane,
+            "The normal active project should be marked Main/Normal.");
+        AssertEqual(
+            ZetlStateStore.ShiftLane,
+            summaries.Single(project => project.Id == alternate.Id).ActiveLane,
+            "The Shift active project should be marked Alternate/Shift.");
+        AssertEqual(
+            "",
+            summaries.Single(project => project.Id == other.Id).ActiveLane,
+            "Inactive projects should have no active lane.");
     }
 
     [Fact] public void ReorderSlipMovesWithinBucket()

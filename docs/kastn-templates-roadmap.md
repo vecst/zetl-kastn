@@ -105,11 +105,12 @@ template again to create a fresh queue.
 
 ### Entry Points
 
-- Held `Ctrl+T` or `Ctrl+Shift+T` already identifies the lane.
+- Held `Ctrl+T` or `Ctrl+Shift+T` already identifies the lane. User-facing
+  labels are Main and Alternate; the stored values remain Normal and Shift.
 - Held `Ctrl+V` with no active project opens the picker on Consumable templates.
 - Kastn's current `Use` action creates a named project from the template and can
-  minimize Kastn after use. Temporary-consumable lane choice is still part of
-  the remaining work below.
+  minimize Kastn after use. For temporary consumables, Kastn asks for Main or
+  Alternate unless a default lane has been saved.
 
 ### Ownership
 
@@ -126,15 +127,20 @@ Kastn owns:
 - lane choice;
 - minimize-after-use behavior.
 
-### Open Decisions
+### Status
 
-- [ ] Add and validate a `Temporary` flag on consumable templates.
-- [ ] Order disposal correctly against Replay's existing empty-queue
+- [x] Add and validate a `Temporary` flag on consumable templates.
+- [x] Store temporary instances as `TemporaryConsumable` projects with source
+      template id and owning lane metadata.
+- [x] Order disposal correctly against Replay's existing empty-queue
       Replay-to-Standard transition.
-- [ ] Decide whether an active temporary project appears in Kastn's project
-      list.
-- [ ] Ensure a lane switch cannot leave an orphaned temporary project.
-- [ ] Ensure startup recovery removes abandoned temporary instances safely.
+- [x] Leave the lane inactive after temporary-project disposal.
+- [x] Ensure a lane switch cannot leave an orphaned temporary project.
+- [x] Ensure startup recovery removes abandoned temporary instances safely.
+- [x] Add explicit Kastn lane choice and an optional remembered default for
+      temporary template use.
+- [x] Show temporary projects in Kastn's landing project list through role
+      groups (Pinned, Main, Alternate, Projects), rather than hiding them.
 
 Done when firing a temporary consumable provides an immediately usable Replay
 queue and every completion, clear, switch, restart, or failure path avoids

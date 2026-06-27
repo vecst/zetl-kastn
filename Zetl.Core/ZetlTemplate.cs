@@ -44,6 +44,8 @@ internal sealed class ZetlTemplateDocument
     // ZetlTemplateTypes.Capture or .Consumable.
     public string Type { get; set; } = ZetlTemplateTypes.Capture;
 
+    public bool Temporary { get; set; }
+
     public List<ZetlTemplateBucketDocument> Buckets { get; set; } = [];
 
     [JsonExtensionData]
@@ -59,11 +61,18 @@ internal sealed class ZetlTemplateDocument
     /// afterwards through <c>AddSlip</c> by the caller, because the create
     /// contract carries bucket structure, not slip content.
     /// </summary>
-    public CreateProjectCommand ToCreateProjectCommand(string projectName)
+    public CreateProjectCommand ToCreateProjectCommand(string projectName, string? temporaryLane = null)
     {
+        var lane = ZetlStateStore.CanonicalTemporaryLane(temporaryLane);
+        var shouldCreateTemporary = Temporary && IsConsumable && lane is not null;
         return new CreateProjectCommand
         {
             Name = projectName,
+            Kind = shouldCreateTemporary
+                ? ZetlStateStore.TemporaryConsumableProjectKind
+                : ZetlStateStore.StandardProjectKind,
+            SourceTemplateId = shouldCreateTemporary ? Id : null,
+            TemporaryLane = shouldCreateTemporary ? lane : null,
             Buckets = Buckets
                 .Select(bucket => new CreateBucketDefinition
                 {
@@ -375,6 +384,11 @@ internal static class ZetlTemplateValidator
         if (template.IsConsumable && seedCount == 0)
         {
             errors.Add("Consumable templates must seed at least one slip.");
+        }
+
+        if (template.Temporary && !template.IsConsumable)
+        {
+            errors.Add("Temporary templates must be consumable.");
         }
 
         return errors;

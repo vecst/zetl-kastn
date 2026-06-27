@@ -144,9 +144,27 @@ internal sealed class ZetlProjectService
                 ZetlStateStore.LogProjectName,
                 StringComparison.OrdinalIgnoreCase))
             .OrderBy(project => project.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(ZetlProjectSnapshotMapper.ToSummary)
+            .Select(project => ZetlProjectSnapshotMapper.ToSummary(project) with
+            {
+                ActiveLane = ActiveLaneFor(project.Id)
+            })
             .ToList();
         return Success(command, payload: summaries);
+    }
+
+    private string ActiveLaneFor(string projectId)
+    {
+        if (string.Equals(store.State.ActiveProjectId, projectId, StringComparison.Ordinal))
+        {
+            return ZetlStateStore.NormalLane;
+        }
+
+        if (string.Equals(store.State.ShiftActiveProjectId, projectId, StringComparison.Ordinal))
+        {
+            return ZetlStateStore.ShiftLane;
+        }
+
+        return "";
     }
 
     private ZetlResponseEnvelope GetProject(ZetlCommandEnvelope command)
@@ -214,10 +232,28 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "bucket_name_required", "Every initial bucket requires a name.");
         }
 
+        var kind = ZetlStateStore.NormalizeProjectKind(payload.Kind);
+        var temporaryLane = ZetlStateStore.CanonicalTemporaryLane(payload.TemporaryLane);
+        if (string.Equals(kind, ZetlStateStore.TemporaryConsumableProjectKind, StringComparison.Ordinal)
+            && temporaryLane is null)
+        {
+            return ValidationError(command, "temporary_lane_required", "Temporary projects require a valid lane.");
+        }
+        var activationLane = payload.ActivateShifted ? ZetlStateStore.ShiftLane : ZetlStateStore.NormalLane;
+        if (string.Equals(kind, ZetlStateStore.TemporaryConsumableProjectKind, StringComparison.Ordinal)
+            && !string.Equals(temporaryLane, activationLane, StringComparison.Ordinal))
+        {
+            return ValidationError(command, "temporary_lane_mismatch", "Temporary project lane must match the activation lane.");
+        }
+
         var project = store.CreateProject(
             payload.Name,
             definitions.Select(bucket => bucket.Name),
-            definitions[0].Name);
+            definitions[0].Name,
+            payload.ActivateShifted,
+            kind: kind,
+            sourceTemplateId: payload.SourceTemplateId,
+            temporaryLane: temporaryLane);
         foreach (var definition in definitions)
         {
             var bucket = project.Buckets.FirstOrDefault(item =>

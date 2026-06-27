@@ -831,11 +831,20 @@ internal sealed class ZetlShortcutCoordinator
             // send the user's own clipboard through as the final pass-through and
             // report if even that paste didn't land (e.g. an elevated target).
             var emptyBucketName = activeBucket.Name;
-            store.SetBucketKind(activeBucket, "Standard");
+            var disposedTemporaryProject = store.TryDisposeTemporaryReplayProject(
+                activeBucket,
+                shifted,
+                out var temporaryProjectName);
+            var completedName = disposedTemporaryProject ? temporaryProjectName : emptyBucketName;
+            if (!disposedTemporaryProject)
+            {
+                store.SetBucketKind(activeBucket, "Standard");
+            }
+
             var finalPasted = await keyboard.SendPaste();
             dispatcher.Post(() => notifications.Show(finalPasted
-                ? $"{emptyBucketName} replay complete."
-                : $"{emptyBucketName} replay complete, but the final paste didn't land."));
+                ? $"{completedName} replay complete."
+                : $"{completedName} replay complete, but the final paste didn't land."));
             return;
         }
 
@@ -899,7 +908,11 @@ internal sealed class ZetlShortcutCoordinator
                 log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
             }
 
-            if (consumed && consumedSlip is not null)
+            var replayComplete = !store.TryPeekNextReplayNote(activeBucket, out _);
+            var disposingTemporaryProject = replayComplete
+                && project is not null
+                && ZetlStateStore.IsTemporaryConsumableProject(project);
+            if (consumed && consumedSlip is not null && !disposingTemporaryProject)
             {
                 var undoReviewBucket = reviewBucket;
                 var undoReviewSlipId = reviewSlip?.Id;
@@ -913,10 +926,12 @@ internal sealed class ZetlShortcutCoordinator
                         undoReviewSlipId));
             }
 
-            var replayComplete = !store.TryPeekNextReplayNote(activeBucket, out _);
             if (replayComplete)
             {
-                store.SetBucketKind(activeBucket, "Standard");
+                if (!store.TryDisposeTemporaryReplayProject(activeBucket, shifted, out _))
+                {
+                    store.SetBucketKind(activeBucket, "Standard");
+                }
             }
 
             if (resumeClipboard)

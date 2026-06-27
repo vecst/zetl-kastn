@@ -26,6 +26,7 @@ internal sealed class ZetlAppSettings
     public bool KastnAutosave { get; set; } = true;
     public string KastnStartup { get; set; } = ZetlKastnStartup.Landing;
     public string KastnDefaultViewId { get; set; } = "";
+    public string KastnTemporaryTemplateLaneDefault { get; set; } = "";
     public bool KastnMinimizeAfterTemplate { get; set; } = true;
     public bool KastnMinimizeToTray { get; set; } = true;
 
@@ -61,6 +62,17 @@ internal static class ZetlKastnStartup
         string.Equals(value?.Trim(), LastProject, StringComparison.OrdinalIgnoreCase)
             ? LastProject
             : Landing;
+}
+
+internal static class ZetlKastnTemplateLaneDefault
+{
+    public const string Ask = "";
+
+    public static string Normalize(string? value)
+    {
+        var lane = ZetlStateStore.CanonicalTemporaryLane(value);
+        return lane ?? Ask;
+    }
 }
 
 internal static class ZetlJournalInterval

@@ -130,8 +130,14 @@
                           Height="330"
                           Padding="16"
                           Margin="8">
-                    <Grid RowDefinitions="170,*,Auto">
-                      <Border Grid.Row="0"
+                    <Grid RowDefinitions="Auto,150,*,Auto">
+                      <TextBlock Grid.Row="0"
+                                 Text="{Binding Section}"
+                                 Classes="muted"
+                                 FontSize="12"
+                                 FontWeight="SemiBold"
+                                 Margin="0,0,0,8" />
+                      <Border Grid.Row="1"
                               Background="{DynamicResource ZetlSurfaceAltBrush}"
                               CornerRadius="4"
                               Padding="14">
@@ -141,7 +147,7 @@
                                    TextWrapping="Wrap"
                                    MaxLines="7" />
                       </Border>
-                      <StackPanel Grid.Row="1"
+                      <StackPanel Grid.Row="2"
                                   Margin="0,14,0,0"
                                   Spacing="5">
                         <Grid ColumnDefinitions="*,Auto">
@@ -173,8 +179,8 @@
                                    TextWrapping="Wrap"
                                    MaxLines="1" />
                       </StackPanel>
-                      <Grid Grid.Row="2"
-                            ColumnDefinitions="*,Auto,Auto,Auto"
+                      <Grid Grid.Row="3"
+                            ColumnDefinitions="*,Auto,Auto,Auto,Auto"
                             ColumnSpacing="8">
                         <Button Grid.Column="0"
                                 Content="Open"
@@ -183,16 +189,21 @@
                                 PointerPressed="OnProjectCardActionPointerPressed"
                                 Click="OnProjectCardOpenClick" />
                         <Button Grid.Column="1"
+                                Content="{Binding PinActionLabel}"
+                                Padding="14,5"
+                                PointerPressed="OnProjectCardActionPointerPressed"
+                                Click="OnProjectCardPinClick" />
+                        <Button Grid.Column="2"
                                 Content="{Binding StatusActionLabel}"
                                 Padding="14,5"
                                 PointerPressed="OnProjectCardActionPointerPressed"
                                 Click="OnProjectCardStatusClick" />
-                        <Button Grid.Column="2"
+                        <Button Grid.Column="3"
                                 Content="Rename"
                                 Padding="14,5"
                                 PointerPressed="OnProjectCardActionPointerPressed"
                                 Click="OnProjectCardRenameClick" />
-                        <Button Grid.Column="3"
+                        <Button Grid.Column="4"
                                 Content="Delete"
                                 Padding="14,5"
                                 PointerPressed="OnProjectCardActionPointerPressed"
@@ -891,6 +902,9 @@
               <StackPanel Grid.Column="4" Spacing="4">
                 <TextBlock Text="Type" Classes="muted" FontSize="12" />
                 <ComboBox x:Name="templateTypeBox" Width="150" />
+                <CheckBox x:Name="templateTemporaryBox"
+                          Content="Temporary"
+                          Margin="0,2,0,0" />
               </StackPanel>
             </Grid>
 

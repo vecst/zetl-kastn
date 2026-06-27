@@ -143,10 +143,8 @@ public class KastnTemplateCatalogTests
             ?? throw new InvalidOperationException("CreateProject returned no snapshot.");
 
         Assert.Equal(ZetlResponseStatus.Success, response.Status);
-        Assert.True(
-            snapshot.Buckets.Any(bucket => bucket.Name == "Inbox"));
-        Assert.True(
-            snapshot.Buckets.Any(bucket => bucket.Name == "Scratch"));
+        Assert.Contains(snapshot.Buckets, bucket => bucket.Name == "Inbox");
+        Assert.Contains(snapshot.Buckets, bucket => bucket.Name == "Scratch");
     }
 
     private sealed class TempDir : IDisposable

@@ -17,6 +17,10 @@ public sealed record ZetlProjectSummary
 
     // Lifecycle status: "Active" (default), "Finished", or "Archived".
     public string Status { get; init; } = "Active";
+    public string Kind { get; init; } = "Standard";
+    public string? SourceTemplateId { get; init; }
+    public string? TemporaryLane { get; init; }
+    public string ActiveLane { get; init; } = "";
     public int BucketCount { get; init; }
     public int SlipCount { get; init; }
     public int VisibleBucketCount { get; init; }
@@ -43,6 +47,9 @@ public sealed record ZetlProjectSnapshot
     // Lifecycle status: "Active" (default), "Finished", or "Archived". Orthogonal
     // to lane-active state (which lives in the workspace pointers).
     public string Status { get; init; } = "Active";
+    public string Kind { get; init; } = "Standard";
+    public string? SourceTemplateId { get; init; }
+    public string? TemporaryLane { get; init; }
 
     // Journal mode: capture rolls into a fresh per-day bucket instead of a fixed
     // active bucket, so the project reads as a dated journal.

@@ -166,6 +166,25 @@ public class ZetlTemplateDocumentTests
             seeds: ["ok", "   "]));
         blankSeed.Type = ZetlTemplateTypes.Consumable;
         AssertError(blankSeed, "empty seed", "A blank seed should be rejected.");
+
+        var temporaryCapture = WithBuckets(Bucket("Inbox"));
+        temporaryCapture.Temporary = true;
+        AssertError(temporaryCapture, "must be consumable", "Only consumable templates can be temporary.");
+    }
+
+    [Fact] public void TemporaryConsumablesProjectToTemporaryCreateCommand()
+    {
+        var template = WithBuckets(Bucket("Fields",
+            settings: new ZetlBucketSettings { Kind = "Replay", DefaultKind = "Replay" },
+            seeds: ["Full name"]));
+        template.Type = ZetlTemplateTypes.Consumable;
+        template.Temporary = true;
+
+        var command = template.ToCreateProjectCommand("One Shot", ZetlStateStore.NormalLane);
+
+        AssertEqual(ZetlStateStore.TemporaryConsumableProjectKind, command.Kind, "Temporary flag should project to the create command.");
+        AssertEqual(template.Id, command.SourceTemplateId, "Temporary projects should remember their source template.");
+        AssertEqual(ZetlStateStore.NormalLane, command.TemporaryLane, "Temporary projects should carry their owning lane.");
     }
 
     private static ZetlTemplateDocument Valid() => new()

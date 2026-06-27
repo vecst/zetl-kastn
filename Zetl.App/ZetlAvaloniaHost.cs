@@ -891,6 +891,12 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             }
         }
 
+        if (template.Temporary && template.IsConsumable
+            && store.State.Projects.FirstOrDefault(project => project.Id == snapshot.Id) is { } created)
+        {
+            store.MarkTemporaryConsumableProject(created, template.Id, shifted);
+        }
+
         return store.State.Projects.FirstOrDefault(project => project.Id == snapshot.Id);
     }
 
@@ -924,6 +930,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.KastnStartup = window.KastnStartup;
         settings.KastnDefaultViewId = window.KastnDefaultViewId;
         settings.KastnMinimizeAfterTemplate = window.KastnMinimizeAfterTemplate;
+        settings.KastnTemporaryTemplateLaneDefault = window.KastnTemporaryTemplateLaneDefault;
         settings.KastnMinimizeToTray = window.KastnMinimizeToTray;
 
         // Map new advanced settings

@@ -36,6 +36,11 @@ internal sealed class ZetlProject
     // Lifecycle status: "Active" (default), "Finished", or "Archived". Distinct
     // from lane-active state, which lives in the workspace pointers. Reversible.
     public string Status { get; set; } = ZetlStateStore.ActiveStatus;
+    // Project kind: Standard projects are durable; TemporaryConsumable projects
+    // are deleted when they stop occupying their assigned active lane.
+    public string Kind { get; set; } = ZetlStateStore.StandardProjectKind;
+    public string? SourceTemplateId { get; set; }
+    public string? TemporaryLane { get; set; }
     // Journal mode: capture rolls into a fresh per-day bucket (named yyyy-MM-dd)
     // instead of a fixed active bucket, so one rolling project reads as a dated
     // journal. The day boundary is the app-level DayStartHour setting.
@@ -301,6 +306,10 @@ internal sealed class ZetlStateStore
     public const string ActiveStatus = "Active";
     public const string FinishedStatus = "Finished";
     public const string ArchivedStatus = "Archived";
+    public const string StandardProjectKind = "Standard";
+    public const string TemporaryConsumableProjectKind = "TemporaryConsumable";
+    public const string NormalLane = "Normal";
+    public const string ShiftLane = "Shift";
 
     private readonly ZetlStateStorage storage;
     private readonly string sessionId;
@@ -372,7 +381,14 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public ZetlProject CreateProject(string name, IEnumerable<string> bucketNames, string? activeBucketName = null, bool shifted = false)
+    public ZetlProject CreateProject(
+        string name,
+        IEnumerable<string> bucketNames,
+        string? activeBucketName = null,
+        bool shifted = false,
+        string? kind = null,
+        string? sourceTemplateId = null,
+        string? temporaryLane = null)
     {
         var normalizedName = NormalizeName(name, "Untitled Project");
         if (string.Equals(normalizedName, DefaultProjectName(shifted), StringComparison.OrdinalIgnoreCase))
@@ -411,13 +427,22 @@ internal sealed class ZetlStateStore
         {
             Id = NewId(),
             Name = normalizedName,
+            Kind = NormalizeProjectKind(kind),
+            SourceTemplateId = string.IsNullOrWhiteSpace(sourceTemplateId) ? null : sourceTemplateId.Trim(),
+            TemporaryLane = CanonicalTemporaryLane(temporaryLane) ?? (shifted ? ShiftLane : NormalLane),
             ActiveBucketId = activeBucket.Id,
             Buckets = buckets
         };
+        if (!IsTemporaryConsumableProject(project))
+        {
+            project.SourceTemplateId = null;
+            project.TemporaryLane = null;
+        }
 
         State.Projects.Add(project);
         SetActiveProjectId(project.Id, shifted);
         PersistProject(project, workspace: true);
+        DisposeInactiveTemporaryProjects(persistWorkspace: true);
         return project;
     }
 
@@ -444,6 +469,7 @@ internal sealed class ZetlStateStore
                 {
                     SetActiveProjectId(null, shifted);
                     PersistWorkspace();
+                    DisposeInactiveTemporaryProjects(persistWorkspace: true);
                 }
                 else
                 {
@@ -460,6 +486,7 @@ internal sealed class ZetlStateStore
                 // hand capture back to the Journal so a forgotten project never traps notes.
                 SetActiveProjectId(null, shifted);
                 PersistWorkspace();
+                DisposeInactiveTemporaryProjects(persistWorkspace: true);
             }
         }
 
@@ -509,6 +536,7 @@ internal sealed class ZetlStateStore
         {
             SetActiveProjectId(existing.Id, shifted);
             PersistWorkspace();
+            DisposeInactiveTemporaryProjects(persistWorkspace: true);
             return existing;
         }
 
@@ -530,6 +558,7 @@ internal sealed class ZetlStateStore
 
         SetActiveProjectId(journal.Id, shifted);
         PersistProject(journal, workspace: true);
+        DisposeInactiveTemporaryProjects(persistWorkspace: true);
         return journal;
     }
 
@@ -613,6 +642,17 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
+    public void MarkTemporaryConsumableProject(ZetlProject project, string? sourceTemplateId, bool shifted = false)
+    {
+        project.Kind = TemporaryConsumableProjectKind;
+        project.SourceTemplateId = string.IsNullOrWhiteSpace(sourceTemplateId) ? null : sourceTemplateId.Trim();
+        project.TemporaryLane = shifted ? ShiftLane : NormalLane;
+        project.MetadataRevision++;
+        PersistProject(project, workspace: true);
+        DisposeInactiveTemporaryProjects(persistWorkspace: true);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetProjectStatus(ZetlProject project, string status)
     {
         project.Status = NormalizeProjectStatus(status);
@@ -638,6 +678,10 @@ internal sealed class ZetlStateStore
         }
 
         PersistProject(project, workspace: clearedLane);
+        if (clearedLane)
+        {
+            DisposeInactiveTemporaryProjects(persistWorkspace: true);
+        }
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -684,6 +728,7 @@ internal sealed class ZetlStateStore
     {
         SetActiveProjectId(null, shifted);
         PersistWorkspace();
+        DisposeInactiveTemporaryProjects(persistWorkspace: true);
     }
 
     // Seal the given lane's active project: mark it Finished and clear it from the
@@ -740,6 +785,34 @@ internal sealed class ZetlStateStore
         }
 
         PersistWorkspace();
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryDisposeTemporaryReplayProject(ZetlBucket activeBucket, bool shifted, out string projectName)
+    {
+        projectName = "";
+        var project = OwnerProject(activeBucket);
+        if (project is null || !IsTemporaryConsumableProject(project))
+        {
+            return false;
+        }
+
+        var lane = shifted ? ShiftLane : NormalLane;
+        if (!string.Equals(project.TemporaryLane, lane, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var activeProjectId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
+        if (!string.Equals(activeProjectId, project.Id, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        projectName = project.Name;
+        SetActiveProjectId(null, shifted);
+        DisposeInactiveTemporaryProjects(persistWorkspace: true);
+        return true;
     }
 
     // setActive controls whether the new/found bucket becomes the project's
@@ -1127,6 +1200,7 @@ internal sealed class ZetlStateStore
         {
             SetActiveProjectId(projectId, shifted);
             PersistWorkspace();
+            DisposeInactiveTemporaryProjects(persistWorkspace: true);
         }
     }
 
@@ -1898,6 +1972,98 @@ internal sealed class ZetlStateStore
         PersistProject(owner);
     }
 
+    private bool DisposeInactiveTemporaryProjects(bool persistWorkspace)
+    {
+        var removed = false;
+        foreach (var project in State.Projects.Where(IsTemporaryConsumableProject).ToList())
+        {
+            var lane = CanonicalTemporaryLane(project.TemporaryLane);
+            if (lane is null)
+            {
+                lane = string.Equals(State.ActiveProjectId, project.Id, StringComparison.Ordinal)
+                    ? NormalLane
+                    : string.Equals(State.ShiftActiveProjectId, project.Id, StringComparison.Ordinal)
+                        ? ShiftLane
+                        : null;
+                project.TemporaryLane = lane;
+            }
+
+            var laneActiveId = string.Equals(lane, ShiftLane, StringComparison.Ordinal)
+                ? State.ShiftActiveProjectId
+                : State.ActiveProjectId;
+            if (lane is not null
+                && string.Equals(laneActiveId, project.Id, StringComparison.Ordinal)
+                && IsActiveStatus(project))
+            {
+                if (string.Equals(lane, ShiftLane, StringComparison.Ordinal)
+                    && string.Equals(State.ActiveProjectId, project.Id, StringComparison.Ordinal))
+                {
+                    State.ActiveProjectId = null;
+                    removed = true;
+                }
+
+                if (string.Equals(lane, NormalLane, StringComparison.Ordinal)
+                    && string.Equals(State.ShiftActiveProjectId, project.Id, StringComparison.Ordinal))
+                {
+                    State.ShiftActiveProjectId = null;
+                    removed = true;
+                }
+
+                continue;
+            }
+
+            RemoveTemporaryProject(project);
+            removed = true;
+        }
+
+        if (removed && persistWorkspace)
+        {
+            NormalizeWorkspacePointers();
+            storage.WriteWorkspace(BuildWorkspaceFile());
+            RaiseChanged();
+        }
+
+        return removed;
+    }
+
+    private void RemoveTemporaryProject(ZetlProject project)
+    {
+        var projectId = project.Id;
+        State.Projects.Remove(project);
+        storage.RemoveProject(projectId);
+        if (State.ActiveProjectId == projectId)
+        {
+            State.ActiveProjectId = null;
+        }
+
+        if (State.ShiftActiveProjectId == projectId)
+        {
+            State.ShiftActiveProjectId = null;
+        }
+
+        if (State.LastDeliberateProjectId == projectId)
+        {
+            State.LastDeliberateProjectId = null;
+        }
+
+        if (State.ShiftLastDeliberateProjectId == projectId)
+        {
+            State.ShiftLastDeliberateProjectId = null;
+        }
+
+        if (State.DefaultJournalProjectId == projectId)
+        {
+            State.DefaultJournalProjectId = null;
+        }
+
+        if (State.ShiftDefaultJournalProjectId == projectId)
+        {
+            State.ShiftDefaultJournalProjectId = null;
+        }
+
+        log?.Invoke($"Disposed temporary consumable project '{project.Name}'.");
+    }
+
     private void PersistWorkspace()
     {
         NormalizeWorkspacePointers();
@@ -1991,6 +2157,7 @@ internal sealed class ZetlStateStore
         }
 
         NormalizeWorkspacePointers();
+        DisposeInactiveTemporaryProjects(persistWorkspace: true);
     }
 
     private void NormalizeProject(ZetlProject project)
@@ -2000,6 +2167,16 @@ internal sealed class ZetlStateStore
         project.MetadataRevision = Math.Max(project.MetadataRevision, 1);
         project.ChangeSequence = Math.Max(project.ChangeSequence, 0);
         project.Status = NormalizeProjectStatus(project.Status);
+        project.Kind = NormalizeProjectKind(project.Kind);
+        project.SourceTemplateId = string.IsNullOrWhiteSpace(project.SourceTemplateId)
+            ? null
+            : project.SourceTemplateId.Trim();
+        project.TemporaryLane = CanonicalTemporaryLane(project.TemporaryLane);
+        if (!IsTemporaryConsumableProject(project))
+        {
+            project.SourceTemplateId = null;
+            project.TemporaryLane = null;
+        }
         project.Views ??= [];
         foreach (var view in project.Views)
         {
@@ -2402,7 +2579,7 @@ internal sealed class ZetlStateStore
             && State.Projects.FirstOrDefault(project => project.Id == projectId) is { } activated)
         {
             TouchProjectActivity(activated);
-            if (!activated.JournalMode)
+            if (!activated.JournalMode && !IsTemporaryConsumableProject(activated))
             {
                 if (shifted)
                 {
@@ -2484,6 +2661,33 @@ internal sealed class ZetlStateStore
     public static bool IsActiveStatus(ZetlProject project)
     {
         return string.Equals(project.Status, ActiveStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsTemporaryConsumableProject(ZetlProject project)
+    {
+        return string.Equals(project.Kind, TemporaryConsumableProjectKind, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string NormalizeProjectKind(string? kind)
+    {
+        return string.Equals(kind, TemporaryConsumableProjectKind, StringComparison.OrdinalIgnoreCase)
+            ? TemporaryConsumableProjectKind
+            : StandardProjectKind;
+    }
+
+    public static string? CanonicalTemporaryLane(string? lane)
+    {
+        if (string.Equals(lane, ShiftLane, StringComparison.OrdinalIgnoreCase))
+        {
+            return ShiftLane;
+        }
+
+        if (string.Equals(lane, NormalLane, StringComparison.OrdinalIgnoreCase))
+        {
+            return NormalLane;
+        }
+
+        return null;
     }
 
     private static string NormalizeBucketKind(string? kind)

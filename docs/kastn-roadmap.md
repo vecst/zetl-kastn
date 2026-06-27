@@ -134,14 +134,15 @@ Consumable templates already seed ordered Replay queues. A temporary consumable
 should instantiate a disposable project, activate it in a chosen lane, and
 delete it when it leaves that lane.
 
-- [ ] Add a `Temporary` template flag and validation.
-- [ ] Implement Zetl-owned disposal when the Replay queue empties, the lane is
+- [x] Add a `Temporary` template flag and validation.
+- [x] Implement Zetl-owned disposal when the Replay queue empties, the lane is
       cleared, or another project replaces it.
-- [ ] Leave the lane inactive after disposal.
-- [ ] Add Kastn's lane choice and minimize-after-use behavior.
-- [ ] Keep temporary projects out of compile/source and ordinary project lists,
-      except where visibility is needed while active.
-- [ ] Decide disposal ordering relative to Replay's empty-queue Standard-mode
+- [x] Leave the lane inactive after disposal.
+- [x] Add Kastn's Main/Alternate lane choice with optional remembered default.
+- [x] Show temporary and durable projects in Kastn landing role groups: Pinned,
+      Main, Alternate, and Projects.
+- [ ] Decide whether compile/source pickers should include temporary projects.
+- [x] Decide disposal ordering relative to Replay's empty-queue Standard-mode
       transition.
 
 The detailed lifecycle is in

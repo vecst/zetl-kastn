@@ -180,7 +180,7 @@
         <ScrollViewer x:Name="kastnSettingsPanel" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="20" Margin="0,0,12,0">
             <TextBlock Text="Kastn Workbench Settings" Classes="heading" />
-            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
               <TextBlock Grid.Row="0" Grid.Column="0"
                          Text="Autosave slip edits"
                          VerticalAlignment="Center" />
@@ -207,10 +207,17 @@
                         Content="Step Kastn aside so capture can start" />
 
               <TextBlock Grid.Row="4" Grid.Column="0"
+                         Text="Temporary template lane"
+                         VerticalAlignment="Center"
+                         TextWrapping="Wrap" />
+              <ComboBox Grid.Row="4" Grid.Column="1" x:Name="kastnTemporaryTemplateLaneBox"
+                        Width="180" HorizontalAlignment="Left" />
+
+              <TextBlock Grid.Row="5" Grid.Column="0"
                          Text="Minimize to tray"
                          VerticalAlignment="Center"
                          TextWrapping="Wrap" />
-              <CheckBox Grid.Row="4" Grid.Column="1" x:Name="kastnMinimizeToTrayBox"
+              <CheckBox Grid.Row="5" Grid.Column="1" x:Name="kastnMinimizeToTrayBox"
                         Content="Hide Kastn to system tray when minimized" />
             </Grid>
 
