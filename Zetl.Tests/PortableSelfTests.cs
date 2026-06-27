@@ -3781,6 +3781,13 @@ public class PortableSelfTests
         {
             keyboard = new FakeKeyboardBackend();
             undo = new ZetlUndoStack(100);
+            var settings = new ZetlAppSettings
+            {
+                AutoCaptureOnCopy = true,
+                QuickNoteToClipboard = quickNoteToClipboard,
+                ReplayResumeClipboard = replayResumeClipboard,
+                HoldDelayMs = 60
+            };
             return new ZetlShortcutCoordinator(
                 store,
                 keyboard,
@@ -3789,11 +3796,8 @@ public class PortableSelfTests
                 delay ?? new ImmediateDelay(),
                 notifications,
                 undo,
-                () => true,
-                () => quickNoteToClipboard,
-                () => replayResumeClipboard,
+                () => settings,
                 _ => { },
-                TimeSpan.FromMilliseconds(60),
                 imageUrlResolver);
         }
 

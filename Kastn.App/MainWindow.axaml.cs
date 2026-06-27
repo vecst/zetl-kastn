@@ -20,7 +20,7 @@ namespace KASTN;
 
 internal partial class MainWindow : Window
 {
-    private const string UntitledSlipTitle = "Untitled";
+    private string UntitledSlipTitle => CurrentAppSettings().UntitledSlipTitle;
     private const double LandingCardWidth = 450;
     private const double LandingCardHeight = 330;
     private const double LandingCardMargin = 8;

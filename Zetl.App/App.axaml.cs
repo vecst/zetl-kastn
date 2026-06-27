@@ -201,13 +201,15 @@ public partial class App : Application
                 };
                 boardWindow.Opened += (_, _) =>
                 {
-                    var editor = new ThemeEditorWindow(
+                    var editor = new ZetlSettingsWindow(
+                        settingsStore.Settings,
                         themeManager,
                         themeStore,
-                        settingsStore)
+                        settingsStore,
+                        defaultTab: "theme")
                     {
-                        Width = 900,
-                        Height = 700,
+                        Width = 1080,
+                        Height = 760,
                         WindowStartupLocation = WindowStartupLocation.Manual,
                         Position = new PixelPoint(900, 80)
                     };
@@ -252,10 +254,12 @@ public partial class App : Application
                         project,
                         store.GetScratchBucket(project),
                         ""),
-                    "theme" => new ThemeEditorWindow(
+                    "theme" => new ZetlSettingsWindow(
+                        settingsStore.Settings,
                         themeManager,
                         themeStore,
-                        settingsStore),
+                        settingsStore,
+                        defaultTab: "theme"),
                     _ => new NoteCaptureWindow(store, project, bucket, "sample copied text")
                 };
                 AttachPreviewResult(desktop.MainWindow);

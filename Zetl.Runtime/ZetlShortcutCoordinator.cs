@@ -5,12 +5,6 @@ namespace ZETL;
 
 internal sealed class ZetlShortcutCoordinator
 {
-    private static readonly TimeSpan ClipboardPollInterval = TimeSpan.FromMilliseconds(20);
-    private static readonly TimeSpan ClipboardObservationTimeout = TimeSpan.FromMilliseconds(500);
-    private static readonly TimeSpan AutoCaptureClipboardTimeout = TimeSpan.FromMilliseconds(75);
-    private static readonly TimeSpan PopClipboardDelay = TimeSpan.FromMilliseconds(75);
-    private static readonly TimeSpan ReplayClipboardRestoreDelay = TimeSpan.FromMilliseconds(150);
-
     private readonly object pendingGate = new();
     private readonly Dictionary<(int KeyCode, bool Shifted), ZetlPendingShortcut> pendingShortcuts = new();
     private readonly ZetlClipboardSnapshot?[] replayUserClipboard = new ZetlClipboardSnapshot?[2];
@@ -22,12 +16,20 @@ internal sealed class ZetlShortcutCoordinator
     private readonly IZetlDelay delay;
     private readonly IZetlNotificationSink notifications;
     private readonly ZetlUndoStack undoStack;
-    private readonly Func<bool> autoCaptureOnCopy;
-    private readonly Func<bool> quickNoteToClipboard;
-    private readonly Func<bool> replayResumeClipboard;
+    private readonly Func<ZetlAppSettings> getSettings;
     private readonly Action<string> log;
-    private readonly TimeSpan holdDelay;
     private readonly IImageUrlResolver? imageUrlResolver;
+
+    private bool autoCaptureOnCopy() => getSettings().AutoCaptureOnCopy;
+    private bool quickNoteToClipboard() => getSettings().QuickNoteToClipboard;
+    private bool replayResumeClipboard() => getSettings().ReplayResumeClipboard;
+    private TimeSpan holdDelay => TimeSpan.FromMilliseconds(getSettings().HoldDelayMs);
+
+    private TimeSpan ClipboardPollInterval => TimeSpan.FromMilliseconds(getSettings().ClipboardPollIntervalMs);
+    private TimeSpan ClipboardObservationTimeout => TimeSpan.FromMilliseconds(getSettings().ClipboardObservationTimeoutMs);
+    private TimeSpan AutoCaptureClipboardTimeout => TimeSpan.FromMilliseconds(getSettings().AutoCaptureClipboardTimeoutMs);
+    private TimeSpan PopClipboardDelay => TimeSpan.FromMilliseconds(getSettings().PopClipboardDelayMs);
+    private TimeSpan ReplayClipboardRestoreDelay => TimeSpan.FromMilliseconds(getSettings().ReplayClipboardRestoreDelayMs);
 
     public ZetlShortcutCoordinator(
         ZetlStateStore store,
@@ -37,11 +39,8 @@ internal sealed class ZetlShortcutCoordinator
         IZetlDelay delay,
         IZetlNotificationSink notifications,
         ZetlUndoStack undoStack,
-        Func<bool> autoCaptureOnCopy,
-        Func<bool> quickNoteToClipboard,
-        Func<bool> replayResumeClipboard,
+        Func<ZetlAppSettings> getSettings,
         Action<string> log,
-        TimeSpan holdDelay,
         IImageUrlResolver? imageUrlResolver = null)
     {
         this.store = store;
@@ -51,11 +50,8 @@ internal sealed class ZetlShortcutCoordinator
         this.delay = delay;
         this.notifications = notifications;
         this.undoStack = undoStack;
-        this.autoCaptureOnCopy = autoCaptureOnCopy;
-        this.quickNoteToClipboard = quickNoteToClipboard;
-        this.replayResumeClipboard = replayResumeClipboard;
+        this.getSettings = getSettings;
         this.log = log;
-        this.holdDelay = holdDelay;
         this.imageUrlResolver = imageUrlResolver;
     }
 

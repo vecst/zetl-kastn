@@ -237,7 +237,7 @@ internal static class KastnWorkbench
     };
 
     // Keep slip leaves short so the tree stays scannable regardless of pane width.
-    private const int MaxSlipLabelLength = 24;
+    private static int MaxSlipLabelLength => new ZETL.ZetlAppSettingsStore().Settings.MaxSlipLabelLength;
 
     private static string SlipNodeLabel(ZetlSlipSnapshot slip)
     {

@@ -7,8 +7,8 @@ public sealed class ChordlProcessor : IDisposable
     private readonly object gate = new();
     private readonly Dictionary<ChordlChord, ChordlAction> actions;
     private readonly HashSet<int> configuredKeyCodes;
-    private readonly TimeSpan repeatSuppressionDelay;
-    private readonly TimeSpan holdDelay;
+    public TimeSpan RepeatSuppressionDelay { get; set; }
+    public TimeSpan HoldDelay { get; set; }
     private readonly Action<int, bool, bool, bool> dispatchOriginalAction;
     private readonly Action<ChordlEventContext> physicalShortcutPassedThrough;
     private readonly Func<ChordlEventContext, bool> tapDispatched;
@@ -44,8 +44,8 @@ public sealed class ChordlProcessor : IDisposable
     {
         this.actions = actions;
         this.configuredKeyCodes = configuredKeyCodes;
-        this.repeatSuppressionDelay = repeatSuppressionDelay;
-        this.holdDelay = holdDelay;
+        RepeatSuppressionDelay = repeatSuppressionDelay;
+        HoldDelay = holdDelay;
         this.dispatchOriginalAction = dispatchOriginalAction;
         this.physicalShortcutPassedThrough = physicalShortcutPassedThrough;
         this.tapDispatched = tapDispatched;
@@ -157,7 +157,7 @@ public sealed class ChordlProcessor : IDisposable
 
                 var mode = activeAction?.Dispatch ?? ChordlDispatchMode.None;
                 var elapsed = Stopwatch.GetElapsedTime(comboStartedAt);
-                var releasedBeforeHold = elapsed < holdDelay;
+                var releasedBeforeHold = elapsed < HoldDelay;
                 var shouldSuppressKeyUp = mode != ChordlDispatchMode.None;
                 if (mode == ChordlDispatchMode.TapOnly && !holdDetected && releasedBeforeHold && activeAction is not null)
                 {
@@ -234,7 +234,7 @@ public sealed class ChordlProcessor : IDisposable
                 return true;
             }
 
-            if (elapsed >= repeatSuppressionDelay)
+            if (elapsed >= RepeatSuppressionDelay)
             {
                 return true;
             }
@@ -276,7 +276,7 @@ public sealed class ChordlProcessor : IDisposable
             {
                 holdActionDetected(context);
             }
-        }, null, holdDelay, Timeout.InfiniteTimeSpan);
+        }, null, HoldDelay, Timeout.InfiniteTimeSpan);
     }
 
     private void RestartHoldCounter()
@@ -334,7 +334,7 @@ public sealed class ChordlProcessor : IDisposable
             return true;
         }
 
-        return Stopwatch.GetElapsedTime(comboStartedAt) < holdDelay;
+        return Stopwatch.GetElapsedTime(comboStartedAt) < HoldDelay;
     }
 
     private void UpdateActiveComboForCurrentModifiers()

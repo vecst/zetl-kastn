@@ -62,12 +62,15 @@ internal static class KastnPdfRenderer
         string imageDirectory)
     {
         var document = new Document();
+        var settings = new ZetlAppSettingsStore().Settings;
         var normal = document.Styles["Normal"]!;
         normal.Font.Name = KastnPdfFontResolver.FamilyName;
-        normal.Font.Size = 11;
+        normal.Font.Size = settings.PdfFontSize;
 
         var section = document.AddSection();
-        section.PageSetup.PageFormat = PageFormat.Letter;
+        section.PageSetup.PageFormat = string.Equals(settings.PdfPageFormat, "A4", StringComparison.OrdinalIgnoreCase)
+            ? PageFormat.A4
+            : PageFormat.Letter;
 
         if (ZetlViewRenderer.DocumentTitle(project, view) is { } titleText)
         {

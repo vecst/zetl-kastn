@@ -1,158 +1,449 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="ZETL.ZetlSettingsWindow"
-        Width="560" Height="470"
-        MinWidth="460" MinHeight="320"
+        Width="1080" Height="760"
+        MinWidth="900" MinHeight="620"
         CanResize="True"
         SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
         Title="Zetl Settings">
   <Grid Margin="{DynamicResource ZetlWindowPadding}" RowDefinitions="*,Auto">
-    <ScrollViewer Grid.Row="0"
-                  VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled">
-      <Grid ColumnDefinitions="230,*"
-             RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
-             Margin="0,0,8,0">
-        <TextBlock Grid.Row="0" Grid.Column="0"
-                   Text="Toast display time (ms)"
-                   VerticalAlignment="Center" />
-        <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="toastMsBox"
-                       Width="100" HorizontalAlignment="Left"
-                       Minimum="200" Maximum="5000" Increment="50" />
+    <!-- Top Area: Sidebar + Content Panels -->
+    <Grid Grid.Row="0" ColumnDefinitions="180,*" ColumnSpacing="16" Margin="0,0,0,16">
+      <!-- Left Column: Navigation Sidebar -->
+      <Border Grid.Column="0" Classes="surface" BorderThickness="1" Padding="8">
+        <Grid RowDefinitions="Auto,*">
+          <TextBlock Grid.Row="0" Text="Settings" Classes="title" Margin="8,4,8,12" />
+          <ListBox Grid.Row="1" x:Name="settingsTabList" SelectedIndex="0" Background="Transparent" BorderThickness="0">
+            <ListBoxItem Content="Zetl Settings" Padding="12,10" CornerRadius="4" Margin="0,2" />
+            <ListBoxItem Content="Kastn Settings" Padding="12,10" CornerRadius="4" Margin="0,2" />
+            <ListBoxItem Content="Chordl Settings" Padding="12,10" CornerRadius="4" Margin="0,2" />
+            <ListBoxItem Content="Theme Settings" Padding="12,10" CornerRadius="4" Margin="0,2" />
+          </ListBox>
+        </Grid>
+      </Border>
 
-        <TextBlock Grid.Row="1" Grid.Column="0"
-                   Text="Auto-capture on copy"
-                   VerticalAlignment="Center" />
-        <CheckBox Grid.Row="1" Grid.Column="1" x:Name="autoCaptureBox"
-                  Margin="0,8,0,0"
-                  Content="Capture plain Ctrl+C into the active bucket" />
+      <!-- Right Column: Settings Content Panels -->
+      <Grid Grid.Column="1">
+        <!-- Panel 1: Zetl Settings -->
+        <ScrollViewer x:Name="zetlSettingsPanel" IsVisible="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="20" Margin="0,0,12,0">
+            <TextBlock Text="Zetl General Settings" Classes="heading" />
+            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+              <TextBlock Grid.Row="0" Grid.Column="0"
+                         Text="Toast display time (ms)"
+                         VerticalAlignment="Center" />
+              <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="toastMsBox"
+                             Width="100" HorizontalAlignment="Left"
+                             Minimum="200" Maximum="5000" Increment="50" />
 
-        <TextBlock Grid.Row="2" Grid.Column="0"
-                   Text="Quick note to clipboard"
-                   VerticalAlignment="Center" />
-        <CheckBox Grid.Row="2" Grid.Column="1" x:Name="quickNoteClipboardBox"
-                  Margin="0,8,0,0"
-                  Content="Held Ctrl+X note also copies its text to the clipboard" />
+              <TextBlock Grid.Row="1" Grid.Column="0"
+                         Text="Auto-capture on copy"
+                         VerticalAlignment="Center" />
+              <CheckBox Grid.Row="1" Grid.Column="1" x:Name="autoCaptureBox"
+                        Margin="0,8,0,0"
+                        Content="Capture plain Ctrl+C into the active bucket" />
 
-        <TextBlock Grid.Row="3" Grid.Column="0"
-                   Text="Restore clipboard after Replay"
-                   VerticalAlignment="Center" />
-        <CheckBox Grid.Row="3" Grid.Column="1" x:Name="replayResumeClipboardBox"
-                  Margin="0,8,0,0"
-                  Content="Going back to the original clipboard before Replay was enabled" />
+              <TextBlock Grid.Row="2" Grid.Column="0"
+                         Text="Quick note to clipboard"
+                         VerticalAlignment="Center" />
+              <CheckBox Grid.Row="2" Grid.Column="1" x:Name="quickNoteClipboardBox"
+                        Margin="0,8,0,0"
+                        Content="Held Ctrl+X note also copies its text to the clipboard" />
 
-        <TextBlock Grid.Row="4" Grid.Column="0"
-                   Text="Capture origin"
-                   Margin="0,12,0,0"
-                   VerticalAlignment="Center" />
-        <ComboBox Grid.Row="4" Grid.Column="1" x:Name="captureOriginBox"
-                  Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+              <TextBlock Grid.Row="3" Grid.Column="0"
+                         Text="Restore clipboard after Replay"
+                         VerticalAlignment="Center" />
+              <CheckBox Grid.Row="3" Grid.Column="1" x:Name="replayResumeClipboardBox"
+                        Margin="0,8,0,0"
+                        Content="Going back to the original clipboard before Replay was enabled" />
 
-        <TextBlock Grid.Row="5" Grid.Column="0"
-                   Text="Default project buckets (one per line)"
-                   Margin="0,14,10,0"
-                   VerticalAlignment="Top"
-                   TextWrapping="Wrap" />
-        <TextBox Grid.Row="5" Grid.Column="1" x:Name="defaultBucketsBox"
-                 Margin="0,12,0,0"
-                 AcceptsReturn="True"
-                 MinHeight="110"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+              <TextBlock Grid.Row="4" Grid.Column="0"
+                         Text="Capture origin"
+                         Margin="0,12,0,0"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Row="4" Grid.Column="1" x:Name="captureOriginBox"
+                        Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
 
-        <TextBlock Grid.Row="6" Grid.Column="0"
-                   Text="Default compile mode"
-                   Margin="0,12,0,0"
-                   VerticalAlignment="Center" />
-        <ComboBox Grid.Row="6" Grid.Column="1" x:Name="compileModeBox"
-                  Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
+              <TextBlock Grid.Row="5" Grid.Column="0"
+                         Text="Default project buckets (one per line)"
+                         Margin="0,14,10,0"
+                         VerticalAlignment="Top"
+                         TextWrapping="Wrap" />
+              <TextBox Grid.Row="5" Grid.Column="1" x:Name="defaultBucketsBox"
+                       Margin="0,12,0,0"
+                       AcceptsReturn="True"
+                       MinHeight="110"
+                       ScrollViewer.VerticalScrollBarVisibility="Auto" />
 
-        <TextBlock Grid.Row="7" Grid.Column="0"
-                   Text="Default TSV row length"
-                   Margin="0,12,0,0"
-                   VerticalAlignment="Center" />
-        <NumericUpDown Grid.Row="7" Grid.Column="1" x:Name="tsvRowLengthBox"
-                       Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
-                       Minimum="1" Maximum="50" Increment="1" />
+              <TextBlock Grid.Row="6" Grid.Column="0"
+                         Text="Default compile mode"
+                         Margin="0,12,0,0"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Row="6" Grid.Column="1" x:Name="compileModeBox"
+                        Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
 
-        <TextBlock Grid.Row="8" Grid.Column="0"
-                   Text="Journal day starts at (hour)"
-                   Margin="0,12,0,0"
-                   VerticalAlignment="Center" />
-        <NumericUpDown Grid.Row="8" Grid.Column="1" x:Name="dayStartHourBox"
-                       Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
-                       Minimum="0" Maximum="23" Increment="1" />
+              <TextBlock Grid.Row="7" Grid.Column="0"
+                         Text="Default TSV row length"
+                         Margin="0,12,0,0"
+                         VerticalAlignment="Center" />
+              <NumericUpDown Grid.Row="7" Grid.Column="1" x:Name="tsvRowLengthBox"
+                             Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
+                             Minimum="1" Maximum="50" Increment="1" />
 
-        <TextBlock Grid.Row="9" Grid.Column="0"
-                   Text="Auto-return to Journal after (hours, 0 = off)"
-                   Margin="0,12,10,0"
-                   VerticalAlignment="Center"
-                   TextWrapping="Wrap" />
-        <NumericUpDown Grid.Row="9" Grid.Column="1" x:Name="autoReturnHoursBox"
-                       Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
-                       Minimum="0" Maximum="168" Increment="1" />
+              <TextBlock Grid.Row="8" Grid.Column="0"
+                         Text="Journal day starts at (hour)"
+                         Margin="0,12,0,0"
+                         VerticalAlignment="Center" />
+              <NumericUpDown Grid.Row="8" Grid.Column="1" x:Name="dayStartHourBox"
+                             Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
+                             Minimum="0" Maximum="23" Increment="1" />
 
-        <TextBlock Grid.Row="10" Grid.Column="0"
-                   Text="Journal interval"
-                   Margin="0,12,0,0"
-                   VerticalAlignment="Center" />
-        <ComboBox Grid.Row="10" Grid.Column="1" x:Name="journalIntervalBox"
-                  Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
+              <TextBlock Grid.Row="9" Grid.Column="0"
+                         Text="Auto-return to Journal after (hours, 0 = off)"
+                         Margin="0,12,10,0"
+                         VerticalAlignment="Center"
+                         TextWrapping="Wrap" />
+              <NumericUpDown Grid.Row="9" Grid.Column="1" x:Name="autoReturnHoursBox"
+                             Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
+                             Minimum="0" Maximum="168" Increment="1" />
 
-        <TextBlock Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="2"
-                   Text="Kastn workbench"
-                   FontWeight="Bold"
-                   Margin="0,20,0,0" />
+              <TextBlock Grid.Row="10" Grid.Column="0"
+                         Text="Journal interval"
+                         Margin="0,12,0,0"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Row="10" Grid.Column="1" x:Name="journalIntervalBox"
+                        Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
+            </Grid>
 
-        <TextBlock Grid.Row="12" Grid.Column="0"
-                   Text="Autosave slip edits"
-                   Margin="0,12,0,0"
-                   VerticalAlignment="Center" />
-        <CheckBox Grid.Row="12" Grid.Column="1" x:Name="kastnAutosaveBox"
-                  Margin="0,12,0,0"
-                  Content="Save edits automatically when you move away" />
+            <!-- Advanced Section -->
+            <Border BorderBrush="{DynamicResource ZetlBorderBrush}" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,15,0,0">
+              <StackPanel Spacing="16">
+                <TextBlock Text="Advanced Zetl Settings" Classes="heading" Foreground="{DynamicResource ZetlMutedTextBrush}" />
+                <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Log retention (days)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="logRetentionDaysBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="1" Maximum="365" Increment="1" />
 
-        <TextBlock Grid.Row="13" Grid.Column="0"
-                   Text="On startup"
-                   Margin="0,12,0,0"
-                   VerticalAlignment="Center" />
-        <ComboBox Grid.Row="13" Grid.Column="1" x:Name="kastnStartupBox"
-                  Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Max log notes per day" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="logMaxNotesBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="100" Maximum="50000" Increment="100" />
 
-        <TextBlock Grid.Row="14" Grid.Column="0"
-                   Text="Default reading view"
-                   Margin="0,12,0,0"
-                   VerticalAlignment="Center" />
-        <ComboBox Grid.Row="14" Grid.Column="1" x:Name="kastnDefaultViewBox"
-                  Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Log flush interval (ms)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="2" Grid.Column="1" x:Name="logFlushMsBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="500" Maximum="60000" Increment="500" />
 
-        <TextBlock Grid.Row="15" Grid.Column="0"
-                   Text="After creating from a template"
-                   Margin="0,12,10,0"
-                   VerticalAlignment="Center"
-                   TextWrapping="Wrap" />
-        <CheckBox Grid.Row="15" Grid.Column="1" x:Name="kastnMinimizeAfterTemplateBox"
-                  Margin="0,12,0,0"
-                  Content="Step Kastn aside so capture can start" />
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Max undo history actions" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="3" Grid.Column="1" x:Name="maxUndoBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="5" Maximum="1000" Increment="5" />
 
-        <TextBlock Grid.Row="16" Grid.Column="0"
-                   Text="Minimize to tray"
-                   Margin="0,12,10,0"
-                   VerticalAlignment="Center"
-                   TextWrapping="Wrap" />
-        <CheckBox Grid.Row="16" Grid.Column="1" x:Name="kastnMinimizeToTrayBox"
-                  Margin="0,12,0,0"
-                  Content="Hide Kastn to system tray when minimized" />
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Clipboard poll interval (ms)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="4" Grid.Column="1" x:Name="clipPollMsBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="5" Maximum="200" Increment="5" />
+
+                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Clipboard observation timeout (ms)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="5" Grid.Column="1" x:Name="clipObsTimeoutMsBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="50" Maximum="2000" Increment="50" />
+
+                  <TextBlock Grid.Row="6" Grid.Column="0" Text="Auto-capture timeout (ms)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="6" Grid.Column="1" x:Name="autoCaptureTimeoutMsBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="10" Maximum="1000" Increment="10" />
+
+                  <TextBlock Grid.Row="7" Grid.Column="0" Text="Pop clipboard delay (ms)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="7" Grid.Column="1" x:Name="popClipDelayMsBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="10" Maximum="1000" Increment="10" />
+
+                  <TextBlock Grid.Row="8" Grid.Column="0" Text="Replay clipboard restore delay (ms)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="8" Grid.Column="1" x:Name="replayRestoreDelayMsBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="10" Maximum="1000" Increment="10" />
+
+                  <TextBlock Grid.Row="9" Grid.Column="0" Text="URL image download timeout (s)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="9" Grid.Column="1" x:Name="downloadTimeoutBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="1" Maximum="120" Increment="1" />
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Panel 2: Kastn Settings -->
+        <ScrollViewer x:Name="kastnSettingsPanel" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="20" Margin="0,0,12,0">
+            <TextBlock Text="Kastn Workbench Settings" Classes="heading" />
+            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+              <TextBlock Grid.Row="0" Grid.Column="0"
+                         Text="Autosave slip edits"
+                         VerticalAlignment="Center" />
+              <CheckBox Grid.Row="0" Grid.Column="1" x:Name="kastnAutosaveBox"
+                        Content="Save edits automatically when you move away" />
+
+              <TextBlock Grid.Row="1" Grid.Column="0"
+                         Text="On startup"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Row="1" Grid.Column="1" x:Name="kastnStartupBox"
+                        Width="220" HorizontalAlignment="Left" />
+
+              <TextBlock Grid.Row="2" Grid.Column="0"
+                         Text="Default reading view"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Row="2" Grid.Column="1" x:Name="kastnDefaultViewBox"
+                        Width="220" HorizontalAlignment="Left" />
+
+              <TextBlock Grid.Row="3" Grid.Column="0"
+                         Text="After creating from a template"
+                         VerticalAlignment="Center"
+                         TextWrapping="Wrap" />
+              <CheckBox Grid.Row="3" Grid.Column="1" x:Name="kastnMinimizeAfterTemplateBox"
+                        Content="Step Kastn aside so capture can start" />
+
+              <TextBlock Grid.Row="4" Grid.Column="0"
+                         Text="Minimize to tray"
+                         VerticalAlignment="Center"
+                         TextWrapping="Wrap" />
+              <CheckBox Grid.Row="4" Grid.Column="1" x:Name="kastnMinimizeToTrayBox"
+                        Content="Hide Kastn to system tray when minimized" />
+            </Grid>
+
+            <!-- Advanced Section -->
+            <Border BorderBrush="{DynamicResource ZetlBorderBrush}" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,15,0,0">
+              <StackPanel Spacing="16">
+                <TextBlock Text="Advanced Kastn Settings" Classes="heading" Foreground="{DynamicResource ZetlMutedTextBrush}" />
+                <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Default new slip title" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="0" Grid.Column="1" x:Name="untitledSlipTitleBox" Width="220" HorizontalAlignment="Left" />
+
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Max slip label length (chars)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="maxSlipLabelLengthBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="5" Maximum="100" Increment="1" />
+
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="PDF page format" VerticalAlignment="Center" />
+                  <ComboBox Grid.Row="2" Grid.Column="1" x:Name="pdfPageFormatBox" Width="140" HorizontalAlignment="Left">
+                    <ComboBoxItem Content="Letter" />
+                    <ComboBoxItem Content="A4" />
+                  </ComboBox>
+
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="PDF body font size (pt)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="3" Grid.Column="1" x:Name="pdfFontSizeBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="6" Maximum="24" Increment="1" />
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Panel 3: Chordl Settings -->
+        <ScrollViewer x:Name="chordlSettingsPanel" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="20" Margin="0,0,12,0">
+            <TextBlock Text="Chordl Keyboard Engine" Classes="heading" />
+            <Border Classes="surface" BorderThickness="1" Padding="14">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Chordl captures global hotkeys to route copy, cut, and paste events to Zetl buckets:" TextWrapping="Wrap" />
+                <BulletDecorator Margin="10,4,0,0"><TextBlock Text="•  Ctrl+C: Copies selection directly into the active bucket." /></BulletDecorator>
+                <BulletDecorator Margin="10,0,0,0"><TextBlock Text="•  Ctrl+Shift+C: Opens the note capture window immediately." /></BulletDecorator>
+                <BulletDecorator Margin="10,0,0,0"><TextBlock Text="•  Ctrl+V: Pastes the next note in Pop Mode, or consumes from Replay Mode." /></BulletDecorator>
+                <BulletDecorator Margin="10,0,0,0"><TextBlock Text="•  Ctrl+Shift+V: Activates/Toggles Pop Mode." /></BulletDecorator>
+              </StackPanel>
+            </Border>
+
+            <!-- Advanced Section -->
+            <Border BorderBrush="{DynamicResource ZetlBorderBrush}" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,15,0,0">
+              <StackPanel Spacing="16">
+                <TextBlock Text="Advanced Keyboard Timings" Classes="heading" Foreground="{DynamicResource ZetlMutedTextBrush}" />
+                <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto" RowSpacing="12">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Hold delay (ms)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="holdDelayMsBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="100" Maximum="2000" Increment="25" />
+
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Repeat suppression delay (ms)" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="repeatSuppressionDelayMsBox"
+                                 Width="100" HorizontalAlignment="Left"
+                                 Minimum="5" Maximum="500" Increment="5" />
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Panel 4: Theme Settings -->
+        <Grid x:Name="themeEditorPanel" IsVisible="False" ColumnDefinitions="250,*" ColumnSpacing="14">
+          <!-- Left Column of Theme Editor -->
+          <Grid Grid.Column="0" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
+            <TextBlock Grid.Row="0" Text="Theme" Classes="heading" />
+            <ComboBox Grid.Row="1"
+                      x:Name="themeBox"
+                      DisplayMemberBinding="{Binding Name}"
+                      HorizontalAlignment="Stretch" />
+            <ComboBox Grid.Row="2" x:Name="variantBox" HorizontalAlignment="Stretch" />
+            <Border Grid.Row="3"
+                    Classes="surface"
+                    BorderThickness="1"
+                    Padding="12">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="{DynamicResource ZetlControlSpacing}">
+                  <TextBlock Text="Live preview" Classes="heading" />
+                  <TextBlock Text="Changes apply to every open Avalonia window while this editor is active."
+                             TextWrapping="Wrap"
+                             Classes="muted" />
+                  <TextBox Text="Editable text" />
+                  <ComboBox SelectedIndex="0" HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="Selected option" />
+                  </ComboBox>
+                  <CheckBox Content="Accent control" IsChecked="True" />
+                  <Button Content="Primary action"
+                          Classes="primary"
+                          HorizontalAlignment="Left" />
+                  <Button Content="Secondary action"
+                          HorizontalAlignment="Left" />
+                  <TextBlock Text="Validation and warnings use the configured error color."
+                             Classes="validation"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </ScrollViewer>
+            </Border>
+            <StackPanel Grid.Row="4" Spacing="8">
+              <Button x:Name="themeSaveButton"
+                      Content="Save and Activate"
+                      Classes="primary"
+                      HorizontalAlignment="Stretch" />
+              <Button x:Name="themeDuplicateButton" Content="Save As / Duplicate" HorizontalAlignment="Stretch" />
+              <Button x:Name="themeResetButton" Content="Reset Values" HorizontalAlignment="Stretch" />
+              <Button x:Name="themeImportButton" Content="Import Theme" HorizontalAlignment="Stretch" />
+              <Button x:Name="themeExportButton" Content="Export Theme" HorizontalAlignment="Stretch" />
+            </StackPanel>
+          </Grid>
+
+          <!-- Right Column of Theme Editor -->
+          <Grid Grid.Column="1" RowDefinitions="*,Auto">
+            <ScrollViewer Grid.Row="0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="14" Margin="0,0,8,0">
+                <TextBlock Text="Identity" Classes="heading" />
+                <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto" RowSpacing="8">
+                  <TextBlock Grid.Row="0" Grid.Column="0"
+                             Text="Name"
+                             VerticalAlignment="Center" />
+                  <TextBox Grid.Row="0" Grid.Column="1" x:Name="themeNameBox" />
+                  <TextBlock Grid.Row="1" Grid.Column="0"
+                             Text="Theme id"
+                             VerticalAlignment="Center" />
+                  <TextBox Grid.Row="1" Grid.Column="1"
+                           x:Name="themeIdBox"
+                           IsReadOnly="True" />
+                </Grid>
+
+                <TextBlock Text="Palette" Classes="heading" />
+                <Grid ColumnDefinitions="150,*,48"
+                      RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                      RowSpacing="8"
+                      ColumnSpacing="8">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Window background" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="0" Grid.Column="1" x:Name="themeWindowBackgroundBox" />
+                  <Border Grid.Row="0" Grid.Column="2" x:Name="themeWindowBackgroundSwatch" BorderThickness="1" />
+
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Surface" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="1" Grid.Column="1" x:Name="themeSurfaceBox" />
+                  <Border Grid.Row="1" Grid.Column="2" x:Name="themeSurfaceSwatch" BorderThickness="1" />
+
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Alternate surface" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="2" Grid.Column="1" x:Name="themeSurfaceAltBox" />
+                  <Border Grid.Row="2" Grid.Column="2" x:Name="themeSurfaceAltSwatch" BorderThickness="1" />
+
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Text" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="3" Grid.Column="1" x:Name="themeTextBox" />
+                  <Border Grid.Row="3" Grid.Column="2" x:Name="themeTextSwatch" BorderThickness="1" />
+
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Muted text" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="4" Grid.Column="1" x:Name="themeMutedTextBox" />
+                  <Border Grid.Row="4" Grid.Column="2" x:Name="themeMutedTextSwatch" BorderThickness="1" />
+
+                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Accent" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="5" Grid.Column="1" x:Name="themeAccentBox" />
+                  <Border Grid.Row="5" Grid.Column="2" x:Name="themeAccentSwatch" BorderThickness="1" />
+
+                  <TextBlock Grid.Row="6" Grid.Column="0" Text="Accent text" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="6" Grid.Column="1" x:Name="themeAccentTextBox" />
+                  <Border Grid.Row="6" Grid.Column="2" x:Name="themeAccentTextSwatch" BorderThickness="1" />
+
+                  <TextBlock Grid.Row="7" Grid.Column="0" Text="Border" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="7" Grid.Column="1" x:Name="themeBorderBox" />
+                  <Border Grid.Row="7" Grid.Column="2" x:Name="themeBorderSwatch" BorderThickness="1" />
+
+                  <TextBlock Grid.Row="8" Grid.Column="0" Text="Error" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="8" Grid.Column="1" x:Name="themeErrorBox" />
+                  <Border Grid.Row="8" Grid.Column="2" x:Name="themeErrorSwatch" BorderThickness="1" />
+                </Grid>
+
+                <TextBlock Text="Typography" Classes="heading" />
+                <Grid ColumnDefinitions="150,*"
+                      RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                      RowSpacing="8">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Font family" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="0" Grid.Column="1" x:Name="themeFontFamilyBox" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Monospace family" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="1" Grid.Column="1" x:Name="themeMonoFontFamilyBox" />
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Body size" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="2" Grid.Column="1" x:Name="themeBodyFontSizeBox"
+                                 Minimum="9" Maximum="30" Increment="0.5"
+                                 Width="110" HorizontalAlignment="Left" />
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Heading size" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="3" Grid.Column="1" x:Name="themeHeadingFontSizeBox"
+                                 Minimum="10" Maximum="40" Increment="0.5"
+                                 Width="110" HorizontalAlignment="Left" />
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Title size" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="4" Grid.Column="1" x:Name="themeTitleFontSizeBox"
+                                 Minimum="12" Maximum="56" Increment="0.5"
+                                 Width="110" HorizontalAlignment="Left" />
+                </Grid>
+
+                <TextBlock Text="Layout" Classes="heading" />
+                <Grid ColumnDefinitions="150,*"
+                      RowDefinitions="Auto,Auto,Auto"
+                      RowSpacing="8">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Window padding" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="themeWindowPaddingBox"
+                                 Minimum="0" Maximum="40" Increment="1"
+                                 Width="110" HorizontalAlignment="Left" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Control spacing" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="themeControlSpacingBox"
+                                 Minimum="0" Maximum="30" Increment="1"
+                                 Width="110" HorizontalAlignment="Left" />
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Corner radius" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="2" Grid.Column="1" x:Name="themeCornerRadiusBox"
+                                 Minimum="0" Maximum="24" Increment="1"
+                                 Width="110" HorizontalAlignment="Left" />
+                </Grid>
+              </StackPanel>
+            </ScrollViewer>
+
+            <TextBlock Grid.Row="1"
+                       x:Name="themeValidationText"
+                       Classes="validation"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center"
+                       IsVisible="False"
+                       Margin="0,12,0,0" />
+          </Grid>
+        </Grid>
       </Grid>
-    </ScrollViewer>
+    </Grid>
 
-    <Grid Grid.Row="1"
-          ColumnDefinitions="Auto,*,Auto"
-          Margin="0,16,0,0">
-      <Button Grid.Column="0"
-              x:Name="themeButton"
-              Content="Edit Theme..." />
-      <StackPanel Grid.Column="2"
+    <!-- Save / Cancel Buttons at the Bottom -->
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
+      <StackPanel Grid.Column="1"
                   Orientation="Horizontal"
                   HorizontalAlignment="Right"
                   Spacing="8">

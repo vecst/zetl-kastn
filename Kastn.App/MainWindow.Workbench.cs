@@ -1718,8 +1718,9 @@ internal partial class MainWindow
 
     private static bool IsUntitledKastnSlip(ZetlSlipSnapshot slip)
     {
+        var title = new ZETL.ZetlAppSettingsStore().Settings.UntitledSlipTitle;
         return string.Equals(slip.Source, "kastn", StringComparison.Ordinal)
-            && string.Equals(slip.Title.Trim(), UntitledSlipTitle, StringComparison.Ordinal)
+            && string.Equals(slip.Title.Trim(), title, StringComparison.Ordinal)
             && string.IsNullOrWhiteSpace(slip.Text);
     }
 }

@@ -28,6 +28,28 @@ internal sealed class ZetlAppSettings
     public string KastnDefaultViewId { get; set; } = "";
     public bool KastnMinimizeAfterTemplate { get; set; } = true;
     public bool KastnMinimizeToTray { get; set; } = true;
+
+    // Advanced Zetl and log settings.
+    public int LogRetentionDays { get; set; } = 14;
+    public int LogMaxNotesPerDay { get; set; } = 2000;
+    public int LogFlushIntervalMs { get; set; } = 5000;
+    public int MaxUndoActions { get; set; } = 100;
+    public string UntitledSlipTitle { get; set; } = "Untitled";
+    public int MaxSlipLabelLength { get; set; } = 24;
+    public string PdfPageFormat { get; set; } = "Letter";
+    public int PdfFontSize { get; set; } = 11;
+
+    // Chordl Keyboard timings.
+    public int HoldDelayMs { get; set; } = 353;
+    public int RepeatSuppressionDelayMs { get; set; } = 33;
+
+    // Advanced timings and timeouts.
+    public int ClipboardPollIntervalMs { get; set; } = 20;
+    public int ClipboardObservationTimeoutMs { get; set; } = 500;
+    public int AutoCaptureClipboardTimeoutMs { get; set; } = 75;
+    public int PopClipboardDelayMs { get; set; } = 75;
+    public int ReplayClipboardRestoreDelayMs { get; set; } = 150;
+    public int DownloadTimeoutSeconds { get; set; } = 10;
 }
 
 internal static class ZetlKastnStartup

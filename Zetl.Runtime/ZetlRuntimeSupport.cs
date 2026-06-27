@@ -21,21 +21,26 @@ internal sealed record ZetlUndoAction(bool Shifted, string Message, Action Undo)
 
 internal sealed class ZetlUndoStack
 {
-    private readonly int capacity;
+    public int Capacity { get; set; }
     private readonly List<ZetlUndoAction> actions = new();
 
     public ZetlUndoStack(int capacity)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
-        this.capacity = capacity;
+        Capacity = capacity;
     }
 
     public void Push(bool shifted, string message, Action undo)
     {
         actions.Add(new ZetlUndoAction(shifted, message, undo));
-        if (actions.Count > capacity)
+        Truncate();
+    }
+
+    public void Truncate()
+    {
+        if (actions.Count > Capacity)
         {
-            actions.RemoveRange(0, actions.Count - capacity);
+            actions.RemoveRange(0, actions.Count - Capacity);
         }
     }
 

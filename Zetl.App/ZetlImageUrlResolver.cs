@@ -31,7 +31,7 @@ internal sealed class ZetlImageUrlResolver : IImageUrlResolver
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
     private const string AcceptHeader =
         "image/avif,image/webp,image/png,image/*;q=0.8,*/*;q=0.5";
-    private static readonly TimeSpan DownloadTimeout = TimeSpan.FromSeconds(10);
+    private TimeSpan DownloadTimeout => TimeSpan.FromSeconds(new ZetlAppSettingsStore().Settings.DownloadTimeoutSeconds);
     private static readonly HttpClient SharedClient = CreateClient();
 
     private readonly HttpClient client;

@@ -118,11 +118,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             new SystemZetlDelay(),
             notifications,
             undoStack,
-            () => settingsStore.Settings.AutoCaptureOnCopy,
-            () => settingsStore.Settings.QuickNoteToClipboard,
-            () => settingsStore.Settings.ReplayResumeClipboard,
+            () => settingsStore.Settings,
             Log,
-            config.HoldDelay,
             imageUrlResolver);
 
         ApplySettings();
@@ -131,11 +128,14 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         store.ClearActiveProject();
         store.ClearActiveProject(shifted: true);
 
+        var repeatSuppressionDelay = TimeSpan.FromMilliseconds(settingsStore.Settings.RepeatSuppressionDelayMs);
+        var holdDelay = TimeSpan.FromMilliseconds(settingsStore.Settings.HoldDelayMs);
+
         processor = new ChordlProcessor(
             config.Actions,
             config.ConfiguredKeyCodes,
-            config.RepeatSuppressionDelay,
-            config.HoldDelay,
+            repeatSuppressionDelay,
+            holdDelay,
             DispatchOriginalAction,
             OnPhysicalShortcutPassedThrough,
             coordinator.OnTapDispatched,
@@ -903,6 +903,25 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.KastnDefaultViewId = window.KastnDefaultViewId;
         settings.KastnMinimizeAfterTemplate = window.KastnMinimizeAfterTemplate;
         settings.KastnMinimizeToTray = window.KastnMinimizeToTray;
+
+        // Map new advanced settings
+        settings.LogRetentionDays = window.LogRetentionDays;
+        settings.LogMaxNotesPerDay = window.LogMaxNotesPerDay;
+        settings.LogFlushIntervalMs = window.LogFlushIntervalMs;
+        settings.MaxUndoActions = window.MaxUndoActions;
+        settings.UntitledSlipTitle = window.UntitledSlipTitle;
+        settings.MaxSlipLabelLength = window.MaxSlipLabelLength;
+        settings.PdfPageFormat = window.PdfPageFormat;
+        settings.PdfFontSize = window.PdfFontSize;
+        settings.HoldDelayMs = window.HoldDelayMs;
+        settings.RepeatSuppressionDelayMs = window.RepeatSuppressionDelayMs;
+        settings.ClipboardPollIntervalMs = window.ClipboardPollIntervalMs;
+        settings.ClipboardObservationTimeoutMs = window.ClipboardObservationTimeoutMs;
+        settings.AutoCaptureClipboardTimeoutMs = window.AutoCaptureClipboardTimeoutMs;
+        settings.PopClipboardDelayMs = window.PopClipboardDelayMs;
+        settings.ReplayClipboardRestoreDelayMs = window.ReplayClipboardRestoreDelayMs;
+        settings.DownloadTimeoutSeconds = window.DownloadTimeoutSeconds;
+
         settingsStore.Save();
         ApplySettings();
         notifications.Show("Settings saved.");
@@ -960,6 +979,20 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     {
         notifications.DisplayMilliseconds = settingsStore.Settings.ToastDisplayMs;
         ZetlRuntimeSettings.ApplyTo(store, settingsStore.Settings);
+        if (logFlushTimer is not null)
+        {
+            logFlushTimer.Interval = TimeSpan.FromMilliseconds(settingsStore.Settings.LogFlushIntervalMs);
+        }
+        if (undoStack is not null)
+        {
+            undoStack.Capacity = settingsStore.Settings.MaxUndoActions;
+            undoStack.Truncate();
+        }
+        if (processor is not null)
+        {
+            processor.RepeatSuppressionDelay = TimeSpan.FromMilliseconds(settingsStore.Settings.RepeatSuppressionDelayMs);
+            processor.HoldDelay = TimeSpan.FromMilliseconds(settingsStore.Settings.HoldDelayMs);
+        }
     }
 
     private void FlushLogNotes()
