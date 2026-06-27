@@ -250,10 +250,10 @@
             <Border Classes="surface" BorderThickness="1" Padding="14">
               <StackPanel Spacing="8">
                 <TextBlock Text="Chordl captures global hotkeys to route copy, cut, and paste events to Zetl buckets:" TextWrapping="Wrap" />
-                <BulletDecorator Margin="10,4,0,0"><TextBlock Text="•  Ctrl+C: Copies selection directly into the active bucket." /></BulletDecorator>
-                <BulletDecorator Margin="10,0,0,0"><TextBlock Text="•  Ctrl+Shift+C: Opens the note capture window immediately." /></BulletDecorator>
-                <BulletDecorator Margin="10,0,0,0"><TextBlock Text="•  Ctrl+V: Pastes the next note in Pop Mode, or consumes from Replay Mode." /></BulletDecorator>
-                <BulletDecorator Margin="10,0,0,0"><TextBlock Text="•  Ctrl+Shift+V: Activates/Toggles Pop Mode." /></BulletDecorator>
+                <TextBlock Text="•  Ctrl+C: Copies selection directly into the active bucket." Margin="10,4,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Ctrl+Shift+C: Opens the note capture window immediately." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Ctrl+V: Pastes the next note in Pop Mode, or consumes from Replay Mode." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Ctrl+Shift+V: Activates/Toggles Pop Mode." Margin="10,0,0,0" TextWrapping="Wrap" />
               </StackPanel>
             </Border>
 
