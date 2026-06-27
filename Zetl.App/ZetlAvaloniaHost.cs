@@ -902,6 +902,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.KastnStartup = window.KastnStartup;
         settings.KastnDefaultViewId = window.KastnDefaultViewId;
         settings.KastnMinimizeAfterTemplate = window.KastnMinimizeAfterTemplate;
+        settings.KastnMinimizeToTray = window.KastnMinimizeToTray;
         settingsStore.Save();
         ApplySettings();
         notifications.Show("Settings saved.");

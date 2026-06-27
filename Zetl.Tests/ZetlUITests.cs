@@ -362,6 +362,58 @@ public class ZetlUITests
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void MainWindowMinimizationRespectsMinimizeToTraySetting()
+    {
+        var tempFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), System.IO.Path.GetRandomFileName() + ".json");
+        try
+        {
+            // 1. Arrange settings with override
+            ZETL.ZetlAppSettingsStore.DefaultSettingsPathOverride = tempFile;
+            var settingsStore = new ZETL.ZetlAppSettingsStore();
+            settingsStore.Settings.KastnMinimizeToTray = true;
+            settingsStore.Save();
+
+            var connection = new KastnConnectionController(_ => Task.CompletedTask);
+            var window = new MainWindow(connection);
+            window.Show();
+
+            // 2. Act - Minimize window when setting is true (default)
+            window.WindowState = Avalonia.Controls.WindowState.Minimized;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            // 3. Assert - it should be hidden (IsVisible is false, and ShowInTaskbar is false)
+            Assert.False(window.IsVisible);
+            Assert.False(window.ShowInTaskbar);
+
+            // 4. Arrange - restore window and change setting to false
+            window.WindowState = Avalonia.Controls.WindowState.Normal;
+            window.Show();
+            Assert.True(window.IsVisible);
+
+            settingsStore.Settings.KastnMinimizeToTray = false;
+            settingsStore.Save();
+
+            // 5. Act - Minimize window when setting is false
+            window.WindowState = Avalonia.Controls.WindowState.Minimized;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            // 6. Assert - it should NOT be hidden (IsVisible is true, but WindowState is Minimized)
+            Assert.True(window.IsVisible);
+            Assert.Equal(Avalonia.Controls.WindowState.Minimized, window.WindowState);
+
+            window.Close();
+        }
+        finally
+        {
+            ZETL.ZetlAppSettingsStore.DefaultSettingsPathOverride = null;
+            if (System.IO.File.Exists(tempFile))
+            {
+                System.IO.File.Delete(tempFile);
+            }
+        }
+    }
+
     private static List<T> FindVisualChildren<T>(Avalonia.Visual parent) where T : Avalonia.Visual
     {
         var list = new List<T>();

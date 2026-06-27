@@ -12,7 +12,7 @@
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
       <Grid ColumnDefinitions="230,*"
-             RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+             RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
              Margin="0,0,8,0">
         <TextBlock Grid.Row="0" Grid.Column="0"
                    Text="Toast display time (ms)"
@@ -134,6 +134,15 @@
         <CheckBox Grid.Row="15" Grid.Column="1" x:Name="kastnMinimizeAfterTemplateBox"
                   Margin="0,12,0,0"
                   Content="Step Kastn aside so capture can start" />
+
+        <TextBlock Grid.Row="16" Grid.Column="0"
+                   Text="Minimize to tray"
+                   Margin="0,12,10,0"
+                   VerticalAlignment="Center"
+                   TextWrapping="Wrap" />
+        <CheckBox Grid.Row="16" Grid.Column="1" x:Name="kastnMinimizeToTrayBox"
+                  Margin="0,12,0,0"
+                  Content="Hide Kastn to system tray when minimized" />
       </Grid>
     </ScrollViewer>
 

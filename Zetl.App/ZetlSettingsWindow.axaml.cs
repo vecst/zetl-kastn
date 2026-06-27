@@ -66,6 +66,7 @@ internal partial class ZetlSettingsWindow : Window
             ?? viewChoices[0];
 
         kastnMinimizeAfterTemplateBox.IsChecked = settings.KastnMinimizeAfterTemplate;
+        kastnMinimizeToTrayBox.IsChecked = settings.KastnMinimizeToTray;
 
         saveButton.Click += (_, _) =>
         {
@@ -132,6 +133,8 @@ internal partial class ZetlSettingsWindow : Window
     public string KastnDefaultViewId => (kastnDefaultViewBox.SelectedItem as ViewChoice)?.Id ?? "";
 
     public bool KastnMinimizeAfterTemplate => kastnMinimizeAfterTemplateBox.IsChecked == true;
+
+    public bool KastnMinimizeToTray => kastnMinimizeToTrayBox.IsChecked == true;
 
     private static decimal Clamp(int value, int min, int max)
     {

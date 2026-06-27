@@ -27,6 +27,7 @@ internal sealed class ZetlAppSettings
     public string KastnStartup { get; set; } = ZetlKastnStartup.Landing;
     public string KastnDefaultViewId { get; set; } = "";
     public bool KastnMinimizeAfterTemplate { get; set; } = true;
+    public bool KastnMinimizeToTray { get; set; } = true;
 }
 
 internal static class ZetlKastnStartup
@@ -54,12 +55,14 @@ internal static class ZetlJournalInterval
 
 internal sealed class ZetlAppSettingsStore
 {
+    public static string? DefaultSettingsPathOverride { get; set; }
+
     private readonly string settingsPath;
     private readonly Action<string>? log;
 
     public ZetlAppSettingsStore(string? settingsPath = null, Action<string>? log = null)
     {
-        this.settingsPath = settingsPath ?? Path.Combine(
+        this.settingsPath = settingsPath ?? DefaultSettingsPathOverride ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Zetl",
             "settings.json");

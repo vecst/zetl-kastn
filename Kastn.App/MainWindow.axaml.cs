@@ -362,8 +362,11 @@ internal partial class MainWindow : Window
         if (change.Property == WindowStateProperty
             && change.GetNewValue<WindowState>() == WindowState.Minimized)
         {
-            // Defer to avoid re-entering the WindowState change we are reacting to.
-            Dispatcher.UIThread.Post(HideToTray);
+            if (CurrentAppSettings().KastnMinimizeToTray)
+            {
+                // Defer to avoid re-entering the WindowState change we are reacting to.
+                Dispatcher.UIThread.Post(HideToTray);
+            }
         }
     }
 
