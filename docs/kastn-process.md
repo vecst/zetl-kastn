@@ -33,7 +33,7 @@ requested project. Activation requests carry stable project IDs only.
 
 Kastn hosts a local control pipe whose name is derived deterministically from
 the user and login session, so Zetl computes the same name without it being
-passed at launch. The pipe carries three signals:
+passed at launch. The pipe carries two signals:
 
 - **Activate** — focus Kastn and optionally navigate to a project. Used by the
   single-instance forward and by Zetl's `Open Kastn` tray item. Fire-and-forget.

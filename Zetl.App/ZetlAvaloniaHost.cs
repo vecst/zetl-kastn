@@ -12,6 +12,7 @@ namespace ZETL;
 
 internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 {
+    private const string AllowInjectedInputArgument = "--allow-injected-input-for-testing";
     private const int MaxUndoActions = 100;
     private const int LogFlushIntervalMs = 5000;
     private const int LogRetentionDays = 14;
@@ -105,8 +106,16 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             settingsStore.Settings.ThemeVariant,
             persist: false);
 
+        var requestedInjectedInputForTesting = Program.StartupArgs.Contains(
+            AllowInjectedInputArgument,
+            StringComparer.OrdinalIgnoreCase);
+        var allowInjectedInputForTesting = requestedInjectedInputForTesting
+            && !string.IsNullOrWhiteSpace(dataDirectory);
+
         notifications = new AvaloniaNotificationService(activityLog);
-        keyboard = ZetlPlatformServices.CreateKeyboard(Log);
+        keyboard = ZetlPlatformServices.CreateKeyboard(
+            Log,
+            allowInjectedInputForTesting);
         clipboard = ZetlPlatformServices.CreateClipboard(Log);
         imageUrlResolver = new ZetlImageUrlResolver(Log);
         var config = LoadChordlConfiguration(out var configMessage);
@@ -161,6 +170,19 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         ipcServer.Start();
 
         Log(configMessage);
+        if (allowInjectedInputForTesting)
+        {
+            Log(
+                "Injected keyboard events are enabled for testing; "
+                + "Zetl replay events remain ignored.");
+        }
+        else if (requestedInjectedInputForTesting)
+        {
+            Log(
+                "Ignoring --allow-injected-input-for-testing because it requires "
+                + "--data-dir.");
+        }
+
         if (!keyboard.Start(processor.HandleKeyEvent))
         {
             notifications.Show(OperatingSystem.IsWindows()

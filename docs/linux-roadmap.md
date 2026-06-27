@@ -154,7 +154,7 @@ window policy is involved.
 
 ```powershell
 dotnet build Zetl.slnx --no-restore -p:UseAppHost=false
-dotnet .\artifacts\bin\Debug\Zetl.Tests.dll
+dotnet test Zetl.Tests\Zetl.Tests.csproj --no-build
 dotnet .\artifacts\bin\Debug\Zetl.dll --self-test
 ```
 

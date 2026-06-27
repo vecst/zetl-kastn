@@ -79,29 +79,29 @@ Kastn is active.
 Stable-ID wiki-link parsing, cached readable titles, backlink calculation, and
 the editor link picker are implemented.
 
-Remaining:
+Landed:
 
-- [ ] Render wiki-links as interactive links in the reading view.
-- [ ] Add a backlinks section to the Detail pane.
-- [ ] Render resolved and unresolved links appropriately in exports.
-- [ ] Finalize the cursor-in-link repoint interaction.
+- [x] Render wiki-links as interactive links in the reading view.
+- [x] Add a backlinks section to the Detail pane.
+- [x] Render resolved and unresolved links appropriately in exports.
+- [x] Finalize the cursor-in-link repoint interaction.
 
 The complete design is in [`kastn-ui-roadmap.md`](kastn-ui-roadmap.md).
 
 ### Board Mode
 
-Add an alternate kanban projection where buckets are columns and slips are
-cards. Reuse existing `MoveSlip`, `ReorderSlip`, editor, picture, and include
-state rather than introducing board-specific content.
+Kastn provides an alternate kanban projection where buckets are columns and
+slips are cards. It reuses existing `MoveSlip`, `ReorderSlip`, editor,
+picture, and include state rather than introducing board-specific content.
 
-- [ ] Decide how nested buckets map to columns or swimlanes.
-- [ ] Add the List/Board mode switch.
-- [ ] Reuse drag-and-drop for cards and columns.
-- [ ] Keep the existing Detail pane docked while Board mode is active.
+- [x] Nested buckets currently flatten into tree-order columns.
+- [x] Add the List/Board mode switch.
+- [x] Reuse drag-and-drop for cards and columns.
+- [x] Auto-collapse the Tree and Detail panes while Board mode is active.
 
 ### Interaction Cleanup
 
-- [ ] Add a clear live drop indicator to the existing tree drag-and-drop.
+- [x] Add a clear live drop indicator to the existing tree drag-and-drop.
 - [ ] Remove or demote redundant Move/parent controls after direct manipulation
       is comfortably accessible.
 - [ ] Make nested bucket creation and placement faster in Zetl's quick Board.
@@ -169,7 +169,7 @@ All projects build into `artifacts\bin\<Configuration>\`.
 
 ```powershell
 dotnet build Zetl.slnx --no-restore -p:UseAppHost=false
-dotnet .\artifacts\bin\Debug\Zetl.Tests.dll
+dotnet test Zetl.Tests\Zetl.Tests.csproj --no-build
 dotnet .\artifacts\bin\Debug\Zetl.dll --self-test
 ```
 

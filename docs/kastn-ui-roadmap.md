@@ -109,15 +109,12 @@ Landed:
 - [x] Provide a searchable editor picker.
 - [x] Repoint a token rather than nesting a new token when editing an existing
       link.
-
-Remaining:
-
-- [ ] Render interactive links in the center View.
-- [ ] Select and reveal the target slip when a link is activated.
-- [ ] Add `Linked from` backlinks to the Detail pane.
-- [ ] Render resolved and unresolved links appropriately in Markdown, HTML, and
+- [x] Render interactive links in the center View.
+- [x] Select and reveal the target slip when a link is activated.
+- [x] Add `Linked from` backlinks to the Detail pane.
+- [x] Render resolved and unresolved links appropriately in Markdown, HTML, and
       PDF exports.
-- [ ] Finalize the cursor-in-link keyboard/mouse interaction.
+- [x] Support cursor-in-link keyboard and mouse navigation.
 
 Deleted or missing targets should remain visible as stubs. Bucket movement and
 title changes must not break links because organization and display text are not
@@ -131,19 +128,18 @@ Board mode is an alternate projection over existing buckets and slips:
 - slips become cards;
 - cross-column movement uses `MoveSlip`;
 - within-column ordering uses `ReorderSlip`;
-- the existing Detail pane remains docked for editing.
+- the Tree and Detail panes auto-hide to give columns full width.
 
 Card content should include title/preview, picture thumbnail, capture origin,
 and include state. Column headers should expose bucket name, count, and quick
 card creation.
 
-Open design:
+Landed:
 
-- [ ] Decide whether nested buckets become leaf columns or collapsible
-      swimlanes under top-level columns.
-- [ ] Decide how `Deleted` appears, if at all.
-- [ ] Add the List/Board mode switch.
-- [ ] Reuse tree drag plumbing for cards and columns.
+- [x] Nested buckets flatten into tree-order columns.
+- [x] `Deleted` stays out of the normal Board projection.
+- [x] Add the List/Board mode switch.
+- [x] Reuse tree drag plumbing for cards and columns.
 
 Board mode must remain a projection. It does not introduce board-owned content
 or a second ordering model.

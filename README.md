@@ -399,8 +399,8 @@ artifacts\bin\<Configuration>\
 Run the portable and Windows-specific test gates:
 
 ```powershell
-dotnet run --project Zetl.Tests
-dotnet run --project Zetl.App -- --self-test
+dotnet test Zetl.Tests\Zetl.Tests.csproj --no-build
+dotnet .\artifacts\bin\Debug\Zetl.dll --self-test
 ```
 
 The manual Windows smoke checklist is
@@ -414,6 +414,17 @@ dotnet run --project Zetl.App -- --preview=toast
 dotnet run --project Zetl.App -- --preview=export
 dotnet run --project Zetl.App -- --preview=note-image
 ```
+
+Shortcut automation can accept injected keyboard events only when a disposable
+data directory is supplied:
+
+```powershell
+dotnet run --project Zetl.App -- --data-dir=C:\tmp\zetl-hotkey-smoke --allow-injected-input-for-testing
+```
+
+Do not use that flag for normal profiles; it exists so release smoke scripts can
+exercise the Windows hook with synthetic input. Zetl's own replayed pass-through
+keys remain filtered to avoid recursive shortcut handling.
 
 Repository layout:
 

@@ -17,8 +17,7 @@ identity, and login session.
 Each message is UTF-8 JSON preceded by a four-byte little-endian payload
 length. Frames must be between 1 byte and 36 MiB. The larger ceiling carries
 one base64-encoded image asset while image capture itself remains capped at 25
-MiB. An invalid length closes that
-client connection without stopping Zetl.
+MiB.
 
 The outer message contains:
 

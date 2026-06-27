@@ -107,8 +107,9 @@ template again to create a fresh queue.
 
 - Held `Ctrl+T` or `Ctrl+Shift+T` already identifies the lane.
 - Held `Ctrl+V` with no active project opens the picker on Consumable templates.
-- Kastn's `Use` action asks for normal or Shift, starts the project, and
-  minimizes Kastn so the user can paste immediately.
+- Kastn's current `Use` action creates a named project from the template and can
+  minimize Kastn after use. Temporary-consumable lane choice is still part of
+  the remaining work below.
 
 ### Ownership
 

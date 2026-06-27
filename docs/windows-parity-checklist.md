@@ -16,6 +16,17 @@ canonical app is `Zetl.exe`.
 3. Start `artifacts\publish\win-x64\Zetl.exe`.
 4. Keep `%AppData%\Zetl` backed up while testing state-changing workflows.
 
+For automated shortcut smoke, launch against disposable state and explicitly
+allow injected input:
+
+```powershell
+artifacts\publish\win-x64\Zetl.exe --data-dir=C:\tmp\zetl-hotkey-smoke --allow-injected-input-for-testing
+```
+
+The flag is ignored unless `--data-dir` is also present. Do not use it with a
+normal profile. Zetl's own replayed pass-through keys remain filtered to avoid
+recursive shortcut handling.
+
 ## Startup And Tray
 
 - [ ] First launch shows `How Zetl Works`; closing it leaves Zetl in the tray.

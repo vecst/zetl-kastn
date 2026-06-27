@@ -18,14 +18,9 @@ Measured June 15, 2026 with:
 | 5,000 | 1.34 | 11.91 | 10.35 | 1.84 |
 | 20,000 | 5.36 | 36.63 | 53.06 | 7.33 |
 
-Run the scenario again with:
-
-```powershell
-dotnet .\artifacts\bin\Debug\Zetl.Tests.dll --storage-baseline
-```
-
-The scenario uses disposable temporary projects and does not read or write user
-data.
+The measurement helper lives in `Zetl.Tests/StorageBaselineScenario.cs`. It uses
+disposable temporary projects and does not read or write user data. Wire that
+helper into a temporary harness before refreshing the table.
 
 ## Initial Reading
 

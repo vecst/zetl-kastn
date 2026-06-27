@@ -10,10 +10,12 @@ namespace ZETL;
 
 internal static class ZetlPlatformServices
 {
-    public static IKeyboardBackend CreateKeyboard(Action<string> log)
+    public static IKeyboardBackend CreateKeyboard(
+        Action<string> log,
+        bool allowInjectedInputForTesting)
     {
         return OperatingSystem.IsWindows()
-            ? new AvaloniaWindowsKeyboardBackend(log)
+            ? new AvaloniaWindowsKeyboardBackend(log, allowInjectedInputForTesting)
             : new UnsupportedKeyboardBackend(log);
     }
 
@@ -25,7 +27,9 @@ internal static class ZetlPlatformServices
     }
 }
 
-internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyboardBackend
+internal sealed class AvaloniaWindowsKeyboardBackend(
+    Action<string> log,
+    bool allowInjectedInputForTesting) : IKeyboardBackend
 {
     private const int WhKeyboardLl = 13;
     private const int LlkInjected = 0x10;
@@ -151,7 +155,10 @@ internal sealed class AvaloniaWindowsKeyboardBackend(Action<string> log) : IKeyb
         }
 
         var hook = Marshal.PtrToStructure<KeyboardHook>(dataPointer);
-        if ((hook.Flags & LlkInjected) != 0)
+        var isInjected = (hook.Flags & LlkInjected) != 0;
+        if (isInjected
+            && (!allowInjectedInputForTesting
+                || hook.ExtraInfo == AvaloniaWindowsInput.SyntheticInputMarker))
         {
             return Win32Interop.CallNextHookEx(hookId, code, messagePointer, dataPointer);
         }
@@ -196,6 +203,7 @@ internal static class AvaloniaWindowsInput
     private const int InputKeyboard = 1;
     private const uint KeyEventKeyUp = 0x0002;
     private static readonly BlockingCollection<Action> ReplayQueue = [];
+    internal static readonly UIntPtr SyntheticInputMarker = new(0x5A45544C);
 
     static AvaloniaWindowsInput()
     {
@@ -278,7 +286,8 @@ internal static class AvaloniaWindowsInput
                     Keyboard = new KeyboardInput
                     {
                         VirtualKey = (ushort)sequence[i].VirtualKey,
-                        Flags = sequence[i].KeyUp ? KeyEventKeyUp : 0
+                        Flags = sequence[i].KeyUp ? KeyEventKeyUp : 0,
+                        ExtraInfo = SyntheticInputMarker
                     }
                 }
             };
