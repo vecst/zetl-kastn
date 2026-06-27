@@ -249,11 +249,13 @@
             <TextBlock Text="Chordl Keyboard Engine" Classes="heading" />
             <Border Classes="surface" BorderThickness="1" Padding="14">
               <StackPanel Spacing="8">
-                <TextBlock Text="Chordl captures global hotkeys to route copy, cut, and paste events to Zetl buckets:" TextWrapping="Wrap" />
-                <TextBlock Text="•  Ctrl+C: Copies selection directly into the active bucket." Margin="10,4,0,0" TextWrapping="Wrap" />
-                <TextBlock Text="•  Ctrl+Shift+C: Opens the note capture window immediately." Margin="10,0,0,0" TextWrapping="Wrap" />
-                <TextBlock Text="•  Ctrl+V: Pastes the next note in Pop Mode, or consumes from Replay Mode." Margin="10,0,0,0" TextWrapping="Wrap" />
-                <TextBlock Text="•  Ctrl+Shift+V: Activates/Toggles Pop Mode." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="Chordl intercepts standard shortcuts and distinguishes between short taps and long holds:" TextWrapping="Wrap" />
+                <TextBlock Text="•  Tap Ctrl+C / Ctrl+X: Performs normal copy/cut actions, optionally auto-capturing to the active bucket." Margin="10,4,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Hold Ctrl+C / Ctrl+X: Opens the capture window to review, edit, and route the note before saving." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Tap Ctrl+V: Pastes the next item in Pop or Replay modes; otherwise passes through a normal paste." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Hold Ctrl+V / Ctrl+P / Ctrl+R: Compiles bucket slips, or toggles Pop and Replay modes." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Hold Ctrl+B / Ctrl+T / Ctrl+Z: Opens the Board, picks templates, or undos the last Zetl action." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Adding Shift (e.g. Ctrl+Shift+C): Executes the same action targeting your second (Shift-lane) project." Margin="10,0,0,0" TextWrapping="Wrap" />
               </StackPanel>
             </Border>
 
