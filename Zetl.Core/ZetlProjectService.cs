@@ -112,7 +112,9 @@ internal sealed class ZetlProjectService
             ZetlCommandKind.GetProject => GetProject(command),
             ZetlCommandKind.GetSlipPicture => GetSlipPicture(command),
             ZetlCommandKind.CreateProject => CreateProject(command),
+            ZetlCommandKind.CreateTemporaryProjectFromReplay => CreateTemporaryProjectFromReplay(command),
             ZetlCommandKind.RenameProject => RenameProject(command),
+            ZetlCommandKind.SetActiveProject => SetActiveProject(command),
             ZetlCommandKind.SetProjectStatus => SetProjectStatus(command),
             ZetlCommandKind.SetJournalMode => SetJournalMode(command),
             ZetlCommandKind.SetProjectView => SetProjectView(command),
@@ -146,7 +148,8 @@ internal sealed class ZetlProjectService
             .OrderBy(project => project.Name, StringComparer.OrdinalIgnoreCase)
             .Select(project => ZetlProjectSnapshotMapper.ToSummary(project) with
             {
-                ActiveLane = ActiveLaneFor(project.Id)
+                ActiveLane = ActiveLaneFor(project.Id),
+                UnderlyingLane = UnderlyingLaneFor(project.Id)
             })
             .ToList();
         return Success(command, payload: summaries);
@@ -160,6 +163,25 @@ internal sealed class ZetlProjectService
         }
 
         if (string.Equals(store.State.ShiftActiveProjectId, projectId, StringComparison.Ordinal))
+        {
+            return ZetlStateStore.ShiftLane;
+        }
+
+        return "";
+    }
+
+    private string UnderlyingLaneFor(string projectId)
+    {
+        if (store.GetActiveProject() is { } main
+            && ZetlStateStore.IsTemporaryConsumableProject(main)
+            && string.Equals(store.State.LastDeliberateProjectId, projectId, StringComparison.Ordinal))
+        {
+            return ZetlStateStore.NormalLane;
+        }
+
+        if (store.GetActiveProject(shifted: true) is { } alternate
+            && ZetlStateStore.IsTemporaryConsumableProject(alternate)
+            && string.Equals(store.State.ShiftLastDeliberateProjectId, projectId, StringComparison.Ordinal))
         {
             return ZetlStateStore.ShiftLane;
         }
@@ -305,6 +327,98 @@ internal sealed class ZetlProjectService
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Project, project.Id, project.MetadataRevision);
         return Success(command, project, snapshot);
+    }
+
+    private ZetlResponseEnvelope CreateTemporaryProjectFromReplay(ZetlCommandEnvelope command)
+    {
+        var sourceProject = FindProject(command.ProjectId!);
+        if (sourceProject is null)
+        {
+            return NotFound(command, ZetlEntityKind.Project, command.ProjectId!);
+        }
+
+        var payload = Payload<CreateTemporaryProjectFromReplayCommand>(command);
+        if (string.IsNullOrWhiteSpace(payload.Name))
+        {
+            return ValidationError(command, "project_name_required", "A project name is required.");
+        }
+
+        var temporaryLane = ZetlStateStore.CanonicalTemporaryLane(payload.TemporaryLane);
+        if (temporaryLane is null)
+        {
+            return ValidationError(command, "temporary_lane_required", "Temporary projects require a valid lane.");
+        }
+
+        var activationLane = payload.ActivateShifted ? ZetlStateStore.ShiftLane : ZetlStateStore.NormalLane;
+        if (!string.Equals(temporaryLane, activationLane, StringComparison.Ordinal))
+        {
+            return ValidationError(
+                command,
+                "temporary_lane_mismatch",
+                "Temporary project lane must match the activation lane.");
+        }
+
+        if (!ZetlStateStore.CanCreateTemporaryFromReplay(sourceProject))
+        {
+            return ValidationError(
+                command,
+                "replay_source_required",
+                "Only projects with replay buckets or replay review buckets can become temporary projects.");
+        }
+
+        var created = store.CreateTemporaryProjectFromReplaySource(
+            sourceProject,
+            payload.Name,
+            temporaryLane,
+            out var replayItemCount);
+        if (created is null || replayItemCount == 0)
+        {
+            return ValidationError(
+                command,
+                "replay_source_empty",
+                "No replay items were available to seed a temporary project.");
+        }
+
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(created);
+        Publish(created, ZetlChangeKind.Created, ZetlEntityKind.Project, created.Id, created.MetadataRevision);
+        return Success(command, created, snapshot);
+    }
+
+    private ZetlResponseEnvelope SetActiveProject(ZetlCommandEnvelope command)
+    {
+        var project = FindProject(command.ProjectId!);
+        if (project is null)
+        {
+            return NotFound(command, ZetlEntityKind.Project, command.ProjectId!);
+        }
+
+        if (!ZetlStateStore.IsActiveStatus(project))
+        {
+            return ValidationError(
+                command,
+                "project_not_active",
+                "Only active projects can be assigned to a lane.");
+        }
+
+        var payload = Payload<SetActiveProjectCommand>(command);
+        if (payload.ActivateShifted
+            && string.Equals(store.State.ActiveProjectId, project.Id, StringComparison.Ordinal))
+        {
+            store.ClearActiveProject(shifted: false);
+        }
+        else if (!payload.ActivateShifted
+            && string.Equals(store.State.ShiftActiveProjectId, project.Id, StringComparison.Ordinal))
+        {
+            store.ClearActiveProject(shifted: true);
+        }
+
+        store.SetActiveProject(project.Id, payload.ActivateShifted);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Project, project.Id, entityRevision: null);
+        return Success(command, project, ZetlProjectSnapshotMapper.ToSummary(project) with
+        {
+            ActiveLane = ActiveLaneFor(project.Id),
+            UnderlyingLane = UnderlyingLaneFor(project.Id)
+        });
     }
 
     private ZetlResponseEnvelope SetProjectStatus(ZetlCommandEnvelope command)
@@ -1120,21 +1234,10 @@ internal sealed class ZetlProjectService
             EntityId = entityId,
             EntityRevision = entityRevision
         };
-        if (ProjectChanged is null)
-        {
-            return;
-        }
-
-        foreach (EventHandler<ZetlProjectChangedEvent> handler in ProjectChanged.GetInvocationList())
-        {
-            try
-            {
-                handler(this, change);
-            }
-            catch (Exception ex)
-            {
-                log?.Invoke($"Project change subscriber failed: {ex.Message}");
-            }
-        }
+        ZetlEventPublisher.Publish(
+            ProjectChanged,
+            this,
+            change,
+            ex => log?.Invoke($"Project change subscriber failed: {ex.Message}"));
     }
 }

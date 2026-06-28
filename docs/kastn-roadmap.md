@@ -102,6 +102,12 @@ picture, and include state rather than introducing board-specific content.
 ### Interaction Cleanup
 
 - [x] Add a clear live drop indicator to the existing tree drag-and-drop.
+- [ ] Replace the landing page's role-group project list with two stable lane
+      places. Each lane uses user-configurable labels that default to Main and
+      Alternate; blank settings keep the defaults.
+- [ ] Show active temporary consumables as stacked overlay cards on their lane,
+      with a timer/replay cue and progress, while leaving the underlying lane
+      project reachable from the card behind.
 - [ ] Remove or demote redundant Move/parent controls after direct manipulation
       is comfortably accessible.
 - [ ] Make nested bucket creation and placement faster in Zetl's quick Board.
@@ -141,7 +147,8 @@ delete it when it leaves that lane.
 - [x] Add Kastn's Main/Alternate lane choice with optional remembered default.
 - [x] Show temporary and durable projects in Kastn landing role groups: Pinned,
       Main, Alternate, and Projects.
-- [ ] Decide whether compile/source pickers should include temporary projects.
+- [x] Include currently active temporary projects in compile/source pickers; the
+      landing page should make their lane-bound, disposable status visible.
 - [x] Decide disposal ordering relative to Replay's empty-queue Standard-mode
       transition.
 

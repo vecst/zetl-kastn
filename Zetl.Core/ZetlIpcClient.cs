@@ -210,40 +210,12 @@ public sealed class ZetlIpcClient : IAsyncDisposable
 
     private void RaiseProjectChanged(ZetlProjectChangedEvent change)
     {
-        if (ProjectChanged is null)
-        {
-            return;
-        }
-
-        foreach (EventHandler<ZetlProjectChangedEvent> handler in ProjectChanged.GetInvocationList())
-        {
-            try
-            {
-                handler(this, change);
-            }
-            catch
-            {
-            }
-        }
+        ZetlEventPublisher.Publish(ProjectChanged, this, change);
     }
 
     private void RaiseDisconnected()
     {
-        if (Disconnected is null)
-        {
-            return;
-        }
-
-        foreach (EventHandler handler in Disconnected.GetInvocationList())
-        {
-            try
-            {
-                handler(this, EventArgs.Empty);
-            }
-            catch
-            {
-            }
-        }
+        ZetlEventPublisher.Publish(Disconnected, this, EventArgs.Empty);
     }
 
     private static T Deserialize<T>(ZetlIpcMessage message)

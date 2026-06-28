@@ -144,6 +144,41 @@ Landed:
 Board mode must remain a projection. It does not introduce board-owned content
 or a second ordering model.
 
+## Landing Lane Cards
+
+The landing page should expose the two active lanes as stable places rather
+than mixing lane state into an ordinary project list. The built-in labels are
+Main and Alternate, but users may rename both labels in settings. Blank custom
+labels mean "use the default." Custom labels should be short, with a maximum of
+20 characters, so card headers, buttons, and menus stay predictable.
+
+Temporary consumable projects are lane overlays, not a third lane. When a
+temporary queue is active in a lane, Kastn should render it as a stacked card on
+top of that lane's underlying project card:
+
+```text
+Main                         Alternate
++----------------------+     +----------------------+
+| timer Temporary      |     | Project B            |
+| Recipe Queue         |     | 7 slips              |
+| 3 replay items left  |     +----------------------+
++----------------------+
+  +--------------------+
+  | Project A          |
+  | underlying project |
+  +--------------------+
+```
+
+Clicking the overlay opens the temporary project. Clicking the visible card
+behind opens the underlying lane project. If no underlying project exists, the
+rear card is an empty lane state. Completing, clearing, or replacing the
+temporary project removes only the overlay and reveals the lane's normal state.
+
+Compile/source pickers may include currently active temporary projects because
+the landing page makes them visible as lane-bound disposable queues. Inactive
+temporary projects should not become ordinary browseable library entries; they
+should be disposed by Zetl.
+
 ## Interaction Cleanup
 
 - [x] Add a live drop-target indicator during drag-and-drop.

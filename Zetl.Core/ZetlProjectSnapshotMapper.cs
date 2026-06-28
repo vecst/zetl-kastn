@@ -31,6 +31,7 @@ internal static class ZetlProjectSnapshotMapper
             VisibleBucketCount = visibleBuckets.Count,
             VisibleSlipCount = visibleSlips.Count,
             DeletedSlipCount = deletedSlipCount,
+            CanCreateTemporaryFromReplay = ZetlStateStore.CanCreateTemporaryFromReplay(project),
             LastActivityUtc = LastActivityUtc(visibleSlips),
             PreviewText = SummaryPreviewText(project)
         };

@@ -233,17 +233,8 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         }
     }
 
-    private void OnProjectChanged(object? sender, ZetlProjectChangedEvent change)
+    private void OnProjectChanged(object? _sender, ZetlProjectChangedEvent _change)
     {
-        var currentProject = Current.Project;
-        if (currentProject is null
-            || !string.Equals(currentProject.Id, change.ProjectId, StringComparison.Ordinal)
-            || change.ProjectChangeSequence != currentProject.ChangeSequence + 1)
-        {
-            _ = RefreshAfterChangeAsync();
-            return;
-        }
-
         _ = RefreshAfterChangeAsync();
     }
 
@@ -355,20 +346,6 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             Current = snapshot;
         }
 
-        if (SnapshotChanged is null)
-        {
-            return;
-        }
-
-        foreach (EventHandler<KastnSessionSnapshot> handler in SnapshotChanged.GetInvocationList())
-        {
-            try
-            {
-                handler(this, snapshot);
-            }
-            catch
-            {
-            }
-        }
+        ZetlEventPublisher.Publish(SnapshotChanged, this, snapshot);
     }
 }

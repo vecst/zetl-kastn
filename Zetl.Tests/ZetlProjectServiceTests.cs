@@ -187,6 +187,101 @@ public class ZetlProjectServiceTests
         AssertEqual(snapshot.Id, store.ActiveProject?.Id, "The created temporary project should be normal-lane active.");
     }
 
+    [Fact] public void ListProjectsShowsUnderlyingLaneBehindTemporaryConsumable()
+    {
+        using var temp = new TempStateDirectory();
+        var store = new ZetlStateStore(temp.StatePath);
+        var service = new ZetlProjectService(store);
+
+        var durable = service.Execute(ZetlCommandEnvelope.Create(
+            "create-durable",
+            ZetlCommandKind.CreateProject,
+            new CreateProjectCommand
+            {
+                Name = "Durable",
+                Buckets = [new CreateBucketDefinition { Name = "Inbox" }]
+            })).Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Durable create did not return a project snapshot.");
+
+        var temporary = service.Execute(ZetlCommandEnvelope.Create(
+            "create-temporary",
+            ZetlCommandKind.CreateProject,
+            new CreateProjectCommand
+            {
+                Name = "Temporary",
+                Kind = ZetlStateStore.TemporaryConsumableProjectKind,
+                TemporaryLane = ZetlStateStore.NormalLane,
+                Buckets = [new CreateBucketDefinition { Name = "Queue" }]
+            })).Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Temporary create did not return a project snapshot.");
+
+        var list = service.Execute(new ZetlCommandEnvelope
+        {
+            CommandId = "list",
+            Kind = ZetlCommandKind.ListProjects
+        }).Payload?.Deserialize<List<ZetlProjectSummary>>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("List did not return project summaries.");
+
+        AssertEqual(
+            ZetlStateStore.NormalLane,
+            list.Single(project => project.Id == temporary.Id).ActiveLane,
+            "The temporary project should be the active normal-lane overlay.");
+        AssertEqual(
+            ZetlStateStore.NormalLane,
+            list.Single(project => project.Id == durable.Id).UnderlyingLane,
+            "The previous durable project should be shown behind the temporary normal lane.");
+    }
+
+    [Fact] public void SetActiveProjectAssignsRequestedLane()
+    {
+        using var temp = new TempStateDirectory();
+        var store = new ZetlStateStore(temp.StatePath);
+        var service = new ZetlProjectService(store);
+
+        var project = service.Execute(ZetlCommandEnvelope.Create(
+            "create-shift-project",
+            ZetlCommandKind.CreateProject,
+            new CreateProjectCommand
+            {
+                Name = "Lane Target",
+                Buckets = [new CreateBucketDefinition { Name = "Inbox" }]
+            })).Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Create did not return a project snapshot.");
+        service.Execute(ZetlCommandEnvelope.Create(
+            "create-normal-project",
+            ZetlCommandKind.CreateProject,
+            new CreateProjectCommand
+            {
+                Name = "Main Target",
+                Buckets = [new CreateBucketDefinition { Name = "Inbox" }]
+            }));
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "set-normal-active",
+            ZetlCommandKind.SetActiveProject,
+            new SetActiveProjectCommand { ActivateShifted = false },
+            project.Id));
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Setting the normal lane should succeed.");
+
+        response = service.Execute(ZetlCommandEnvelope.Create(
+            "set-shift-active",
+            ZetlCommandKind.SetActiveProject,
+            new SetActiveProjectCommand { ActivateShifted = true },
+            project.Id));
+        var list = service.Execute(new ZetlCommandEnvelope
+        {
+            CommandId = "list-after-active",
+            Kind = ZetlCommandKind.ListProjects
+        }).Payload?.Deserialize<List<ZetlProjectSummary>>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("List did not return project summaries.");
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Setting the active lane should succeed.");
+        AssertEqual(
+            ZetlStateStore.ShiftLane,
+            list.Single(item => item.Id == project.Id).ActiveLane,
+            "The project summary should report the requested active lane after moving lanes.");
+    }
+
     [Fact] public void CreateProjectCanMarkShiftLaneTemporaryConsumable()
     {
         using var temp = new TempStateDirectory();
@@ -236,6 +331,71 @@ public class ZetlProjectServiceTests
         AssertEqual(ZetlResponseStatus.ValidationError, response.Status, "Temporary lane metadata must match activation.");
         AssertEqual("temporary_lane_mismatch", response.Error?.Code, "Lane mismatch should fail explicitly.");
         AssertEqual(0, store.State.Projects.Count, "Rejected creation should not leave a project behind.");
+    }
+
+    [Fact] public void CreateTemporaryProjectFromReplayUsesReviewWithoutCopyingReviewBucket()
+    {
+        using var temp = new TempStateDirectory();
+        var store = new ZetlStateStore(temp.StatePath, "service-session");
+        var source = store.CreateProject("Archived Source", ["Queue"], "Queue");
+        var queue = source.Buckets.Single(bucket => bucket.Name == "Queue");
+        store.SetBucketKind(queue, "Replay");
+        var first = store.AddNote(queue, "first", "copy");
+        store.AddNote(queue, "second", "copy");
+        AssertTrue(
+            store.TryConsumeReplayNoteToReview(source, queue, first.Id, out var reviewBucket),
+            "Replay consume should create a review bucket.");
+        store.SetBucketKind(queue, "Standard");
+        store.SetProjectStatus(source, ZetlStateStore.ArchivedStatus);
+        var service = new ZetlProjectService(store);
+
+        var list = service.Execute(new ZetlCommandEnvelope
+        {
+            CommandId = "list-replay-source",
+            Kind = ZetlCommandKind.ListProjects
+        });
+        var sourceSummary = list.Payload?.Deserialize<IReadOnlyList<ZetlProjectSummary>>(
+            ZetlProtocolJson.Options)?.Single(project => project.Id == source.Id);
+        var create = service.Execute(ZetlCommandEnvelope.Create(
+            "create-temp-from-replay",
+            ZetlCommandKind.CreateTemporaryProjectFromReplay,
+            new CreateTemporaryProjectFromReplayCommand
+            {
+                Name = "Temporary Replay",
+                TemporaryLane = ZetlStateStore.NormalLane,
+                ActivateShifted = false
+            },
+            source.Id));
+        var created = create.Payload?.Deserialize<ZetlProjectSnapshot>(
+            ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Temporary replay creation returned no snapshot.");
+        var targetQueue = created.Buckets.Single(bucket => bucket.Name == "Queue");
+        var targetTexts = created.Slips
+            .Where(slip => slip.BucketId == targetQueue.Id)
+            .Select(slip => slip.Text)
+            .ToList();
+
+        AssertTrue(
+            sourceSummary?.CanCreateTemporaryFromReplay == true,
+            "Archived projects with only a replay review link should be eligible.");
+        AssertEqual(ZetlResponseStatus.Success, create.Status, "Replay source should create a temporary project.");
+        AssertEqual(ZetlStateStore.TemporaryConsumableProjectKind, created.Kind, "Created project should be temporary.");
+        AssertEqual(ZetlStateStore.NormalLane, created.TemporaryLane, "Created project should use the requested lane.");
+        AssertEqual(created.Id, store.State.ActiveProjectId, "Created temporary project should occupy the requested lane.");
+        AssertEqual("Replay", targetQueue.Settings.Kind, "Recovered queue should be replayable.");
+        AssertTrue(
+            targetQueue.Settings.ReplayReviewBucketId is null,
+            "Recovered queue should create its own review bucket when consumed.");
+        AssertFalse(
+            created.Buckets.Any(bucket => bucket.Name == reviewBucket?.Name),
+            "The source review bucket should not be copied into the temporary project.");
+        AssertEqual(2, targetTexts.Count, "Review plus remaining queue slips should be recovered.");
+        AssertEqual("first", targetTexts[0], "Consumed review slips should be restored first.");
+        AssertEqual("second", targetTexts[1], "Remaining queue slips should follow review slips.");
+        AssertTrue(
+            created.Slips.All(slip => string.Equals(slip.SessionId, "service-session", StringComparison.Ordinal)),
+            "Recovered slips need the current session id so Replay can consume them immediately.");
+        AssertEqual(ZetlStateStore.ArchivedStatus, source.Status, "The source archived project should remain archived.");
     }
 
     [Fact] public void SlipInclusionToggleRoundTrips()

@@ -21,11 +21,8 @@ namespace KASTN;
 internal partial class MainWindow : Window
 {
     private string UntitledSlipTitle => CurrentAppSettings().UntitledSlipTitle;
-    private const double LandingCardWidth = 450;
-    private const double LandingCardHeight = 330;
-    private const double LandingCardMargin = 8;
-    private const int LandingMaxColumns = 6;
-    private const int LandingMaxRows = 5;
+    private const int RecentProjectLimit = 10;
+    private const int LaneLabelMaxLength = 20;
     private const long MaximumPictureCacheBytes = 128L * 1024 * 1024;
 
     private readonly KastnConnectionController connection;
@@ -74,6 +71,8 @@ internal partial class MainWindow : Window
     private bool templateEditorUpdating;
     // Serialized working document at open, to detect unsaved edits on cancel.
     private string templateBaselineJson = "";
+    private readonly ObservableCollection<LaneCardItem> laneCards = [];
+    private readonly ObservableCollection<ProjectListItem> recentProjects = [];
     private readonly ObservableCollection<ProjectListItem> projects = [];
     private readonly ObservableCollection<TemplateListItem> templates = [];
     private readonly ObservableCollection<SlipListItem> slips = [];
@@ -160,7 +159,9 @@ internal partial class MainWindow : Window
         this.connection = connection;
         InitializeComponent();
         Icon = KastnIcon.Create();
-        landingProjectList.ItemsSource = projects;
+        landingLaneItems.ItemsSource = laneCards;
+        landingProjectList.ItemsSource = recentProjects;
+        landingProjectWorkspaceList.ItemsSource = projects;
         landingTemplateItems.ItemsSource = templates;
         sourceFilterBox.ItemsSource = sources;
         sessionFilterBox.ItemsSource = sessions;
@@ -186,6 +187,7 @@ internal partial class MainWindow : Window
 
         connection.SnapshotChanged += OnSnapshotChanged;
         landingProjectList.SelectionChanged += OnProjectSelectionChanged;
+        landingProjectWorkspaceList.SelectionChanged += OnProjectSelectionChanged;
         projectTree.SelectionChanged += OnTreeSelectionChanged;
         // Tunnel so we see the selection before this press changes it (re-click of an
         // already-selected bucket toggles its title/slips mode).
@@ -235,7 +237,7 @@ internal partial class MainWindow : Window
         saveSlipMenuItem.Click += async (_, _) => await SaveEditorAsync();
         deleteSlipMenuItem.Click += async (_, _) => await DeleteSlipAsync();
         focusSearchMenuItem.Click += (_, _) => searchBox.Focus();
-        focusProjectsMenuItem.Click += (_, _) => landingProjectList.Focus();
+        focusProjectsMenuItem.Click += (_, _) => landingProjectsPanel.Focus();
         focusBucketsMenuItem.Click += (_, _) => projectTree.Focus();
         focusSlipsMenuItem.Click += (_, _) => FocusMainView();
         aboutMenuItem.Click += ShowAbout;
@@ -322,9 +324,10 @@ internal partial class MainWindow : Window
         landingProjectsButton.Click += (_, _) => ShowLandingSection(templates: false, creations: false);
         landingTemplatesButton.Click += (_, _) => ShowLandingSection(templates: true, creations: false);
         landingCreateButton.Click += (_, _) => ShowLandingSection(templates: false, creations: true);
+        landingCurrentProjectsButton.Click += (_, _) => SetArchivedProjectMode(showArchived: false);
+        landingArchivedProjectsButton.Click += (_, _) => SetArchivedProjectMode(showArchived: true);
         landingCaptureButton.Click += (_, _) => SetTemplateType(consumable: false);
         landingConsumableButton.Click += (_, _) => SetTemplateType(consumable: true);
-        landingShowArchivedCheck.IsCheckedChanged += OnShowArchivedChanged;
         landingCreationItems.ItemsSource = creations;
         WireTemplateEditor();
         WireCreationEditor();
@@ -450,6 +453,7 @@ internal partial class MainWindow : Window
             RefreshLandingGridLayout();
 
             landingProjectList.SelectedItem = null;
+            landingProjectWorkspaceList.SelectedItem = null;
 
             currentProject = snapshot.Project;
             if (currentProject is { } projectSnapshot)
@@ -549,6 +553,7 @@ internal partial class MainWindow : Window
         landingShowingTemplates = templates;
         landingShowingCreations = creations;
         landingProjectList.SelectedItem = null;
+        landingProjectWorkspaceList.SelectedItem = null;
         // Re-read each catalog from disk on visit so added/removed user files show
         // up without restarting Kastn.
         if (templates)
@@ -598,18 +603,35 @@ internal partial class MainWindow : Window
         var showProjects = !landingShowingTemplates && !landingShowingCreations;
         // The toggle stays visible even with no visible projects, so archived-only
         // workspaces can still reveal their projects.
-        landingShowArchivedCheck.IsVisible = showChoices && showProjects;
-        landingProjectList.IsVisible = showChoices && showProjects && projects.Count > 0;
+        landingProjectsPanel.IsVisible = showChoices;
+        landingLowerContent.IsVisible = showChoices;
+        landingProjectLibraryHeader.IsVisible = showChoices;
+        landingProjectList.IsVisible = showChoices && recentProjects.Count > 0;
+        landingProjectWorkspaceList.IsVisible = showChoices && showProjects && projects.Count > 0;
         landingTemplateList.IsVisible = showChoices && landingShowingTemplates;
         landingTemplateList.IsEnabled = IsOnline;
         landingCreationList.IsVisible = showChoices && landingShowingCreations;
         landingCreationList.IsEnabled = IsOnline;
+        landingLowerActionRow.IsVisible = showChoices
+            && (showProjects || landingShowingTemplates || landingShowingCreations);
+        landingProjectArchiveToggle.IsVisible = showChoices && showProjects;
         landingTemplateTypeToggle.IsVisible = showChoices && landingShowingTemplates;
         landingTemplateTypeToggle.IsEnabled = IsOnline;
         landingNewTemplateButton.IsVisible = showChoices && landingShowingTemplates;
         landingNewCreationButton.IsVisible = showChoices && landingShowingCreations;
+        landingWorkspaceTitle.Text = landingShowingCreations
+            ? "Create"
+            : landingShowingTemplates ? "Templates" : "Projects";
+        landingWorkspaceSubtitle.Text = landingShowingCreations
+            ? "Start from a saved creation type."
+            : landingShowingTemplates
+                ? "Start a project from a reusable template."
+                : "Open a project or manage the library.";
         landingProjectsButton.IsEnabled = !showProjects;
         landingTemplatesButton.IsEnabled = !landingShowingTemplates;
+        landingCurrentProjectsButton.IsEnabled = landingShowArchived;
+        landingArchivedProjectsButton.IsEnabled = !landingShowArchived;
+        landingCreateButton.IsVisible = showChoices;
         landingCreateButton.IsEnabled = !landingShowingCreations;
         landingCaptureButton.IsEnabled = landingShowingConsumable;
         landingConsumableButton.IsEnabled = !landingShowingConsumable;
@@ -618,60 +640,46 @@ internal partial class MainWindow : Window
 
     private void RefreshLandingGridLayout()
     {
-        var cardOuterWidth = LandingCardWidth + (LandingCardMargin * 2);
-        var cardOuterHeight = LandingCardHeight + (LandingCardMargin * 2);
-        var cardCount = Math.Max(1, landingShowingCreations
-            ? creations.Count
-            : landingShowingTemplates ? templates.Count : projects.Count);
-
-        var availableWidth = Math.Max(cardOuterWidth, Bounds.Width - 120);
-        var columnsByWidth = Math.Clamp((int)Math.Floor(availableWidth / cardOuterWidth), 1, LandingMaxColumns);
-        var columns = Math.Min(cardCount, columnsByWidth);
-
-        var availableHeight = Math.Max(cardOuterHeight, Bounds.Height - 190);
-        var rowsByHeight = Math.Clamp((int)Math.Floor(availableHeight / cardOuterHeight), 1, LandingMaxRows);
-        var neededRows = (int)Math.Ceiling(cardCount / (double)columns);
-        var rows = Math.Min(rowsByHeight, Math.Min(LandingMaxRows, neededRows));
-
-        landingProjectList.Width = (columns * cardOuterWidth) + 4;
-        landingProjectList.MaxHeight = (rows * cardOuterHeight) + 4;
-        landingTemplateList.Width = landingProjectList.Width;
-        landingTemplateList.MaxHeight = landingProjectList.MaxHeight;
-        landingCreationList.Width = landingProjectList.Width;
-        landingCreationList.MaxHeight = landingProjectList.MaxHeight;
+        var contentWidth = Math.Max(560, Bounds.Width - 500);
+        var lowerHeight = Math.Max(240, Bounds.Height - 210);
+        landingProjectList.MaxHeight = lowerHeight;
+        landingProjectWorkspaceList.Width = contentWidth;
+        landingProjectWorkspaceList.MaxHeight = lowerHeight;
+        landingTemplateList.Width = contentWidth;
+        landingTemplateList.MaxHeight = lowerHeight;
+        landingCreationList.Width = contentWidth;
+        landingCreationList.MaxHeight = lowerHeight;
     }
 
-    // Rebuild the landing project cards from the last snapshot's summaries,
-    // honoring the show-archived toggle. Callers manage the `refreshing` guard
+    // Rebuild the landing project cards from the last snapshot's summaries.
+    // Recents stay on current projects; the workspace tab switches current/archived.
+    // Callers manage the `refreshing` guard
     // because mutating `projects` fires the list's selection handler.
     private void PopulateProjectCards()
     {
+        laneCards.Clear();
+        recentProjects.Clear();
         projects.Clear();
+        var allProjects = new List<ProjectListItem>();
         foreach (var project in lastProjectSummaries)
         {
-            // Archived projects are put away: hidden from the landing unless the
-            // user opts to show them. Finished projects still show (badged).
-            var isArchived = string.Equals(
-                project.Status, "Archived", StringComparison.OrdinalIgnoreCase);
-            if (isArchived && !landingShowArchived)
-            {
-                continue;
-            }
-
             var pinned = stateStore.IsPinned(project.Id);
-            projects.Add(new ProjectListItem(
-                project.Id,
-                project.Name,
-                project.MetadataRevision,
-                LandingProjectSection(project, pinned),
-                LandingProjectSectionRank(project, pinned),
-                LandingProjectDetail(project),
-                string.IsNullOrWhiteSpace(project.PreviewText)
-                    ? "No slips yet"
-                    : project.PreviewText,
-                LandingProjectActivity(project),
-                project.Status,
-                pinned));
+            allProjects.Add(CreateProjectListItem(project, pinned));
+        }
+
+        AddLaneCard(allProjects, ZetlStateStore.NormalLane, LaneLabel(ZetlStateStore.NormalLane));
+        AddLaneCard(allProjects, ZetlStateStore.ShiftLane, LaneLabel(ZetlStateStore.ShiftLane));
+
+        var laneProjectIds = laneCards
+            .SelectMany(card => new[] { card.Project?.Id, card.OverlayProject?.Id })
+            .Where(id => id is not null)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var project in allProjects.Where(project =>
+            !project.IsTemporary
+            && !laneProjectIds.Contains(project.Id)
+            && project.IsArchived == landingShowArchived))
+        {
+            projects.Add(project);
         }
 
         var ordered = projects
@@ -683,11 +691,69 @@ internal partial class MainWindow : Window
         {
             projects.Add(project);
         }
+
+        foreach (var project in allProjects
+            .Where(project => !project.IsTemporary && !project.IsArchived)
+            .OrderByDescending(project => project.LastActivityUtc ?? DateTimeOffset.MinValue)
+            .ThenBy(project => project.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(RecentProjectLimit))
+        {
+            recentProjects.Add(project);
+        }
     }
 
-    private void OnShowArchivedChanged(object? sender, RoutedEventArgs args)
+    private static ProjectListItem CreateProjectListItem(
+        ZetlProjectSummary project,
+        bool pinned)
     {
-        landingShowArchived = landingShowArchivedCheck.IsChecked == true;
+        return new ProjectListItem(
+            project.Id,
+            project.Name,
+            project.MetadataRevision,
+            LandingProjectSection(project, pinned),
+            LandingProjectSectionRank(project, pinned),
+            LandingProjectDetail(project),
+            string.IsNullOrWhiteSpace(project.PreviewText)
+                ? "No slips yet"
+                : project.PreviewText,
+            LandingProjectActivity(project),
+            project.LastActivityUtc,
+            project.Status,
+            project.VisibleSlipCount,
+            pinned,
+            project.ActiveLane,
+            project.UnderlyingLane,
+            project.CanCreateTemporaryFromReplay,
+            string.Equals(
+                project.Kind,
+                ZetlStateStore.TemporaryConsumableProjectKind,
+                StringComparison.Ordinal));
+    }
+
+    private void AddLaneCard(
+        IReadOnlyList<ProjectListItem> visibleProjects,
+        string lane,
+        string label)
+    {
+        var overlay = visibleProjects.FirstOrDefault(project =>
+            project.IsTemporary
+            && string.Equals(project.ActiveLane, lane, StringComparison.Ordinal));
+        var project = visibleProjects.FirstOrDefault(project =>
+            !project.IsTemporary
+            && (string.Equals(project.ActiveLane, lane, StringComparison.Ordinal)
+                || (overlay is not null
+                    && string.Equals(project.UnderlyingLane, lane, StringComparison.Ordinal))));
+        laneCards.Add(new LaneCardItem(lane, label, project, overlay));
+    }
+
+    private void SetArchivedProjectMode(bool showArchived)
+    {
+        if (landingShowArchived == showArchived)
+        {
+            return;
+        }
+
+        landingShowArchived = showArchived;
         refreshing = true;
         try
         {
@@ -761,6 +827,27 @@ internal partial class MainWindow : Window
         return project.LastActivityUtc is null
             ? "No activity yet"
             : $"Last slip {project.LastActivityUtc.Value.LocalDateTime:g}";
+    }
+
+    private string LaneLabel(string lane)
+    {
+        var settings = CurrentAppSettings();
+        return string.Equals(lane, ZetlStateStore.ShiftLane, StringComparison.Ordinal)
+            ? ResolveLaneLabel(settings.KastnAlternateLaneLabel, "Alternate")
+            : ResolveLaneLabel(settings.KastnMainLaneLabel, "Main");
+    }
+
+    private static string ResolveLaneLabel(string? value, string fallback)
+    {
+        var trimmed = (value ?? "").Trim();
+        if (trimmed.Length == 0)
+        {
+            return fallback;
+        }
+
+        return trimmed.Length <= LaneLabelMaxLength
+            ? trimmed
+            : trimmed[..LaneLabelMaxLength].TrimEnd();
     }
 
     private void RefreshFilterChoices(ZetlProjectSnapshot project)
@@ -1134,6 +1221,7 @@ internal partial class MainWindow : Window
             suppressLandingProjectSelection = false;
             refreshing = true;
             landingProjectList.SelectedItem = null;
+            landingProjectWorkspaceList.SelectedItem = null;
             refreshing = false;
             return;
         }
@@ -1157,7 +1245,7 @@ internal partial class MainWindow : Window
     private async void OnProjectCardOpenClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is ProjectListItem project)
+        if (ProjectFromControl(sender) is { } project)
         {
             await OpenProjectCardAsync(project);
         }
@@ -1166,37 +1254,34 @@ internal partial class MainWindow : Window
     private async void OnProjectCardRenameClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is ProjectListItem project)
+        if (ProjectFromControl(sender) is { } project)
         {
             await RenameProjectAsync(project);
         }
     }
 
-    private void OnProjectCardPinClick(object? sender, RoutedEventArgs args)
+    private async void OnProjectCardPinClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is ProjectListItem project)
+        if (ProjectFromControl(sender) is { } project)
         {
-            stateStore.SetPinned(project.Id, !project.IsPinned);
-            refreshing = true;
-            try
-            {
-                PopulateProjectCards();
-            }
-            finally
-            {
-                refreshing = false;
-            }
+            await SetActiveProjectAsync(project, shifted: false);
+        }
+    }
 
-            RefreshLandingGridLayout();
-            RefreshLandingMode();
+    private async void OnProjectCardSetAlternateClick(object? sender, RoutedEventArgs args)
+    {
+        args.Handled = true;
+        if (ProjectFromControl(sender) is { } project)
+        {
+            await SetActiveProjectAsync(project, shifted: true);
         }
     }
 
     private async void OnProjectCardDeleteClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is ProjectListItem project)
+        if (ProjectFromControl(sender) is { } project)
         {
             await DeleteProjectAsync(project);
         }
@@ -1205,10 +1290,26 @@ internal partial class MainWindow : Window
     private async void OnProjectCardStatusClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is ProjectListItem project)
+        if (ProjectFromControl(sender) is { } project)
         {
             await SetProjectStatusAsync(project, project.StatusActionTarget);
         }
+    }
+
+    private async void OnProjectCardUseTemporarilyClick(object? sender, RoutedEventArgs args)
+    {
+        args.Handled = true;
+        if (ProjectFromControl(sender) is { } project)
+        {
+            await CreateTemporaryProjectFromReplayAsync(project);
+        }
+    }
+
+    private static ProjectListItem? ProjectFromControl(object? sender)
+    {
+        return sender is Control control
+            ? control.Tag as ProjectListItem ?? control.DataContext as ProjectListItem
+            : null;
     }
 
     private async Task OpenProjectCardAsync(ProjectListItem project)
@@ -1217,6 +1318,7 @@ internal partial class MainWindow : Window
         {
             refreshing = true;
             landingProjectList.SelectedItem = null;
+            landingProjectWorkspaceList.SelectedItem = null;
             refreshing = false;
             return;
         }
@@ -1261,7 +1363,7 @@ internal partial class MainWindow : Window
         deleteProjectMenuItem.IsEnabled = online && currentProject is not null;
         journalModeMenuItem.IsEnabled = online && currentProject is not null;
         journalModeMenuItem.IsChecked = currentProject?.JournalMode == true;
-        focusProjectsMenuItem.IsEnabled = landingProjectList.IsVisible;
+        focusProjectsMenuItem.IsEnabled = landingProjectsPanel.IsVisible;
         newSlipMenuItem.IsEnabled = online
             && currentProject is not null
             && !KastnWorkbench.IsDeletedBucket(SelectedBucket);
@@ -1478,8 +1580,14 @@ internal partial class MainWindow : Window
         string Detail,
         string PreviewText,
         string ActivityText,
+        DateTimeOffset? LastActivityUtc,
         string Status,
-        bool IsPinned)
+        int VisibleSlipCount,
+        bool IsPinned,
+        string ActiveLane,
+        string UnderlyingLane,
+        bool CanCreateTemporaryFromReplay,
+        bool IsTemporary)
     {
         public bool IsActive =>
             string.Equals(Status, "Active", StringComparison.OrdinalIgnoreCase);
@@ -1491,13 +1599,47 @@ internal partial class MainWindow : Window
         public bool ShowStatusBadge => !IsActive;
 
         // One contextual status action per card: seal/put-away an active project,
-        // or bring a finished/archived one back. Finishing's lane semantics stay in
-        // Zetl, so Kastn offers Archive (Active) and Reactivate (non-Active).
-        public string StatusActionLabel => IsActive ? "Archive" : "Reactivate";
+        // or bring a finished/archived one back.
+        public string StatusActionLabel => IsActive
+            ? "Archive"
+            : IsArchived ? "Unarchive" : "Reactivate";
 
         public string StatusActionTarget => IsActive ? "Archived" : "Active";
 
-        public string PinActionLabel => IsPinned ? "Unpin" : "Pin";
+        public bool CanUseTemporarily => IsArchived && CanCreateTemporaryFromReplay;
+
+        public bool CanSetActive =>
+            IsActive && !string.Equals(ActiveLane, ZetlStateStore.NormalLane, StringComparison.Ordinal);
+
+        public bool CanSetAlternateActive =>
+            IsActive && !string.Equals(ActiveLane, ZetlStateStore.ShiftLane, StringComparison.Ordinal);
+
+        public string SetActiveActionLabel =>
+            string.Equals(ActiveLane, ZetlStateStore.NormalLane, StringComparison.Ordinal)
+                ? "Active"
+                : "Set Active";
+    }
+
+    private sealed record LaneCardItem(
+        string Lane,
+        string Label,
+        ProjectListItem? Project,
+        ProjectListItem? OverlayProject)
+    {
+        public bool HasProject => Project is not null;
+        public bool HasOverlay => OverlayProject is not null;
+        public bool IsEmpty => Project is null;
+        public string ProjectName => Project?.Name ?? $"No {Label} project";
+        public string ProjectDetail => Project?.Detail ?? "Select or create a project to keep here.";
+        public string ProjectPreview => Project?.PreviewText ?? "This lane is empty.";
+        public string ProjectActivity => Project?.ActivityText ?? "";
+        public string EmptyTitle => $"{Label} is empty";
+        public string EmptyDetail => "Choose a project from the library to keep this lane ready.";
+        public string OverlayName => OverlayProject?.Name ?? "";
+        public string OverlayDetail => OverlayProject?.Detail ?? "";
+        public string OverlayProgress => OverlayProject is null
+            ? ""
+            : $"{OverlayProject.VisibleSlipCount} replay item{Plural(OverlayProject.VisibleSlipCount)} left";
     }
 
     private sealed record TemplateListItem(

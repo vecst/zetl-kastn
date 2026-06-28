@@ -16,6 +16,13 @@ public sealed record CreateProjectCommand
     public IReadOnlyList<CreateBucketDefinition> Buckets { get; init; } = [];
 }
 
+public sealed record CreateTemporaryProjectFromReplayCommand
+{
+    public required string Name { get; init; }
+    public required string TemporaryLane { get; init; }
+    public bool ActivateShifted { get; init; }
+}
+
 public sealed record CreateBucketDefinition
 {
     public required string Name { get; init; }
@@ -26,6 +33,12 @@ public sealed record CreateBucketDefinition
 public sealed record RenameProjectCommand
 {
     public required string Name { get; init; }
+}
+
+public sealed record SetActiveProjectCommand
+{
+    // False selects the Main lane; true selects the Alternate lane.
+    public bool ActivateShifted { get; init; }
 }
 
 public sealed record SetProjectStatusCommand

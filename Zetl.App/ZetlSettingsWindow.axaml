@@ -180,7 +180,7 @@
         <ScrollViewer x:Name="kastnSettingsPanel" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="20" Margin="0,0,12,0">
             <TextBlock Text="Kastn Workbench Settings" Classes="heading" />
-            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
               <TextBlock Grid.Row="0" Grid.Column="0"
                          Text="Autosave slip edits"
                          VerticalAlignment="Center" />
@@ -194,30 +194,48 @@
                         Width="220" HorizontalAlignment="Left" />
 
               <TextBlock Grid.Row="2" Grid.Column="0"
-                         Text="Default reading view"
+                         Text="Main lane label"
                          VerticalAlignment="Center" />
-              <ComboBox Grid.Row="2" Grid.Column="1" x:Name="kastnDefaultViewBox"
-                        Width="220" HorizontalAlignment="Left" />
+              <TextBox Grid.Row="2" Grid.Column="1" x:Name="kastnMainLaneLabelBox"
+                       Width="220"
+                       HorizontalAlignment="Left"
+                       MaxLength="20"
+                       Watermark="Main" />
 
               <TextBlock Grid.Row="3" Grid.Column="0"
+                         Text="Alternate lane label"
+                         VerticalAlignment="Center" />
+              <TextBox Grid.Row="3" Grid.Column="1" x:Name="kastnAlternateLaneLabelBox"
+                       Width="220"
+                       HorizontalAlignment="Left"
+                       MaxLength="20"
+                       Watermark="Alternate" />
+
+              <TextBlock Grid.Row="4" Grid.Column="0"
+                         Text="Default reading view"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Row="4" Grid.Column="1" x:Name="kastnDefaultViewBox"
+                        Width="220" HorizontalAlignment="Left" />
+
+              <TextBlock Grid.Row="5" Grid.Column="0"
                          Text="After creating from a template"
                          VerticalAlignment="Center"
                          TextWrapping="Wrap" />
-              <CheckBox Grid.Row="3" Grid.Column="1" x:Name="kastnMinimizeAfterTemplateBox"
+              <CheckBox Grid.Row="5" Grid.Column="1" x:Name="kastnMinimizeAfterTemplateBox"
                         Content="Step Kastn aside so capture can start" />
 
-              <TextBlock Grid.Row="4" Grid.Column="0"
+              <TextBlock Grid.Row="6" Grid.Column="0"
                          Text="Temporary template lane"
                          VerticalAlignment="Center"
                          TextWrapping="Wrap" />
-              <ComboBox Grid.Row="4" Grid.Column="1" x:Name="kastnTemporaryTemplateLaneBox"
+              <ComboBox Grid.Row="6" Grid.Column="1" x:Name="kastnTemporaryTemplateLaneBox"
                         Width="180" HorizontalAlignment="Left" />
 
-              <TextBlock Grid.Row="5" Grid.Column="0"
+              <TextBlock Grid.Row="7" Grid.Column="0"
                          Text="Minimize to tray"
                          VerticalAlignment="Center"
                          TextWrapping="Wrap" />
-              <CheckBox Grid.Row="5" Grid.Column="1" x:Name="kastnMinimizeToTrayBox"
+              <CheckBox Grid.Row="7" Grid.Column="1" x:Name="kastnMinimizeToTrayBox"
                         Content="Hide Kastn to system tray when minimized" />
             </Grid>
 

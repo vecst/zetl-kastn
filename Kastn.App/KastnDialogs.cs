@@ -110,7 +110,11 @@ internal static class KastnDialogs
 
     public static async Task<TemporaryTemplateLaneResult?> PickTemporaryTemplateLaneAsync(
         Window owner,
-        string templateName)
+        string templateName,
+        string title = "Use Temporary Template",
+        string? prompt = null,
+        string confirmText = "Use Template",
+        bool allowRemember = true)
     {
         var main = new RadioButton
         {
@@ -125,13 +129,14 @@ internal static class KastnDialogs
         };
         var remember = new CheckBox
         {
-            Content = "Remember this choice"
+            Content = "Remember this choice",
+            IsVisible = allowRemember
         };
-        var dialog = Dialog("Use Temporary Template", 440, 250);
+        var dialog = Dialog(title, 440, allowRemember ? 250 : 220);
         var use = new Button
         {
-            Content = "Use Template",
-            Width = 112,
+            Content = confirmText,
+            Width = 132,
             IsDefault = true
         };
         var cancel = new Button { Content = "Cancel", Width = 84, IsCancel = true };
@@ -147,7 +152,7 @@ internal static class KastnDialogs
             {
                 new TextBlock
                 {
-                    Text = $"Use '{templateName}' in which lane?",
+                    Text = prompt ?? $"Use '{templateName}' in which lane?",
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap
                 },
                 new StackPanel

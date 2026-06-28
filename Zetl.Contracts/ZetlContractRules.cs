@@ -117,7 +117,9 @@ public static class ZetlContractRules
     public static bool RequiresPayload(ZetlCommandKind kind)
     {
         return kind is ZetlCommandKind.CreateProject
+            or ZetlCommandKind.CreateTemporaryProjectFromReplay
             or ZetlCommandKind.RenameProject
+            or ZetlCommandKind.SetActiveProject
             or ZetlCommandKind.SetProjectStatus
             or ZetlCommandKind.SetJournalMode
             or ZetlCommandKind.SetProjectView

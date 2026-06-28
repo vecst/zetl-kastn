@@ -929,6 +929,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.KastnAutosave = window.KastnAutosave;
         settings.KastnStartup = window.KastnStartup;
         settings.KastnDefaultViewId = window.KastnDefaultViewId;
+        settings.KastnMainLaneLabel = window.KastnMainLaneLabel;
+        settings.KastnAlternateLaneLabel = window.KastnAlternateLaneLabel;
         settings.KastnMinimizeAfterTemplate = window.KastnMinimizeAfterTemplate;
         settings.KastnTemporaryTemplateLaneDefault = window.KastnTemporaryTemplateLaneDefault;
         settings.KastnMinimizeToTray = window.KastnMinimizeToTray;

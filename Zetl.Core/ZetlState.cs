@@ -764,6 +764,77 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlProject? CreateTemporaryProjectFromReplaySource(
+        ZetlProject sourceProject,
+        string name,
+        string temporaryLane,
+        out int replayItemCount)
+    {
+        replayItemCount = 0;
+        var lane = CanonicalTemporaryLane(temporaryLane);
+        if (lane is null || !CanCreateTemporaryFromReplay(sourceProject))
+        {
+            return null;
+        }
+
+        var sources = ReplaySourceBuckets(sourceProject)
+            .Select(bucket => new
+            {
+                SourceBucket = bucket,
+                Notes = ReplaySourceNotes(sourceProject, bucket).ToList()
+            })
+            .Where(source => source.Notes.Count > 0)
+            .ToList();
+        if (sources.Count == 0)
+        {
+            return null;
+        }
+
+        var shifted = string.Equals(lane, ShiftLane, StringComparison.Ordinal);
+        var project = CreateProject(
+            name,
+            sources.Select(source => source.SourceBucket.Name),
+            sources[0].SourceBucket.Name,
+            shifted,
+            kind: TemporaryConsumableProjectKind,
+            temporaryLane: lane);
+        foreach (var source in sources)
+        {
+            var targetBucket = project.Buckets.FirstOrDefault(bucket =>
+                string.Equals(bucket.Name, source.SourceBucket.Name, StringComparison.OrdinalIgnoreCase));
+            if (targetBucket is null)
+            {
+                continue;
+            }
+
+            targetBucket.Settings.Kind = "Replay";
+            targetBucket.Settings.DefaultKind = "Replay";
+            targetBucket.Settings.DefaultCompileMode = NormalizeCompileMode(
+                source.SourceBucket.Settings.DefaultCompileMode);
+            targetBucket.Settings.DefaultStartingText =
+                (source.SourceBucket.Settings.DefaultStartingText ?? "").Trim();
+            targetBucket.Settings.DefaultTsvRowLength =
+                source.SourceBucket.Settings.DefaultTsvRowLength <= 0
+                    ? 5
+                    : source.SourceBucket.Settings.DefaultTsvRowLength;
+            targetBucket.Settings.PopMode = false;
+            targetBucket.Settings.ReplayReviewBucketId = null;
+            targetBucket.Slips.Clear();
+
+            foreach (var note in source.Notes)
+            {
+                targetBucket.Slips.Add(CloneReplaySourceSlip(sourceProject, project, note));
+                replayItemCount++;
+            }
+
+            targetBucket.Revision++;
+        }
+
+        PersistProject(project, workspace: true);
+        return project;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public void DeleteProject(string projectId)
     {
         var project = State.Projects.FirstOrDefault(item => item.Id == projectId);
@@ -2088,42 +2159,20 @@ internal sealed class ZetlStateStore
 
     private void RaiseProjectPersisted(ZetlProjectPersistedEventArgs args)
     {
-        if (ProjectPersisted is null)
-        {
-            return;
-        }
-
-        foreach (EventHandler<ZetlProjectPersistedEventArgs> handler in ProjectPersisted.GetInvocationList())
-        {
-            try
-            {
-                handler(this, args);
-            }
-            catch (Exception ex)
-            {
-                log?.Invoke($"Project persistence subscriber failed: {ex.Message}");
-            }
-        }
+        ZetlEventPublisher.Publish(
+            ProjectPersisted,
+            this,
+            args,
+            ex => log?.Invoke($"Project persistence subscriber failed: {ex.Message}"));
     }
 
     private void RaiseChanged()
     {
-        if (Changed is null)
-        {
-            return;
-        }
-
-        foreach (EventHandler handler in Changed.GetInvocationList())
-        {
-            try
-            {
-                handler(this, EventArgs.Empty);
-            }
-            catch (Exception ex)
-            {
-                log?.Invoke($"State change subscriber failed: {ex.Message}");
-            }
-        }
+        ZetlEventPublisher.Publish(
+            Changed,
+            this,
+            EventArgs.Empty,
+            ex => log?.Invoke($"State change subscriber failed: {ex.Message}"));
     }
 
     private ZetlProject? OwnerProject(ZetlBucket bucket)
@@ -2596,6 +2645,116 @@ internal sealed class ZetlStateStore
     public static bool IsReplayBucket(ZetlBucket bucket)
     {
         return IsReplayKindValue(bucket.Settings.Kind);
+    }
+
+    public static bool CanCreateTemporaryFromReplay(ZetlProject project)
+    {
+        return ReplaySourceBuckets(project).Any(bucket => ReplaySourceNotes(project, bucket).Any());
+    }
+
+    private static IEnumerable<ZetlBucket> ReplaySourceBuckets(ZetlProject project)
+    {
+        return project.Buckets.Where(bucket =>
+            !IsDeletedBucket(bucket)
+            && !IsScratchBucket(bucket)
+            && (IsReplayBucket(bucket) || ReplayReviewBucket(project, bucket) is not null));
+    }
+
+    private static IEnumerable<ZetlSlip> ReplaySourceNotes(ZetlProject project, ZetlBucket bucket)
+    {
+        if (ReplayReviewBucket(project, bucket) is { } reviewBucket)
+        {
+            foreach (var note in ReplayableSourceNotes(reviewBucket))
+            {
+                yield return note;
+            }
+        }
+
+        foreach (var note in ReplayableSourceNotes(bucket))
+        {
+            yield return note;
+        }
+    }
+
+    private static ZetlBucket? ReplayReviewBucket(ZetlProject project, ZetlBucket bucket)
+    {
+        return bucket.Settings.ReplayReviewBucketId is null
+            ? null
+            : project.Buckets.FirstOrDefault(candidate =>
+                candidate.Id == bucket.Settings.ReplayReviewBucketId
+                && candidate.Id != bucket.Id
+                && !IsDeletedBucket(candidate));
+    }
+
+    private static IEnumerable<ZetlSlip> ReplayableSourceNotes(ZetlBucket bucket)
+    {
+        return bucket.Slips.Where(note =>
+            !IsStructuralNote(note)
+            && (note.IsImage || !string.IsNullOrWhiteSpace(note.Text)));
+    }
+
+    private ZetlSlip CloneReplaySourceSlip(
+        ZetlProject sourceProject,
+        ZetlProject targetProject,
+        ZetlSlip source)
+    {
+        var clone = new ZetlSlip
+        {
+            Id = NewId(),
+            Type = source.Type,
+            Title = source.Title,
+            Text = source.Text,
+            Source = "temporary-replay",
+            SessionId = sessionId,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            ExcludedFromViews = source.ExcludedFromViews,
+            Align = source.Align,
+            BlockKind = source.BlockKind,
+            Checked = source.Checked,
+            CaptureOrigin = source.CaptureOrigin is null
+                ? null
+                : new ZetlCaptureOrigin
+                {
+                    ApplicationName = source.CaptureOrigin.ApplicationName,
+                    ProcessName = source.CaptureOrigin.ProcessName,
+                    WindowTitle = source.CaptureOrigin.WindowTitle
+                }
+        };
+        if (source.Image is not null)
+        {
+            clone.Image = CloneReplayImage(sourceProject, targetProject, source.Image);
+        }
+
+        return clone;
+    }
+
+    private ZetlImageAsset? CloneReplayImage(
+        ZetlProject sourceProject,
+        ZetlProject targetProject,
+        ZetlImageAsset source)
+    {
+        var bytes = storage.ReadAsset(sourceProject, source.RelativePath);
+        if (bytes is null)
+        {
+            return null;
+        }
+
+        var extension = Path.GetExtension(source.RelativePath);
+        var relativePath = storage.WriteAsset(
+            targetProject,
+            source.Sha256,
+            string.IsNullOrWhiteSpace(extension) ? ".png" : extension,
+            bytes);
+        return new ZetlImageAsset
+        {
+            RelativePath = relativePath,
+            SourceUrl = source.SourceUrl,
+            MimeType = source.MimeType,
+            Width = source.Width,
+            Height = source.Height,
+            ByteLength = source.ByteLength,
+            Sha256 = source.Sha256
+        };
     }
 
     // The Scratch bucket is special (always present, the quick-note default)

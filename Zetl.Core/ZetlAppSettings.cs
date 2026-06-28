@@ -26,6 +26,8 @@ internal sealed class ZetlAppSettings
     public bool KastnAutosave { get; set; } = true;
     public string KastnStartup { get; set; } = ZetlKastnStartup.Landing;
     public string KastnDefaultViewId { get; set; } = "";
+    public string KastnMainLaneLabel { get; set; } = "";
+    public string KastnAlternateLaneLabel { get; set; } = "";
     public string KastnTemporaryTemplateLaneDefault { get; set; } = "";
     public bool KastnMinimizeAfterTemplate { get; set; } = true;
     public bool KastnMinimizeToTray { get; set; } = true;

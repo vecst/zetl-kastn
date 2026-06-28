@@ -913,8 +913,17 @@ internal partial class MainWindow
             "",
             "",
             "",
+            null,
             currentProject.Status,
-            false));
+            currentProject.Slips.Count,
+            false,
+            "",
+            "",
+            false,
+            string.Equals(
+                currentProject.Kind,
+                ZetlStateStore.TemporaryConsumableProjectKind,
+                StringComparison.Ordinal)));
     }
 
     private async Task RenameProjectAsync(ProjectListItem project)
@@ -1005,6 +1014,95 @@ internal partial class MainWindow
             ? "reactivated"
             : status.ToLowerInvariant();
         HandleSimpleResponse(response, $"Project {verb}.");
+    }
+
+    private async Task SetActiveProjectAsync(ProjectListItem project, bool shifted)
+    {
+        if (!IsOnline)
+        {
+            return;
+        }
+
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.SetActiveProject,
+            new SetActiveProjectCommand { ActivateShifted = shifted },
+            project.Id));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            await connection.RefreshAsync();
+        }
+
+        HandleSimpleResponse(
+            response,
+            shifted ? "Project set as Alternate." : "Project set as Main.");
+    }
+
+    private async Task CreateTemporaryProjectFromReplayAsync(ProjectListItem project)
+    {
+        if (!IsOnline)
+        {
+            return;
+        }
+
+        if (!project.CanUseTemporarily)
+        {
+            statusText.Text = "Only archived projects with replay material can be used temporarily.";
+            return;
+        }
+
+        var laneChoice = await KastnDialogs.PickTemporaryTemplateLaneAsync(
+            this,
+            project.Name,
+            title: "Use Temporarily",
+            prompt: $"Create a temporary project from '{project.Name}' in which lane?",
+            confirmText: "Create Temporary",
+            allowRemember: false);
+        if (laneChoice is null)
+        {
+            return;
+        }
+
+        var lane = ZetlStateStore.CanonicalTemporaryLane(laneChoice.Lane)
+            ?? ZetlStateStore.NormalLane;
+        var name = await KastnDialogs.PromptAsync(
+            this,
+            "Temporary Project",
+            "Project name",
+            $"{project.Name} Temporary",
+            candidate => lastProjectSummaries.Any(summary =>
+                string.Equals(summary.Name, candidate, StringComparison.OrdinalIgnoreCase))
+                    ? "A project with that name already exists."
+                    : null);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.CreateTemporaryProjectFromReplay,
+            new CreateTemporaryProjectFromReplayCommand
+            {
+                Name = name.Trim(),
+                TemporaryLane = lane,
+                ActivateShifted = string.Equals(lane, ZetlStateStore.ShiftLane, StringComparison.Ordinal)
+            },
+            project.Id));
+        if (response.Status == ZetlResponseStatus.Success)
+        {
+            var created = response.Payload?.Deserialize<ZetlProjectSnapshot>(
+                ZetlProtocolJson.Options);
+            await connection.RefreshAsync();
+            if (created is not null)
+            {
+                await connection.NavigateToProjectAsync(created.Id);
+                statusText.Text = $"Created temporary project '{created.Name}'.";
+                return;
+            }
+        }
+
+        HandleSimpleResponse(response, "Created temporary project.");
     }
 
     private async Task DeleteProjectAsync(ProjectListItem project)

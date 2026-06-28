@@ -21,11 +21,13 @@ public sealed record ZetlProjectSummary
     public string? SourceTemplateId { get; init; }
     public string? TemporaryLane { get; init; }
     public string ActiveLane { get; init; } = "";
+    public string UnderlyingLane { get; init; } = "";
     public int BucketCount { get; init; }
     public int SlipCount { get; init; }
     public int VisibleBucketCount { get; init; }
     public int VisibleSlipCount { get; init; }
     public int DeletedSlipCount { get; init; }
+    public bool CanCreateTemporaryFromReplay { get; init; }
     public DateTimeOffset? LastActivityUtc { get; init; }
     public string PreviewText { get; init; } = "";
 }

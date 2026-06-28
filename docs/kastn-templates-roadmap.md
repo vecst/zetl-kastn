@@ -106,11 +106,26 @@ template again to create a fresh queue.
 ### Entry Points
 
 - Held `Ctrl+T` or `Ctrl+Shift+T` already identifies the lane. User-facing
-  labels are Main and Alternate; the stored values remain Normal and Shift.
+  labels default to Main and Alternate, but users may rename the two lane
+  labels in settings. Blank custom labels keep the defaults. The stored values
+  remain Normal and Shift.
 - Held `Ctrl+V` with no active project opens the picker on Consumable templates.
 - Kastn's current `Use` action creates a named project from the template and can
-  minimize Kastn after use. For temporary consumables, Kastn asks for Main or
-  Alternate unless a default lane has been saved.
+  minimize Kastn after use. For temporary consumables, Kastn asks for the
+  chosen lane label unless a default lane has been saved.
+
+### Landing Shape
+
+Kastn should present the two lanes as stable landing-page places. Temporary
+consumables appear as stacked overlay cards on the lane they currently occupy,
+with a timer/replay cue and progress such as remaining replay items. The
+underlying durable project remains visible and clickable behind the overlay, so
+the temporary queue reads as "currently on this lane" rather than as a separate
+permanent project category.
+
+Because active temporary projects are visible as lane overlays, compile/source
+pickers may include them while active. They should still be disposed when they
+leave their lane and should not become ordinary inactive project entries.
 
 ### Ownership
 

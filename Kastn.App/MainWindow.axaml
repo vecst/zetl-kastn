@@ -49,178 +49,464 @@
     <Grid Grid.Row="2" Margin="16">
       <Border Classes="surface" Padding="18">
         <Grid>
-          <StackPanel x:Name="emptyState"
-                      HorizontalAlignment="Center"
-                      VerticalAlignment="Center"
-                      Spacing="8">
-            <TextBlock Text="Kastn" Classes="title" HorizontalAlignment="Center" />
-            <TextBlock x:Name="emptyStateText"
-                       Text="Connecting to Zetl..."
-                       Classes="muted"
-                       TextAlignment="Center"
-                       MaxWidth="440" />
-            <StackPanel x:Name="landingModeToggle"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Center"
-                        Spacing="8"
-                        Margin="0,4,0,0"
-                        IsVisible="False">
-              <Button x:Name="landingProjectsButton"
-                      Content="Projects"
-                      Padding="16,5" />
-              <Button x:Name="landingTemplatesButton"
-                      Content="Templates"
-                      Padding="16,5" />
-              <Button x:Name="landingCreateButton"
-                      Content="Create"
-                      Padding="16,5" />
-            </StackPanel>
-            <StackPanel x:Name="landingTemplateTypeToggle"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Center"
-                        Spacing="8"
-                        Margin="0,4,0,0"
-                        IsVisible="False">
-              <Button x:Name="landingCaptureButton"
-                      Content="Capture"
-                      Padding="16,5" />
-              <Button x:Name="landingConsumableButton"
-                      Content="Consumable"
-                      Padding="16,5" />
-            </StackPanel>
-            <Button x:Name="landingNewTemplateButton"
-                    Content="+ New Template"
-                    Padding="16,5"
-                    HorizontalAlignment="Center"
-                    Margin="0,4,0,0"
-                    IsVisible="False"
-                    Click="OnNewTemplateClick" />
-            <Button x:Name="landingNewCreationButton"
-                    Content="+ New Creation Type"
-                    Padding="16,5"
-                    HorizontalAlignment="Center"
-                    Margin="0,4,0,0"
-                    IsVisible="False"
-                    Click="OnNewCreationClick" />
-            <CheckBox x:Name="landingShowArchivedCheck"
-                      Content="Show archived"
-                      HorizontalAlignment="Center"
-                      Margin="0,12,0,0"
-                      IsVisible="False" />
-            <ListBox x:Name="landingProjectList"
-                     Width="880"
-                     MaxHeight="520"
-                     Margin="0,8,0,0"
-                     IsVisible="False">
-              <ListBox.Styles>
-                <Style Selector="ListBoxItem">
-                  <Setter Property="Padding" Value="0" />
-                  <Setter Property="Margin" Value="0" />
-                </Style>
-              </ListBox.Styles>
-              <ListBox.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <WrapPanel Orientation="Horizontal" />
-                </ItemsPanelTemplate>
-              </ListBox.ItemsPanel>
-              <ListBox.ItemTemplate>
-                <DataTemplate>
-                  <Border Classes="surface"
-                          Width="450"
-                          Height="330"
-                          Padding="16"
-                          Margin="8">
-                    <Grid RowDefinitions="Auto,150,*,Auto">
-                      <TextBlock Grid.Row="0"
-                                 Text="{Binding Section}"
-                                 Classes="muted"
-                                 FontSize="12"
-                                 FontWeight="SemiBold"
-                                 Margin="0,0,0,8" />
-                      <Border Grid.Row="1"
-                              Background="{DynamicResource ZetlSurfaceAltBrush}"
-                              CornerRadius="4"
-                              Padding="14">
-                        <TextBlock Text="{Binding PreviewText}"
-                                   Classes="muted"
-                                   FontSize="14"
-                                   TextWrapping="Wrap"
-                                   MaxLines="7" />
+          <Grid x:Name="emptyState"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                ColumnDefinitions="370,18,*"
+                IsVisible="False">
+            <Grid Grid.Column="0"
+                  x:Name="landingProjectsPanel"
+                  RowDefinitions="Auto,Auto,Auto,*"
+                  RowSpacing="12"
+                  Focusable="True"
+                  IsVisible="False">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                  <TextBlock Grid.Column="0"
+                             Text="Kastn"
+                             FontSize="22"
+                             FontWeight="SemiBold"
+                             VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1"
+                             x:Name="emptyStateText"
+                             Text="Connecting to Zetl..."
+                             Classes="muted"
+                             TextWrapping="Wrap"
+                             VerticalAlignment="Center" />
+                </Grid>
+
+                <ItemsControl Grid.Row="1"
+                              x:Name="landingLaneItems">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Height="142"
+                              Margin="0,4"
+                              Padding="0">
+                        <Grid>
+                          <Button Padding="0"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Bottom"
+                                  Tag="{Binding Project}"
+                                  IsVisible="{Binding HasProject}"
+                                  IsEnabled="{Binding HasProject}"
+                                  Click="OnProjectCardOpenClick">
+                            <Border Classes="surface"
+                                    Height="116"
+                                    Padding="12"
+                                    Opacity="0.86">
+                              <Grid RowDefinitions="Auto,*,Auto">
+                                <TextBlock Grid.Row="0"
+                                           Text="{Binding Label}"
+                                           Classes="muted"
+                                           FontSize="12"
+                                           FontWeight="SemiBold" />
+                                <StackPanel Grid.Row="1"
+                                            Margin="0,10,0,0"
+                                            Spacing="5">
+                                  <TextBlock Text="{Binding ProjectName}"
+                                             FontWeight="SemiBold"
+                                             FontSize="16"
+                                             TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding ProjectDetail}"
+                                             Classes="muted"
+                                             FontSize="12"
+                                             TextWrapping="Wrap"
+                                             MaxLines="1" />
+                                  <TextBlock Text="{Binding ProjectPreview}"
+                                             Classes="muted"
+                                             FontSize="12"
+                                             TextWrapping="Wrap"
+                                             MaxLines="1" />
+                                </StackPanel>
+                                <TextBlock Grid.Row="2"
+                                           Text="{Binding ProjectActivity}"
+                                           Classes="muted"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"
+                                           MaxLines="1" />
+                              </Grid>
+                            </Border>
+                          </Button>
+
+                          <Border Classes="surface"
+                                  Height="116"
+                                  Padding="12"
+                                  VerticalAlignment="Bottom"
+                                  IsVisible="{Binding IsEmpty}"
+                                  Opacity="0.72">
+                            <Grid RowDefinitions="Auto,*,Auto">
+                              <TextBlock Grid.Row="0"
+                                         Text="{Binding Label}"
+                                         Classes="muted"
+                                         FontSize="12"
+                                         FontWeight="SemiBold" />
+                              <StackPanel Grid.Row="1"
+                                          Margin="0,10,0,0"
+                                          Spacing="5">
+                                <TextBlock Text="{Binding EmptyTitle}"
+                                           FontWeight="SemiBold"
+                                           FontSize="16"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding EmptyDetail}"
+                                           Classes="muted"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"
+                                           MaxLines="2" />
+                              </StackPanel>
+                              <TextBlock Grid.Row="2"
+                                         Text="Use Set Active from a project card."
+                                         Classes="muted"
+                                         FontSize="11"
+                                         TextWrapping="Wrap"
+                                         MaxLines="1" />
+                            </Grid>
+                          </Border>
+
+                          <Button Padding="0"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Top"
+                                  Width="340"
+                                  Tag="{Binding OverlayProject}"
+                                  IsVisible="{Binding HasOverlay}"
+                                  Click="OnProjectCardOpenClick">
+                            <Border Classes="surface"
+                                    BorderBrush="{DynamicResource ZetlAccentBrush}"
+                                    BorderThickness="1"
+                                    Padding="12"
+                                    Height="112">
+                              <Grid RowDefinitions="Auto,*,Auto">
+                                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                  <TextBlock Grid.Column="0"
+                                             Text="Queue"
+                                             Classes="muted"
+                                             FontSize="12"
+                                             FontWeight="SemiBold" />
+                                  <TextBlock Grid.Column="1"
+                                             Text="Temporary"
+                                             Classes="muted"
+                                             FontSize="12"
+                                             FontWeight="SemiBold" />
+                                  <TextBlock Grid.Column="2"
+                                             Text="{Binding Label}"
+                                             Classes="muted"
+                                             FontSize="12"
+                                             FontWeight="SemiBold" />
+                                </Grid>
+                                <StackPanel Grid.Row="1"
+                                            Margin="0,10,0,0"
+                                            Spacing="5">
+                                  <TextBlock Text="{Binding OverlayName}"
+                                             FontWeight="SemiBold"
+                                             FontSize="16"
+                                             TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Text="{Binding OverlayDetail}"
+                                             Classes="muted"
+                                             FontSize="14"
+                                             TextWrapping="Wrap"
+                                             MaxLines="1" />
+                                </StackPanel>
+                                <TextBlock Grid.Row="2"
+                                           Text="{Binding OverlayProgress}"
+                                           Classes="muted"
+                                           FontSize="13"
+                                           FontWeight="SemiBold" />
+                              </Grid>
+                            </Border>
+                          </Button>
+                        </Grid>
                       </Border>
-                      <StackPanel Grid.Row="2"
-                                  Margin="0,14,0,0"
-                                  Spacing="5">
-                        <Grid ColumnDefinitions="*,Auto">
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Grid Grid.Row="2"
+                      x:Name="landingProjectLibraryHeader"
+                      Margin="0,2,0,0">
+                  <TextBlock Text="Recent Projects"
+                             Classes="heading"
+                             VerticalAlignment="Center" />
+                </Grid>
+
+                <ScrollViewer Grid.Row="3"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                  <ListBox x:Name="landingProjectList"
+                           IsVisible="False">
+                    <ListBox.Styles>
+                      <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0" />
+                      </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel />
+                      </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <Border Classes="surface"
+                                Padding="12"
+                                Margin="0,0,0,8">
+                          <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="0"
+                                       Text="{Binding Name}"
+                                       FontWeight="SemiBold"
+                                       FontSize="15"
+                                       TextTrimming="CharacterEllipsis" />
+                            <Border Grid.Row="0"
+                                    Grid.Column="1"
+                                    IsVisible="{Binding ShowStatusBadge}"
+                                    Background="{DynamicResource ZetlSurfaceAltBrush}"
+                                    CornerRadius="10"
+                                    Padding="8,1">
+                              <TextBlock Text="{Binding Status}"
+                                         Classes="muted"
+                                         FontSize="11" />
+                            </Border>
+                            <TextBlock Grid.Row="1"
+                                       Grid.ColumnSpan="2"
+                                       Text="{Binding Detail}"
+                                       Classes="muted"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       MaxLines="1" />
+                            <Grid Grid.Row="2"
+                                  Grid.ColumnSpan="2"
+                                  ColumnDefinitions="*,Auto"
+                                  Margin="0,6,0,0">
+                              <TextBlock Grid.Column="0"
+                                         Text="{Binding ActivityText}"
+                                         Classes="muted"
+                                         FontSize="11"
+                                         TextWrapping="Wrap"
+                                         MaxLines="1"
+                                         VerticalAlignment="Center" />
+                              <Button Grid.Column="1"
+                                      Content="Open"
+                                      MinWidth="54"
+                                      Padding="10,3"
+                                      PointerPressed="OnProjectCardActionPointerPressed"
+                                      Click="OnProjectCardOpenClick" />
+                            </Grid>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                </ScrollViewer>
+            </Grid>
+
+            <Grid Grid.Column="2"
+                  x:Name="landingLowerContent"
+                  RowDefinitions="Auto,Auto,*,Auto"
+                  RowSpacing="10">
+              <Grid x:Name="landingModeToggle"
+                    Grid.Row="0"
+                    ColumnDefinitions="*,Auto"
+                    IsVisible="False">
+                <StackPanel Grid.Column="0"
+                            Spacing="2"
+                            VerticalAlignment="Center">
+                  <TextBlock x:Name="landingWorkspaceTitle"
+                             Text="Projects"
+                             FontSize="22"
+                             FontWeight="SemiBold" />
+                  <TextBlock x:Name="landingWorkspaceSubtitle"
+                             Text="Choose a project to open."
+                             Classes="muted"
+                             FontSize="13" />
+                </StackPanel>
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Spacing="8">
+                  <Button x:Name="landingProjectsButton"
+                          Content="Projects"
+                          Padding="16,5" />
+                  <Button x:Name="landingTemplatesButton"
+                          Content="Templates"
+                          Padding="16,5" />
+                </StackPanel>
+              </Grid>
+
+              <Grid x:Name="landingLowerActionRow"
+                    Grid.Row="1"
+                    ColumnDefinitions="Auto,*,Auto,Auto">
+                <StackPanel Grid.Column="0"
+                            x:Name="landingProjectArchiveToggle"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Left"
+                            Spacing="8"
+                            IsVisible="False">
+                  <Button x:Name="landingCurrentProjectsButton"
+                          Content="Current"
+                          Padding="16,5" />
+                  <Button x:Name="landingArchivedProjectsButton"
+                          Content="Archived"
+                          Padding="16,5" />
+                </StackPanel>
+                <StackPanel Grid.Column="0"
+                            x:Name="landingTemplateTypeToggle"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Left"
+                            Spacing="8"
+                            IsVisible="False">
+                  <Button x:Name="landingCaptureButton"
+                          Content="Capture"
+                          Padding="16,5" />
+                  <Button x:Name="landingConsumableButton"
+                          Content="Consumable"
+                          Padding="16,5" />
+                </StackPanel>
+                <Button Grid.Column="2"
+                        x:Name="landingNewTemplateButton"
+                        Content="+ New Template"
+                        Padding="16,5"
+                        HorizontalAlignment="Right"
+                        IsVisible="False"
+                        Click="OnNewTemplateClick" />
+                <Button Grid.Column="3"
+                        x:Name="landingNewCreationButton"
+                        Content="+ New Creation Type"
+                        Padding="16,5"
+                        HorizontalAlignment="Right"
+                        IsVisible="False"
+                        Click="OnNewCreationClick" />
+              </Grid>
+
+              <ListBox x:Name="landingProjectWorkspaceList"
+                       Grid.Row="2"
+                       IsVisible="False">
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
+                  </Style>
+                </ListBox.Styles>
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="surface"
+                            Width="330"
+                            Height="220"
+                            Padding="14"
+                            Margin="0,0,12,12">
+                      <Grid RowDefinitions="Auto,*,Auto">
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                           <TextBlock Grid.Column="0"
-                                     Text="{Binding Name}"
-                                     FontWeight="SemiBold"
-                                     FontSize="20"
-                                     TextTrimming="CharacterEllipsis"
-                                     VerticalAlignment="Center" />
+                                     Text="{Binding ActivityText}"
+                                     Classes="muted"
+                                     FontSize="12"
+                                     FontWeight="SemiBold" />
                           <Border Grid.Column="1"
                                   IsVisible="{Binding ShowStatusBadge}"
                                   Background="{DynamicResource ZetlSurfaceAltBrush}"
                                   CornerRadius="10"
-                                  Padding="10,2"
-                                  VerticalAlignment="Center">
+                                  Padding="10,2">
                             <TextBlock Text="{Binding Status}"
                                        Classes="muted"
                                        FontSize="12" />
                           </Border>
                         </Grid>
-                        <TextBlock Text="{Binding Detail}"
-                                   Classes="muted"
-                                   FontSize="14"
-                                   TextWrapping="Wrap"
-                                   MaxLines="1" />
-                        <TextBlock Text="{Binding ActivityText}"
-                                   Classes="muted"
-                                   FontSize="13"
-                                   TextWrapping="Wrap"
-                                   MaxLines="1" />
-                      </StackPanel>
-                      <Grid Grid.Row="3"
-                            ColumnDefinitions="*,Auto,Auto,Auto,Auto"
-                            ColumnSpacing="8">
-                        <Button Grid.Column="0"
-                                Content="Open"
-                                Padding="14,5"
-                                HorizontalAlignment="Left"
-                                PointerPressed="OnProjectCardActionPointerPressed"
-                                Click="OnProjectCardOpenClick" />
-                        <Button Grid.Column="1"
-                                Content="{Binding PinActionLabel}"
-                                Padding="14,5"
-                                PointerPressed="OnProjectCardActionPointerPressed"
-                                Click="OnProjectCardPinClick" />
-                        <Button Grid.Column="2"
-                                Content="{Binding StatusActionLabel}"
-                                Padding="14,5"
-                                PointerPressed="OnProjectCardActionPointerPressed"
-                                Click="OnProjectCardStatusClick" />
-                        <Button Grid.Column="3"
-                                Content="Rename"
-                                Padding="14,5"
-                                PointerPressed="OnProjectCardActionPointerPressed"
-                                Click="OnProjectCardRenameClick" />
-                        <Button Grid.Column="4"
-                                Content="Delete"
-                                Padding="14,5"
-                                PointerPressed="OnProjectCardActionPointerPressed"
-                                Click="OnProjectCardDeleteClick" />
+                        <StackPanel Grid.Row="1" Margin="0,10,0,0" Spacing="5">
+                          <TextBlock Text="{Binding Name}"
+                                     FontWeight="SemiBold"
+                                     FontSize="18"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Detail}"
+                                     Classes="muted"
+                                     FontSize="13"
+                                     TextWrapping="Wrap"
+                                     MaxLines="1" />
+                          <TextBlock Text="{Binding PreviewText}"
+                                     Classes="muted"
+                                     FontSize="13"
+                                     TextWrapping="Wrap"
+                                     MaxLines="3" />
+                        </StackPanel>
+                        <Grid Grid.Row="2"
+                              ColumnDefinitions="*,Auto,Auto"
+                              ColumnSpacing="6">
+                          <Button Grid.Column="0"
+                                  Content="Open"
+                                  MinWidth="54"
+                                  Padding="10,4"
+                                  HorizontalAlignment="Left"
+                                  PointerPressed="OnProjectCardActionPointerPressed"
+                                  Click="OnProjectCardOpenClick" />
+                          <Grid Grid.Column="1"
+                                ColumnDefinitions="Auto,Auto">
+                            <Button Grid.Column="0"
+                                    Content="{Binding SetActiveActionLabel}"
+                                    IsEnabled="{Binding CanSetActive}"
+                                    Padding="10,4"
+                                    CornerRadius="4,0,0,4"
+                                    PointerPressed="OnProjectCardActionPointerPressed"
+                                    Click="OnProjectCardPinClick" />
+                            <Button Grid.Column="1"
+                                    Content="▾"
+                                    IsEnabled="{Binding CanSetAlternateActive}"
+                                    Padding="8,4"
+                                    CornerRadius="0,4,4,0"
+                                    PointerPressed="OnProjectCardActionPointerPressed">
+                              <Button.Flyout>
+                                <MenuFlyout>
+                                  <MenuItem Header="Set as Alternate"
+                                            IsEnabled="{Binding CanSetAlternateActive}"
+                                            Tag="{Binding}"
+                                            Click="OnProjectCardSetAlternateClick" />
+                                </MenuFlyout>
+                              </Button.Flyout>
+                            </Button>
+                          </Grid>
+                          <Button Grid.Column="2"
+                                  Content="..."
+                                  MinWidth="34"
+                                  Padding="8,4"
+                                  PointerPressed="OnProjectCardActionPointerPressed"
+                                  HorizontalAlignment="Right">
+                            <Button.Flyout>
+                              <MenuFlyout>
+                                <MenuItem Header="{Binding StatusActionLabel}"
+                                          Click="OnProjectCardStatusClick" />
+                                <MenuItem Header="Use Temporarily"
+                                          IsVisible="{Binding CanUseTemporarily}"
+                                          Click="OnProjectCardUseTemporarilyClick" />
+                                <MenuItem Header="Rename"
+                                          Click="OnProjectCardRenameClick" />
+                                <MenuItem Header="Delete"
+                                          Click="OnProjectCardDeleteClick" />
+                              </MenuFlyout>
+                            </Button.Flyout>
+                          </Button>
+                        </Grid>
                       </Grid>
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+
             <!-- An ItemsControl, not a ListBox: template cards act through their
                  Use Template button, so the cards must never show selection or
                  focus chrome. -->
             <ScrollViewer x:Name="landingTemplateList"
-                          Width="880"
-                          MaxHeight="520"
-                          Margin="0,16,0,0"
+                          Grid.Row="2"
+                          Margin="0,0,0,0"
                           HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto"
                           IsVisible="False">
@@ -286,9 +572,8 @@
               </ItemsControl>
             </ScrollViewer>
             <ScrollViewer x:Name="landingCreationList"
-                          Width="880"
-                          MaxHeight="520"
-                          Margin="0,16,0,0"
+                          Grid.Row="2"
+                          Margin="0,0,0,0"
                           HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto"
                           IsVisible="False">
@@ -353,7 +638,16 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </ScrollViewer>
-          </StackPanel>
+            </Grid>
+
+            <Button Grid.Column="2"
+                    x:Name="landingCreateButton"
+                    Content="Create"
+                    Padding="18,5"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    IsVisible="False" />
+          </Grid>
 
           <Grid x:Name="projectView"
                 IsVisible="False"

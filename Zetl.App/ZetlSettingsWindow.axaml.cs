@@ -96,6 +96,8 @@ internal partial class ZetlSettingsWindow : Window
         kastnStartupBox.ItemsSource = new[] { "Landing page", "Last opened project" };
         kastnStartupBox.SelectedIndex =
             ZetlKastnStartup.Normalize(settings.KastnStartup) == ZetlKastnStartup.LastProject ? 1 : 0;
+        kastnMainLaneLabelBox.Text = settings.KastnMainLaneLabel?.Trim() ?? "";
+        kastnAlternateLaneLabelBox.Text = settings.KastnAlternateLaneLabel?.Trim() ?? "";
 
         var viewChoices = new List<ViewChoice> { new("", "Project default") };
         viewChoices.AddRange((viewStore ?? new ZetlViewStore()).LoadAll()
@@ -107,7 +109,7 @@ internal partial class ZetlSettingsWindow : Window
             ?? viewChoices[0];
 
         kastnMinimizeAfterTemplateBox.IsChecked = settings.KastnMinimizeAfterTemplate;
-        kastnTemporaryTemplateLaneBox.ItemsSource = new[] { "Ask every time", "Main", "Alternate" };
+        RefreshKastnLaneChoices();
         kastnTemporaryTemplateLaneBox.SelectedIndex =
             ZetlKastnTemplateLaneDefault.Normalize(settings.KastnTemporaryTemplateLaneDefault) switch
             {
@@ -115,6 +117,8 @@ internal partial class ZetlSettingsWindow : Window
                 ZetlStateStore.ShiftLane => 2,
                 _ => 0
             };
+        kastnMainLaneLabelBox.TextChanged += (_, _) => RefreshKastnLaneChoices();
+        kastnAlternateLaneLabelBox.TextChanged += (_, _) => RefreshKastnLaneChoices();
         kastnMinimizeToTrayBox.IsChecked = settings.KastnMinimizeToTray;
 
         // Kastn Advanced Settings binding
@@ -269,6 +273,8 @@ internal partial class ZetlSettingsWindow : Window
         ? ZetlKastnStartup.LastProject
         : ZetlKastnStartup.Landing;
     public string KastnDefaultViewId => (kastnDefaultViewBox.SelectedItem as ViewChoice)?.Id ?? "";
+    public string KastnMainLaneLabel => TrimLaneLabel(kastnMainLaneLabelBox.Text);
+    public string KastnAlternateLaneLabel => TrimLaneLabel(kastnAlternateLaneLabelBox.Text);
     public bool KastnMinimizeAfterTemplate => kastnMinimizeAfterTemplateBox.IsChecked == true;
     public string KastnTemporaryTemplateLaneDefault => kastnTemporaryTemplateLaneBox.SelectedIndex switch
     {
@@ -291,6 +297,30 @@ internal partial class ZetlSettingsWindow : Window
     private static decimal Clamp(int value, int min, int max)
     {
         return Math.Min(max, Math.Max(min, value));
+    }
+
+    private static string TrimLaneLabel(string? value)
+    {
+        var trimmed = (value ?? "").Trim();
+        return trimmed.Length <= 20 ? trimmed : trimmed[..20].TrimEnd();
+    }
+
+    private static string ResolveLaneLabel(string? value, string fallback)
+    {
+        var trimmed = TrimLaneLabel(value);
+        return trimmed.Length == 0 ? fallback : trimmed;
+    }
+
+    private void RefreshKastnLaneChoices()
+    {
+        var selectedIndex = kastnTemporaryTemplateLaneBox.SelectedIndex;
+        kastnTemporaryTemplateLaneBox.ItemsSource = new[]
+        {
+            "Ask every time",
+            ResolveLaneLabel(kastnMainLaneLabelBox.Text, "Main"),
+            ResolveLaneLabel(kastnAlternateLaneLabelBox.Text, "Alternate")
+        };
+        kastnTemporaryTemplateLaneBox.SelectedIndex = Math.Clamp(selectedIndex, 0, 2);
     }
 
     private sealed record ViewChoice(string Id, string Label)

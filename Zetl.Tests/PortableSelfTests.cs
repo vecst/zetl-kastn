@@ -2029,9 +2029,13 @@ public class PortableSelfTests
                 ZetlKastnTemplateLaneDefault.Ask,
                 store.Settings.KastnTemporaryTemplateLaneDefault,
                 "Temporary template lane should default to asking.");
+            AssertEqual("", store.Settings.KastnMainLaneLabel, "Main lane label should default to the built-in name.");
+            AssertEqual("", store.Settings.KastnAlternateLaneLabel, "Alternate lane label should default to the built-in name.");
             store.Settings.KastnAutosave = false;
             store.Settings.KastnStartup = ZetlKastnStartup.LastProject;
             store.Settings.KastnDefaultViewId = "markdown";
+            store.Settings.KastnMainLaneLabel = "Capture";
+            store.Settings.KastnAlternateLaneLabel = "Queue";
             store.Settings.KastnMinimizeAfterTemplate = false;
             store.Settings.KastnTemporaryTemplateLaneDefault = ZetlStateStore.ShiftLane;
             store.Save();
@@ -2057,6 +2061,8 @@ public class PortableSelfTests
                 loaded.Settings.KastnStartup,
                 "Kastn startup choice should round-trip.");
             AssertEqual("markdown", loaded.Settings.KastnDefaultViewId, "Kastn default view should round-trip.");
+            AssertEqual("Capture", loaded.Settings.KastnMainLaneLabel, "Main lane label should round-trip.");
+            AssertEqual("Queue", loaded.Settings.KastnAlternateLaneLabel, "Alternate lane label should round-trip.");
             AssertFalse(
                 loaded.Settings.KastnMinimizeAfterTemplate,
                 "Kastn minimize-after-template flag should round-trip.");
