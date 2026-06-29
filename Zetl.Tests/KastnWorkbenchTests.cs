@@ -463,6 +463,9 @@ public class KastnWorkbenchTests
         AssertTrue(
             KastnSelection.Compute([bucket], bucket) is KastnSelection.BucketTitle { BucketId: "b1" },
             "A bucket computes to a title selection.");
+        AssertTrue(
+            KastnSelection.Compute([s1, bucket], bucket) is KastnSelection.BucketTitle { BucketId: "b1" },
+            "A primary bucket row wins over stale selected slip rows.");
 
         // A deleted bucket is never a title; nothing selected is None.
         AssertTrue(

@@ -2033,11 +2033,15 @@ internal partial class MainWindow
         // The tree is the selection surface: resolve explicit slip selections
         // project-wide so a batch survives crossing buckets. Bucket selections edit
         // the bucket itself, not the slips inside it.
-        var ids = SelectedTreeSlipIds();
-        if (ids.Count > 0)
+        if (CurrentSelection() is KastnSelection.Slips { SlipIds: var ids })
         {
             var idSet = ids.ToHashSet(StringComparer.Ordinal);
             return currentProject.Slips.Where(slip => idSet.Contains(slip.Id)).ToList();
+        }
+
+        if (CurrentSelection() is KastnSelection.BucketTitle)
+        {
+            return [];
         }
 
         // Fall back to the single editor slip (e.g. a freshly created/selected one).

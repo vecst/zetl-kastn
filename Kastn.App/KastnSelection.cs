@@ -22,6 +22,15 @@ internal abstract record KastnSelection
         IReadOnlyList<KastnTreeNode> selectedNodes,
         KastnTreeNode? primaryNode)
     {
+        // In multiple-selection TreeView mode Avalonia can leave older selected
+        // rows in SelectedItems while SelectedItem has moved. A bucket primary row
+        // is an explicit bucket-property edit, so it wins over stale slip rows.
+        if (primaryNode is { Kind: KastnTreeNodeKind.Bucket } primaryBucket
+            && !primaryBucket.IsDeletedBucket)
+        {
+            return new BucketTitle(primaryBucket.Id);
+        }
+
         var ids = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in selectedNodes)
@@ -45,13 +54,6 @@ internal abstract record KastnSelection
         if (ids.Count > 0)
         {
             return new Slips(ids);
-        }
-
-        // No slips: a single non-deleted bucket means bucket/title editing.
-        if (primaryNode is { Kind: KastnTreeNodeKind.Bucket } bucket
-            && !bucket.IsDeletedBucket)
-        {
-            return new BucketTitle(bucket.Id);
         }
 
         return new None();

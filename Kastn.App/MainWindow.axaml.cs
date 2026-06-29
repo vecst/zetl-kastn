@@ -933,6 +933,7 @@ internal partial class MainWindow : Window
             .ToList();
         if (nodes.Count <= 1)
         {
+            projectTree.SelectedItems?.Clear();
             projectTree.SelectedItem = nodes.FirstOrDefault();
             return;
         }
@@ -1039,13 +1040,6 @@ internal partial class MainWindow : Window
     // the heading panel act on the bucket's title rather than its slips.
     private ZetlBucketSnapshot? TitleModeBucket()
     {
-        // A slip loaded in the editor means single-slip mode: the toolbar acts on the
-        // slip, not the bucket title, even though the tree row is a bucket.
-        if (editorState.SlipId is not null)
-        {
-            return null;
-        }
-
         return CurrentSelection() is KastnSelection.BucketTitle { BucketId: var bucketId }
             && currentProject?.Buckets.FirstOrDefault(bucket => bucket.Id == bucketId) is { } found
             && !KastnWorkbench.IsDeletedBucket(found)
