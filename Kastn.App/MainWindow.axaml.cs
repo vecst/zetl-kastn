@@ -124,10 +124,6 @@ internal partial class MainWindow : Window
     private GridLength leftSplitterWidth = new GridLength(8, GridUnitType.Pixel);
     private GridLength rightColumnWidth = new GridLength(360, GridUnitType.Pixel);
     private GridLength rightSplitterWidth = new GridLength(8, GridUnitType.Pixel);
-    // The bucket whose slips are "expanded" (second click). When null, a selected
-    // bucket is in title mode: its slips are not batch-selected and the heading
-    // controls edit the bucket's title. Reset on any fresh selection.
-    private string? expandedBucketId;
     private bool bucketHeadingUpdating;
     private bool landingShowingTemplates;
     private bool landingShowingConsumable;
@@ -189,12 +185,6 @@ internal partial class MainWindow : Window
         landingProjectList.SelectionChanged += OnProjectSelectionChanged;
         landingProjectWorkspaceList.SelectionChanged += OnProjectSelectionChanged;
         projectTree.SelectionChanged += OnTreeSelectionChanged;
-        // Tunnel so we see the selection before this press changes it (re-click of an
-        // already-selected bucket toggles its title/slips mode).
-        projectTree.AddHandler(
-            InputElement.PointerPressedEvent,
-            OnProjectTreePointerPressed,
-            RoutingStrategies.Tunnel);
         SetupTreeDragDrop();
         detailEditorButton.Click += (_, _) => SetDetailPaneMode(showDetails: false);
         detailDetailsButton.Click += (_, _) => SetDetailPaneMode(showDetails: true);
@@ -226,6 +216,7 @@ internal partial class MainWindow : Window
             InputElement.KeyDownEvent,
             OnSlipEditorPreviewKeyDown,
             RoutingStrategies.Tunnel);
+        slipEditor.KeyUp += OnSlipEditorKeyUp;
         slipEditor.PointerReleased += OnSlipEditorPointerReleased;
 
         refreshMenuItem.Click += async (_, _) => await RefreshAsync();
@@ -475,7 +466,6 @@ internal partial class MainWindow : Window
                     stateStore.LastProjectId = projectSnapshot.Id;
                     selectedBucketId = null;
                     selectedSlipId = null;
-                    expandedBucketId = null;
                     editorState.Select(null);
                     searchBox.Text = "";
                     // On opening a project, render with its default view (set by a
@@ -1465,6 +1455,13 @@ internal partial class MainWindow : Window
                 e.Handled = true;
             }
         }
+
+        UpdateInlineFormatButtons();
+    }
+
+    private void OnSlipEditorKeyUp(object? sender, KeyEventArgs e)
+    {
+        UpdateInlineFormatButtons();
     }
 
     // Save the current slip without losing the editor: a save can trigger a snapshot

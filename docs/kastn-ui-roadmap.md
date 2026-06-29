@@ -73,7 +73,7 @@ Shipping worklist for property-backed inline formatting:
 
 - [x] Add a persisted inline style range contract on slips, with command
       semantics where `null` preserves existing ranges and `[]` clears them.
-- [ ] Reconcile style ranges during text edits. Start with clamping/dropping
+- [x] Reconcile style ranges during text edits. Start with clamping/dropping
       invalid ranges, then add selection-aware shifting so edits before a range
       keep the intended styled text attached.
 - [x] Convert bold, italic, strike, and inline-code toolbar actions to toggle
@@ -86,9 +86,9 @@ Shipping worklist for property-backed inline formatting:
       PDF, Markdown export, and rich clipboard all translate the same intent.
 - [ ] Keep `Plain` and `TSV` export/compile modes literal; they ignore inline
       style ranges just like they ignore typed Markdown styling.
-- [ ] Add editor affordances for range state: button active state over the
-      current selection/caret, conflict-safe saves, and tests for overlapping
-      marks such as bold+italic or link+code rejection.
+- [x] Add editor affordances for range state: button active state over the
+      current selection/caret, clearer link edit/remove, and overlap policy
+      tests for bold+italic and link/code exclusion.
 
 ### Note Kinds And Structural Elements
 
@@ -239,7 +239,8 @@ directions.
       supported, but toolbar actions should set style metadata/ranges that the
       on-screen View, Markdown, HTML, PDF, and rich clipboard exporters translate
       appropriately.
-- [ ] Add a way to apply task/checklist styling to an entire bucket.
+- [x] Add a way to apply task/checklist/list styling to an entire bucket via
+      bucket selection and the list toolbar buttons.
 
 ### Deleted Slips
 

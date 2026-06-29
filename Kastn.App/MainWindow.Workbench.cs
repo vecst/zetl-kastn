@@ -27,7 +27,8 @@ internal partial class MainWindow
             return;
         }
 
-        editorState.SetDraft(slipEditor.Text ?? "");
+        editorState.ApplyTextEdit(slipEditor.Text ?? "");
+        UpdateInlineFormatButtons();
         statusText.Text = editorState.IsDirty
             ? "Unsaved changes — saved when you leave the editor."
             : connection.Current.Status;
@@ -174,7 +175,8 @@ internal partial class MainWindow
             return false;
         }
 
-        var text = ZetlSlipLinks.RefreshCachedTitles(editorState.DraftText, currentProject).Trim();
+        var refreshedText = ZetlSlipLinks.RefreshCachedTitles(editorState.DraftText, currentProject);
+        var text = refreshedText.Trim();
         if (text.Length == 0
             && string.IsNullOrWhiteSpace(SelectedSlip?.Title)
             && SelectedSlip?.Type != ZetlSlipType.Picture)
@@ -195,7 +197,9 @@ internal partial class MainWindow
                 {
                     Text = text,
                     InlineStyles = editorState.InlineStylesAreDirty
-                        ? editorState.DraftInlineStyles
+                        ? InlineStylesForTrimmedCommand(
+                            refreshedText,
+                            editorState.DraftInlineStyles)
                         : null
                 },
                 currentProject.Id,
@@ -352,21 +356,76 @@ internal partial class MainWindow
         alignRightButton.FontWeight = active == "right" ? FontWeight.Bold : FontWeight.Normal;
     }
 
-    // Highlight the list button matching the single selected note's own list kind, so
-    // the buttons read as toggles (pressed when that kind is active) like alignment.
+    // Highlight the list button matching either the selected bucket's default list
+    // render kind or the single selected note's own kind, so the buttons read as
+    // toggles (pressed when that kind is active) like alignment.
     private void UpdateListButtons()
     {
         var selected = SelectedSlips();
         var slip = selected.Count == 1 ? selected[0] : null;
-        var active = slip is { Type: ZetlSlipType.Text } && !IsSlipInDeleted(slip)
-            ? ZetlViewRenderer.SlipBlockKind(slip)
-            : "";
+        var bucket = TitleModeBucket();
+        var active = bucket is not null
+            ? ZetlViewRenderer.BucketRenderKind(bucket)
+            : slip is { Type: ZetlSlipType.Text } && !IsSlipInDeleted(slip)
+                ? ZetlViewRenderer.SlipBlockKind(slip)
+                : "";
         bulletListButton.FontWeight = active == ZetlBlockKinds.Bullet ? FontWeight.Bold : FontWeight.Normal;
         numberListButton.FontWeight = active == ZetlBlockKinds.Ordered ? FontWeight.Bold : FontWeight.Normal;
         taskListButton.FontWeight = active == ZetlBlockKinds.Task ? FontWeight.Bold : FontWeight.Normal;
         headingButton.FontWeight = active == ZetlBlockKinds.Heading ? FontWeight.Bold : FontWeight.Normal;
         quoteButton.FontWeight = active == ZetlBlockKinds.Quote ? FontWeight.Bold : FontWeight.Normal;
         codeBlockButton.FontWeight = active == ZetlBlockKinds.Code ? FontWeight.Bold : FontWeight.Normal;
+    }
+
+    private void UpdateInlineFormatButtons()
+    {
+        if (!CanReadInlineStyleState(out var slip))
+        {
+            SetInlineFormatButtonActive(ZetlInlineStyleKinds.Bold, false);
+            SetInlineFormatButtonActive(ZetlInlineStyleKinds.Italic, false);
+            SetInlineFormatButtonActive(ZetlInlineStyleKinds.Strike, false);
+            SetInlineFormatButtonActive(ZetlInlineStyleKinds.Code, false);
+            SetInlineFormatButtonActive(ZetlInlineStyleKinds.Link, false);
+            SetInlineFormatButtonActive(ZetlInlineStyleKinds.WikiLink, false);
+            return;
+        }
+
+        var text = slipEditor.Text ?? "";
+        var start = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        var end = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), start, text.Length);
+        var styles = CurrentInlineStyles(slip);
+        SetInlineFormatButtonActive(
+            ZetlInlineStyleKinds.Bold,
+            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Bold));
+        SetInlineFormatButtonActive(
+            ZetlInlineStyleKinds.Italic,
+            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Italic));
+        SetInlineFormatButtonActive(
+            ZetlInlineStyleKinds.Strike,
+            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Strike));
+        SetInlineFormatButtonActive(
+            ZetlInlineStyleKinds.Code,
+            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Code));
+        SetInlineFormatButtonActive(
+            ZetlInlineStyleKinds.Link,
+            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Link));
+        SetInlineFormatButtonActive(
+            ZetlInlineStyleKinds.WikiLink,
+            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.WikiLink));
+    }
+
+    private void SetInlineFormatButtonActive(string kind, bool active)
+    {
+        var button = ZetlInlineStyleKinds.Normalize(kind) switch
+        {
+            ZetlInlineStyleKinds.Italic => italicButton,
+            ZetlInlineStyleKinds.Strike => strikeButton,
+            ZetlInlineStyleKinds.Code => codeButton,
+            ZetlInlineStyleKinds.Link => linkButton,
+            ZetlInlineStyleKinds.WikiLink => wikiLinkButton,
+            _ => boldButton
+        };
+        button.Classes.Set("view-format-active", active);
     }
 
     // Set the selected note's kind, toggling it off when already that kind. The kind is
@@ -508,32 +567,53 @@ internal partial class MainWindow
         var text = slipEditor.Text ?? "";
         var start = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
         var end = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
-        var existing = CurrentInlineStyles(slip).FirstOrDefault(range =>
-            range.Kind == ZetlInlineStyleKinds.Link
-            && range.Start <= start
-            && range.Start + range.Length >= Math.Max(end, start + 1));
-        var href = await KastnDialogs.PromptAsync(
+        var styles = CurrentInlineStyles(slip);
+        var existing = KastnInlineStyleEditing.CoveringRangeAtSelection(
+            text,
+            styles,
+            start,
+            end - start,
+            ZetlInlineStyleKinds.Link);
+        var linkEdit = await KastnDialogs.EditWebLinkAsync(
             this,
-            "Web Link",
-            "URL",
-            existing?.Href ?? "https://");
-        if (href is null)
+            existing?.Href ?? "https://",
+            allowRemove: existing is not null);
+        if (linkEdit is null)
         {
             slipEditor.Focus();
             return;
         }
 
-        var (preparedText, preparedStart, preparedLength, styles) = PrepareInlineSelection(
+        if (existing is not null)
+        {
+            var changed = linkEdit.Remove
+                ? KastnInlineStyleEditing.RemoveRange(text, styles, existing)
+                : KastnInlineStyleEditing.SetWebLink(
+                    text,
+                    styles,
+                    existing.Start,
+                    existing.Length,
+                    linkEdit.Href ?? "");
+            await SaveInlineStylesAsync(
+                slip,
+                text,
+                changed,
+                linkEdit.Remove ? "Link removed." : "Link updated.");
+            slipEditor.Focus();
+            return;
+        }
+
+        var (preparedText, preparedStart, preparedLength, preparedStyles) = PrepareInlineSelection(
             "link",
             text,
             start,
             end);
         var updated = KastnInlineStyleEditing.SetWebLink(
             preparedText,
-            styles,
+            preparedStyles,
             preparedStart,
             preparedLength,
-            href);
+            linkEdit.Href ?? "");
         await SaveInlineStylesAsync(slip, preparedText, updated, "Link set.");
 
         slipEditor.Focus();
@@ -551,6 +631,40 @@ internal partial class MainWindow
             Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
         var selectionEnd = Math.Clamp(
             Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        if (SelectedSlip is not { } slip)
+        {
+            slipEditor.Focus();
+            return;
+        }
+
+        var styles = CurrentInlineStyles(slip);
+        var existing = KastnInlineStyleEditing.CoveringRangeAtSelection(
+            text,
+            styles,
+            selectionStart,
+            selectionEnd - selectionStart,
+            ZetlInlineStyleKinds.WikiLink);
+        if (existing is not null)
+        {
+            var action = await KastnDialogs.PickLinkRangeActionAsync(
+                this,
+                "Slip Link",
+                $"Change or remove the link to '{existing.CachedTitle ?? "this slip"}'?");
+            if (action is null)
+            {
+                slipEditor.Focus();
+                return;
+            }
+
+            if (action == KastnDialogs.LinkRangeAction.Remove)
+            {
+                var withoutLink = KastnInlineStyleEditing.RemoveRange(text, styles, existing);
+                await SaveInlineStylesAsync(slip, text, withoutLink, "Slip link removed.");
+                slipEditor.Focus();
+                return;
+            }
+        }
+
         var query = selectionEnd > selectionStart ? text[selectionStart..selectionEnd] : "";
         var candidates = currentProject.Slips
             .Where(slip => slip.Id != editorState.SlipId && !IsSlipInDeleted(slip))
@@ -562,26 +676,35 @@ internal partial class MainWindow
             return;
         }
 
-        if (SelectedSlip is not { } slip)
+        var label = selectionEnd > selectionStart ? text[selectionStart..selectionEnd] : ZetlSlipLinks.TitleFor(target);
+        if (existing is not null)
         {
-            slipEditor.Focus();
-            return;
+            var changed = KastnInlineStyleEditing.SetWikiLink(
+                text,
+                styles,
+                existing.Start,
+                existing.Length,
+                target.Id,
+                ZetlSlipLinks.TitleFor(target));
+            await SaveInlineStylesAsync(slip, text, changed, "Slip link updated.");
+        }
+        else
+        {
+            var (preparedText, preparedStart, preparedLength, preparedStyles) = PrepareInlineSelection(
+                label,
+                text,
+                selectionStart,
+                selectionEnd);
+            var updated = KastnInlineStyleEditing.SetWikiLink(
+                preparedText,
+                preparedStyles,
+                preparedStart,
+                preparedLength,
+                target.Id,
+                ZetlSlipLinks.TitleFor(target));
+            await SaveInlineStylesAsync(slip, preparedText, updated, "Slip link set.");
         }
 
-        var label = selectionEnd > selectionStart ? text[selectionStart..selectionEnd] : ZetlSlipLinks.TitleFor(target);
-        var (preparedText, preparedStart, preparedLength, styles) = PrepareInlineSelection(
-            label,
-            text,
-            selectionStart,
-            selectionEnd);
-        var updated = KastnInlineStyleEditing.SetWikiLink(
-            preparedText,
-            styles,
-            preparedStart,
-            preparedLength,
-            target.Id,
-            ZetlSlipLinks.TitleFor(target));
-        await SaveInlineStylesAsync(slip, preparedText, updated, "Slip link set.");
         slipEditor.Focus();
     }
 
@@ -594,6 +717,23 @@ internal partial class MainWindow
             || ZetlViewRenderer.IsStructuralKind(selected[0].BlockKind)
             || IsSlipInDeleted(selected[0])
             || !slipEditor.IsEnabled)
+        {
+            return false;
+        }
+
+        slip = selected[0];
+        return true;
+    }
+
+    private bool CanReadInlineStyleState(out ZetlSlipSnapshot slip)
+    {
+        slip = null!;
+        var selected = SelectedSlips();
+        if (selected.Count != 1
+            || selected[0].Type != ZetlSlipType.Text
+            || ZetlViewRenderer.IsStructuralKind(selected[0].BlockKind)
+            || IsSlipInDeleted(selected[0])
+            || editorState.SlipId is null)
         {
             return false;
         }
@@ -949,6 +1089,62 @@ internal partial class MainWindow
         var index = bucketSlips.FindIndex(slip => slip.Id == anchorId);
         return index >= 0 && index + 1 < bucketSlips.Count ? bucketSlips[index + 1].Id : null;
     }
+
+    private async Task SetBucketRenderKindAsync(ZetlBucketSnapshot bucket, string kind)
+    {
+        if (!IsOnline || saving || currentProject is null || editorState.ConflictCurrent is not null
+            || KastnWorkbench.IsDeletedBucket(bucket))
+        {
+            return;
+        }
+
+        var normalized = ZetlViewRenderer.NormalizeBucketRenderKind(kind);
+        if (!IsBucketListRenderKind(normalized))
+        {
+            return;
+        }
+
+        var current = ZetlViewRenderer.BucketRenderKind(bucket);
+        var target = current == normalized ? ZetlBucketRenderKinds.None : normalized;
+        saving = true;
+        SetEditingEnabled();
+        try
+        {
+            pendingBucketSelectionId = bucket.Id;
+            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.UpdateBucket,
+                new UpdateBucketCommand
+                {
+                    Name = bucket.Name,
+                    ParentBucketId = bucket.ParentBucketId,
+                    Settings = bucket.Settings,
+                    RenderKind = target
+                },
+                currentProject.Id,
+                bucket.Id,
+                bucket.Revision));
+            if (response.Status == ZetlResponseStatus.Success)
+            {
+                await connection.RefreshAsync();
+            }
+
+            HandleSimpleResponse(response, BucketRenderKindStatus(target));
+        }
+        finally
+        {
+            saving = false;
+            SetEditingEnabled();
+        }
+    }
+
+    private static string BucketRenderKindStatus(string kind) => kind switch
+    {
+        ZetlBucketRenderKinds.Task => "Bucket now creates checklist-style notes.",
+        ZetlBucketRenderKinds.Ordered => "Bucket now creates numbered notes.",
+        ZetlBucketRenderKinds.Bullet => "Bucket now creates bulleted notes.",
+        _ => "Bucket note style cleared."
+    };
 
     private async Task SaveBucketAsync()
     {
@@ -1535,13 +1731,18 @@ internal partial class MainWindow
         slipEditor.IsEnabled = canEdit && editorState.ConflictCurrent is null;
         var canFormat = slipEditor.IsEnabled;
         // The list markers, strikethrough, and alignment also work across a multi-slip
-        // selection (applied to every selected text slip); the inline wraps stay
-        // single-slip only.
+        // selection (applied to every selected text slip). When a bucket title is
+        // selected, the three list buttons edit the bucket's default render mode.
         var canBatchFormat = IsOnline
             && !saving
             && editorState.ConflictCurrent is null
             && hasMultipleSelectedSlips
             && selectedSlips.Any(slip => slip.Type == ZetlSlipType.Text && !IsSlipInDeleted(slip));
+        var canBucketListFormat = IsOnline
+            && !saving
+            && editorState.ConflictCurrent is null
+            && TitleModeBucket() is { } bucket
+            && !KastnWorkbench.IsDeletedBucket(bucket);
         var canFormatOrBatch = canFormat || canBatchFormat;
         boldButton.IsEnabled = canFormat;
         italicButton.IsEnabled = canFormat;
@@ -1558,9 +1759,9 @@ internal partial class MainWindow
         insertDividerButton.IsEnabled = canCreateSlip && !showingDeleted;
         // A group is a bucket, so it follows the add-bucket rule.
         insertGroupButton.IsEnabled = IsOnline && currentProject is not null && !showingDeleted;
-        bulletListButton.IsEnabled = canFormatOrBatch;
-        numberListButton.IsEnabled = canFormatOrBatch;
-        taskListButton.IsEnabled = canFormatOrBatch;
+        bulletListButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
+        numberListButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
+        taskListButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
         saveSlipButton.IsEnabled = canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = false;
         deleteSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive;
@@ -1577,6 +1778,7 @@ internal partial class MainWindow
         newSlipMenuItem.IsEnabled = newSlipButton.IsEnabled;
         UpdateAlignButtons();
         UpdateListButtons();
+        UpdateInlineFormatButtons();
     }
 
     private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -1585,10 +1787,6 @@ internal partial class MainWindow
         {
             return;
         }
-
-        // A genuine selection change is a "first click": collapse any expanded bucket
-        // so a later press on the same bucket reads as the "second click".
-        expandedBucketId = null;
 
         var node = SelectedTreeNode;
         if (node is null)
@@ -1616,9 +1814,8 @@ internal partial class MainWindow
         UpdateTreeSelectionUi();
     }
 
-    // The selection -> editor/batch logic, shared by a fresh selection and a tap that
-    // toggles a bucket between its title (heading) and its slips. Branches on the one
-    // explicit selection value.
+    // The selection -> editor/batch logic, shared by fresh selections and refreshes.
+    // Branches on the one explicit selection value.
     private void UpdateTreeSelectionUi()
     {
         var node = SelectedTreeNode;
@@ -1651,48 +1848,14 @@ internal partial class MainWindow
         }
     }
 
-    // A bucket's "second click": a press on the bucket that is already the selection
-    // (so it does not raise a selection change) toggles it between editing its title
-    // and selecting its slips. Handled at the tree level on PointerPressed, which —
-    // unlike the per-node Tapped event — fires reliably; tunneling lets us read the
-    // selection as it was before this press.
-    private void OnProjectTreePointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
-    {
-        if (refreshing
-            || NodeFromVisual(e.Source as Visual) is not { } node
-            || node.Kind != KastnTreeNodeKind.Bucket
-            || node.Bucket is not { } bucket
-            || KastnWorkbench.IsDeletedBucket(bucket)
-            || !string.Equals(SelectedTreeNode?.Id, node.Id, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        // Defer until the click settles (no selection change, since it is the same
-        // bucket), then toggle this bucket between its title and its slips.
-        var bucketId = node.Id;
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (!string.Equals(SelectedTreeNode?.Id, bucketId, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            expandedBucketId = string.Equals(expandedBucketId, bucketId, StringComparison.Ordinal)
-                ? null
-                : bucketId;
-            UpdateTreeSelectionUi();
-        });
-    }
-
     // The one explicit interpretation of the tree's selection, computed fresh from
-    // the tree + expand state. SelectedSlips / TitleModeBucket / the batch logic all
-    // read this rather than poking the tree independently.
+    // the tree. SelectedSlips / TitleModeBucket / the batch logic all read this
+    // rather than poking the tree independently.
     private KastnSelection CurrentSelection()
     {
         var nodes = projectTree.SelectedItems?.OfType<KastnTreeNode>().ToList()
             ?? (SelectedTreeNode is { } single ? [single] : []);
-        return KastnSelection.Compute(nodes, SelectedTreeNode, expandedBucketId);
+        return KastnSelection.Compute(nodes, SelectedTreeNode);
     }
 
     private IReadOnlyList<string> SelectedTreeSlipIds() =>
@@ -1805,9 +1968,9 @@ internal partial class MainWindow
             return [];
         }
 
-        // The tree is the selection surface: resolve its slips project-wide so a
-        // batch selection survives crossing buckets, and a bucket selection counts
-        // all its slips immediately — independent of the bucket-scoped display list.
+        // The tree is the selection surface: resolve explicit slip selections
+        // project-wide so a batch survives crossing buckets. Bucket selections edit
+        // the bucket itself, not the slips inside it.
         var ids = SelectedTreeSlipIds();
         if (ids.Count > 0)
         {

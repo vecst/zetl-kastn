@@ -20,17 +20,15 @@ internal abstract record KastnSelection
 
     public static KastnSelection Compute(
         IReadOnlyList<KastnTreeNode> selectedNodes,
-        KastnTreeNode? primaryNode,
-        string? expandedBucketId)
+        KastnTreeNode? primaryNode)
     {
         var ids = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in selectedNodes)
         {
-            // A bucket contributes its slips only once expanded (its second click);
-            // an un-expanded bucket is a title candidate, not a slip contribution.
-            if (node.Kind == KastnTreeNodeKind.Bucket
-                && !string.Equals(expandedBucketId, node.Id, StringComparison.Ordinal))
+            // A bucket selection edits the bucket itself. Slip selections are explicit,
+            // so bucket-level render defaults do not masquerade as batch slip edits.
+            if (node.Kind == KastnTreeNodeKind.Bucket)
             {
                 continue;
             }
@@ -49,10 +47,9 @@ internal abstract record KastnSelection
             return new Slips(ids);
         }
 
-        // No slips: a single un-expanded, non-deleted bucket means title editing.
+        // No slips: a single non-deleted bucket means bucket/title editing.
         if (primaryNode is { Kind: KastnTreeNodeKind.Bucket } bucket
-            && !bucket.IsDeletedBucket
-            && !string.Equals(expandedBucketId, bucket.Id, StringComparison.Ordinal))
+            && !bucket.IsDeletedBucket)
         {
             return new BucketTitle(bucket.Id);
         }

@@ -524,8 +524,13 @@ public class ZetlProjectServiceTests
         AssertEqual("", plain.BlockKind, "An unknown kind normalizes to no marker.");
         AssertEqual("", note.BlockKind, "The stored note carries no marker for an unknown kind.");
 
-        // Toggling a kind off sends "" explicitly — the editor's toggle-to-clear path.
-        var reBulleted = Update("re-bullet", new UpdateSlipCommand { Text = plain.Text, BlockKind = "bullet" }, plain.Revision);
+        // Plain slips can still carry checked state when their bucket renders as a
+        // checklist; the effective task kind is inherited at render time.
+        var inheritedChecked = Update("plain-check", new UpdateSlipCommand { Text = plain.Text, Checked = true }, plain.Revision);
+        AssertTrue(inheritedChecked.Checked, "Checking an inherited bucket-task slip should persist.");
+
+        // Toggling a kind off sends "" explicitly through the editor's toggle-to-clear path.
+        var reBulleted = Update("re-bullet", new UpdateSlipCommand { Text = inheritedChecked.Text, BlockKind = "bullet" }, inheritedChecked.Revision);
         var cleared = Update("clear", new UpdateSlipCommand { Text = reBulleted.Text, BlockKind = "" }, reBulleted.Revision);
         AssertEqual("", cleared.BlockKind, "An explicit empty kind clears the marker (toggle off).");
     }

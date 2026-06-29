@@ -3,9 +3,10 @@ using ZETL.Contracts;
 
 namespace KASTN;
 
-// Batch formatting for a multi-slip / bucket selection (UI roadmap Phase 2). Each
-// action applies to every selected text slip through revision-checked UpdateSlip
-// commands; a single selected slip falls back to the in-editor formatting path.
+// Batch formatting for multi-slip selections (UI roadmap Phase 2). Each action
+// applies to every selected text slip through revision-checked UpdateSlip commands;
+// a single selected slip falls back to the in-editor formatting path, and a selected
+// bucket uses list buttons as bucket render defaults.
 internal partial class MainWindow
 {
     private bool HasBatchSelection() => SelectedSlips().Count >= 2;
@@ -49,6 +50,12 @@ internal partial class MainWindow
     // it, a multi-selection applies it uniformly.
     private async Task ListSlipsAsync(string kind)
     {
+        if (TitleModeBucket() is { } bucket && IsBucketListRenderKind(kind))
+        {
+            await SetBucketRenderKindAsync(bucket, kind);
+            return;
+        }
+
         if (!HasBatchSelection())
         {
             await SetSlipBlockKindAsync(kind);
@@ -59,6 +66,9 @@ internal partial class MainWindow
             NoteKindActionLabel(kind),
             (slip, _) => new UpdateSlipCommand { Text = slip.Text, BlockKind = kind });
     }
+
+    private static bool IsBucketListRenderKind(string kind) =>
+        kind is ZetlBucketRenderKinds.Bullet or ZetlBucketRenderKinds.Ordered or ZetlBucketRenderKinds.Task;
 
     private static string NoteKindActionLabel(string kind) => kind switch
     {

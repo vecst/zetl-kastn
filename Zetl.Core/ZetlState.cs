@@ -1258,8 +1258,10 @@ internal sealed class ZetlStateStore
             note.Checked = isChecked;
         }
 
-        // Checked is meaningless for a non-task note; clear it so JSON stays honest.
-        if (note.BlockKind != ZetlBlockKinds.Task)
+        // Checked is rendered by explicit task notes and by plain notes inheriting a
+        // task render mode from their bucket. Explicit non-task note kinds clear it.
+        if (note.BlockKind != ZetlBlockKinds.Task
+            && (blockKind is not null || note.BlockKind.Length > 0))
         {
             note.Checked = false;
         }

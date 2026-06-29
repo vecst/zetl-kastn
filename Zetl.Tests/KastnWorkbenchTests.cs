@@ -267,6 +267,131 @@ public class KastnWorkbenchTests
         AssertEqual(ZetlInlineStyleKinds.Bold, link[1].Kind, "Non-link styling should survive.");
     }
 
+    [Fact] public void InlineStyleEditingReconcilesOrdinaryTyping()
+    {
+        var styles = new[]
+        {
+            new ZetlInlineStyleRange { Start = 6, Length = 4, Kind = ZetlInlineStyleKinds.Bold }
+        };
+
+        var before = KastnInlineStyleEditing.ReconcileTextEdit(
+            "alpha beta",
+            "alpha new beta",
+            styles);
+        AssertEqual(10, before[0].Start, "Typing before a range should move it forward.");
+        AssertEqual(4, before[0].Length, "Typing before a range should not expand it.");
+
+        var inside = KastnInlineStyleEditing.ReconcileTextEdit(
+            "alpha beta",
+            "alpha be!!!ta",
+            styles);
+        AssertEqual(6, inside[0].Start, "Typing inside a range should keep its start.");
+        AssertEqual(7, inside[0].Length, "Typing inside a range should expand it.");
+
+        var deletedInside = KastnInlineStyleEditing.ReconcileTextEdit(
+            "alpha beta",
+            "alpha bta",
+            styles);
+        AssertEqual(6, deletedInside[0].Start, "Deleting inside a range should keep its start.");
+        AssertEqual(3, deletedInside[0].Length, "Deleting inside a range should shrink it.");
+
+        var deletedBefore = KastnInlineStyleEditing.ReconcileTextEdit(
+            "alpha beta",
+            "beta",
+            styles);
+        AssertEqual(0, deletedBefore[0].Start, "Deleting before a range should move it backward.");
+        AssertEqual(4, deletedBefore[0].Length, "Deleting before a range should preserve its length.");
+    }
+
+    [Fact] public void InlineStyleEditingDetectsActiveSelectionState()
+    {
+        var text = "alpha beta";
+        var styles = new[]
+        {
+            new ZetlInlineStyleRange { Start = 6, Length = 4, Kind = ZetlInlineStyleKinds.Bold },
+            new ZetlInlineStyleRange { Start = 0, Length = 5, Kind = ZetlInlineStyleKinds.Link, Href = "https://example.com" }
+        };
+
+        AssertTrue(
+            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, 6, 0, ZetlInlineStyleKinds.Bold),
+            "The caret inside a styled run should show the button active.");
+        AssertTrue(
+            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, 6, 4, ZetlInlineStyleKinds.Bold),
+            "A selection fully covered by a styled run should show the button active.");
+        AssertTrue(
+            !KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, 5, 5, ZetlInlineStyleKinds.Bold),
+            "A partially covered selection should not show a full active state.");
+        AssertTrue(
+            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, 1, 0, ZetlInlineStyleKinds.Link),
+            "Link button state should use the same range lookup.");
+
+        var link = KastnInlineStyleEditing.CoveringRangeAtSelection(
+            text,
+            styles,
+            1,
+            0,
+            ZetlInlineStyleKinds.Link);
+        AssertEqual("https://example.com", link?.Href, "The active lookup should return the editable range.");
+
+        var removed = KastnInlineStyleEditing.RemoveRange(text, styles, link!);
+        AssertEqual(1, removed.Count, "Removing a link should leave unrelated style ranges in place.");
+        AssertEqual(ZetlInlineStyleKinds.Bold, removed[0].Kind, "The remaining range should be the bold style.");
+    }
+
+    [Fact] public void InlineStyleEditingAllowsEmphasisOverlapButKeepsLinksOutOfCode()
+    {
+        var text = "alpha beta";
+        var bold = KastnInlineStyleEditing.ToggleTextStyle(
+            text,
+            [],
+            0,
+            5,
+            ZetlInlineStyleKinds.Bold);
+        var boldItalic = KastnInlineStyleEditing.ToggleTextStyle(
+            text,
+            bold,
+            0,
+            5,
+            ZetlInlineStyleKinds.Italic);
+        AssertEqual(2, boldItalic.Count, "Bold and italic should be allowed to overlap.");
+        AssertTrue(
+            boldItalic.Any(range => range.Kind == ZetlInlineStyleKinds.Bold),
+            "The bold range should remain.");
+        AssertTrue(
+            boldItalic.Any(range => range.Kind == ZetlInlineStyleKinds.Italic),
+            "The italic range should be added.");
+
+        var link = KastnInlineStyleEditing.SetWebLink(
+            text,
+            [],
+            0,
+            5,
+            "https://example.com");
+        var codeOverLink = KastnInlineStyleEditing.ToggleTextStyle(
+            text,
+            link,
+            0,
+            5,
+            ZetlInlineStyleKinds.Code);
+        AssertEqual(1, codeOverLink.Count, "Inline code should not apply over an existing link.");
+        AssertEqual(ZetlInlineStyleKinds.Link, codeOverLink[0].Kind, "The existing link should remain.");
+
+        var code = KastnInlineStyleEditing.ToggleTextStyle(
+            text,
+            [],
+            0,
+            5,
+            ZetlInlineStyleKinds.Code);
+        var linkOverCode = KastnInlineStyleEditing.SetWebLink(
+            text,
+            code,
+            0,
+            5,
+            "https://example.com");
+        AssertEqual(1, linkOverCode.Count, "Links should not apply over inline code.");
+        AssertEqual(ZetlInlineStyleKinds.Code, linkOverCode[0].Kind, "The existing code range should remain.");
+    }
+
     [Fact] public void SelectionComputesSlipsTitleAndNone()
     {
         var s1 = SlipTreeNode("s1");
@@ -277,29 +402,26 @@ public class KastnWorkbenchTests
 
         // A single slip is a one-item Slips selection (single-slip edit).
         AssertTrue(
-            KastnSelection.Compute([s1], s1, expandedBucketId: null) is KastnSelection.Slips { SlipIds.Count: 1 },
+            KastnSelection.Compute([s1], s1) is KastnSelection.Slips { SlipIds.Count: 1 },
             "A single slip computes to a one-item Slips selection.");
 
         // Several slips form a batch, preserving order.
-        var multi = KastnSelection.Compute([s1, s2, s3], s3, expandedBucketId: null) as KastnSelection.Slips;
+        var multi = KastnSelection.Compute([s1, s2, s3], s3) as KastnSelection.Slips;
         AssertEqual(3, multi?.SlipIds.Count ?? 0, "Several slips form a batch Slips selection.");
         AssertEqual("s1", multi?.SlipIds[0], "Batch selection preserves order.");
 
-        // An un-expanded bucket is a title selection; expanded, it is its slips.
+        // A bucket is always a title/bucket-property selection; selecting its slips
+        // requires selecting the slip nodes explicitly.
         AssertTrue(
-            KastnSelection.Compute([bucket], bucket, expandedBucketId: null) is KastnSelection.BucketTitle { BucketId: "b1" },
-            "An un-expanded bucket computes to a title selection.");
-        AssertEqual(
-            3,
-            (KastnSelection.Compute([bucket], bucket, expandedBucketId: "b1") as KastnSelection.Slips)?.SlipIds.Count ?? 0,
-            "An expanded bucket selects its slips.");
+            KastnSelection.Compute([bucket], bucket) is KastnSelection.BucketTitle { BucketId: "b1" },
+            "A bucket computes to a title selection.");
 
         // A deleted bucket is never a title; nothing selected is None.
         AssertTrue(
-            KastnSelection.Compute([deletedBucket], deletedBucket, expandedBucketId: null) is KastnSelection.None,
+            KastnSelection.Compute([deletedBucket], deletedBucket) is KastnSelection.None,
             "A deleted bucket is not a title selection.");
         AssertTrue(
-            KastnSelection.Compute([], null, expandedBucketId: null) is KastnSelection.None,
+            KastnSelection.Compute([], null) is KastnSelection.None,
             "No nodes computes to the None selection.");
     }
 

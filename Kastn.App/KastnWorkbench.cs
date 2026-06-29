@@ -440,6 +440,15 @@ internal sealed class KastnEditorState
         DraftText = text;
     }
 
+    public void ApplyTextEdit(string text)
+    {
+        DraftInlineStyles = KastnInlineStyleEditing.ReconcileTextEdit(
+            DraftText,
+            text,
+            DraftInlineStyles);
+        DraftText = text;
+    }
+
     public void SetInlineStyles(IReadOnlyList<ZetlInlineStyleRange> inlineStyles)
     {
         DraftInlineStyles = CopyInlineStyles(inlineStyles);

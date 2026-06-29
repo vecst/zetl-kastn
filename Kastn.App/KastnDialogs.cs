@@ -11,6 +11,13 @@ namespace KASTN;
 internal static class KastnDialogs
 {
     public sealed record TemporaryTemplateLaneResult(string Lane, bool Remember);
+    public sealed record LinkEditResult(string? Href, bool Remove);
+
+    public enum LinkRangeAction
+    {
+        Change,
+        Remove
+    }
 
     private sealed record SlipChoice(ZetlSlipSnapshot Slip, string Label)
     {
@@ -76,6 +83,96 @@ internal static class KastnDialogs
             input.SelectAll();
         };
         return await dialog.ShowDialog<string?>(owner);
+    }
+
+    public static async Task<LinkEditResult?> EditWebLinkAsync(
+        Window owner,
+        string initial = "",
+        bool allowRemove = false)
+    {
+        var input = new TextBox { Text = initial };
+        var validation = new TextBlock
+        {
+            Foreground = Avalonia.Media.Brushes.OrangeRed,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            IsVisible = false
+        };
+        var dialog = Dialog(allowRemove ? "Edit Web Link" : "Web Link", 420, allowRemove ? 220 : 190);
+        var ok = new Button { Content = "OK", Width = 84, IsDefault = true };
+        var remove = new Button
+        {
+            Content = "Remove",
+            Width = 84,
+            IsVisible = allowRemove
+        };
+        var cancel = new Button { Content = "Cancel", Width = 84, IsCancel = true };
+        ok.Click += (_, _) =>
+        {
+            var value = input.Text?.Trim() ?? "";
+            if (value.Length == 0)
+            {
+                validation.Text = "Enter a URL first.";
+                validation.IsVisible = true;
+                input.Focus();
+                return;
+            }
+
+            dialog.Close(new LinkEditResult(value, Remove: false));
+        };
+        remove.Click += (_, _) => dialog.Close(new LinkEditResult(null, Remove: true));
+        cancel.Click += (_, _) => dialog.Close(null);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(18),
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "URL" },
+                input,
+                validation,
+                Buttons(allowRemove ? [remove, ok, cancel] : [ok, cancel])
+            }
+        };
+        dialog.Opened += (_, _) =>
+        {
+            input.Focus();
+            input.SelectAll();
+        };
+        return await dialog.ShowDialog<LinkEditResult?>(owner);
+    }
+
+    public static async Task<LinkRangeAction?> PickLinkRangeActionAsync(
+        Window owner,
+        string title,
+        string label)
+    {
+        var dialog = Dialog(title, 420, 180);
+        var change = new Button
+        {
+            Content = "Change",
+            Width = 84,
+            IsDefault = true
+        };
+        var remove = new Button { Content = "Remove", Width = 84 };
+        var cancel = new Button { Content = "Cancel", Width = 84, IsCancel = true };
+        change.Click += (_, _) => dialog.Close(LinkRangeAction.Change);
+        remove.Click += (_, _) => dialog.Close(LinkRangeAction.Remove);
+        cancel.Click += (_, _) => dialog.Close(null);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(18),
+            Spacing = 16,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = label,
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                },
+                Buttons(change, remove, cancel)
+            }
+        };
+        return await dialog.ShowDialog<LinkRangeAction?>(owner);
     }
 
     public static async Task<bool> ConfirmAsync(

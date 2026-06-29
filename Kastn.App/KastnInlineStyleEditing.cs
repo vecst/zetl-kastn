@@ -30,6 +30,15 @@ internal static class KastnInlineStyleEditing
             string.Equals(range.Kind, kind, StringComparison.Ordinal)
             && range.Start <= selectionStart
             && range.Start + range.Length >= selectionEnd);
+        if (!hasCoveringRange
+            && kind == ZetlInlineStyleKinds.Code
+            && normalized.Any(range =>
+                range.Kind is ZetlInlineStyleKinds.Link or ZetlInlineStyleKinds.WikiLink
+                && Overlaps(range.Start, range.Start + range.Length, selectionStart, selectionEnd)))
+        {
+            return normalized;
+        }
+
         var result = new List<ZetlInlineStyleRange>();
         foreach (var range in normalized)
         {
@@ -134,6 +143,45 @@ internal static class KastnInlineStyleEditing
         return result;
     }
 
+    public static IReadOnlyList<ZetlInlineStyleRange> ReconcileTextEdit(
+        string oldText,
+        string newText,
+        IReadOnlyList<ZetlInlineStyleRange> inlineStyles)
+    {
+        oldText ??= "";
+        newText ??= "";
+        var normalized = ZetlInlineStyles.Normalize(oldText, inlineStyles);
+        if (normalized.Count == 0)
+        {
+            return [];
+        }
+
+        var prefix = CommonPrefixLength(oldText, newText);
+        var oldSuffix = oldText.Length;
+        var newSuffix = newText.Length;
+        while (oldSuffix > prefix
+            && newSuffix > prefix
+            && oldText[oldSuffix - 1] == newText[newSuffix - 1])
+        {
+            oldSuffix--;
+            newSuffix--;
+        }
+
+        var replacedLength = oldSuffix - prefix;
+        var replacementLength = newSuffix - prefix;
+        if (replacedLength == 0 && replacementLength == 0)
+        {
+            return ZetlInlineStyles.Normalize(newText, normalized);
+        }
+
+        return ReconcileSingleReplacement(
+            newText,
+            normalized,
+            prefix,
+            replacedLength,
+            replacementLength);
+    }
+
     public static bool StyleListsEqual(
         IReadOnlyList<ZetlInlineStyleRange> left,
         IReadOnlyList<ZetlInlineStyleRange> right)
@@ -154,6 +202,59 @@ internal static class KastnInlineStyleEditing
         return true;
     }
 
+    public static bool IsStyleActiveAtSelection(
+        string text,
+        IReadOnlyList<ZetlInlineStyleRange> inlineStyles,
+        int start,
+        int length,
+        string kind)
+    {
+        kind = ZetlInlineStyleKinds.Normalize(kind);
+        if (kind.Length == 0)
+        {
+            return false;
+        }
+
+        var textLength = (text ?? "").Length;
+        var selectionStart = Math.Clamp(start, 0, textLength);
+        var selectionEnd = Math.Clamp(start + Math.Max(0, length), selectionStart, textLength);
+        return ZetlInlineStyles.Normalize(text, inlineStyles).Any(range =>
+            string.Equals(range.Kind, kind, StringComparison.Ordinal)
+            && CoversSelection(range, selectionStart, selectionEnd));
+    }
+
+    public static ZetlInlineStyleRange? CoveringRangeAtSelection(
+        string text,
+        IReadOnlyList<ZetlInlineStyleRange> inlineStyles,
+        int start,
+        int length,
+        string kind)
+    {
+        kind = ZetlInlineStyleKinds.Normalize(kind);
+        if (kind.Length == 0)
+        {
+            return null;
+        }
+
+        var textLength = (text ?? "").Length;
+        var selectionStart = Math.Clamp(start, 0, textLength);
+        var selectionEnd = Math.Clamp(start + Math.Max(0, length), selectionStart, textLength);
+        return ZetlInlineStyles.Normalize(text, inlineStyles).FirstOrDefault(range =>
+            string.Equals(range.Kind, kind, StringComparison.Ordinal)
+            && CoversSelection(range, selectionStart, selectionEnd));
+    }
+
+    public static IReadOnlyList<ZetlInlineStyleRange> RemoveRange(
+        string text,
+        IReadOnlyList<ZetlInlineStyleRange> inlineStyles,
+        ZetlInlineStyleRange remove)
+    {
+        var result = ZetlInlineStyles.Normalize(text, inlineStyles)
+            .Where(range => !SameRange(range, remove))
+            .ToList();
+        return ZetlInlineStyles.Normalize(text, result);
+    }
+
     private static IReadOnlyList<ZetlInlineStyleRange> SetExclusiveRange(
         string text,
         IReadOnlyList<ZetlInlineStyleRange> inlineStyles,
@@ -168,7 +269,16 @@ internal static class KastnInlineStyleEditing
 
         var selectionStart = Math.Clamp(start, 0, text.Length);
         var selectionEnd = Math.Clamp(start + length, selectionStart, text.Length);
-        var result = ZetlInlineStyles.Normalize(text, inlineStyles)
+        var normalized = ZetlInlineStyles.Normalize(text, inlineStyles);
+        if (replacement.Kind is ZetlInlineStyleKinds.Link or ZetlInlineStyleKinds.WikiLink
+            && normalized.Any(range =>
+                range.Kind == ZetlInlineStyleKinds.Code
+                && Overlaps(range.Start, range.Start + range.Length, selectionStart, selectionEnd)))
+        {
+            return normalized;
+        }
+
+        var result = normalized
             .Where(range =>
                 range.Kind is not (ZetlInlineStyleKinds.Link or ZetlInlineStyleKinds.WikiLink)
                 || !Overlaps(range.Start, range.Start + range.Length, selectionStart, selectionEnd))
@@ -201,4 +311,90 @@ internal static class KastnInlineStyleEditing
 
     private static bool Overlaps(int leftStart, int leftEnd, int rightStart, int rightEnd) =>
         leftStart < rightEnd && rightStart < leftEnd;
+
+    private static bool CoversSelection(ZetlInlineStyleRange range, int selectionStart, int selectionEnd)
+    {
+        var rangeEnd = range.Start + range.Length;
+        return selectionEnd > selectionStart
+            ? range.Start <= selectionStart && rangeEnd >= selectionEnd
+            : range.Start <= selectionStart && selectionStart < rangeEnd;
+    }
+
+    private static bool SameRange(ZetlInlineStyleRange left, ZetlInlineStyleRange right) =>
+        left.Start == right.Start
+        && left.Length == right.Length
+        && string.Equals(left.Kind, right.Kind, StringComparison.Ordinal)
+        && string.Equals(left.Href, right.Href, StringComparison.Ordinal)
+        && string.Equals(left.TargetSlipId, right.TargetSlipId, StringComparison.Ordinal)
+        && string.Equals(left.CachedTitle, right.CachedTitle, StringComparison.Ordinal);
+
+    private static IReadOnlyList<ZetlInlineStyleRange> ReconcileSingleReplacement(
+        string newText,
+        IReadOnlyList<ZetlInlineStyleRange> ranges,
+        int start,
+        int replacedLength,
+        int replacementLength)
+    {
+        var end = start + replacedLength;
+        var delta = replacementLength - replacedLength;
+        var result = new List<ZetlInlineStyleRange>();
+        foreach (var range in ranges)
+        {
+            var rangeStart = range.Start;
+            var rangeEnd = range.Start + range.Length;
+            if (rangeEnd <= start)
+            {
+                result.Add(range);
+            }
+            else if (rangeStart >= end)
+            {
+                result.Add(range with { Start = range.Start + delta });
+            }
+            else if (replacedLength == 0)
+            {
+                if (start <= rangeStart)
+                {
+                    result.Add(range with { Start = range.Start + replacementLength });
+                }
+                else if (start < rangeEnd)
+                {
+                    result.Add(range with { Length = range.Length + replacementLength });
+                }
+                else
+                {
+                    result.Add(range);
+                }
+            }
+            else
+            {
+                var leftLength = Math.Max(0, start - rangeStart);
+                var rightLength = Math.Max(0, rangeEnd - end);
+                var newLength = leftLength + replacementLength + rightLength;
+                if (newLength <= 0)
+                {
+                    continue;
+                }
+
+                result.Add(range with
+                {
+                    Start = rangeStart < start ? rangeStart : start,
+                    Length = newLength
+                });
+            }
+        }
+
+        return ZetlInlineStyles.Normalize(newText, result);
+    }
+
+    private static int CommonPrefixLength(string left, string right)
+    {
+        var max = Math.Min(left.Length, right.Length);
+        var index = 0;
+        while (index < max && left[index] == right[index])
+        {
+            index++;
+        }
+
+        return index;
+    }
 }
