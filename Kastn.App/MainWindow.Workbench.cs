@@ -394,18 +394,27 @@ internal partial class MainWindow
         var start = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
         var end = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), start, text.Length);
         var styles = CurrentInlineStyles(slip);
+        var emptyTarget = KastnInlineStyleEditing.StyleTargetForSelection(text, start, end).Length <= 0;
         SetInlineFormatButtonActive(
             ZetlInlineStyleKinds.Bold,
-            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Bold));
+            emptyTarget
+                ? editorState.HasPendingInlineStyle(ZetlInlineStyleKinds.Bold)
+                : KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Bold));
         SetInlineFormatButtonActive(
             ZetlInlineStyleKinds.Italic,
-            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Italic));
+            emptyTarget
+                ? editorState.HasPendingInlineStyle(ZetlInlineStyleKinds.Italic)
+                : KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Italic));
         SetInlineFormatButtonActive(
             ZetlInlineStyleKinds.Strike,
-            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Strike));
+            emptyTarget
+                ? editorState.HasPendingInlineStyle(ZetlInlineStyleKinds.Strike)
+                : KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Strike));
         SetInlineFormatButtonActive(
             ZetlInlineStyleKinds.Code,
-            KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Code));
+            emptyTarget
+                ? editorState.HasPendingInlineStyle(ZetlInlineStyleKinds.Code)
+                : KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Code));
         SetInlineFormatButtonActive(
             ZetlInlineStyleKinds.Link,
             KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Link));
@@ -445,6 +454,24 @@ internal partial class MainWindow
             : $"Note {NoteKindActionLabel(target)}.";
         return UpdateSlipPropertyAsync(
             slip, text => new UpdateSlipCommand { Text = text, BlockKind = target }, label);
+    }
+
+    private async Task OnIgnoreBucketRenderKindChangedAsync()
+    {
+        if (slipRenderOptionUpdating || SelectedSlips() is not [var slip])
+        {
+            return;
+        }
+
+        var ignore = ignoreBucketRenderKindCheck.IsChecked == true;
+        await UpdateSlipPropertyAsync(
+            slip,
+            text => new UpdateSlipCommand
+            {
+                Text = text,
+                IgnoreBucketRenderKind = ignore
+            },
+            ignore ? "Bucket style ignored for this slip." : "Bucket style applies to this slip.");
     }
 
     // Toggle a task note's checked state from a checkbox click in the View. Targets the
@@ -539,14 +566,25 @@ internal partial class MainWindow
         }
     }
 
-    private async Task ToggleInlineStyleAsync(string kind, string placeholder)
+    private async Task ToggleInlineStyleAsync(string kind)
     {
         if (!CanEditInlineStyle(out var slip))
         {
             return;
         }
 
-        var (text, start, length, styles) = PrepareInlineSelection(placeholder);
+        var (text, start, length, styles) = PrepareInlineStyleTarget(slip);
+        if (length <= 0)
+        {
+            var enabled = editorState.TogglePendingInlineStyle(kind);
+            statusText.Text = enabled
+                ? $"{InlineStyleLabel(kind)} set for new text."
+                : $"{InlineStyleLabel(kind)} cleared for new text.";
+            UpdateInlineFormatButtons();
+            slipEditor.Focus();
+            return;
+        }
+
         var updated = KastnInlineStyleEditing.ToggleTextStyle(
             text,
             styles,
@@ -746,6 +784,18 @@ internal partial class MainWindow
         string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
             ? editorState.DraftInlineStyles
             : slip.InlineStyles;
+
+    private (string Text, int Start, int Length, IReadOnlyList<ZetlInlineStyleRange> Styles)
+        PrepareInlineStyleTarget(ZetlSlipSnapshot slip)
+    {
+        var text = slipEditor.Text ?? "";
+        var (start, length) = KastnInlineStyleEditing.StyleTargetForSelection(
+            text,
+            slipEditor.SelectionStart,
+            slipEditor.SelectionEnd);
+        var styles = CurrentInlineStyles(slip);
+        return (text, start, length, styles);
+    }
 
     private (string Text, int Start, int Length, IReadOnlyList<ZetlInlineStyleRange> Styles)
         PrepareInlineSelection(
@@ -1671,6 +1721,10 @@ internal partial class MainWindow
             editorUpdating = true;
             slipEditor.Text = "";
             editorUpdating = false;
+            slipRenderOptionUpdating = true;
+            ignoreBucketRenderKindCheck.IsChecked = false;
+            ignoreBucketRenderKindCheck.IsEnabled = false;
+            slipRenderOptionUpdating = false;
             conflictPanel.IsVisible = false;
             slipMetadataText.Text = $"{selectedSlips.Count} slips selected. "
                 + "Choose a destination, then move or delete them together.";
@@ -1699,6 +1753,9 @@ internal partial class MainWindow
             : ZetlViewRenderer.IsStructuralKind(slip.BlockKind)
                 ? "Structural element — a divider Kastn renders and Zetl ignores. It has no text to edit; use Delete to remove it."
                 : SlipMetadata(slip);
+        slipRenderOptionUpdating = true;
+        ignoreBucketRenderKindCheck.IsChecked = slip?.IgnoreBucketRenderKind == true;
+        slipRenderOptionUpdating = false;
         SetEditingEnabled();
     }
 
@@ -1762,6 +1819,11 @@ internal partial class MainWindow
         bulletListButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
         numberListButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
         taskListButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
+        ignoreBucketRenderKindCheck.IsEnabled = canEdit
+            && selectedSlips.Count == 1
+            && !selectedIsStructural
+            && !selectedSlipIsDeleted
+            && editorState.ConflictCurrent is null;
         saveSlipButton.IsEnabled = canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = false;
         deleteSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive;

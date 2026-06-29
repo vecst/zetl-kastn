@@ -120,6 +120,7 @@ internal partial class ZetlSettingsWindow : Window
         kastnMainLaneLabelBox.TextChanged += (_, _) => RefreshKastnLaneChoices();
         kastnAlternateLaneLabelBox.TextChanged += (_, _) => RefreshKastnLaneChoices();
         kastnMinimizeToTrayBox.IsChecked = settings.KastnMinimizeToTray;
+        kastnPreferSlipKindOverBucketKindBox.IsChecked = settings.KastnPreferSlipKindOverBucketKind;
 
         // Kastn Advanced Settings binding
         untitledSlipTitleBox.Text = string.IsNullOrWhiteSpace(settings.UntitledSlipTitle) ? "Untitled" : settings.UntitledSlipTitle;
@@ -283,6 +284,7 @@ internal partial class ZetlSettingsWindow : Window
         _ => ZetlKastnTemplateLaneDefault.Ask
     };
     public bool KastnMinimizeToTray => kastnMinimizeToTrayBox.IsChecked == true;
+    public bool KastnPreferSlipKindOverBucketKind => kastnPreferSlipKindOverBucketKindBox.IsChecked == true;
 
     // Kastn Advanced getters
     public string UntitledSlipTitle => string.IsNullOrWhiteSpace(untitledSlipTitleBox.Text) ? "Untitled" : untitledSlipTitleBox.Text;

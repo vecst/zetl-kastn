@@ -531,7 +531,14 @@ public class ZetlProjectServiceTests
 
         // Toggling a kind off sends "" explicitly through the editor's toggle-to-clear path.
         var reBulleted = Update("re-bullet", new UpdateSlipCommand { Text = inheritedChecked.Text, BlockKind = "bullet" }, inheritedChecked.Revision);
-        var cleared = Update("clear", new UpdateSlipCommand { Text = reBulleted.Text, BlockKind = "" }, reBulleted.Revision);
+        var composedChecked = Update(
+            "composed-check",
+            new UpdateSlipCommand { Text = reBulleted.Text, Checked = true, IgnoreBucketRenderKind = true },
+            reBulleted.Revision);
+        AssertTrue(composedChecked.Checked, "Checking a composed bucket-task/non-task slip should persist.");
+        AssertTrue(composedChecked.IgnoreBucketRenderKind, "Slip bucket-style opt-out should round-trip.");
+
+        var cleared = Update("clear", new UpdateSlipCommand { Text = composedChecked.Text, BlockKind = "" }, composedChecked.Revision);
         AssertEqual("", cleared.BlockKind, "An explicit empty kind clears the marker (toggle off).");
     }
 

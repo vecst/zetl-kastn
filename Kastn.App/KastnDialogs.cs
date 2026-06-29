@@ -436,13 +436,20 @@ internal static class KastnDialogs
         kindCombo.ItemsSource = kindItems;
         kindCombo.SelectedItem = kindItems.FirstOrDefault(item => item.Kind == slip.BlockKind) ?? kindItems[0];
 
+        var ignoreBucketStyleCheck = new CheckBox
+        {
+            Content = "Ignore bucket style for this slip",
+            IsChecked = slip.IgnoreBucketRenderKind
+        };
+
         var kindStack = new StackPanel
         {
             Spacing = 4,
             Children =
             {
                 new TextBlock { Text = "Card Type", Classes = { "muted" }, FontSize = 11 },
-                kindCombo
+                kindCombo,
+                ignoreBucketStyleCheck
             }
         };
         Grid.SetColumn(kindStack, 2);
@@ -480,7 +487,8 @@ internal static class KastnDialogs
                 Save = true,
                 Text = input.Text ?? "",
                 DestinationBucketId = selectedBucket,
-                BlockKind = selectedKind
+                BlockKind = selectedKind,
+                IgnoreBucketRenderKind = ignoreBucketStyleCheck.IsChecked == true
             });
         }
 
@@ -580,6 +588,7 @@ public sealed class EditSlipResult
     public string Text { get; init; } = "";
     public string? DestinationBucketId { get; init; }
     public string BlockKind { get; init; } = "";
+    public bool IgnoreBucketRenderKind { get; init; }
 }
 
 internal sealed class BucketItem(ZetlBucketSnapshot bucket)

@@ -935,6 +935,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.KastnMinimizeAfterTemplate = window.KastnMinimizeAfterTemplate;
         settings.KastnTemporaryTemplateLaneDefault = window.KastnTemporaryTemplateLaneDefault;
         settings.KastnMinimizeToTray = window.KastnMinimizeToTray;
+        settings.KastnPreferSlipKindOverBucketKind = window.KastnPreferSlipKindOverBucketKind;
 
         // Map new advanced settings
         settings.LogRetentionDays = window.LogRetentionDays;

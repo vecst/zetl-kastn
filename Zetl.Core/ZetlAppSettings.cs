@@ -31,6 +31,7 @@ internal sealed class ZetlAppSettings
     public string KastnTemporaryTemplateLaneDefault { get; set; } = "";
     public bool KastnMinimizeAfterTemplate { get; set; } = true;
     public bool KastnMinimizeToTray { get; set; } = true;
+    public bool KastnPreferSlipKindOverBucketKind { get; set; }
 
     // Advanced Zetl and log settings.
     public int LogRetentionDays { get; set; } = 14;

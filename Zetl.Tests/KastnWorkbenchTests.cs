@@ -132,6 +132,39 @@ public class KastnWorkbenchTests
         AssertTrue(!localSave.IsDirty, "An acknowledged local save event should clean the editor.");
     }
 
+    [Fact] public void EmptyEditorPendingStyleAppliesToTypedSlipText()
+    {
+        var editor = new KastnEditorState();
+        var slip = Slip(
+            "one",
+            "bucket",
+            "",
+            "copy",
+            "session",
+            DateTimeOffset.UtcNow,
+            revision: 2);
+        editor.Select(slip);
+
+        AssertTrue(
+            editor.TogglePendingInlineStyle(ZetlInlineStyleKinds.Bold),
+            "Clicking Bold on an empty slip should enable pending bold.");
+        AssertTrue(
+            editor.HasPendingInlineStyle(ZetlInlineStyleKinds.Bold),
+            "The toolbar can show the pending bold mode.");
+
+        editor.ApplyTextEdit("a");
+        AssertEqual(1, editor.DraftInlineStyles.Count, "Typing should materialize the pending style.");
+        AssertEqual(ZetlInlineStyleKinds.Bold, editor.DraftInlineStyles[0].Kind, "The typed text should be bold.");
+        AssertEqual(0, editor.DraftInlineStyles[0].Start, "The style should start at the first typed character.");
+        AssertEqual(1, editor.DraftInlineStyles[0].Length, "The style should cover the typed character.");
+        AssertTrue(
+            !editor.HasPendingInlineStyle(ZetlInlineStyleKinds.Bold),
+            "Once materialized, the style no longer needs a pending marker.");
+
+        editor.ApplyTextEdit("ab");
+        AssertEqual(2, editor.DraftInlineStyles[0].Length, "Typing at the end should extend the whole-slip style.");
+    }
+
     [Fact] public void ProjectTreeNestsBucketsSlipsAndCounts()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
@@ -239,6 +272,21 @@ public class KastnWorkbenchTests
         AssertEqual(0, split[0].Start, "The left remainder should stay in place.");
         AssertEqual(6, split[0].Length, "The left remainder should end at the selection.");
         AssertEqual(10, split[1].Start, "The right remainder should start after the selection.");
+    }
+
+    [Fact] public void InlineStyleTargetDefaultsToWholeSlip()
+    {
+        var selected = KastnInlineStyleEditing.StyleTargetForSelection("alpha beta", 6, 10);
+        AssertEqual(6, selected.Start, "A real selection should keep its start.");
+        AssertEqual(4, selected.Length, "A real selection should keep its length.");
+
+        var wholeSlip = KastnInlineStyleEditing.StyleTargetForSelection("  alpha beta  ", 3, 3);
+        AssertEqual(2, wholeSlip.Start, "No selection should target the slip text.");
+        AssertEqual(10, wholeSlip.Length, "No selection should target all non-whitespace text.");
+
+        var empty = KastnInlineStyleEditing.StyleTargetForSelection("   ", 1, 1);
+        AssertEqual(3, empty.Start, "Whitespace-only slips should have no style target.");
+        AssertEqual(0, empty.Length, "Whitespace-only slips should be a no-op.");
     }
 
     [Fact] public void InlineStyleEditingSetsExclusiveLinksAndShiftsInsertion()

@@ -76,14 +76,10 @@ toolbar. The marker is never written into the body:
 Pressing a block-kind button toggles that kind on the selected note (or every
 note in a multi-selection); pressing it again clears it, and the buttons
 highlight the active kind. Inline formatting — bold, italic, strikethrough,
-inline code, web links, and stable-ID wiki-links — wraps the current selection.
+inline code, web links, and stable-ID wiki-links — is property-backed: toolbar
+actions apply style metadata to the current selection, to the whole slip when
+nothing is selected, or to the next typed text when the slip is empty.
 Alignment (left, center, right) is a per-note property.
-
-Direction: inline toolbar actions should become property-backed too. Typed
-Markdown remains available, but buttons such as bold, italic, strikethrough,
-inline code, web links, and stable-ID wiki-links should eventually set style
-intent that each export mode translates, rather than editing the body text as
-their long-term model.
 
 Typing Markdown by hand in the body is also supported: `**bold**`, `## heading`,
 `> quote`, fenced code, `---` dividers, and `- ` / `1. ` lists all render. The
@@ -137,7 +133,11 @@ Available styles:
 
 ### Inheritance Rules
 - Plain notes (slips with an empty/default block kind) automatically inherit the list formatting (Checklist, Bullet List, Numbered List) defined on their parent bucket/column.
-- A slip's own explicit block kind (e.g., Heading, Quote, Code Block) overrides any bucket-level formatting inheritance.
+- Compatible list choices compose: a numbered bucket with a task slip renders as a numbered checkbox item, and a bullet bucket with a task slip renders as a bulleted checkbox item.
+- A slip can opt out with `Ignore bucket style for this slip` in the editor or
+  board edit dialog. Kastn settings can also prefer explicit slip kinds over
+  bucket styles globally.
+- Whole-note block kinds (Heading, Quote, Code Block, Divider) render as their own block behavior.
 
 ## Pictures And Details
 

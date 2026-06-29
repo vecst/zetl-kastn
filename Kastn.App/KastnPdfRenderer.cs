@@ -18,13 +18,20 @@ internal static class KastnPdfRenderer
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlSlipSnapshot> slips,
         ZetlViewDocument view,
-        IReadOnlyDictionary<string, ZetlPictureContent>? pictures = null)
+        IReadOnlyDictionary<string, ZetlPictureContent>? pictures = null,
+        bool preferSlipKindOverBucketKind = false)
     {
         EnsureFonts();
         var imageDirectory = Path.Combine(Path.GetTempPath(), $"kastn-pdf-{Guid.NewGuid():N}");
         try
         {
-            var document = BuildDocument(project, slips, view, pictures, imageDirectory);
+            var document = BuildDocument(
+                project,
+                slips,
+                view,
+                pictures,
+                imageDirectory,
+                preferSlipKindOverBucketKind);
             var renderer = new PdfDocumentRenderer { Document = document };
             renderer.RenderDocument();
 
@@ -59,7 +66,8 @@ internal static class KastnPdfRenderer
         IReadOnlyList<ZetlSlipSnapshot> slips,
         ZetlViewDocument view,
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures,
-        string imageDirectory)
+        string imageDirectory,
+        bool preferSlipKindOverBucketKind)
     {
         var document = new Document();
         var settings = new ZetlAppSettingsStore().Settings;
@@ -151,15 +159,13 @@ internal static class KastnPdfRenderer
                 }
 
                 var displayText = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-                var kind = ZetlViewRenderer.SlipBlockKind(slip);
-                if (string.IsNullOrEmpty(kind))
-                {
-                    var bucket = project.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
-                    if (bucket is not null && bucket.RenderKind is "bullet" or "ordered" or "task")
-                    {
-                        kind = bucket.RenderKind;
-                    }
-                }
+                var slipKind = ZetlViewRenderer.SlipBlockKind(slip);
+                var bucketListKind = ZetlViewRenderer.BucketListKind(project, slip, preferSlipKindOverBucketKind);
+                var kind = bucketListKind.Length > 0 && ZetlViewRenderer.IsListRenderKind(slipKind)
+                    ? bucketListKind
+                    : slipKind.Length == 0 && bucketListKind.Length > 0
+                        ? bucketListKind
+                        : slipKind;
                 // A divider note carries no text but still renders (as a rule); other
                 // empty notes are skipped.
                 if (kind != ZetlBlockKinds.Divider && string.IsNullOrWhiteSpace(displayText))
@@ -167,17 +173,16 @@ internal static class KastnPdfRenderer
                     continue;
                 }
 
-                var slipMarker = kind switch
-                {
-                    ZetlBlockKinds.Ordered => $"{++orderedRun}. ",
-                    ZetlBlockKinds.Task => slip.Checked ? "☑ " : "☐ ",
-                    ZetlBlockKinds.Bullet => "• ",
-                    _ => ""
-                };
-                if (kind != ZetlBlockKinds.Ordered)
-                {
-                    orderedRun = 0;
-                }
+                var markerKind = bucketListKind.Length > 0
+                    ? bucketListKind
+                    : ZetlViewRenderer.IsListRenderKind(slipKind) ? slipKind : "";
+                var innerKind = bucketListKind.Length > 0
+                    && ZetlViewRenderer.IsListRenderKind(slipKind)
+                    && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
+                        ? slipKind
+                        : "";
+                var slipMarker = PdfOuterListMarker(markerKind, slip.Checked, ref orderedRun)
+                    + PdfInnerListMarker(innerKind, slip.Checked);
 
                 AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker, id => project.Slips.Any(s => s.Id == id));
             }
@@ -185,6 +190,30 @@ internal static class KastnPdfRenderer
 
         return document;
     }
+
+    private static string PdfOuterListMarker(string kind, bool isChecked, ref int orderedRun)
+    {
+        if (kind == ZetlBlockKinds.Ordered)
+        {
+            return $"{++orderedRun}. ";
+        }
+
+        orderedRun = 0;
+        return kind switch
+        {
+            ZetlBlockKinds.Task => isChecked ? "☑ " : "☐ ",
+            ZetlBlockKinds.Bullet => "• ",
+            _ => ""
+        };
+    }
+
+    private static string PdfInnerListMarker(string kind, bool isChecked) => kind switch
+    {
+        ZetlBlockKinds.Task => isChecked ? "☑ " : "☐ ",
+        ZetlBlockKinds.Bullet => "• ",
+        ZetlBlockKinds.Ordered => "1. ",
+        _ => ""
+    };
 
     // Render a slip's Markdown blocks into the section: paragraphs (the first line
     // carries the slip's "•" bucket bullet) and list items (their own marker, deeper

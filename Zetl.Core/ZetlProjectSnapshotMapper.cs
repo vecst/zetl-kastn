@@ -174,6 +174,7 @@ internal static class ZetlProjectSnapshotMapper
             ExcludedFromViews = slip.ExcludedFromViews,
             Align = slip.Align,
             BlockKind = slip.BlockKind,
+            IgnoreBucketRenderKind = slip.IgnoreBucketRenderKind,
             Checked = slip.Checked,
             InlineStyles = slip.InlineStyles.Select(style => style with { }).ToList()
         };

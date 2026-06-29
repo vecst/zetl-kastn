@@ -158,6 +158,9 @@ public sealed record ZetlSlipSnapshot
     // per note (it is not inherited from a view-wide style).
     public string BlockKind { get; init; } = "";
 
+    // Kastn-only: when true, this slip ignores its bucket's inherited render kind.
+    public bool IgnoreBucketRenderKind { get; init; }
+
     // Kastn-only: the checked state when BlockKind is "task"; ignored otherwise.
     public bool Checked { get; init; }
 

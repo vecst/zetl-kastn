@@ -684,6 +684,74 @@ public class ZetlViewTests
             "# InheritDemo\n\n## Tasks\n\n- [ ] task 1\n- [x] task 2\n**header override**\n\n## Bullets\n\n- bullet 1\n\n## Ordered\n\n1. ordered 1\n2. ordered 2");
     }
 
+    [Fact] public void BucketAndSlipListKindsComposeWhenCompatible()
+    {
+        var project = Project(
+            "ComposeDemo",
+            [
+                Bucket("b1", "Numbered Tasks", renderKind: "ordered"),
+                Bucket("b2", "Bullet Tasks", renderKind: "bullet")
+            ],
+            [
+                Slip("b1", "call", "task"),
+                Slip("b1", "done", "task", isChecked: true),
+                Slip("b2", "todo", "task"),
+            ]);
+
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# ComposeDemo\n\n## Numbered Tasks\n\n1. [ ] call\n2. [x] done\n\n## Bullet Tasks\n\n- [ ] todo");
+
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html }).ReplaceLineEndings("\n");
+        AssertContains(html, "<ol>");
+        AssertContains(html, "<li id=\"");
+        AssertContains(html, "<input type=\"checkbox\" /> call");
+        AssertContains(html, "<input type=\"checkbox\" checked /> done");
+        AssertTrue(
+            !html.Contains("<ul style=\"list-style:none;padding-left:1.1em\">\n<li", StringComparison.Ordinal),
+            "A numbered bucket should remain the outer list even when the slip is a task.");
+    }
+
+    [Fact] public void SlipCanOptOutOfBucketListKindComposition()
+    {
+        var project = Project(
+            "OptOutDemo",
+            [Bucket("b1", "Numbered Tasks", renderKind: "ordered")],
+            [
+                Slip("b1", "composed", "task"),
+                Slip("b1", "own task", "task", ignoreBucketRenderKind: true),
+            ]);
+
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# OptOutDemo\n\n## Numbered Tasks\n\n1. [ ] composed\n- [ ] own task");
+
+        var preferred = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "m", Name = "M", Kind = ZetlViewKinds.Markdown },
+            preferSlipKindOverBucketKind: true).ReplaceLineEndings("\n");
+        AssertEqual(
+            "# OptOutDemo\n\n## Numbered Tasks\n\n- [ ] composed\n- [ ] own task",
+            preferred,
+            "The Kastn preference can treat explicit slip kinds as overriding bucket style.");
+
+        var preferredHtml = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html },
+            preferSlipKindOverBucketKind: true).ReplaceLineEndings("\n");
+        AssertContains(preferredHtml, "<ul style=\"list-style:none;padding-left:1.1em\">");
+        AssertTrue(
+            !preferredHtml.Contains("<ol>", StringComparison.Ordinal),
+            "The same global preference should be honored by HTML rendering.");
+    }
+
     [Fact] public void OrderedSlipsRenumberContinuouslyOverVisibleSlips()
     {
         // Ordered notes are numbered over their run (computed at render time) and a
@@ -1207,7 +1275,11 @@ public class ZetlViewTests
     };
 
     private static ZetlSlipSnapshot Slip(
-        string bucketId, string text, string blockKind = "", bool isChecked = false) => new()
+        string bucketId,
+        string text,
+        string blockKind = "",
+        bool isChecked = false,
+        bool ignoreBucketRenderKind = false) => new()
     {
         Id = Guid.NewGuid().ToString("N"),
         Revision = 1,
@@ -1217,6 +1289,7 @@ public class ZetlViewTests
         Source = "copy",
         CapturedAtUtc = DateTimeOffset.UnixEpoch,
         BlockKind = blockKind,
+        IgnoreBucketRenderKind = ignoreBucketRenderKind,
         Checked = isChecked
     };
 

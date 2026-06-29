@@ -36,7 +36,7 @@ internal partial class MainWindow
     {
         if (!HasBatchSelection())
         {
-            await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Strike, "strike");
+            await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Strike);
             return;
         }
 

@@ -820,7 +820,8 @@ internal sealed class ZetlProjectService
             payload.SessionId,
             payload.CapturedAtUtc?.UtcDateTime,
             title: payload.Title,
-            blockKind: payload.BlockKind);
+            blockKind: payload.BlockKind,
+            ignoreBucketRenderKind: payload.IgnoreBucketRenderKind);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Created, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);
@@ -862,7 +863,8 @@ internal sealed class ZetlProjectService
 
         store.UpdateNote(
             note, payload.Text, payload.Title, payload.ExcludedFromViews,
-            payload.Align, payload.BlockKind, payload.Checked, payload.InlineStyles);
+            payload.Align, payload.BlockKind, payload.IgnoreBucketRenderKind,
+            payload.Checked, payload.InlineStyles);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);

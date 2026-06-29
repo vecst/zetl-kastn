@@ -235,12 +235,14 @@ directions.
 - [ ] The style toolbar above the editor can overflow in the Detail pane. Give
       the editor pane a little less horizontal ambition and more vertical room
       so formatting controls wrap or compact cleanly.
-- [ ] Make inline formatting buttons property-backed. Typed Markdown remains
+- [x] Make inline formatting buttons property-backed. Typed Markdown remains
       supported, but toolbar actions should set style metadata/ranges that the
       on-screen View, Markdown, HTML, PDF, and rich clipboard exporters translate
       appropriately.
 - [x] Add a way to apply task/checklist/list styling to an entire bucket via
       bucket selection and the list toolbar buttons.
+- [x] Allow compatible bucket/slip list kinds to compose, with a per-slip opt-out
+      and a Kastn setting to prefer explicit slip kinds globally.
 
 ### Deleted Slips
 

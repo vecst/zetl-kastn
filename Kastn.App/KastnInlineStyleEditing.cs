@@ -65,6 +65,31 @@ internal static class KastnInlineStyleEditing
         return ZetlInlineStyles.Normalize(text, result);
     }
 
+    public static (int Start, int Length) StyleTargetForSelection(string text, int start, int end)
+    {
+        text ??= "";
+        var selectionStart = Math.Clamp(Math.Min(start, end), 0, text.Length);
+        var selectionEnd = Math.Clamp(Math.Max(start, end), selectionStart, text.Length);
+        if (selectionEnd > selectionStart)
+        {
+            return (selectionStart, selectionEnd - selectionStart);
+        }
+
+        var firstText = 0;
+        while (firstText < text.Length && char.IsWhiteSpace(text[firstText]))
+        {
+            firstText++;
+        }
+
+        var lastTextExclusive = text.Length;
+        while (lastTextExclusive > firstText && char.IsWhiteSpace(text[lastTextExclusive - 1]))
+        {
+            lastTextExclusive--;
+        }
+
+        return (firstText, lastTextExclusive - firstText);
+    }
+
     public static IReadOnlyList<ZetlInlineStyleRange> SetWebLink(
         string text,
         IReadOnlyList<ZetlInlineStyleRange> inlineStyles,
@@ -317,7 +342,7 @@ internal static class KastnInlineStyleEditing
         var rangeEnd = range.Start + range.Length;
         return selectionEnd > selectionStart
             ? range.Start <= selectionStart && rangeEnd >= selectionEnd
-            : range.Start <= selectionStart && selectionStart < rangeEnd;
+            : range.Start <= selectionStart && selectionStart <= rangeEnd;
     }
 
     private static bool SameRange(ZetlInlineStyleRange left, ZetlInlineStyleRange right) =>
@@ -342,7 +367,7 @@ internal static class KastnInlineStyleEditing
         {
             var rangeStart = range.Start;
             var rangeEnd = range.Start + range.Length;
-            if (rangeEnd <= start)
+            if (rangeEnd < start)
             {
                 result.Add(range);
             }
@@ -356,7 +381,7 @@ internal static class KastnInlineStyleEditing
                 {
                     result.Add(range with { Start = range.Start + replacementLength });
                 }
-                else if (start < rangeEnd)
+                else if (start <= rangeEnd)
                 {
                     result.Add(range with { Length = range.Length + replacementLength });
                 }

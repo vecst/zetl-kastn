@@ -2032,6 +2032,9 @@ public class PortableSelfTests
                 "Temporary template lane should default to asking.");
             AssertEqual("", store.Settings.KastnMainLaneLabel, "Main lane label should default to the built-in name.");
             AssertEqual("", store.Settings.KastnAlternateLaneLabel, "Alternate lane label should default to the built-in name.");
+            AssertFalse(
+                store.Settings.KastnPreferSlipKindOverBucketKind,
+                "Kastn should default to composing bucket and slip kinds.");
             store.Settings.KastnAutosave = false;
             store.Settings.KastnStartup = ZetlKastnStartup.LastProject;
             store.Settings.KastnDefaultViewId = "markdown";
@@ -2039,6 +2042,7 @@ public class PortableSelfTests
             store.Settings.KastnAlternateLaneLabel = "Queue";
             store.Settings.KastnMinimizeAfterTemplate = false;
             store.Settings.KastnTemporaryTemplateLaneDefault = ZetlStateStore.ShiftLane;
+            store.Settings.KastnPreferSlipKindOverBucketKind = true;
             store.Save();
 
             var loaded = new ZetlAppSettingsStore(settingsPath);
@@ -2071,6 +2075,9 @@ public class PortableSelfTests
                 ZetlStateStore.ShiftLane,
                 loaded.Settings.KastnTemporaryTemplateLaneDefault,
                 "Kastn temporary template lane default should round-trip.");
+            AssertTrue(
+                loaded.Settings.KastnPreferSlipKindOverBucketKind,
+                "Kastn slip-kind preference should round-trip.");
         }
 
         private static void KastnStateRoundTripsLastProject()

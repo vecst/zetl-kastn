@@ -180,7 +180,7 @@
         <ScrollViewer x:Name="kastnSettingsPanel" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="20" Margin="0,0,12,0">
             <TextBlock Text="Kastn Workbench Settings" Classes="heading" />
-            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
               <TextBlock Grid.Row="0" Grid.Column="0"
                          Text="Autosave slip edits"
                          VerticalAlignment="Center" />
@@ -237,6 +237,13 @@
                          TextWrapping="Wrap" />
               <CheckBox Grid.Row="7" Grid.Column="1" x:Name="kastnMinimizeToTrayBox"
                         Content="Hide Kastn to system tray when minimized" />
+
+              <TextBlock Grid.Row="8" Grid.Column="0"
+                         Text="Slip formatting"
+                         VerticalAlignment="Center"
+                         TextWrapping="Wrap" />
+              <CheckBox Grid.Row="8" Grid.Column="1" x:Name="kastnPreferSlipKindOverBucketKindBox"
+                        Content="Use slip kind instead of combining with bucket style" />
             </Grid>
 
             <!-- Advanced Section -->

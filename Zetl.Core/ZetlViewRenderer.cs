@@ -84,15 +84,16 @@ internal static class ZetlViewRenderer
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlSlipSnapshot> slips,
         ZetlViewDocument view,
-        IReadOnlyDictionary<string, ZetlPictureContent>? pictures = null)
+        IReadOnlyDictionary<string, ZetlPictureContent>? pictures = null,
+        bool preferSlipKindOverBucketKind = false)
     {
         var groups = BuildGroups(project, slips, view);
         return view.Kind switch
         {
             ZetlViewKinds.Plain => RenderPlain(groups),
             ZetlViewKinds.Tsv => RenderTsv(project, groups, view.TsvRowLength),
-            ZetlViewKinds.Markdown => RenderMarkdown(project, groups, view, pictures),
-            ZetlViewKinds.Html => RenderHtml(project, groups, view, pictures),
+            ZetlViewKinds.Markdown => RenderMarkdown(project, groups, view, pictures, preferSlipKindOverBucketKind),
+            ZetlViewKinds.Html => RenderHtml(project, groups, view, pictures, preferSlipKindOverBucketKind),
             // PDF is binary; Kastn renders it from BuildGroups. Return a note so
             // any text surface (e.g. a preview) explains how to get the PDF.
             ZetlViewKinds.Pdf => "This is a PDF view — use Export to save a .pdf file.",
@@ -357,7 +358,8 @@ internal static class ZetlViewRenderer
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlViewGroup> groups,
         ZetlViewDocument view,
-        IReadOnlyDictionary<string, ZetlPictureContent>? pictures)
+        IReadOnlyDictionary<string, ZetlPictureContent>? pictures,
+        bool preferSlipKindOverBucketKind)
     {
         var documentTitle = DocumentTitle(project, view);
         var parts = documentTitle is null
@@ -396,15 +398,13 @@ internal static class ZetlViewRenderer
                 var slipText = ZetlMarkdown.ResolveWikiLinksInNote(
                     ZetlMarkdown.ApplyInlineStyleMarkers(SlipText(slip), slip.InlineStyles),
                     id => project.Slips.Any(s => s.Id == id));
-                var kind = SlipBlockKind(slip);
-                if (string.IsNullOrEmpty(kind))
-                {
-                    var bucket = project.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
-                    if (bucket is not null && bucket.RenderKind is "bullet" or "ordered" or "task")
-                    {
-                        kind = bucket.RenderKind;
-                    }
-                }
+                var slipKind = SlipBlockKind(slip);
+                var bucketListKind = BucketListKind(project, slip, preferSlipKindOverBucketKind);
+                var kind = bucketListKind.Length > 0 && IsListRenderKind(slipKind)
+                    ? bucketListKind
+                    : slipKind.Length == 0 && bucketListKind.Length > 0
+                        ? bucketListKind
+                        : slipKind;
 
                 // A divider note has no content: emit a thematic break and move on.
                 if (kind == ZetlBlockKinds.Divider)
@@ -473,26 +473,25 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                if (kind == ZetlBlockKinds.Ordered)
+                var markerKind = bucketListKind.Length > 0
+                    ? bucketListKind
+                    : IsListRenderKind(slipKind) ? slipKind : "";
+                var innerKind = bucketListKind.Length > 0
+                    && IsListRenderKind(slipKind)
+                    && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
+                        ? slipKind
+                        : "";
+                if (markerKind.Length > 0)
                 {
-                    EmitMarkedSlipMarkdown(parts, $"{++orderedRun}. ", lines);
+                    var marker = MarkdownOuterListMarker(markerKind, slip.Checked, ref orderedRun)
+                        + MarkdownInnerListMarker(innerKind, slip.Checked);
+                    EmitMarkedSlipMarkdown(parts, marker, lines);
                     continue;
                 }
 
                 orderedRun = 0;
-                switch (kind)
-                {
-                    case ZetlBlockKinds.Bullet:
-                        EmitMarkedSlipMarkdown(parts, "- ", lines);
-                        break;
-                    case ZetlBlockKinds.Task:
-                        EmitMarkedSlipMarkdown(parts, slip.Checked ? "- [x] " : "- [ ] ", lines);
-                        break;
-                    default:
-                        parts.AddRange(lines);
-                        parts.Add("");
-                        break;
-                }
+                parts.AddRange(lines);
+                parts.Add("");
             }
 
             parts.Add("");
@@ -523,11 +522,72 @@ internal static class ZetlViewRenderer
         parts.AddRange(lines.Skip(1).Select(line => $"{indent}{line}"));
     }
 
+    public static bool IsListRenderKind(string? kind) =>
+        kind is ZetlBlockKinds.Bullet or ZetlBlockKinds.Ordered or ZetlBlockKinds.Task;
+
+    public static string BucketListKind(
+        ZetlProjectSnapshot project,
+        ZetlSlipSnapshot slip,
+        bool preferSlipKindOverBucketKind = false)
+    {
+        var slipKind = SlipBlockKind(slip);
+        if (slip.IgnoreBucketRenderKind
+            || (preferSlipKindOverBucketKind && slipKind.Length > 0))
+        {
+            return "";
+        }
+
+        var bucket = project.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
+        return bucket?.RenderKind is ZetlBucketRenderKinds.Bullet
+            or ZetlBucketRenderKinds.Ordered
+            or ZetlBucketRenderKinds.Task
+                ? bucket.RenderKind
+                : "";
+    }
+
+    public static string MarkdownOuterListMarker(string kind, bool isChecked, ref int orderedRun)
+    {
+        if (kind == ZetlBlockKinds.Ordered)
+        {
+            return $"{++orderedRun}. ";
+        }
+
+        orderedRun = 0;
+        return kind switch
+        {
+            ZetlBlockKinds.Task => isChecked ? "- [x] " : "- [ ] ",
+            ZetlBlockKinds.Bullet => "- ",
+            _ => ""
+        };
+    }
+
+    public static string MarkdownInnerListMarker(string kind, bool isChecked) => kind switch
+    {
+        ZetlBlockKinds.Task => isChecked ? "[x] " : "[ ] ",
+        ZetlBlockKinds.Bullet => "• ",
+        ZetlBlockKinds.Ordered => "1. ",
+        _ => ""
+    };
+
+    public static string HtmlListItemMarker(string outerKind, string innerKind, bool isChecked)
+    {
+        var outerMarker = outerKind == ZetlBlockKinds.Task ? TaskCheckboxHtml(isChecked) : "";
+        var innerMarker = innerKind switch
+        {
+            ZetlBlockKinds.Task => TaskCheckboxHtml(isChecked),
+            ZetlBlockKinds.Bullet => "• ",
+            ZetlBlockKinds.Ordered => "1. ",
+            _ => ""
+        };
+        return outerMarker + innerMarker;
+    }
+
     private static string RenderHtml(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlViewGroup> groups,
         ZetlViewDocument view,
-        IReadOnlyDictionary<string, ZetlPictureContent>? pictures)
+        IReadOnlyDictionary<string, ZetlPictureContent>? pictures,
+        bool preferSlipKindOverBucketKind)
     {
         var documentTitle = DocumentTitle(project, view);
         // The <title> tab label always needs a value, even when the on-page heading
@@ -617,15 +677,13 @@ internal static class ZetlViewRenderer
                 }
 
                 var text = SlipText(slip);
-                var kind = SlipBlockKind(slip);
-                if (string.IsNullOrEmpty(kind))
-                {
-                    var bucket = project.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
-                    if (bucket is not null && bucket.RenderKind is "bullet" or "ordered" or "task")
-                    {
-                        kind = bucket.RenderKind;
-                    }
-                }
+                var slipKind = SlipBlockKind(slip);
+                var bucketListKind = BucketListKind(project, slip, preferSlipKindOverBucketKind);
+                var kind = bucketListKind.Length > 0 && IsListRenderKind(slipKind)
+                    ? bucketListKind
+                    : slipKind.Length == 0 && bucketListKind.Length > 0
+                        ? bucketListKind
+                        : slipKind;
 
                 // A whole-note block (heading/quote/code/divider) renders its synthesized
                 // block on its own; a divider carries no text, so it is handled before the
@@ -656,26 +714,34 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                if (kind.Length == 0)
+                var listKind = bucketListKind.Length > 0
+                    ? bucketListKind
+                    : IsListRenderKind(slipKind) ? slipKind : "";
+                if (listKind.Length == 0)
                 {
                     CloseList();
                     parts.Add($"<div id=\"{slip.Id}\"{style}>{inner}</div>");
                     continue;
                 }
 
-                if (openKind != kind)
+                if (openKind != listKind)
                 {
                     CloseList();
-                    parts.Add(kind switch
+                    parts.Add(listKind switch
                     {
                         ZetlBlockKinds.Ordered => "<ol>",
                         ZetlBlockKinds.Task => "<ul style=\"list-style:none;padding-left:1.1em\">",
                         _ => "<ul>"
                     });
-                    openKind = kind;
+                    openKind = listKind;
                 }
 
-                var marker = kind == ZetlBlockKinds.Task ? TaskCheckboxHtml(slip.Checked) : "";
+                var innerKind = bucketListKind.Length > 0
+                    && IsListRenderKind(slipKind)
+                    && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
+                        ? slipKind
+                        : "";
+                var marker = HtmlListItemMarker(listKind, innerKind, slip.Checked);
                 parts.Add($"<li id=\"{slip.Id}\"{style}>{marker}{inner}</li>");
             }
 

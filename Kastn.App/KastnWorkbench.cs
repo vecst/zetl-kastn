@@ -416,6 +416,8 @@ internal sealed class KastnEditorState
     public string DraftText { get; private set; } = "";
     public IReadOnlyList<ZetlInlineStyleRange> BaselineInlineStyles { get; private set; } = [];
     public IReadOnlyList<ZetlInlineStyleRange> DraftInlineStyles { get; private set; } = [];
+    public IReadOnlySet<string> PendingInlineStyleKinds { get; private set; } =
+        new HashSet<string>(StringComparer.Ordinal);
     public ZetlSlipSnapshot? ConflictCurrent { get; private set; }
     public bool IsDirty => SlipId is not null
         && (!string.Equals(DraftText, BaselineText, StringComparison.Ordinal)
@@ -432,6 +434,7 @@ internal sealed class KastnEditorState
         DraftText = BaselineText;
         BaselineInlineStyles = CopyInlineStyles(slip?.InlineStyles);
         DraftInlineStyles = BaselineInlineStyles;
+        PendingInlineStyleKinds = new HashSet<string>(StringComparer.Ordinal);
         ConflictCurrent = null;
     }
 
@@ -442,17 +445,60 @@ internal sealed class KastnEditorState
 
     public void ApplyTextEdit(string text)
     {
-        DraftInlineStyles = KastnInlineStyleEditing.ReconcileTextEdit(
+        var reconciled = KastnInlineStyleEditing.ReconcileTextEdit(
             DraftText,
             text,
             DraftInlineStyles);
+        if (PendingInlineStyleKinds.Count > 0)
+        {
+            var (start, length) = KastnInlineStyleEditing.StyleTargetForSelection(text, 0, 0);
+            if (length > 0)
+            {
+                foreach (var kind in PendingInlineStyleKinds)
+                {
+                    reconciled = KastnInlineStyleEditing.ToggleTextStyle(
+                        text,
+                        reconciled,
+                        start,
+                        length,
+                        kind);
+                }
+
+                PendingInlineStyleKinds = new HashSet<string>(StringComparer.Ordinal);
+            }
+        }
+
+        DraftInlineStyles = reconciled;
         DraftText = text;
     }
 
     public void SetInlineStyles(IReadOnlyList<ZetlInlineStyleRange> inlineStyles)
     {
         DraftInlineStyles = CopyInlineStyles(inlineStyles);
+        PendingInlineStyleKinds = new HashSet<string>(StringComparer.Ordinal);
     }
+
+    public bool TogglePendingInlineStyle(string kind)
+    {
+        kind = ZetlInlineStyleKinds.Normalize(kind);
+        if (kind.Length == 0)
+        {
+            return false;
+        }
+
+        var pending = new HashSet<string>(PendingInlineStyleKinds, StringComparer.Ordinal);
+        var enabled = pending.Add(kind);
+        if (!enabled)
+        {
+            pending.Remove(kind);
+        }
+
+        PendingInlineStyleKinds = pending;
+        return enabled;
+    }
+
+    public bool HasPendingInlineStyle(string kind) =>
+        PendingInlineStyleKinds.Contains(ZetlInlineStyleKinds.Normalize(kind));
 
     public void Reconcile(
         ZetlSlipSnapshot? current,
@@ -504,6 +550,7 @@ internal sealed class KastnEditorState
             Revision = current.Revision;
             BaselineText = current.Text;
             BaselineInlineStyles = CopyInlineStyles(current.InlineStyles);
+            PendingInlineStyleKinds = new HashSet<string>(StringComparer.Ordinal);
             ConflictCurrent = null;
         }
     }
@@ -517,6 +564,7 @@ internal sealed class KastnEditorState
         {
             DraftText = slip.Text;
             DraftInlineStyles = CopyInlineStyles(slip.InlineStyles);
+            PendingInlineStyleKinds = new HashSet<string>(StringComparer.Ordinal);
         }
 
         BaselineInlineStyles = CopyInlineStyles(slip.InlineStyles);

@@ -231,6 +231,10 @@ internal sealed class ZetlSlip
     [System.Text.Json.Serialization.JsonPropertyName("listKind")]
     public string BlockKind { get; set; } = "";
 
+    // Kastn-only: when true, bucket RenderKind inheritance is suppressed for this
+    // slip. The slip's own BlockKind still renders normally.
+    public bool IgnoreBucketRenderKind { get; set; }
+
     // Kastn-only: checked state for a "task" note; ignored for other kinds.
     public bool Checked { get; set; }
 
@@ -1018,7 +1022,8 @@ internal sealed class ZetlStateStore
         DateTime? createdAtUtc = null,
         ZetlCaptureOrigin? captureOrigin = null,
         string? title = null,
-        string? blockKind = null)
+        string? blockKind = null,
+        bool? ignoreBucketRenderKind = null)
     {
         var note = new ZetlSlip
         {
@@ -1029,7 +1034,8 @@ internal sealed class ZetlStateStore
             SessionId = noteSessionId ?? sessionId,
             CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow,
             CaptureOrigin = captureOrigin,
-            BlockKind = ZetlBlockKinds.Normalize(blockKind)
+            BlockKind = ZetlBlockKinds.Normalize(blockKind),
+            IgnoreBucketRenderKind = ignoreBucketRenderKind == true
         };
         bucket.Slips.Add(note);
         PersistBucket(bucket);
@@ -1225,6 +1231,7 @@ internal sealed class ZetlStateStore
         bool? excludedFromViews = null,
         string? align = null,
         string? blockKind = null,
+        bool? ignoreBucketRenderKind = null,
         bool? @checked = null,
         IReadOnlyList<ZetlInlineStyleRange>? inlineStyles = null)
     {
@@ -1253,15 +1260,20 @@ internal sealed class ZetlStateStore
             note.BlockKind = ZetlBlockKinds.Normalize(blockKind);
         }
 
+        if (ignoreBucketRenderKind is { } ignoreBucket)
+        {
+            note.IgnoreBucketRenderKind = ignoreBucket;
+        }
+
         if (@checked is { } isChecked)
         {
             note.Checked = isChecked;
         }
 
-        // Checked is rendered by explicit task notes and by plain notes inheriting a
-        // task render mode from their bucket. Explicit non-task note kinds clear it.
-        if (note.BlockKind != ZetlBlockKinds.Task
-            && (blockKind is not null || note.BlockKind.Length > 0))
+        // Checked can be rendered by explicit task notes or by a task bucket composed
+        // with another slip kind. Clearing happens only when a command explicitly
+        // changes the slip kind away from task.
+        if (blockKind is not null && note.BlockKind != ZetlBlockKinds.Task)
         {
             note.Checked = false;
         }
@@ -2755,6 +2767,7 @@ internal sealed class ZetlStateStore
             ExcludedFromViews = source.ExcludedFromViews,
             Align = source.Align,
             BlockKind = source.BlockKind,
+            IgnoreBucketRenderKind = source.IgnoreBucketRenderKind,
             Checked = source.Checked,
             InlineStyles = source.InlineStyles.Select(style => style with { }).ToList(),
             CaptureOrigin = source.CaptureOrigin is null

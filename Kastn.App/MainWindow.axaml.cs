@@ -114,6 +114,7 @@ internal partial class MainWindow : Window
     private string? pendingSlipSelectionId;
     private bool pendingSlipFocus;
     private bool detailShowingMetadata;
+    private bool slipRenderOptionUpdating;
     // When true the project tree shows only the Deleted bucket's slips (browse +
     // restore), instead of the normal working tree.
     private bool showingDeleted;
@@ -247,12 +248,13 @@ internal partial class MainWindow : Window
         alignLeftButton.Click += async (_, _) => await AlignSlipsAsync("left");
         alignCenterButton.Click += async (_, _) => await AlignSlipsAsync("center");
         alignRightButton.Click += async (_, _) => await AlignSlipsAsync("right");
-        boldButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Bold, "bold");
-        italicButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Italic, "italic");
+        boldButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Bold);
+        italicButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Italic);
         strikeButton.Click += async (_, _) => await StrikeSlipsAsync();
-        codeButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Code, "code");
+        codeButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Code);
         linkButton.Click += async (_, _) => await SetEditorWebLinkAsync();
         wikiLinkButton.Click += async (_, _) => await InsertSlipLinkAsync();
+        ignoreBucketRenderKindCheck.IsCheckedChanged += async (_, _) => await OnIgnoreBucketRenderKindChangedAsync();
         bulletListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Bullet);
         numberListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Ordered);
         taskListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Task);

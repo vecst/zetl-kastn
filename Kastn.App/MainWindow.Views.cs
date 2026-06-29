@@ -88,7 +88,11 @@ internal partial class MainWindow
         {
             lastRenderedViewText = visible.Count == 0
                 ? ""
-                : ZetlViewRenderer.Render(currentProject, visible, SelectedView);
+                : ZetlViewRenderer.Render(
+                    currentProject,
+                    visible,
+                    SelectedView,
+                    preferSlipKindOverBucketKind: CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
             var hasOutput = lastRenderedViewText.Length > 0;
             copyViewButton.IsEnabled = hasOutput;
             exportViewButton.IsEnabled = hasOutput;
@@ -302,27 +306,31 @@ internal partial class MainWindow
             var orderedRun = 0;
             foreach (var slip in group.Slips)
             {
-                var kind = slip.Type == ZetlSlipType.Picture
+                var slipKind = slip.Type == ZetlSlipType.Picture
                     ? ""
                     : ZetlViewRenderer.SlipBlockKind(slip);
-                if (string.IsNullOrEmpty(kind) && group.RenderKind is "bullet" or "ordered" or "task")
-                {
-                    kind = group.RenderKind;
-                }
-                var marker = kind switch
-                {
-                    ZetlBlockKinds.Ordered => $"{++orderedRun}.",
-                    ZetlBlockKinds.Bullet => "•",
-                    ZetlBlockKinds.Task => slip.Checked ? "☑" : "☐",
-                    _ => ""
-                };
-                if (kind != ZetlBlockKinds.Ordered)
-                {
-                    orderedRun = 0;
-                }
+                var preferSlipKindOverBucketKind = CurrentAppSettings().KastnPreferSlipKindOverBucketKind;
+                var bucketListKind = !slip.IgnoreBucketRenderKind
+                    && !(preferSlipKindOverBucketKind && slipKind.Length > 0)
+                    && group.RenderKind is ZetlBucketRenderKinds.Bullet
+                    or ZetlBucketRenderKinds.Ordered
+                    or ZetlBucketRenderKinds.Task
+                        ? group.RenderKind
+                        : "";
+                var markerKind = bucketListKind.Length > 0
+                    ? bucketListKind
+                    : ZetlViewRenderer.IsListRenderKind(slipKind) ? slipKind : "";
+                var innerKind = bucketListKind.Length > 0
+                    && ZetlViewRenderer.IsListRenderKind(slipKind)
+                    && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
+                        ? slipKind
+                        : "";
+                var marker = ViewOuterListMarker(markerKind, slip.Checked, ref orderedRun)
+                    + ViewInnerListMarker(innerKind, slip.Checked);
+                var checkable = markerKind == ZetlBlockKinds.Task || innerKind == ZetlBlockKinds.Task;
 
                 target.Children.Add(
-                    BuildSlipBlock(slip, isGroup ? 0 : group.Depth, generation, marker, checkable: kind == ZetlBlockKinds.Task));
+                    BuildSlipBlock(slip, isGroup ? 0 : group.Depth, generation, marker, checkable: checkable));
             }
 
             if (groupBox is not null)
@@ -339,6 +347,30 @@ internal partial class MainWindow
             }
         }
     }
+
+    private static string ViewOuterListMarker(string kind, bool isChecked, ref int orderedRun)
+    {
+        if (kind == ZetlBlockKinds.Ordered)
+        {
+            return $"{++orderedRun}.";
+        }
+
+        orderedRun = 0;
+        return kind switch
+        {
+            ZetlBlockKinds.Task => isChecked ? "☑" : "☐",
+            ZetlBlockKinds.Bullet => "•",
+            _ => ""
+        };
+    }
+
+    private static string ViewInnerListMarker(string kind, bool isChecked) => kind switch
+    {
+        ZetlBlockKinds.Task => isChecked ? " ☑" : " ☐",
+        ZetlBlockKinds.Bullet => " •",
+        ZetlBlockKinds.Ordered => " 1.",
+        _ => ""
+    };
 
     private Border BuildSlipBlock(
         ZetlSlipSnapshot slip, int depth, int generation, string marker, bool checkable = false)
@@ -956,7 +988,12 @@ internal partial class MainWindow
 
         var visible = CurrentViewSlips();
         var pictures = await LoadPictureContentsAsync(visible);
-        var rendered = ZetlViewRenderer.Render(currentProject, visible, SelectedView, pictures);
+        var rendered = ZetlViewRenderer.Render(
+            currentProject,
+            visible,
+            SelectedView,
+            pictures,
+            CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
         await clipboard.SetTextAsync(rendered);
         statusText.Text = $"Copied the {SelectedView.Name} view to the clipboard.";
     }
@@ -994,12 +1031,22 @@ internal partial class MainWindow
             await using var stream = await file.OpenWriteAsync();
             if (isPdf)
             {
-                var pdf = KastnPdfRenderer.Render(currentProject, visible, view, pictures);
+                var pdf = KastnPdfRenderer.Render(
+                    currentProject,
+                    visible,
+                    view,
+                    pictures,
+                    CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
                 await stream.WriteAsync(pdf);
             }
             else
             {
-                var rendered = ZetlViewRenderer.Render(currentProject, visible, view, pictures);
+                var rendered = ZetlViewRenderer.Render(
+                    currentProject,
+                    visible,
+                    view,
+                    pictures,
+                    CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
                 await using var writer = new StreamWriter(stream);
                 await writer.WriteAsync(rendered);
             }
@@ -1501,15 +1548,24 @@ internal partial class MainWindow
             Margin = new Thickness(0, 0, 0, 4)
         };
 
-        var kind = ZetlViewRenderer.SlipBlockKind(slip);
-        if (string.IsNullOrEmpty(kind))
-        {
-            var bucket = currentProject?.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
-            if (bucket is not null && bucket.RenderKind is "bullet" or "ordered" or "task")
-            {
-                kind = bucket.RenderKind;
-            }
-        }
+        var slipKind = ZetlViewRenderer.SlipBlockKind(slip);
+        var bucket = currentProject?.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
+        var preferSlipKindOverBucketKind = CurrentAppSettings().KastnPreferSlipKindOverBucketKind;
+        var bucketListKind = !slip.IgnoreBucketRenderKind
+            && !(preferSlipKindOverBucketKind && slipKind.Length > 0)
+            && bucket?.RenderKind is ZetlBucketRenderKinds.Bullet
+            or ZetlBucketRenderKinds.Ordered
+            or ZetlBucketRenderKinds.Task
+                ? bucket.RenderKind
+                : "";
+        var markerKind = bucketListKind.Length > 0
+            ? bucketListKind
+            : ZetlViewRenderer.IsListRenderKind(slipKind) ? slipKind : "";
+        var innerKind = bucketListKind.Length > 0
+            && ZetlViewRenderer.IsListRenderKind(slipKind)
+            && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
+                ? slipKind
+                : "";
 
         // Footer layout (contains tags/markers/checkbox)
         var footer = new StackPanel
@@ -1519,34 +1575,37 @@ internal partial class MainWindow
             Margin = new Thickness(0, 4, 0, 0)
         };
 
-        // Task checkbox
-        if (kind == ZetlBlockKinds.Task)
+        void AddFooterMarker(string kind)
         {
-            var taskCheck = new TextBlock
+            if (kind == ZetlBlockKinds.Task)
             {
-                Text = slip.Checked ? "☑" : "☐",
-                FontWeight = FontWeight.Bold,
-                Foreground = slip.Checked ? ThemeBrush("ZetlAccentBrush") : ThemeBrush("ZetlMutedTextBrush"),
-                Cursor = new Cursor(StandardCursorType.Hand),
-                Margin = new Thickness(0, 0, 4, 0)
-            };
-            taskCheck.PointerPressed += async (sender, args) =>
+                var taskCheck = new TextBlock
+                {
+                    Text = slip.Checked ? "☑" : "☐",
+                    FontWeight = FontWeight.Bold,
+                    Foreground = slip.Checked ? ThemeBrush("ZetlAccentBrush") : ThemeBrush("ZetlMutedTextBrush"),
+                    Cursor = new Cursor(StandardCursorType.Hand),
+                    Margin = new Thickness(0, 0, 4, 0)
+                };
+                taskCheck.PointerPressed += async (sender, args) =>
+                {
+                    args.Handled = true;
+                    await ToggleSlipCheckedAsync(slip.Id);
+                };
+                footer.Children.Add(taskCheck);
+            }
+            else if (kind == ZetlBlockKinds.Bullet)
             {
-                args.Handled = true;
-                await ToggleSlipCheckedAsync(slip.Id);
-            };
-            footer.Children.Add(taskCheck);
+                footer.Children.Add(new TextBlock { Text = "•", Classes = { "muted" } });
+            }
+            else if (kind == ZetlBlockKinds.Ordered)
+            {
+                footer.Children.Add(new TextBlock { Text = "1.", Classes = { "muted" } });
+            }
         }
 
-        // Display checkmarks for task lists or bullet/ordered indicator
-        else if (kind == ZetlBlockKinds.Bullet)
-        {
-            footer.Children.Add(new TextBlock { Text = "•", Classes = { "muted" } });
-        }
-        else if (kind == ZetlBlockKinds.Ordered)
-        {
-            footer.Children.Add(new TextBlock { Text = "1.", Classes = { "muted" } });
-        }
+        AddFooterMarker(markerKind);
+        AddFooterMarker(innerKind);
 
         // Capture origin icon/text if present
         if (slip.CaptureOrigin is { } origin)
@@ -1714,7 +1773,8 @@ internal partial class MainWindow
                 new UpdateSlipCommand
                 {
                     Text = result.Text.Trim(),
-                    BlockKind = result.BlockKind
+                    BlockKind = result.BlockKind,
+                    IgnoreBucketRenderKind = result.IgnoreBucketRenderKind
                 },
                 currentProject.Id,
                 slip.Id,
