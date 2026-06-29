@@ -1,4 +1,5 @@
 using System.Text;
+using ZETL.Contracts;
 
 namespace ZETL;
 
@@ -53,6 +54,61 @@ internal static class ZetlMarkdown
 {
     public static IReadOnlyList<ZetlInline> ParseInlines(string text) =>
         ParseInlines(text ?? "", 0, (text ?? "").Length);
+
+    public static string ApplyInlineStyleMarkers(
+        string text,
+        IReadOnlyList<ZetlInlineStyleRange>? inlineStyles)
+    {
+        text ??= "";
+        var ranges = ZetlInlineStyles.Normalize(text, inlineStyles);
+        if (ranges.Count == 0)
+        {
+            return text;
+        }
+
+        var opens = new Dictionary<int, List<InlineMarker>>();
+        var closes = new Dictionary<int, List<InlineMarker>>();
+        foreach (var range in ranges)
+        {
+            if (!TryGetMarkers(range, out var open, out var close, out var priority))
+            {
+                continue;
+            }
+
+            var marker = new InlineMarker(open, close, priority);
+            AddMarker(opens, range.Start, marker);
+            AddMarker(closes, range.Start + range.Length, marker);
+        }
+
+        if (opens.Count == 0 && closes.Count == 0)
+        {
+            return text;
+        }
+
+        var builder = new StringBuilder(text.Length + ranges.Count * 4);
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (opens.TryGetValue(i, out var openMarkers))
+            {
+                foreach (var marker in openMarkers.OrderBy(item => item.Priority))
+                {
+                    builder.Append(marker.Open);
+                }
+            }
+
+            builder.Append(text[i]);
+
+            if (closes.TryGetValue(i + 1, out var closeMarkers))
+            {
+                foreach (var marker in closeMarkers.OrderByDescending(item => item.Priority))
+                {
+                    builder.Append(marker.Close);
+                }
+            }
+        }
+
+        return builder.ToString();
+    }
 
     private static IReadOnlyList<ZetlInline> ParseInlines(string s, int start, int end)
     {
@@ -326,8 +382,15 @@ internal static class ZetlMarkdown
     // kind is the structure, not inline markup); any other kind parses the body normally
     // so a list item or paragraph still renders its own text. Every block renderer walks
     // this, so the note-kind structure reuses the same heading/quote/code/divider output.
-    public static IReadOnlyList<ZetlBlock> BlocksForNote(string? noteKind, string text)
+    public static IReadOnlyList<ZetlBlock> BlocksForNote(string? noteKind, string text) =>
+        BlocksForNote(noteKind, text, null);
+
+    public static IReadOnlyList<ZetlBlock> BlocksForNote(
+        string? noteKind,
+        string text,
+        IReadOnlyList<ZetlInlineStyleRange>? inlineStyles)
     {
+        text = ApplyInlineStyleMarkers(text ?? "", inlineStyles);
         switch (ZetlBlockKinds.Normalize(noteKind))
         {
             case ZetlBlockKinds.Heading:
@@ -341,7 +404,65 @@ internal static class ZetlMarkdown
             case ZetlBlockKinds.Divider:
                 return [new ZetlDividerBlock()];
             default:
-                return ParseBlocks(text ?? "");
+                return ParseBlocks(text);
+        }
+    }
+
+    private sealed record InlineMarker(string Open, string Close, int Priority);
+
+    private static void AddMarker(
+        Dictionary<int, List<InlineMarker>> markers,
+        int position,
+        InlineMarker marker)
+    {
+        if (!markers.TryGetValue(position, out var list))
+        {
+            list = [];
+            markers[position] = list;
+        }
+
+        list.Add(marker);
+    }
+
+    private static bool TryGetMarkers(
+        ZetlInlineStyleRange range,
+        out string open,
+        out string close,
+        out int priority)
+    {
+        open = "";
+        close = "";
+        priority = 0;
+        switch (ZetlInlineStyleKinds.Normalize(range.Kind))
+        {
+            case ZetlInlineStyleKinds.Link when !string.IsNullOrWhiteSpace(range.Href):
+                open = "[";
+                close = $"]({range.Href!.Trim()})";
+                priority = 0;
+                return true;
+            case ZetlInlineStyleKinds.WikiLink when !string.IsNullOrWhiteSpace(range.TargetSlipId):
+                open = $"[[{range.TargetSlipId!.Trim()}|";
+                close = "]]";
+                priority = 0;
+                return true;
+            case ZetlInlineStyleKinds.Bold:
+                open = close = "**";
+                priority = 1;
+                return true;
+            case ZetlInlineStyleKinds.Italic:
+                open = close = "*";
+                priority = 2;
+                return true;
+            case ZetlInlineStyleKinds.Strike:
+                open = close = "~~";
+                priority = 3;
+                return true;
+            case ZetlInlineStyleKinds.Code:
+                open = close = "`";
+                priority = 4;
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -508,7 +629,7 @@ internal static class ZetlMarkdown
     }
 
     // Render a slip's blocks to the inner HTML of its list item: paragraphs as text
-    // with line breaks, lists as <ul>/<ol> (task lists use checkbox glyphs).
+    // with line breaks, lists as <ul>/<ol> (task lists use checkbox inputs).
     public static string BlocksToHtml(string text, Func<string, bool>? isResolved = null) => BlocksToHtml(ParseBlocks(text), isResolved);
 
     public static string BlocksToHtml(IReadOnlyList<ZetlBlock> blocks, Func<string, bool>? isResolved = null)
@@ -553,7 +674,7 @@ internal static class ZetlMarkdown
                     foreach (var item in task.Items)
                     {
                         builder.Append("<li>")
-                            .Append(item.Checked ? "☑ " : "☐ ")
+                            .Append(TaskCheckboxHtml(item.Checked))
                             .Append(InlinesToHtml(item.Inlines, isResolved))
                             .Append("</li>");
                     }
@@ -587,6 +708,11 @@ internal static class ZetlMarkdown
     }
 
     public static string InlinesToHtml(string text, Func<string, bool>? isResolved = null) => InlinesToHtml(ParseInlines(text), isResolved);
+
+    private static string TaskCheckboxHtml(bool isChecked) =>
+        isChecked
+            ? "<input type=\"checkbox\" checked /> "
+            : "<input type=\"checkbox\" /> ";
 
     private static void AppendHtml(StringBuilder builder, ZetlInline inline, Func<string, bool>? isResolved)
     {

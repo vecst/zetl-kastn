@@ -35,7 +35,7 @@ internal partial class MainWindow
     {
         if (!HasBatchSelection())
         {
-            WrapEditorSelection("~~", "~~", "strike");
+            await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Strike, "strike");
             return;
         }
 

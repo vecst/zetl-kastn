@@ -250,17 +250,17 @@ internal partial class MainWindow : Window
         viewModeBoardButton.Click += (_, _) => SetBoardMode(true);
         boardModeMenuItem.Click += (_, _) => SetBoardMode(boardModeMenuItem.IsChecked);
         // Alignment, strikethrough, and the list markers fork: a single selected slip
-        // edits its text in the editor; a multi-slip / bucket selection applies the
-        // change to every selected slip at once (batch). Bold/italic/code/link wrap a
-        // text run inside one slip, so they stay editor-only.
+        // edits its render properties; a multi-slip / bucket selection applies the
+        // change to every selected slip at once (batch). Inline buttons set style
+        // ranges over the editor text rather than inserting Markdown markers.
         alignLeftButton.Click += async (_, _) => await AlignSlipsAsync("left");
         alignCenterButton.Click += async (_, _) => await AlignSlipsAsync("center");
         alignRightButton.Click += async (_, _) => await AlignSlipsAsync("right");
-        boldButton.Click += (_, _) => WrapEditorSelection("**", "**", "bold");
-        italicButton.Click += (_, _) => WrapEditorSelection("*", "*", "italic");
+        boldButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Bold, "bold");
+        italicButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Italic, "italic");
         strikeButton.Click += async (_, _) => await StrikeSlipsAsync();
-        codeButton.Click += (_, _) => WrapEditorSelection("`", "`", "code");
-        linkButton.Click += (_, _) => InsertEditorLink();
+        codeButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Code, "code");
+        linkButton.Click += async (_, _) => await SetEditorWebLinkAsync();
         wikiLinkButton.Click += async (_, _) => await InsertSlipLinkAsync();
         bulletListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Bullet);
         numberListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Ordered);
@@ -406,11 +406,17 @@ internal partial class MainWindow : Window
 
     private async Task<bool> DecideShutdownAsync()
     {
-        if (!IsVisible || WindowState == WindowState.Minimized)
+        if (WindowState == WindowState.Minimized)
         {
-            return true;
+            WindowState = WindowState.Normal;
         }
 
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        ShowInTaskbar = true;
         Activate();
         BringToForeground();
         return await KastnDialogs.ConfirmAsync(
@@ -955,7 +961,9 @@ internal partial class MainWindow : Window
             .Select(bucket => bucket.Id)
             .ToHashSet(StringComparer.Ordinal);
         var deletedCount = project.Slips.Count(slip => deletedBucketIds.Contains(slip.BucketId));
-        viewDeletedButton.Content = deletedCount > 0 ? $"Deleted ({deletedCount})" : "Deleted";
+        viewDeletedButton.Content = showingDeleted
+            ? "Read Slips"
+            : deletedCount > 0 ? $"Deleted ({deletedCount})" : "Deleted";
         viewDeletedButton.IsEnabled = deletedCount > 0 || showingDeleted;
         viewDeletedButton.IsChecked = showingDeleted;
     }

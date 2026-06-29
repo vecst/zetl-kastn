@@ -191,7 +191,13 @@ internal partial class MainWindow
             var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.UpdateSlip,
-                new UpdateSlipCommand { Text = text },
+                new UpdateSlipCommand
+                {
+                    Text = text,
+                    InlineStyles = editorState.InlineStylesAreDirty
+                        ? editorState.DraftInlineStyles
+                        : null
+                },
                 currentProject.Id,
                 editorState.SlipId,
                 editorState.Revision));
@@ -474,31 +480,27 @@ internal partial class MainWindow
         }
     }
 
-    // Wrap the editor selection (or insert a placeholder) in Markdown delimiters, then
-    // reselect the inner text. Setting Text raises TextChanged, so the draft updates and
-    // autosaves like normal typing.
-    private void WrapEditorSelection(string prefix, string suffix, string placeholder)
+    private async Task ToggleInlineStyleAsync(string kind, string placeholder)
     {
-        if (!slipEditor.IsEnabled)
+        if (!CanEditInlineStyle(out var slip))
         {
             return;
         }
 
-        var text = slipEditor.Text ?? "";
-        var start = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
-        var end = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
-        var selected = text[start..end];
-        var inner = selected.Length == 0 ? placeholder : selected;
-
-        slipEditor.Text = text[..start] + prefix + inner + suffix + text[end..];
-        slipEditor.SelectionStart = start + prefix.Length;
-        slipEditor.SelectionEnd = start + prefix.Length + inner.Length;
+        var (text, start, length, styles) = PrepareInlineSelection(placeholder);
+        var updated = KastnInlineStyleEditing.ToggleTextStyle(
+            text,
+            styles,
+            start,
+            length,
+            kind);
+        await SaveInlineStylesAsync(slip, text, updated, $"{InlineStyleLabel(kind)} toggled.");
         slipEditor.Focus();
     }
 
-    private void InsertEditorLink()
+    private async Task SetEditorWebLinkAsync()
     {
-        if (!slipEditor.IsEnabled)
+        if (!CanEditInlineStyle(out var slip))
         {
             return;
         }
@@ -506,23 +508,33 @@ internal partial class MainWindow
         var text = slipEditor.Text ?? "";
         var start = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
         var end = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
-        var selected = text[start..end];
+        var existing = CurrentInlineStyles(slip).FirstOrDefault(range =>
+            range.Kind == ZetlInlineStyleKinds.Link
+            && range.Start <= start
+            && range.Start + range.Length >= Math.Max(end, start + 1));
+        var href = await KastnDialogs.PromptAsync(
+            this,
+            "Web Link",
+            "URL",
+            existing?.Href ?? "https://");
+        if (href is null)
+        {
+            slipEditor.Focus();
+            return;
+        }
 
-        if (selected.Length == 0)
-        {
-            // No selection: drop in [text](url) and select "text" to type the label.
-            slipEditor.Text = text[..start] + "[text](url)" + text[end..];
-            slipEditor.SelectionStart = start + 1;
-            slipEditor.SelectionEnd = start + 5;
-        }
-        else
-        {
-            // Selection becomes the link label; select the "url" placeholder.
-            slipEditor.Text = text[..start] + $"[{selected}](url)" + text[end..];
-            var urlStart = start + 1 + selected.Length + 2;
-            slipEditor.SelectionStart = urlStart;
-            slipEditor.SelectionEnd = urlStart + 3;
-        }
+        var (preparedText, preparedStart, preparedLength, styles) = PrepareInlineSelection(
+            "link",
+            text,
+            start,
+            end);
+        var updated = KastnInlineStyleEditing.SetWebLink(
+            preparedText,
+            styles,
+            preparedStart,
+            preparedLength,
+            href);
+        await SaveInlineStylesAsync(slip, preparedText, updated, "Link set.");
 
         slipEditor.Focus();
     }
@@ -539,9 +551,7 @@ internal partial class MainWindow
             Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
         var selectionEnd = Math.Clamp(
             Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
-        var existing = ZetlSlipLinks.FindAt(text, selectionStart);
-        var query = existing?.CachedTitle
-            ?? (selectionEnd > selectionStart ? text[selectionStart..selectionEnd] : "");
+        var query = selectionEnd > selectionStart ? text[selectionStart..selectionEnd] : "";
         var candidates = currentProject.Slips
             .Where(slip => slip.Id != editorState.SlipId && !IsSlipInDeleted(slip))
             .ToList();
@@ -552,16 +562,130 @@ internal partial class MainWindow
             return;
         }
 
-        var token = ZetlSlipLinks.Format(target.Id, ZetlSlipLinks.TitleFor(target));
-        var replaceStart = existing?.Start ?? selectionStart;
-        var replaceEnd = existing is null
-            ? selectionEnd
-            : existing.Start + existing.Length;
-        slipEditor.Text = text[..replaceStart] + token + text[replaceEnd..];
-        slipEditor.SelectionStart = replaceStart + token.Length;
-        slipEditor.SelectionEnd = replaceStart + token.Length;
+        if (SelectedSlip is not { } slip)
+        {
+            slipEditor.Focus();
+            return;
+        }
+
+        var label = selectionEnd > selectionStart ? text[selectionStart..selectionEnd] : ZetlSlipLinks.TitleFor(target);
+        var (preparedText, preparedStart, preparedLength, styles) = PrepareInlineSelection(
+            label,
+            text,
+            selectionStart,
+            selectionEnd);
+        var updated = KastnInlineStyleEditing.SetWikiLink(
+            preparedText,
+            styles,
+            preparedStart,
+            preparedLength,
+            target.Id,
+            ZetlSlipLinks.TitleFor(target));
+        await SaveInlineStylesAsync(slip, preparedText, updated, "Slip link set.");
         slipEditor.Focus();
     }
+
+    private bool CanEditInlineStyle(out ZetlSlipSnapshot slip)
+    {
+        slip = null!;
+        var selected = SelectedSlips();
+        if (selected.Count != 1
+            || selected[0].Type != ZetlSlipType.Text
+            || ZetlViewRenderer.IsStructuralKind(selected[0].BlockKind)
+            || IsSlipInDeleted(selected[0])
+            || !slipEditor.IsEnabled)
+        {
+            return false;
+        }
+
+        slip = selected[0];
+        return true;
+    }
+
+    private IReadOnlyList<ZetlInlineStyleRange> CurrentInlineStyles(ZetlSlipSnapshot slip) =>
+        string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
+            ? editorState.DraftInlineStyles
+            : slip.InlineStyles;
+
+    private (string Text, int Start, int Length, IReadOnlyList<ZetlInlineStyleRange> Styles)
+        PrepareInlineSelection(
+            string placeholder,
+            string? capturedText = null,
+            int? capturedStart = null,
+            int? capturedEnd = null)
+    {
+        var text = capturedText ?? slipEditor.Text ?? "";
+        var start = capturedStart is { } savedStart
+            ? Math.Clamp(savedStart, 0, text.Length)
+            : Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
+        var end = capturedEnd is { } savedEnd
+            ? Math.Clamp(savedEnd, start, text.Length)
+            : Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), start, text.Length);
+        var styles = CurrentInlineStyles(SelectedSlip!);
+        if (end > start)
+        {
+            return (text, start, end - start, styles);
+        }
+
+        styles = KastnInlineStyleEditing.ShiftForReplacement(
+            text,
+            styles,
+            start,
+            replacedLength: 0,
+            replacementLength: placeholder.Length);
+        text = text[..start] + placeholder + text[start..];
+        editorUpdating = true;
+        slipEditor.Text = text;
+        slipEditor.SelectionStart = start;
+        slipEditor.SelectionEnd = start + placeholder.Length;
+        editorUpdating = false;
+        editorState.SetDraft(text);
+        return (text, start, placeholder.Length, styles);
+    }
+
+    private async Task SaveInlineStylesAsync(
+        ZetlSlipSnapshot slip,
+        string text,
+        IReadOnlyList<ZetlInlineStyleRange> styles,
+        string successText)
+    {
+        var commandText = text.Trim();
+        var commandStyles = InlineStylesForTrimmedCommand(text, styles);
+        editorState.SetDraft(text);
+        editorState.SetInlineStyles(commandStyles);
+        await UpdateSlipPropertyAsync(
+            slip,
+            _ => new UpdateSlipCommand
+            {
+                Text = commandText,
+                InlineStyles = commandStyles
+            },
+            successText);
+    }
+
+    private static IReadOnlyList<ZetlInlineStyleRange> InlineStylesForTrimmedCommand(
+        string text,
+        IReadOnlyList<ZetlInlineStyleRange> styles)
+    {
+        var leadingTrim = text.Length - text.TrimStart().Length;
+        var trimmed = text.Trim();
+        if (leadingTrim == 0)
+        {
+            return ZetlInlineStyles.Normalize(trimmed, styles);
+        }
+
+        return ZetlInlineStyles.Normalize(
+            trimmed,
+            styles.Select(style => style with { Start = style.Start - leadingTrim }).ToList());
+    }
+
+    private static string InlineStyleLabel(string kind) => ZetlInlineStyleKinds.Normalize(kind) switch
+    {
+        ZetlInlineStyleKinds.Italic => "Italic",
+        ZetlInlineStyleKinds.Strike => "Strikethrough",
+        ZetlInlineStyleKinds.Code => "Inline code",
+        _ => "Bold"
+    };
 
     private async Task AddBucketAsync()
     {

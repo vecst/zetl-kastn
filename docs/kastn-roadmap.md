@@ -50,6 +50,24 @@ The two-application foundation is in place:
 The current JSON baseline is recorded in
 [`kastn-storage-baseline.md`](kastn-storage-baseline.md).
 
+## High-Win Work List
+
+Small, user-visible fixes to pull forward while the larger Board overhaul takes
+shape:
+
+- [x] Keep empty ancestor bucket headings visible when descendant slips match the
+      current View.
+- [x] Switch the Deleted toggle to `Read Slips` while browsing deleted slips.
+- [x] Let Board Mode card edits save with `Ctrl+Enter`.
+- [x] Restore/focus Kastn during Zetl quit when Kastn is minimized or hidden.
+- [x] Make Markdown/HTML task export idempotent: authored task syntax is not
+      double-prefixed, and HTML task output uses checkbox inputs.
+- [x] Keep Zetl quick Compile `Plain` and `TSV` literal while letting
+      `Formatted` stage printable rich clipboard content with plain-text
+      fallback.
+- [ ] Tighten Board Mode spacing, column state, and card creation as a focused
+      overhaul rather than a new data model.
+
 ## Priority 1: Reliability And Release
 
 The system is feature-rich enough that trustworthiness now has the highest
@@ -67,6 +85,9 @@ leverage.
       policy.
 - [ ] Dogfood both applications together through restart, capture, editing, and
       publishing workflows.
+- [x] Fix minimized-Kastn quit handoff: when the user chooses Quit from Zetl,
+      Kastn should surface the quit path or take focus instead of requiring the
+      user to manually restore Kastn first.
 
 Done when no tested crash path loses an acknowledged mutation, conflict recovery
 never silently discards an edit, and capture latency remains acceptable while
@@ -98,6 +119,9 @@ picture, and include state rather than introducing board-specific content.
 - [x] Add the List/Board mode switch.
 - [x] Reuse drag-and-drop for cards and columns.
 - [x] Auto-collapse the Tree and Detail panes while Board mode is active.
+- [ ] Run a small Board Mode overhaul focused on everyday capture/editing:
+      clearer column state, faster card creation, keyboard-save parity, and
+      tighter spacing without changing the underlying bucket/slip model.
 
 ### Interaction Cleanup
 
@@ -111,6 +135,10 @@ picture, and include state rather than introducing board-specific content.
 - [ ] Remove or demote redundant Move/parent controls after direct manipulation
       is comfortably accessible.
 - [ ] Make nested bucket creation and placement faster in Zetl's quick Board.
+- [ ] Work through the dogfood polish notes in
+      [`kastn-ui-roadmap.md`](kastn-ui-roadmap.md#dogfood-notes-from-live-kastnzetl-use):
+      Markdown task fidelity, deleted-slip browsing, editor/detail overflow,
+      view scroll stability, Board Mode save shortcuts, and project bulk actions.
 
 ## Priority 3: Project Board And Cross-Project Organization
 

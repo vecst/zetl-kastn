@@ -414,9 +414,15 @@ internal sealed class KastnEditorState
     public long Revision { get; private set; }
     public string BaselineText { get; private set; } = "";
     public string DraftText { get; private set; } = "";
+    public IReadOnlyList<ZetlInlineStyleRange> BaselineInlineStyles { get; private set; } = [];
+    public IReadOnlyList<ZetlInlineStyleRange> DraftInlineStyles { get; private set; } = [];
     public ZetlSlipSnapshot? ConflictCurrent { get; private set; }
     public bool IsDirty => SlipId is not null
-        && !string.Equals(DraftText, BaselineText, StringComparison.Ordinal);
+        && (!string.Equals(DraftText, BaselineText, StringComparison.Ordinal)
+            || !KastnInlineStyleEditing.StyleListsEqual(DraftInlineStyles, BaselineInlineStyles));
+
+    public bool InlineStylesAreDirty => SlipId is not null
+        && !KastnInlineStyleEditing.StyleListsEqual(DraftInlineStyles, BaselineInlineStyles);
 
     public void Select(ZetlSlipSnapshot? slip)
     {
@@ -424,12 +430,19 @@ internal sealed class KastnEditorState
         Revision = slip?.Revision ?? 0;
         BaselineText = slip?.Text ?? "";
         DraftText = BaselineText;
+        BaselineInlineStyles = CopyInlineStyles(slip?.InlineStyles);
+        DraftInlineStyles = BaselineInlineStyles;
         ConflictCurrent = null;
     }
 
     public void SetDraft(string text)
     {
         DraftText = text;
+    }
+
+    public void SetInlineStyles(IReadOnlyList<ZetlInlineStyleRange> inlineStyles)
+    {
+        DraftInlineStyles = CopyInlineStyles(inlineStyles);
     }
 
     public void Reconcile(
@@ -481,6 +494,7 @@ internal sealed class KastnEditorState
         {
             Revision = current.Revision;
             BaselineText = current.Text;
+            BaselineInlineStyles = CopyInlineStyles(current.InlineStyles);
             ConflictCurrent = null;
         }
     }
@@ -493,8 +507,14 @@ internal sealed class KastnEditorState
         if (!keepDraft)
         {
             DraftText = slip.Text;
+            DraftInlineStyles = CopyInlineStyles(slip.InlineStyles);
         }
 
+        BaselineInlineStyles = CopyInlineStyles(slip.InlineStyles);
         ConflictCurrent = null;
     }
+
+    private static IReadOnlyList<ZetlInlineStyleRange> CopyInlineStyles(
+        IReadOnlyList<ZetlInlineStyleRange>? inlineStyles) =>
+        inlineStyles?.Select(style => style with { }).ToList() ?? [];
 }

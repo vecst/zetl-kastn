@@ -733,7 +733,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     window.DestinationBucketName,
                     window.Flatten,
                     window.SelectedNoteTexts,
-                    window.PasteNow));
+                    window.PasteNow,
+                    window.CompiledHtml));
             if (outcome == ZetlCompileOutcome.PasteNow)
             {
                 ZetlForegroundService.RestoreTarget(target, Log);

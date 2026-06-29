@@ -234,6 +234,9 @@ internal sealed class ZetlSlip
     // Kastn-only: checked state for a "task" note; ignored for other kinds.
     public bool Checked { get; set; }
 
+    // Kastn-only: property-backed inline styling over Text.
+    public List<ZetlInlineStyleRange> InlineStyles { get; set; } = [];
+
     public ZetlCaptureOrigin? CaptureOrigin { get; set; }
 
     [System.Text.Json.Serialization.JsonIgnore]
@@ -1222,7 +1225,8 @@ internal sealed class ZetlStateStore
         bool? excludedFromViews = null,
         string? align = null,
         string? blockKind = null,
-        bool? @checked = null)
+        bool? @checked = null,
+        IReadOnlyList<ZetlInlineStyleRange>? inlineStyles = null)
     {
         note.Text = text.Trim();
         if (title is not null)
@@ -1259,6 +1263,10 @@ internal sealed class ZetlStateStore
         {
             note.Checked = false;
         }
+
+        note.InlineStyles = ZetlInlineStyles.Normalize(
+            note.Text,
+            inlineStyles ?? note.InlineStyles);
 
         note.Revision++;
         PersistNote(note);
@@ -1812,6 +1820,41 @@ internal sealed class ZetlStateStore
 
         return string.Join(Environment.NewLine, parts).TrimEnd();
     }
+
+    public string CompileHtmlFromNotes(ZetlProject project, IEnumerable<SlipDisplayItem> selectedNotes)
+    {
+        var selected = selectedNotes
+            .Where(item => !item.Note.IsImage)
+            .Select(item => ZetlProjectSnapshotMapper.ToSnapshot(item.Bucket, item.Note))
+            .ToList();
+        var html = ZetlViewRenderer.Render(
+            ZetlProjectSnapshotMapper.ToSnapshot(project),
+            selected,
+            new ZetlViewDocument
+            {
+                Id = "compile-formatted-html",
+                Name = "Formatted",
+                Kind = ZetlViewKinds.Html
+            });
+        return PrintableTaskBoxes(HtmlBodyFragment(html));
+    }
+
+    private static string HtmlBodyFragment(string html)
+    {
+        var start = html.IndexOf("<body>", StringComparison.OrdinalIgnoreCase);
+        var end = html.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
+        if (start < 0 || end <= start)
+        {
+            return html;
+        }
+
+        return html[(start + "<body>".Length)..end].Trim();
+    }
+
+    private static string PrintableTaskBoxes(string html) =>
+        html
+            .Replace("<input type=\"checkbox\" checked /> ", "☑ ", StringComparison.OrdinalIgnoreCase)
+            .Replace("<input type=\"checkbox\" /> ", "☐ ", StringComparison.OrdinalIgnoreCase);
 
     public string CompileUnformattedFromNotes(IEnumerable<SlipDisplayItem> selectedNotes)
     {
@@ -2711,6 +2754,7 @@ internal sealed class ZetlStateStore
             Align = source.Align,
             BlockKind = source.BlockKind,
             Checked = source.Checked,
+            InlineStyles = source.InlineStyles.Select(style => style with { }).ToList(),
             CaptureOrigin = source.CaptureOrigin is null
                 ? null
                 : new ZetlCaptureOrigin

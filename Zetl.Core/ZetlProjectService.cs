@@ -862,7 +862,7 @@ internal sealed class ZetlProjectService
 
         store.UpdateNote(
             note, payload.Text, payload.Title, payload.ExcludedFromViews,
-            payload.Align, payload.BlockKind, payload.Checked);
+            payload.Align, payload.BlockKind, payload.Checked, payload.InlineStyles);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);

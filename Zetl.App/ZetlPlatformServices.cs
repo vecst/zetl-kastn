@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
 using System.Buffers.Binary;
+using System.Globalization;
+using System.Text;
 using Avalonia.Media.Imaging;
 using SkiaSharp;
 using Chordl;
@@ -375,6 +377,7 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     private readonly Func<IntPtr> createOwnerWindow;
     private IntPtr ownerWindow;
     private static readonly uint Png = RegisterClipboardFormat("PNG");
+    private static readonly uint Html = RegisterClipboardFormat("HTML Format");
 
     // ownerWindowFactory is a test seam: pass `() => IntPtr.Zero` to simulate a
     // failed owner-window creation and verify writes refuse without wiping the
@@ -586,32 +589,13 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             // Allocate and populate the global memory BEFORE emptying the
             // clipboard. The previous order emptied first, so a later allocation
             // failure left the clipboard cleared with nothing put back.
-            var bytes = checked((text.Length + 1) * sizeof(char));
-            handle = GlobalAlloc(Moveable, (UIntPtr)bytes);
+            handle = AllocateUnicodeText(text);
             if (handle == IntPtr.Zero)
             {
-                log($"Clipboard write failed: could not allocate {bytes} bytes.");
                 return false;
             }
 
             ownsHandle = true;
-            var pointer = GlobalLock(handle);
-            if (pointer == IntPtr.Zero)
-            {
-                log("Clipboard write failed: could not lock global memory.");
-                return false;
-            }
-
-            try
-            {
-                Marshal.Copy(text.ToCharArray(), 0, pointer, text.Length);
-                Marshal.WriteInt16(pointer, text.Length * sizeof(char), 0);
-            }
-            finally
-            {
-                GlobalUnlock(handle);
-            }
-
             if (!EmptyClipboard())
             {
                 log($"Clipboard write failed: EmptyClipboard error {Marshal.GetLastWin32Error()}.");
@@ -635,6 +619,68 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
                 GlobalFree(handle);
             }
 
+            CloseClipboard();
+        }
+    }
+
+    public bool SetRichText(string plainText, string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return SetText(plainText);
+        }
+
+        if (!EnsureOwnerWindow())
+        {
+            log("Rich clipboard write skipped: no owner window available; clipboard left intact.");
+            return false;
+        }
+
+        var textHandle = AllocateUnicodeText(plainText);
+        var htmlHandle = AllocateGlobal(BuildHtmlClipboardBytes(html));
+        if (textHandle == IntPtr.Zero || htmlHandle == IntPtr.Zero)
+        {
+            if (textHandle != IntPtr.Zero) GlobalFree(textHandle);
+            if (htmlHandle != IntPtr.Zero) GlobalFree(htmlHandle);
+            return false;
+        }
+
+        if (!TryOpen())
+        {
+            GlobalFree(textHandle);
+            GlobalFree(htmlHandle);
+            return false;
+        }
+
+        var ownsText = true;
+        var ownsHtml = true;
+        try
+        {
+            if (!EmptyClipboard())
+            {
+                log($"Rich clipboard write failed: EmptyClipboard error {Marshal.GetLastWin32Error()}.");
+                return false;
+            }
+
+            var textWritten = SetClipboardData(UnicodeText, textHandle) != IntPtr.Zero;
+            ownsText = !textWritten;
+            var htmlWritten = SetClipboardData(Html, htmlHandle) != IntPtr.Zero;
+            ownsHtml = !htmlWritten;
+            if (!textWritten)
+            {
+                log($"Rich clipboard write failed: SetClipboardData text error {Marshal.GetLastWin32Error()}.");
+            }
+            if (!htmlWritten)
+            {
+                log($"Rich clipboard write degraded: SetClipboardData HTML error {Marshal.GetLastWin32Error()}.");
+            }
+
+            return textWritten;
+        }
+        finally
+        {
+            if (ownsText) GlobalFree(textHandle);
+            if (ownsHtml) GlobalFree(htmlHandle);
             CloseClipboard();
         }
     }
@@ -700,6 +746,80 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             if (ownsDib) GlobalFree(dibHandle);
             CloseClipboard();
         }
+    }
+
+    private IntPtr AllocateUnicodeText(string text)
+    {
+        int bytes;
+        try
+        {
+            bytes = checked((text.Length + 1) * sizeof(char));
+        }
+        catch (OverflowException)
+        {
+            log("Clipboard write failed: text is too large.");
+            return IntPtr.Zero;
+        }
+
+        var handle = GlobalAlloc(Moveable, (UIntPtr)bytes);
+        if (handle == IntPtr.Zero)
+        {
+            log($"Clipboard write failed: could not allocate {bytes} bytes.");
+            return IntPtr.Zero;
+        }
+
+        var pointer = GlobalLock(handle);
+        if (pointer == IntPtr.Zero)
+        {
+            log("Clipboard write failed: could not lock global memory.");
+            GlobalFree(handle);
+            return IntPtr.Zero;
+        }
+
+        try
+        {
+            Marshal.Copy(text.ToCharArray(), 0, pointer, text.Length);
+            Marshal.WriteInt16(pointer, text.Length * sizeof(char), 0);
+            return handle;
+        }
+        finally
+        {
+            GlobalUnlock(handle);
+        }
+    }
+
+    private static byte[] BuildHtmlClipboardBytes(string fragment)
+    {
+        const string startMarker = "<!--StartFragment-->";
+        const string endMarker = "<!--EndFragment-->";
+        const string prefix = "<html><body>";
+        const string suffix = "</body></html>";
+        var html = prefix + startMarker + fragment + endMarker + suffix;
+        var headerTemplate =
+            "Version:0.9\r\n"
+            + "StartHTML:{0:D10}\r\n"
+            + "EndHTML:{1:D10}\r\n"
+            + "StartFragment:{2:D10}\r\n"
+            + "EndFragment:{3:D10}\r\n";
+        var placeholder = string.Format(
+            CultureInfo.InvariantCulture,
+            headerTemplate,
+            0,
+            0,
+            0,
+            0);
+        var startHtml = Encoding.UTF8.GetByteCount(placeholder);
+        var startFragment = startHtml + Encoding.UTF8.GetByteCount(prefix + startMarker);
+        var endFragment = startFragment + Encoding.UTF8.GetByteCount(fragment);
+        var endHtml = startHtml + Encoding.UTF8.GetByteCount(html);
+        var header = string.Format(
+            CultureInfo.InvariantCulture,
+            headerTemplate,
+            startHtml,
+            endHtml,
+            startFragment,
+            endFragment);
+        return Encoding.UTF8.GetBytes(header + html);
     }
 
     private static IntPtr AllocateGlobal(byte[] bytes)
@@ -947,6 +1067,12 @@ internal sealed class UnsupportedClipboard(Action<string> log) : IClipboard
     public bool SetText(string text)
     {
         log("Clipboard write ignored: no platform clipboard backend is installed.");
+        return false;
+    }
+
+    public bool SetRichText(string plainText, string html)
+    {
+        log("Rich clipboard write ignored: no platform clipboard backend is installed.");
         return false;
     }
 

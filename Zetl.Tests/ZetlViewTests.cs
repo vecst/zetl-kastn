@@ -89,6 +89,32 @@ public class ZetlViewTests
             "# Demo\n\n## Ideas\n\nfirst idea\n\nsecond idea\n\n### Steps\n\ndo this");
     }
 
+    [Fact] public void RendererKeepsEmptyAncestorBucketHeadings()
+    {
+        var project = Project(
+            "Demo",
+            [
+                Bucket("bugs", "Bugs"),
+                Bucket("kastn", "Kastn", parent: "bugs"),
+                Bucket("compile", "Compile", parent: "kastn"),
+                Bucket("empty", "Empty Subject", parent: "bugs")
+            ],
+            [
+                Slip("kastn", "general Kastn bug"),
+                Slip("compile", "markdown checkbox bug")
+            ]);
+
+        AssertRender(
+            project,
+            ZetlViewKinds.Formatted,
+            "Demo\n\nBugs\n\n\tKastn\n\t\tgeneral Kastn bug\n\n\t\tCompile\n\t\t\tmarkdown checkbox bug");
+
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# Demo\n\n## Bugs\n\n### Kastn\n\ngeneral Kastn bug\n\n#### Compile\n\nmarkdown checkbox bug");
+    }
+
     [Fact] public void ExportFidelityMatchesRenderedKinds()
     {
         // Formatting carries only into the kinds that translate the Markdown AST;
@@ -271,6 +297,51 @@ public class ZetlViewTests
             project.Slips,
             new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
         AssertContains(html, $"<li id=\"{slip.Id}\">see <strong>this</strong> and <a href=\"http://h\">x</a></li>");
+
+        var propertySlip = Slip("b1", "see this link", "bullet") with
+        {
+            InlineStyles =
+            [
+                new ZetlInlineStyleRange { Start = 4, Length = 4, Kind = ZetlInlineStyleKinds.Bold },
+                new ZetlInlineStyleRange { Start = 9, Length = 4, Kind = ZetlInlineStyleKinds.Link, Href = "http://h" }
+            ]
+        };
+        var propertyProject = Project("Demo", [Bucket("b1", "Ideas")], [propertySlip]);
+        var propertyHtml = ZetlViewRenderer.Render(
+            propertyProject,
+            propertyProject.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
+        AssertContains(propertyHtml, $"<li id=\"{propertySlip.Id}\">see <strong>this</strong> <a href=\"http://h\">link</a></li>");
+        AssertRender(
+            propertyProject,
+            ZetlViewKinds.Markdown,
+            "# Demo\n\n## Ideas\n\n- see **this** [link](http://h)");
+
+        var target = Slip("b1", "target");
+        var wikiSlip = Slip("b1", "see target", "bullet") with
+        {
+            InlineStyles =
+            [
+                new ZetlInlineStyleRange
+                {
+                    Start = 4,
+                    Length = 6,
+                    Kind = ZetlInlineStyleKinds.WikiLink,
+                    TargetSlipId = target.Id,
+                    CachedTitle = "Target"
+                }
+            ]
+        };
+        var wikiProject = Project("Demo", [Bucket("b1", "Ideas")], [target, wikiSlip]);
+        var wikiHtml = ZetlViewRenderer.Render(
+            wikiProject,
+            wikiProject.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
+        AssertContains(wikiHtml, $"<a href=\"#{target.Id}\">target</a>");
+        AssertRender(
+            wikiProject,
+            ZetlViewKinds.Markdown,
+            $"# Demo\n\n## Ideas\n\ntarget\n\n- see [target](#{target.Id})");
     }
 
     [Fact] public void MarkdownBlockListsRenderToHtml()
@@ -284,9 +355,9 @@ public class ZetlViewTests
             ZetlMarkdown.BlocksToHtml("1. a\n2. b"),
             "Ordered list.");
         AssertEqual(
-            "<ul style=\"list-style:none;padding-left:1.1em\"><li>☐ todo</li><li>☑ done</li></ul>",
+            "<ul style=\"list-style:none;padding-left:1.1em\"><li><input type=\"checkbox\" /> todo</li><li><input type=\"checkbox\" checked /> done</li></ul>",
             ZetlMarkdown.BlocksToHtml("- [ ] todo\n- [x] done"),
-            "Task list with checkbox glyphs.");
+            "Task list with checkbox inputs.");
         AssertEqual(
             "intro <strong>x</strong><ul><li>item</li></ul>",
             ZetlMarkdown.BlocksToHtml("intro **x**\n- item"),
@@ -375,8 +446,8 @@ public class ZetlViewTests
             tasks.Slips,
             new ZetlViewDocument { Id = "t", Name = "T", Kind = ZetlViewKinds.Html });
         AssertContains(taskHtml, "<ul style=\"list-style:none;padding-left:1.1em\">");
-        AssertContains(taskHtml, $"<li id=\"{task1.Id}\">☐ first</li>");
-        AssertContains(taskHtml, $"<li id=\"{task2.Id}\">☑ second</li>");
+        AssertContains(taskHtml, $"<li id=\"{task1.Id}\"><input type=\"checkbox\" /> first</li>");
+        AssertContains(taskHtml, $"<li id=\"{task2.Id}\"><input type=\"checkbox\" checked /> second</li>");
 
         // Plain notes: no list wrapper at all.
         var plainSlip = Slip("b1", "first");
@@ -421,6 +492,51 @@ public class ZetlViewTests
             project,
             ZetlViewKinds.Markdown,
             "# Demo\n\n## Tasks\n\n- [ ] todo\n- [x] done\nplain item");
+    }
+
+    [Fact] public void MarkdownDoesNotDoublePrefixAuthoredListMarkup()
+    {
+        var project = Project(
+            "Demo",
+            [
+                Bucket("b1", "Task Bucket", renderKind: "task"),
+                Bucket("b2", "Bullet Bucket", renderKind: "bullet")
+            ],
+            [
+                Slip("b1", "- [ ] typed task"),
+                Slip("b1", "property task", "task"),
+                Slip("b2", "- [x] authored checkbox"),
+                Slip("b2", "plain bullet")
+            ]);
+
+        AssertRender(
+            project,
+            ZetlViewKinds.Markdown,
+            "# Demo\n\n## Task Bucket\n\n- [ ] typed task\n- [ ] property task\n\n## Bullet Bucket\n\n- [x] authored checkbox\n- plain bullet");
+    }
+
+    [Fact] public void HtmlTaskListsUseCheckboxInputsWithoutNestingAuthoredTasks()
+    {
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Tasks", renderKind: "task")],
+            [
+                Slip("b1", "property task", "task", isChecked: true),
+                Slip("b1", "- [ ] typed task")
+            ]);
+
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html }).ReplaceLineEndings("\n");
+
+        AssertContains(html, "<li id=\"");
+        AssertContains(html, "<input type=\"checkbox\" checked /> property task");
+        AssertContains(html, "<div id=\"");
+        AssertContains(html, "<input type=\"checkbox\" /> typed task");
+        AssertTrue(
+            !html.Contains("<input type=\"checkbox\" /> <ul", StringComparison.Ordinal),
+            "Authored task syntax should render as its own list, not as a nested checkbox inside a property task.");
     }
 
     [Fact] public void GroupBucketRendersAsBoxedSection()

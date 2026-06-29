@@ -19,6 +19,12 @@ internal interface IClipboard
     /// </summary>
     bool SetText(string text);
 
+    /// <summary>
+    /// Replace the clipboard with rich text plus a plain-text fallback. Backends
+    /// that cannot carry rich formats should write the fallback text.
+    /// </summary>
+    bool SetRichText(string plainText, string html);
+
     /// <summary>Replace the clipboard with a normalized PNG image.</summary>
     bool SetImage(ZetlClipboardImage image);
 

@@ -530,6 +530,58 @@ public class ZetlProjectServiceTests
         AssertEqual("", cleared.BlockKind, "An explicit empty kind clears the marker (toggle off).");
     }
 
+    [Fact] public void SlipInlineStylesRoundTripAndNormalize()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "hello world", "copy");
+        var service = new ZetlProjectService(store);
+
+        ZetlSlipSnapshot Update(string id, UpdateSlipCommand command, long revision) =>
+            service.Execute(ZetlCommandEnvelope.Create(
+                id, ZetlCommandKind.UpdateSlip, command, project.Id, note.Id, revision))
+                .Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException($"{id} did not return a slip.");
+
+        var styled = Update(
+            "style",
+            new UpdateSlipCommand
+            {
+                Text = note.Text,
+                InlineStyles =
+                [
+                    new ZetlInlineStyleRange { Start = 6, Length = 5, Kind = " BOLD " },
+                    new ZetlInlineStyleRange { Start = 0, Length = 5, Kind = "link", Href = " https://example.com " },
+                    new ZetlInlineStyleRange { Start = 6, Length = 50, Kind = "italic", Href = "ignored" },
+                    new ZetlInlineStyleRange { Start = 6, Length = 5, Kind = "bold" },
+                    new ZetlInlineStyleRange { Start = 0, Length = 5, Kind = "missing-link" },
+                    new ZetlInlineStyleRange { Start = 4, Length = 0, Kind = "strike" }
+                ]
+            },
+            note.Revision);
+
+        AssertEqual(3, styled.InlineStyles.Count, "Valid inline ranges should persist after normalization.");
+        AssertEqual(ZetlInlineStyleKinds.Link, styled.InlineStyles[0].Kind, "The link range should sort first.");
+        AssertEqual("https://example.com", styled.InlineStyles[0].Href, "Link hrefs should be trimmed.");
+        AssertEqual(ZetlInlineStyleKinds.Bold, styled.InlineStyles[1].Kind, "Bold should normalize.");
+        AssertEqual(ZetlInlineStyleKinds.Italic, styled.InlineStyles[2].Kind, "Italic should normalize.");
+        AssertEqual(5, styled.InlineStyles[2].Length, "Ranges should clamp to the current text length.");
+        AssertEqual(3, note.InlineStyles.Count, "The stored note should carry normalized ranges.");
+
+        var shortened = Update(
+            "shorten",
+            new UpdateSlipCommand { Text = "hello" },
+            styled.Revision);
+        AssertEqual(1, shortened.InlineStyles.Count, "Omitting inline styles preserves and reclamps existing ranges.");
+        AssertEqual(ZetlInlineStyleKinds.Link, shortened.InlineStyles[0].Kind, "Only the still-valid range should remain.");
+
+        var cleared = Update(
+            "clear-inline",
+            new UpdateSlipCommand { Text = shortened.Text, InlineStyles = [] },
+            shortened.Revision);
+        AssertEqual(0, cleared.InlineStyles.Count, "An explicit empty style list clears inline styling.");
+    }
+
     [Fact] public void DividerNoteAddsWithoutContent()
     {
         using var temp = new TempStateDirectory();

@@ -312,7 +312,10 @@ internal sealed class ZetlShortcutCoordinator
             return ZetlCompileOutcome.RestoreTarget;
         }
 
-        if (!clipboard.SetText(result.CompiledText))
+        var copied = string.IsNullOrWhiteSpace(result.CompiledHtml)
+            ? clipboard.SetText(result.CompiledText)
+            : clipboard.SetRichText(result.CompiledText, result.CompiledHtml);
+        if (!copied)
         {
             // Staging failed, so don't paste stale clipboard content or claim a
             // copy succeeded. The compiled text can be re-produced by compiling

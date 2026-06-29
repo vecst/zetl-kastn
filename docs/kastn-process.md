@@ -55,11 +55,10 @@ own tray icon:
   still exits Kastn outright and leaves Zetl resident.
 - **Quitting Zetl coordinates the shutdown.** When the user quits Zetl with a
   Kastn connected, Zetl sends a shutdown request and waits for Kastn's decision.
-  A Kastn minimized to the tray closes silently, so quitting Zetl closes
-  everything. An open Kastn raises itself and shows a `Close both / Cancel`
-  confirmation; cancelling aborts Zetl's quit, so closing Zetl no longer silently
-  relaunches because Kastn was still open. On a confirmed close, Kastn suppresses
-  the reconnect-driven relaunch and exits.
+  Kastn restores/focuses itself, including from the tray-minimized state, and
+  shows a `Close both / Cancel` confirmation. Cancelling aborts Zetl's quit, so
+  closing Zetl no longer silently relaunches because Kastn was still open. On a
+  confirmed close, Kastn suppresses the reconnect-driven relaunch and exits.
 
 This coordinated path applies to the Zetl tray's `Quit`. An unexpected Zetl exit
 (a crash or kill) is still treated as an outage: Kastn reports offline and

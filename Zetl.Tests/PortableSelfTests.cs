@@ -151,6 +151,7 @@ public class PortableSelfTests
                 ("Runtime completes flattened compile result", RuntimeCompletesCompileResult),
                 ("Runtime preserves structured compile saves", RuntimePreservesStructuredCompileSaves),
                 ("Runtime returns copy and paste compile outcomes", RuntimeReturnsCopyAndPasteCompileOutcomes),
+                ("Runtime formatted compile stages rich clipboard", RuntimeFormattedCompileStagesRichClipboard),
                 ("Runtime compile does not paste when the clipboard write fails", RuntimeCompileDoesNotPasteWhenClipboardWriteFails),
                 ("Runtime reports rejected compiled paste", RuntimeReportsRejectedCompiledPaste),
                 ("Runtime parity scenario writes a reloadable snapshot", RuntimeParityScenarioWritesSnapshot)
@@ -3791,6 +3792,47 @@ public class PortableSelfTests
             AssertEqual("pasted compile", clipboard.Text, "Paste Now should stage compiled text on the clipboard.");
         }
 
+        private static void RuntimeFormattedCompileStagesRichClipboard()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var source = store.CreateProject("Source", ["Inbox"], "Inbox");
+            var task = store.AddNote(source.Buckets.First(), "compiled task", "copy", blockKind: ZetlBlockKinds.Task);
+            var selected = store.GetSlipDisplayItems(source)
+                .Where(item => item.Note.Id == task.Id)
+                .ToList();
+            var clipboard = new FakeClipboard("before", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _);
+            var request = new ZetlCompileRequest(false, source, null);
+
+            var outcome = coordinator.CompleteCompile(
+                request,
+                new ZetlCompileResult(
+                    Committed: true,
+                    CompiledText: "Source\r\n\r\nInbox\r\n\tcompiled task",
+                    SaveToBucket: false,
+                    DestinationProject: source,
+                    DestinationBucketName: "Inbox",
+                    Flatten: false,
+                    SelectedNoteTexts: ["compiled task"],
+                    PasteNow: false,
+                    CompiledHtml: store.CompileHtmlFromNotes(source, selected)));
+
+            AssertEqual(ZetlCompileOutcome.RestoreTarget, outcome, "Rich copy should restore the target.");
+            AssertEqual("Source\r\n\r\nInbox\r\n\tcompiled task", clipboard.Text, "Rich copy should keep the plain fallback.");
+            AssertTrue(
+                (clipboard.RichHtml ?? "").Contains("☐ compiled task", StringComparison.Ordinal),
+                "Rich copy should use a printable task box.");
+            AssertTrue(
+                !(clipboard.RichHtml ?? "").Contains("<input type=\"checkbox\"", StringComparison.Ordinal),
+                "Formatted clipboard output should not rely on interactive task inputs.");
+        }
+
         private static void RuntimeCompileDoesNotPasteWhenClipboardWriteFails()
         {
             using var temp = new TempStateFile();
@@ -4113,6 +4155,8 @@ public class PortableSelfTests
 
             public string? Text { get; private set; }
 
+            public string? RichHtml { get; private set; }
+
             public uint ChangeToken { get; private set; }
 
             public int ImageSetCount { get; private set; }
@@ -4139,6 +4183,21 @@ public class PortableSelfTests
                 }
 
                 Text = text;
+                RichHtml = null;
+                Image = null;
+                ChangeToken++;
+                return true;
+            }
+
+            public bool SetRichText(string plainText, string html)
+            {
+                if (!SetTextSucceeds)
+                {
+                    return false;
+                }
+
+                Text = plainText;
+                RichHtml = html;
                 Image = null;
                 ChangeToken++;
                 return true;
@@ -4153,6 +4212,7 @@ public class PortableSelfTests
 
                 Image = image;
                 Text = null;
+                RichHtml = null;
                 ImageSetCount++;
                 ChangeToken++;
                 return true;
@@ -4166,6 +4226,7 @@ public class PortableSelfTests
             public void SetState(string? text, uint changeToken)
             {
                 Text = text;
+                RichHtml = null;
                 Image = null;
                 ChangeToken = changeToken;
             }

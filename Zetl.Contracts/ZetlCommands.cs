@@ -134,6 +134,10 @@ public sealed record UpdateSlipCommand
     // Null preserves the current checked state; true/false set it (only meaningful
     // when the note's list kind is "task").
     public bool? Checked { get; init; }
+
+    // Null preserves the current inline style ranges; an empty list explicitly clears
+    // them. Ranges are normalized against Text before persisting.
+    public IReadOnlyList<ZetlInlineStyleRange>? InlineStyles { get; init; }
 }
 
 public sealed record MoveSlipCommand

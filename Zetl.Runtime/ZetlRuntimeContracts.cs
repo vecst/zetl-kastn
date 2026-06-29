@@ -88,7 +88,8 @@ internal sealed record ZetlCompileResult(
     string DestinationBucketName,
     bool Flatten,
     IReadOnlyList<string> SelectedNoteTexts,
-    bool PasteNow);
+    bool PasteNow,
+    string? CompiledHtml = null);
 
 internal enum ZetlCompileOutcome
 {

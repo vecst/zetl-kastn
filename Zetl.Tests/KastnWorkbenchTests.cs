@@ -216,6 +216,57 @@ public class KastnWorkbenchTests
         AssertEqual("done", KastnBatchFormat.ToggleStrike("~~done~~"), "Unwrap strike.");
     }
 
+    [Fact] public void InlineStyleEditingTogglesAndSplitsRanges()
+    {
+        var text = "alpha beta gamma";
+        var bold = KastnInlineStyleEditing.ToggleTextStyle(
+            text,
+            [],
+            start: 6,
+            length: 4,
+            ZetlInlineStyleKinds.Bold);
+        AssertEqual(1, bold.Count, "Toggling on should add a range.");
+        AssertEqual(6, bold[0].Start, "The new range should start at the selection.");
+        AssertEqual(4, bold[0].Length, "The new range should cover the selection.");
+
+        var split = KastnInlineStyleEditing.ToggleTextStyle(
+            text,
+            [new ZetlInlineStyleRange { Start = 0, Length = text.Length, Kind = ZetlInlineStyleKinds.Bold }],
+            start: 6,
+            length: 4,
+            ZetlInlineStyleKinds.Bold);
+        AssertEqual(2, split.Count, "Toggling inside a styled run should split the surrounding range.");
+        AssertEqual(0, split[0].Start, "The left remainder should stay in place.");
+        AssertEqual(6, split[0].Length, "The left remainder should end at the selection.");
+        AssertEqual(10, split[1].Start, "The right remainder should start after the selection.");
+    }
+
+    [Fact] public void InlineStyleEditingSetsExclusiveLinksAndShiftsInsertion()
+    {
+        var text = "alpha beta";
+        var shifted = KastnInlineStyleEditing.ShiftForReplacement(
+            text,
+            [new ZetlInlineStyleRange { Start = 6, Length = 4, Kind = ZetlInlineStyleKinds.Italic }],
+            start: 0,
+            replacedLength: 0,
+            replacementLength: 5);
+        AssertEqual(11, shifted[0].Start, "Inserting before a range should shift it forward.");
+
+        var link = KastnInlineStyleEditing.SetWebLink(
+            text,
+            [
+                new ZetlInlineStyleRange { Start = 0, Length = 5, Kind = ZetlInlineStyleKinds.Link, Href = "https://old" },
+                new ZetlInlineStyleRange { Start = 6, Length = 4, Kind = ZetlInlineStyleKinds.Bold }
+            ],
+            start: 0,
+            length: 5,
+            href: "https://new");
+        AssertEqual(2, link.Count, "Setting a link should replace overlapping links and keep other styles.");
+        AssertEqual(ZetlInlineStyleKinds.Link, link[0].Kind, "The link range should remain first by start.");
+        AssertEqual("https://new", link[0].Href, "The link URL should update.");
+        AssertEqual(ZetlInlineStyleKinds.Bold, link[1].Kind, "Non-link styling should survive.");
+    }
+
     [Fact] public void SelectionComputesSlipsTitleAndNone()
     {
         var s1 = SlipTreeNode("s1");

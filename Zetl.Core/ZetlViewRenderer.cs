@@ -117,10 +117,11 @@ internal static class ZetlViewRenderer
 
     /// <summary>
     /// Group the given slips for rendering: one group per bucket (in project bucket
-    /// order, only buckets with slips) by default, or one group per declared
+    /// order, including empty ancestors that contain visible descendant slips) by default, or one group per declared
     /// <see cref="ZetlViewDocument.Sections"/> section (merging the named buckets'
     /// slips under the section title) when the view defines sections. Empty groups
-    /// are omitted. Shared by the text renderer and Kastn's PDF renderer.
+    /// with no visible descendants are omitted. Shared by the text renderer and
+    /// Kastn's PDF renderer.
     /// </summary>
     public static IReadOnlyList<ZetlViewGroup> BuildGroups(
         ZetlProjectSnapshot project,
@@ -143,23 +144,65 @@ internal static class ZetlViewRenderer
 
         var groups = new List<ZetlViewGroup>();
         var numberer = new ZetlOutlineNumberer();
+        var childrenByParentId = project.Buckets
+            .GroupBy(bucket => bucket.ParentBucketId ?? "", StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<ZetlBucketSnapshot>)group.ToList(),
+                StringComparer.Ordinal);
+        var emittedBucketIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var bucket in project.Buckets.Where(bucket => bucket.ParentBucketId is null))
+        {
+            AddRenderableBucket(bucket);
+        }
+
         foreach (var bucket in project.Buckets)
         {
-            if (slipsByBucketId.TryGetValue(bucket.Id, out var bucketSlips) && bucketSlips.Count > 0)
-            {
-                var depth = BucketDepth(bucket, bucketsById);
-                groups.Add(new ZetlViewGroup(bucket.Name.Trim(), depth, bucket, bucketSlips)
-                {
-                    OutlineNumber = numberer.Next(depth),
-                    HeadingAlign = bucket.HeadingAlign,
-                    HeadingBold = bucket.HeadingBold,
-                    HeadingLevel = bucket.HeadingLevel,
-                    RenderKind = NormalizeBucketRenderKind(bucket.RenderKind)
-                });
-            }
+            AddRenderableBucket(bucket);
         }
 
         return groups;
+
+        bool HasVisibleContent(ZetlBucketSnapshot bucket)
+        {
+            if (slipsByBucketId.TryGetValue(bucket.Id, out var bucketSlips) && bucketSlips.Count > 0)
+            {
+                return true;
+            }
+
+            return childrenByParentId.TryGetValue(bucket.Id, out var children)
+                && children.Any(HasVisibleContent);
+        }
+
+        void AddRenderableBucket(ZetlBucketSnapshot bucket)
+        {
+            if (!emittedBucketIds.Add(bucket.Id) || !HasVisibleContent(bucket))
+            {
+                return;
+            }
+
+            slipsByBucketId.TryGetValue(bucket.Id, out var bucketSlips);
+            var depth = BucketDepth(bucket, bucketsById);
+            groups.Add(new ZetlViewGroup(bucket.Name.Trim(), depth, bucket, bucketSlips ?? [])
+            {
+                OutlineNumber = numberer.Next(depth),
+                HeadingAlign = bucket.HeadingAlign,
+                HeadingBold = bucket.HeadingBold,
+                HeadingLevel = bucket.HeadingLevel,
+                RenderKind = NormalizeBucketRenderKind(bucket.RenderKind)
+            });
+
+            if (!childrenByParentId.TryGetValue(bucket.Id, out var children))
+            {
+                return;
+            }
+
+            foreach (var child in children)
+            {
+                AddRenderableBucket(child);
+            }
+        }
     }
 
     private static IReadOnlyList<ZetlViewGroup> BuildSectionGroups(
@@ -350,7 +393,9 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                var slipText = ZetlMarkdown.ResolveWikiLinksInNote(SlipText(slip), id => project.Slips.Any(s => s.Id == id));
+                var slipText = ZetlMarkdown.ResolveWikiLinksInNote(
+                    ZetlMarkdown.ApplyInlineStyleMarkers(SlipText(slip), slip.InlineStyles),
+                    id => project.Slips.Any(s => s.Id == id));
                 var kind = SlipBlockKind(slip);
                 if (string.IsNullOrEmpty(kind))
                 {
@@ -419,6 +464,15 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
+                // If the author already typed Markdown list syntax, preserve it.
+                // Styling a bucket/slip as a list must not double-prefix "- [ ]".
+                if (FirstContentLineStartsWithMarkdownListMarker(lines))
+                {
+                    orderedRun = 0;
+                    parts.AddRange(lines.Where(line => line.Length > 0));
+                    continue;
+                }
+
                 if (kind == ZetlBlockKinds.Ordered)
                 {
                     EmitMarkedSlipMarkdown(parts, $"{++orderedRun}. ", lines);
@@ -435,20 +489,8 @@ internal static class ZetlViewRenderer
                         EmitMarkedSlipMarkdown(parts, slip.Checked ? "- [x] " : "- [ ] ", lines);
                         break;
                     default:
-                        // A plain note. One that itself holds list markup is emitted
-                        // verbatim so its GFM list stays intact; otherwise its lines
-                        // flow as a paragraph block.
-                        var firstContentLine = lines.First(line => line.Length > 0);
-                        if (StartsWithMarkdownListMarker(firstContentLine))
-                        {
-                            parts.AddRange(lines.Where(line => line.Length > 0));
-                        }
-                        else
-                        {
-                            parts.AddRange(lines);
-                            parts.Add("");
-                        }
-
+                        parts.AddRange(lines);
+                        parts.Add("");
                         break;
                 }
             }
@@ -592,7 +634,7 @@ internal static class ZetlViewRenderer
                     or ZetlBlockKinds.Code or ZetlBlockKinds.Divider)
                 {
                     CloseList();
-                    parts.Add($"<div id=\"{slip.Id}\">" + ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text), id => project.Slips.Any(s => s.Id == id)) + "</div>");
+                    parts.Add($"<div id=\"{slip.Id}\">" + ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text, slip.InlineStyles), id => project.Slips.Any(s => s.Id == id)) + "</div>");
                     continue;
                 }
 
@@ -605,7 +647,15 @@ internal static class ZetlViewRenderer
                 // HTML (the parser escapes literal runs). Literal views stay verbatim.
                 var align = SlipAlignment(slip);
                 var style = align == "left" ? "" : $" style=\"text-align:{align}\"";
-                var inner = ZetlMarkdown.BlocksToHtml(text, id => project.Slips.Any(s => s.Id == id));
+                var styledText = ZetlMarkdown.ApplyInlineStyleMarkers(text, slip.InlineStyles);
+                var inner = ZetlMarkdown.BlocksToHtml(styledText, id => project.Slips.Any(s => s.Id == id));
+                if (FirstContentLineStartsWithMarkdownListMarker(text))
+                {
+                    CloseList();
+                    parts.Add($"<div id=\"{slip.Id}\"{style}>{inner}</div>");
+                    continue;
+                }
+
                 if (kind.Length == 0)
                 {
                     CloseList();
@@ -625,8 +675,8 @@ internal static class ZetlViewRenderer
                     openKind = kind;
                 }
 
-                var glyph = kind == ZetlBlockKinds.Task ? (slip.Checked ? "☑ " : "☐ ") : "";
-                parts.Add($"<li id=\"{slip.Id}\"{style}>{glyph}{inner}</li>");
+                var marker = kind == ZetlBlockKinds.Task ? TaskCheckboxHtml(slip.Checked) : "";
+                parts.Add($"<li id=\"{slip.Id}\"{style}>{marker}{inner}</li>");
             }
 
             CloseList();
@@ -671,6 +721,19 @@ internal static class ZetlViewRenderer
             && (text[digits] == '.' || text[digits] == ')')
             && text[digits + 1] == ' ';
     }
+
+    private static bool FirstContentLineStartsWithMarkdownListMarker(IEnumerable<string> lines) =>
+        lines.FirstOrDefault(line => line.Trim().Length > 0) is { } first
+        && StartsWithMarkdownListMarker(first);
+
+    private static bool FirstContentLineStartsWithMarkdownListMarker(string text) =>
+        FirstContentLineStartsWithMarkdownListMarker(
+            (text ?? "").ReplaceLineEndings("\n").Split('\n'));
+
+    private static string TaskCheckboxHtml(bool isChecked) =>
+        isChecked
+            ? "<input type=\"checkbox\" checked /> "
+            : "<input type=\"checkbox\" /> ";
 
     private static string EscapeMarkdownAlt(string text) =>
         text.Replace("[", "\\[").Replace("]", "\\]");

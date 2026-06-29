@@ -71,6 +71,8 @@ internal partial class CompileWindow : ZetlPopupWindow
 
     public string CompiledText { get; private set; } = "";
 
+    public string? CompiledHtml { get; private set; }
+
     public bool PasteNow { get; private set; }
 
     public bool SaveToBucket { get; private set; }
@@ -277,6 +279,11 @@ internal partial class CompileWindow : ZetlPopupWindow
         };
     }
 
+    private string? BuildCompiledHtml(IReadOnlyList<SlipDisplayItem> selected) =>
+        string.Equals(SelectedCompileMode, "Formatted", StringComparison.OrdinalIgnoreCase)
+            ? store.CompileHtmlFromNotes(sourceProject, selected)
+            : null;
+
     private void UpdateCompileModeControls()
     {
         var tsvSelected = string.Equals(
@@ -344,6 +351,9 @@ internal partial class CompileWindow : ZetlPopupWindow
         CompiledText = unformatted
             ? store.CompileUnformattedFromNotes(selected)
             : BuildCompiledText(selected);
+        CompiledHtml = !saveToBucket && !unformatted
+            ? BuildCompiledHtml(selected)
+            : null;
         completionDecided = true;
         Saved = true;
         Close();
@@ -365,6 +375,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         PasteNow = true;
         SaveToBucket = false;
         CompiledText = note.Note.Text.Trim();
+        CompiledHtml = null;
         completionDecided = true;
         Saved = true;
         Close();

@@ -160,6 +160,42 @@ public sealed record ZetlSlipSnapshot
 
     // Kastn-only: the checked state when BlockKind is "task"; ignored otherwise.
     public bool Checked { get; init; }
+
+    // Kastn-only: property-backed inline styling over Text. Typed Markdown remains
+    // valid; these ranges are the toolbar/editor intent layer.
+    public IReadOnlyList<ZetlInlineStyleRange> InlineStyles { get; init; } = [];
+}
+
+public sealed record ZetlInlineStyleRange
+{
+    public int Start { get; init; }
+    public int Length { get; init; }
+    public string Kind { get; init; } = "";
+    public string? Href { get; init; }
+    public string? TargetSlipId { get; init; }
+    public string? CachedTitle { get; init; }
+}
+
+public static class ZetlInlineStyleKinds
+{
+    public const string Bold = "bold";
+    public const string Italic = "italic";
+    public const string Strike = "strike";
+    public const string Code = "code";
+    public const string Link = "link";
+    public const string WikiLink = "wikiLink";
+
+    public static string Normalize(string? kind) =>
+        kind?.Trim().ToLowerInvariant() switch
+        {
+            Bold => Bold,
+            Italic => Italic,
+            Strike or "strikethrough" => Strike,
+            Code or "inlinecode" or "inline-code" => Code,
+            Link => Link,
+            "wiki" or "wikilink" or "wiki-link" => WikiLink,
+            _ => ""
+        };
 }
 
 public sealed record ZetlPictureSnapshot

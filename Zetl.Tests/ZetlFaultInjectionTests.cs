@@ -80,6 +80,7 @@ public class ZetlFaultInjectionTests
         public string? TryGetText() => null;
         public ZetlClipboardImage? TryGetImage() => null;
         public bool SetText(string text) => !failOnSet;
+        public bool SetRichText(string plainText, string html) => !failOnSet;
         public bool SetImage(ZetlClipboardImage image) => !failOnSet;
         public uint GetChangeToken() => 0;
     }

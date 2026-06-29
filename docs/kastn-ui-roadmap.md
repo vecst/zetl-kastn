@@ -49,12 +49,15 @@ The existing drag implementation uses `MoveSlip`, `ReorderSlip`, and
 
 ### Slip Formatting
 
-Formatting is Markdown-backed rather than WYSIWYG. Plain text remains valid
-Markdown, so Zetl capture stays decision-free.
+Typed Markdown remains valid and first-class, so Zetl capture stays
+decision-free. Toolbar formatting should become property-backed structured
+intent: the button changes slip metadata or style ranges, and each export mode
+decides how to express those properties.
 
 - [x] Optional block alignment stored as slip metadata
-- [x] Bold, italic, strikethrough, inline code, and web links
-- [x] Formatting toolbar (inline wraps a selection; the block kind is a property)
+- [x] Bold, italic, strikethrough, inline code, and web links render from typed
+      Markdown markers
+- [x] Formatting toolbar for block kinds (the block kind is a property)
 - [x] Shared parsing across on-screen, HTML, and PDF renderers
 - [x] Literal Formatted/Plain/TSV behavior left unchanged
 - [x] Per-note **block kind** (paragraph / bullet / ordered / task / heading /
@@ -62,6 +65,30 @@ Markdown, so Zetl capture stays decision-free.
       body text; task notes carry a checked flag toggled from the View
 - [x] Blessed in-body Markdown: typed `##` / `>` / fences / `---` / lists render
 - [x] Export-fidelity advisory when the selected view drops formatting on export
+- [ ] Move inline toolbar buttons away from inserting Markdown markers and toward
+      persisted inline style properties/ranges. Markdown can still be typed
+      directly; buttons should not mutate body text as their long-term model.
+
+Shipping worklist for property-backed inline formatting:
+
+- [x] Add a persisted inline style range contract on slips, with command
+      semantics where `null` preserves existing ranges and `[]` clears them.
+- [ ] Reconcile style ranges during text edits. Start with clamping/dropping
+      invalid ranges, then add selection-aware shifting so edits before a range
+      keep the intended styled text attached.
+- [x] Convert bold, italic, strike, and inline-code toolbar actions to toggle
+      style ranges over the editor selection. Empty selections should create a
+      small editable placeholder range rather than inserting Markdown markers.
+- [x] Convert web-link and slip-link toolbar actions to structured link ranges
+      (`href` or target slip id + cached title) while keeping typed Markdown and
+      typed wiki-link tokens fully supported.
+- [x] Feed property ranges into the shared inline AST so the center View, HTML,
+      PDF, Markdown export, and rich clipboard all translate the same intent.
+- [ ] Keep `Plain` and `TSV` export/compile modes literal; they ignore inline
+      style ranges just like they ignore typed Markdown styling.
+- [ ] Add editor affordances for range state: button active state over the
+      current selection/caret, conflict-safe saves, and tests for overlapping
+      marks such as bold+italic or link+code rejection.
 
 ### Note Kinds And Structural Elements
 
@@ -185,6 +212,68 @@ should be disposed by Zetl.
 - [ ] Keep keyboard-accessible movement controls while reducing redundant
       always-visible Move/parent UI.
 - [ ] Improve reading width and font-size controls.
+
+## Dogfood Notes From Live Kastn/Zetl Use
+
+These are field notes captured while using Zetl and Kastn together. Treat them
+as interaction bugs or near-term polish candidates rather than new product
+directions.
+
+### Export And Compile Fidelity
+
+- [x] Markdown task output should render as usable task checkboxes in common
+      Markdown targets where supported, and should not show an extra bullet dot
+      in front of each checkbox.
+- [x] Zetl quick Compile should keep `Plain` and `TSV` free of styling while
+      `Formatted` can copy/paste rich clipboard content with printable task box
+      symbols for quick worksheets.
+- [ ] Recheck Markdown, HTML, PDF, and rich clipboard task/list rendering
+      together so on-screen View, Copy, Export, and Compile agree.
+
+### Detail Pane And Editor Layout
+
+- [ ] The style toolbar above the editor can overflow in the Detail pane. Give
+      the editor pane a little less horizontal ambition and more vertical room
+      so formatting controls wrap or compact cleanly.
+- [ ] Make inline formatting buttons property-backed. Typed Markdown remains
+      supported, but toolbar actions should set style metadata/ranges that the
+      on-screen View, Markdown, HTML, PDF, and rich clipboard exporters translate
+      appropriately.
+- [ ] Add a way to apply task/checklist styling to an entire bucket.
+
+### Deleted Slips
+
+- [ ] Deleted slips should be accessed through an explicit `View Deleted` button
+      rather than letting the protected `Deleted` bucket appear wherever it falls
+      in the tree.
+- [x] While browsing deleted slips, the button text should switch to `Read Slips`
+      or similar so the return path is obvious.
+- [ ] Pressing Delete with a selected slip in the Buckets and Slips pane should
+      ask for confirmation before moving the slip to Deleted.
+
+### View And Layout Polish
+
+- [ ] Add per-view title controls: hide the project name, use the project name,
+      or provide a custom document title.
+- [ ] Hiding an item low in a long View briefly flashes/scrolls to the top before
+      restoring position. Preserve scroll without the visible jump.
+- [ ] Compare the left Buckets and Slips pane layout against the center View
+      layout; spacing, hierarchy, and visual rhythm currently feel mismatched.
+
+### Board Mode
+
+- [x] Creating a new slip/card in Board Mode should save with `Ctrl+Enter`, just
+      like the main editor.
+
+### Project Landing And Bulk Actions
+
+- [ ] Add project-card multi-select through a checkbox in the top-right corner of
+      each card.
+- [ ] When any project is selected, show a compact bulk-action bar/dropdown for
+      archive, delete, rename where applicable, set active, and set alternate.
+- [ ] When all selected projects share an action menu, applying an action from
+      that menu should affect the whole selection.
+- [ ] Add a right-click context menu mirroring the card overflow and bulk actions.
 
 ## Publishing Backlog
 

@@ -79,6 +79,12 @@ highlight the active kind. Inline formatting — bold, italic, strikethrough,
 inline code, web links, and stable-ID wiki-links — wraps the current selection.
 Alignment (left, center, right) is a per-note property.
 
+Direction: inline toolbar actions should become property-backed too. Typed
+Markdown remains available, but buttons such as bold, italic, strikethrough,
+inline code, web links, and stable-ID wiki-links should eventually set style
+intent that each export mode translates, rather than editing the body text as
+their long-term model.
+
 Typing Markdown by hand in the body is also supported: `**bold**`, `## heading`,
 `> quote`, fenced code, `---` dividers, and `- ` / `1. ` lists all render. The
 buttons are the decision-free path; typing is the explicit one — both are valid.

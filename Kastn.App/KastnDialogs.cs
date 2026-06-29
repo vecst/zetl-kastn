@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using ZETL;
 using ZETL.Contracts;
@@ -372,7 +374,7 @@ internal static class KastnDialogs
         var dialog = Dialog($"Edit Slip ({slip.Id})", 600, 480);
         dialog.CanResize = true;
 
-        ok.Click += (_, _) =>
+        void Commit()
         {
             var selectedBucket = (columnCombo.SelectedItem as BucketItem)?.Bucket.Id;
             var selectedKind = (kindCombo.SelectedItem as BlockKindItem)?.Kind ?? ZetlBlockKinds.None;
@@ -383,7 +385,20 @@ internal static class KastnDialogs
                 DestinationBucketId = selectedBucket,
                 BlockKind = selectedKind
             });
-        };
+        }
+
+        ok.Click += (_, _) => Commit();
+        input.AddHandler(
+            InputElement.KeyDownEvent,
+            (_, args) =>
+            {
+                if (args.KeyModifiers.HasFlag(KeyModifiers.Control) && args.Key == Key.Enter)
+                {
+                    args.Handled = true;
+                    Commit();
+                }
+            },
+            RoutingStrategies.Tunnel);
 
         cancel.Click += (_, _) => dialog.Close(null);
 
