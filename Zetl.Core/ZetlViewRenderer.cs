@@ -483,6 +483,7 @@ internal static class ZetlViewRenderer
                         : "";
                 if (markerKind.Length > 0)
                 {
+                    (markerKind, innerKind) = MarkdownListKinds(markerKind, innerKind);
                     var marker = MarkdownOuterListMarker(markerKind, slip.Checked, ref orderedRun)
                         + MarkdownInnerListMarker(innerKind, slip.Checked);
                     EmitMarkedSlipMarkdown(parts, marker, lines);
@@ -568,6 +569,11 @@ internal static class ZetlViewRenderer
         ZetlBlockKinds.Ordered => "1. ",
         _ => ""
     };
+
+    private static (string OuterKind, string InnerKind) MarkdownListKinds(string outerKind, string innerKind) =>
+        outerKind == ZetlBlockKinds.Task || innerKind == ZetlBlockKinds.Task
+            ? (ZetlBlockKinds.Task, "")
+            : (outerKind, innerKind);
 
     public static string HtmlListItemMarker(string outerKind, string innerKind, bool isChecked)
     {

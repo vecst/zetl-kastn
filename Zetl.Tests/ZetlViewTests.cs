@@ -701,7 +701,15 @@ public class ZetlViewTests
         AssertRender(
             project,
             ZetlViewKinds.Markdown,
-            "# ComposeDemo\n\n## Numbered Tasks\n\n1. [ ] call\n2. [x] done\n\n## Bullet Tasks\n\n- [ ] todo");
+            "# ComposeDemo\n\n## Numbered Tasks\n\n- [ ] call\n- [x] done\n\n## Bullet Tasks\n\n- [ ] todo");
+
+        var markdown = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "m", Name = "M", Kind = ZetlViewKinds.Markdown }).ReplaceLineEndings("\n");
+        AssertTrue(
+            !markdown.Contains("1. [ ]", StringComparison.Ordinal),
+            "Markdown tasks should use canonical GFM task markers instead of numbered list text.");
 
         var html = ZetlViewRenderer.Render(
             project,
@@ -729,7 +737,7 @@ public class ZetlViewTests
         AssertRender(
             project,
             ZetlViewKinds.Markdown,
-            "# OptOutDemo\n\n## Numbered Tasks\n\n1. [ ] composed\n- [ ] own task");
+            "# OptOutDemo\n\n## Numbered Tasks\n\n- [ ] composed\n- [ ] own task");
 
         var preferred = ZetlViewRenderer.Render(
             project,
