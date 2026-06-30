@@ -800,6 +800,7 @@
                         <Grid ColumnDefinitions="Auto,Auto,*,Auto"
                               ColumnSpacing="6"
                               MinWidth="225"
+                              Tag="treeRow"
                               Background="Transparent"
                               Opacity="{Binding NodeOpacity}">
                           <Viewbox Grid.Column="0"
@@ -900,7 +901,7 @@
                                        Classes="muted"
                                        FontSize="10" />
                           </Border>
-                          <!-- Live drop target marker during drag-and-drop. -->
+                          <!-- Live drop target marker during drag-and-drop (drop into). -->
                           <Border Grid.Column="0"
                                   Grid.ColumnSpan="4"
                                   IsHitTestVisible="False"
@@ -911,6 +912,21 @@
                                   Margin="-4,0,0,0"
                                   Opacity="0.6"
                                   IsVisible="{Binding IsDropTarget}" />
+                          <!-- Insertion lines during a bucket reorder drag (drop between). -->
+                          <Border Grid.Column="0"
+                                  Grid.ColumnSpan="4"
+                                  IsHitTestVisible="False"
+                                  Height="2"
+                                  VerticalAlignment="Top"
+                                  Background="{DynamicResource ZetlAccentBrush}"
+                                  IsVisible="{Binding ShowDropBefore}" />
+                          <Border Grid.Column="0"
+                                  Grid.ColumnSpan="4"
+                                  IsHitTestVisible="False"
+                                  Height="2"
+                                  VerticalAlignment="Bottom"
+                                  Background="{DynamicResource ZetlAccentBrush}"
+                                  IsVisible="{Binding ShowDropAfter}" />
                         </Grid>
                       </TreeDataTemplate>
                     </TreeView.ItemTemplate>

@@ -89,6 +89,7 @@ public static class ZetlContractRules
         return kind is ZetlCommandKind.UpdateBucket
             or ZetlCommandKind.SetBucketHeading
             or ZetlCommandKind.DeleteBucket
+            or ZetlCommandKind.ReorderBucket
             or ZetlCommandKind.GetSlipPicture
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip
@@ -108,6 +109,7 @@ public static class ZetlContractRules
             or ZetlCommandKind.UpdateBucket
             or ZetlCommandKind.SetBucketHeading
             or ZetlCommandKind.DeleteBucket
+            or ZetlCommandKind.ReorderBucket
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip
             or ZetlCommandKind.ReorderSlip
@@ -128,6 +130,7 @@ public static class ZetlContractRules
             or ZetlCommandKind.AddBucket
             or ZetlCommandKind.UpdateBucket
             or ZetlCommandKind.SetBucketHeading
+            or ZetlCommandKind.ReorderBucket
             or ZetlCommandKind.AddSlip
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip

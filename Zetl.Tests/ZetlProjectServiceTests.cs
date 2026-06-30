@@ -1328,6 +1328,113 @@ public class ZetlProjectServiceTests
             expectedTargetRevision: expectedRevision);
     }
 
+    [Fact] public void ReorderBucketMovesBeforeSibling()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var inbox);
+        var middle = store.AddBucket(project, "Middle", setActive: false);
+        var last = store.AddBucket(project, "Last", setActive: false);
+        var service = new ZetlProjectService(store);
+
+        AssertEqual(
+            "Inbox,Middle,Last",
+            SiblingOrder(service, project.Id, null, "Inbox", "Middle", "Last"),
+            "Top-level buckets start in storage order.");
+
+        var response = service.Execute(ReorderBucketCommand(
+            "reorder-front", project.Id, last.Id, last.Revision, beforeBucketId: inbox.Id));
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Reorder should succeed.");
+        AssertEqual(
+            "Last,Inbox,Middle",
+            SiblingOrder(service, project.Id, null, "Inbox", "Middle", "Last"),
+            "Last should land immediately before Inbox.");
+    }
+
+    [Fact] public void ReorderBucketToEndWithNullAnchor()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var inbox);
+        var middle = store.AddBucket(project, "Middle", setActive: false);
+        var last = store.AddBucket(project, "Last", setActive: false);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ReorderBucketCommand(
+            "reorder-end", project.Id, inbox.Id, inbox.Revision, beforeBucketId: null));
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Reorder to end should succeed.");
+        AssertEqual(
+            "Middle,Last,Inbox",
+            SiblingOrder(service, project.Id, null, "Inbox", "Middle", "Last"),
+            "A null anchor moves the bucket to the end of its siblings.");
+    }
+
+    [Fact] public void ReorderBucketRejectsCrossParentAnchor()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var inbox);
+        var middle = store.AddBucket(project, "Middle", setActive: false);
+        var child = store.AddBucket(project, "Child", inbox.Id, setActive: false);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ReorderBucketCommand(
+            "reorder-cross", project.Id, child.Id, child.Revision, beforeBucketId: middle.Id));
+
+        AssertEqual(ZetlResponseStatus.ValidationError, response.Status, "A cross-parent anchor is invalid.");
+        AssertEqual("bucket_reorder_anchor_invalid", response.Error?.Code, "The anchor must be a sibling.");
+    }
+
+    [Fact] public void ReorderBucketConflictsOnStaleRevision()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var inbox);
+        var last = store.AddBucket(project, "Last", setActive: false);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ReorderBucketCommand(
+            "reorder-stale", project.Id, last.Id, last.Revision + 5, beforeBucketId: inbox.Id));
+
+        AssertEqual(ZetlResponseStatus.Conflict, response.Status, "A stale revision should conflict.");
+        AssertEqual(last.Revision, response.Conflict?.ActualRevision, "Conflict reports the bucket's current revision.");
+    }
+
+    private static ZetlCommandEnvelope ReorderBucketCommand(
+        string commandId,
+        string projectId,
+        string bucketId,
+        long expectedRevision,
+        string? beforeBucketId)
+    {
+        return ZetlCommandEnvelope.Create(
+            commandId,
+            ZetlCommandKind.ReorderBucket,
+            new ReorderBucketCommand { BeforeBucketId = beforeBucketId },
+            projectId,
+            bucketId,
+            expectedRevision);
+    }
+
+    private static string SiblingOrder(
+        ZetlProjectService service,
+        string projectId,
+        string? parentId,
+        params string[] names)
+    {
+        var wanted = names.ToHashSet(StringComparer.Ordinal);
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "get-" + Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.GetProject,
+            new GetProjectCommand(),
+            projectId));
+        var snapshot = response.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("GetProject returned no snapshot.");
+        return string.Join(
+            ",",
+            snapshot.Buckets
+                .Where(bucket => bucket.ParentBucketId == parentId && wanted.Contains(bucket.Name))
+                .Select(bucket => bucket.Name));
+    }
+
     private static ZetlStateStore CreateStoreWithProject(
         TempStateDirectory temp,
         out ZetlProject project,

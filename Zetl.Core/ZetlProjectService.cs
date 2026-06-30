@@ -125,6 +125,7 @@ internal sealed class ZetlProjectService
             ZetlCommandKind.UpdateBucket => UpdateBucket(command),
             ZetlCommandKind.SetBucketHeading => SetBucketHeading(command),
             ZetlCommandKind.DeleteBucket => DeleteBucket(command),
+            ZetlCommandKind.ReorderBucket => ReorderBucket(command),
             ZetlCommandKind.AddSlip => AddSlip(command),
             ZetlCommandKind.UpdateSlip => UpdateSlip(command),
             ZetlCommandKind.MoveSlip => MoveSlip(command),
@@ -778,6 +779,57 @@ internal sealed class ZetlProjectService
         store.DeleteBucket(project, bucket.Id);
         Publish(project, ZetlChangeKind.Deleted, ZetlEntityKind.Bucket, bucket.Id, bucket.Revision);
         return Success(command, project);
+    }
+
+    private ZetlResponseEnvelope ReorderBucket(ZetlCommandEnvelope command)
+    {
+        var found = FindBucket(command.ProjectId!, command.TargetId!);
+        if (found is null)
+        {
+            return NotFound(command, ZetlEntityKind.Bucket, command.TargetId!);
+        }
+
+        var (project, bucket) = found.Value;
+        var conflict = CheckRevision(
+            command,
+            ZetlEntityKind.Bucket,
+            bucket.Id,
+            bucket.Revision,
+            ZetlProjectSnapshotMapper.ToSnapshot(bucket));
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        var payload = Payload<ReorderBucketCommand>(command);
+        if (payload.BeforeBucketId is not null)
+        {
+            var anchor = project.Buckets.FirstOrDefault(item => item.Id == payload.BeforeBucketId);
+            if (anchor is null)
+            {
+                return NotFound(command, ZetlEntityKind.Bucket, payload.BeforeBucketId);
+            }
+
+            if (anchor.Id == bucket.Id || anchor.ParentBucketId != bucket.ParentBucketId)
+            {
+                return ValidationError(
+                    command,
+                    "bucket_reorder_anchor_invalid",
+                    "The reorder anchor must be another bucket under the same parent.");
+            }
+        }
+
+        if (!store.ReorderBucket(project, bucket, payload.BeforeBucketId))
+        {
+            return ValidationError(
+                command,
+                "bucket_reorder_invalid",
+                "The bucket could not be reordered.");
+        }
+
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Bucket, bucket.Id, bucket.Revision);
+        return Success(command, project, snapshot);
     }
 
     private ZetlResponseEnvelope AddSlip(ZetlCommandEnvelope command)

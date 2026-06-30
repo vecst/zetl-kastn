@@ -213,6 +213,31 @@ public class KastnWorkbenchTests
         AssertEqual("Picture", pictureLeaf.Label, "A textless picture labels as Picture.");
     }
 
+    [Fact] public void ProjectTreeFollowsStorageOrderNotAlphabetical()
+    {
+        var project = Project(
+            buckets:
+            [
+                Bucket("z", "Zebra"),
+                Bucket("a", "Apple"),
+                Bucket("m", "Mango"),
+                Bucket("zb", "Yak", "z"),
+                Bucket("za", "Ant", "z")
+            ],
+            slips: []);
+
+        var tree = KastnWorkbench.BuildProjectTree(project, project.Slips);
+
+        AssertEqual(
+            "z,a,m",
+            string.Join(",", tree.Select(node => node.Id)),
+            "Top-level buckets follow project.Buckets order, not alphabetical by name.");
+        AssertEqual(
+            "zb,za",
+            string.Join(",", tree[0].Children.Where(node => node.IsBucket).Select(node => node.Id)),
+            "Nested buckets also follow storage order.");
+    }
+
     [Fact] public void ProjectTreeSeparatesDeletedBucket()
     {
         var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);

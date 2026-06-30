@@ -100,6 +100,16 @@ public sealed record SetBucketHeadingCommand
 
 public sealed record DeleteBucketCommand;
 
+public sealed record ReorderBucketCommand
+{
+    /// <summary>
+    /// The sibling bucket the target should be placed immediately before, under the
+    /// same parent. A null anchor moves the target to the end of its sibling group.
+    /// Reorder never changes a bucket's parent — that remains UpdateBucket.
+    /// </summary>
+    public string? BeforeBucketId { get; init; }
+}
+
 public sealed record AddSlipCommand
 {
     public required string BucketId { get; init; }

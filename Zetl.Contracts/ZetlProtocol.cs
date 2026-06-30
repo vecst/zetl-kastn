@@ -49,6 +49,7 @@ public enum ZetlCommandKind
     UpdateBucket,
     SetBucketHeading,
     DeleteBucket,
+    ReorderBucket,
     AddSlip,
     UpdateSlip,
     MoveSlip,

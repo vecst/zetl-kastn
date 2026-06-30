@@ -1533,6 +1533,54 @@ internal sealed class ZetlStateStore
         return true;
     }
 
+    // Reposition a bucket among its siblings (buckets sharing its parent) in the flat
+    // project.Buckets list. Only sibling-relative order matters to the tree and
+    // renderer — descendants are linked by ParentBucketId, not list adjacency — so the
+    // single entry moves and its children come with it implicitly. A null anchor moves
+    // the bucket to the end of its sibling group; otherwise it lands immediately before
+    // the anchor, which must be a sibling.
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool ReorderBucket(ZetlProject project, ZetlBucket bucket, string? beforeBucketId)
+    {
+        var currentIndex = project.Buckets.FindIndex(item => item.Id == bucket.Id);
+        if (currentIndex < 0)
+        {
+            return false;
+        }
+
+        int targetIndex;
+        if (beforeBucketId is null)
+        {
+            var lastSiblingIndex = project.Buckets.FindLastIndex(item =>
+                item.Id != bucket.Id && item.ParentBucketId == bucket.ParentBucketId);
+            targetIndex = lastSiblingIndex < 0 ? project.Buckets.Count : lastSiblingIndex + 1;
+        }
+        else
+        {
+            var anchor = project.Buckets.FirstOrDefault(item => item.Id == beforeBucketId);
+            if (anchor is null
+                || anchor.Id == bucket.Id
+                || anchor.ParentBucketId != bucket.ParentBucketId)
+            {
+                return false;
+            }
+
+            targetIndex = project.Buckets.FindIndex(item => item.Id == beforeBucketId);
+        }
+
+        project.Buckets.RemoveAt(currentIndex);
+        if (targetIndex > currentIndex)
+        {
+            targetIndex--;
+        }
+
+        targetIndex = Math.Clamp(targetIndex, 0, project.Buckets.Count);
+        project.Buckets.Insert(targetIndex, bucket);
+        bucket.Revision++;
+        PersistProject(project);
+        return true;
+    }
+
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void ToggleActiveBucketPopMode(bool shifted = false)
     {

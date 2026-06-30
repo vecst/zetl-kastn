@@ -123,6 +123,26 @@ picture, and include state rather than introducing board-specific content.
       clearer column state, faster card creation, keyboard-save parity, and
       tighter spacing without changing the underlying bucket/slip model.
 
+The overhaul is sequenced as four slices (design in
+[`kastn-ui-roadmap.md`](kastn-ui-roadmap.md#board-mode)):
+
+- [x] **Canonical bucket order.** `project.Buckets` list order is now the one
+      order: a sibling-relative `ReorderBucket` command (contract / store /
+      service, revision-checked like `ReorderSlip`); the tree and board read
+      storage order instead of alphabetical so they match the default view and
+      export; and tree bucket drag shows an insertion line (top edge = before,
+      bottom edge = after, middle = nest), reordering via `ReorderBucket` with a
+      reparent step when the target sits under a different parent. Custom-section
+      views keep their own order. No migration. Unblocks column reorder and the
+      deferred bucket undo.
+- [ ] **Card placement precision + column reorder UI.** A board drop indicator,
+      insert before/after by card half, and column-header drag wired to
+      `ReorderBucket`.
+- [ ] **Incremental board rendering.** Update only the affected card/column
+      instead of rebuilding the whole board, removing the flash and scroll reset.
+- [ ] **Faster card creation.** Inline "type a card in place" instead of the
+      `+` → modal round-trip (keyboard-save parity already exists).
+
 ### Interaction Cleanup
 
 - [x] Add a clear live drop indicator to the existing tree drag-and-drop.

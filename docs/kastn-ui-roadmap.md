@@ -171,6 +171,30 @@ Landed:
 Board mode must remain a projection. It does not introduce board-owned content
 or a second ordering model.
 
+### Bucket Ordering (canonical order)
+
+Buckets had three conflicting orders: the tree and board sorted alphabetically by
+name, the default view and export followed `project.Buckets` storage order, and
+custom-section views followed their section list. So the left pane never matched
+the viewer or an exported file.
+
+The canonical order is the manual `project.Buckets` list order, sibling-relative,
+mirroring how slip order already works:
+
+- A `ReorderBucket` command repositions a bucket among its siblings, anchored
+  immediately before a sibling id (null = end), revision-checked like
+  `ReorderSlip`. Reorder never changes a bucket's parent — that stays
+  `UpdateBucket` reparenting.
+- The tree and board read storage order instead of alphabetical, so they match the
+  default view and export.
+- Custom-section views keep their explicit section order as a deliberate per-view
+  projection that intentionally overrides the canonical order.
+- No migration: existing projects show buckets in creation order until the user
+  reorders them.
+
+This is the prerequisite for column reordering in Board mode and for the deferred
+bucket undo.
+
 ## Landing Lane Cards
 
 The landing page should expose the two active lanes as stable places rather

@@ -89,7 +89,38 @@ internal sealed class KastnTreeNode : INotifyPropertyChanged
         }
     }
 
+    // Transient insertion indicator during a bucket reorder drag: an accent line drawn at
+    // the top (Before) or bottom (After) edge of this row, showing where a released bucket
+    // will land. None hides both lines.
+    private KastnDropEdge dropEdge;
+    public KastnDropEdge DropEdge
+    {
+        get => dropEdge;
+        set
+        {
+            if (dropEdge == value)
+            {
+                return;
+            }
+
+            dropEdge = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowDropBefore)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowDropAfter)));
+        }
+    }
+
+    public bool ShowDropBefore => dropEdge == KastnDropEdge.Before;
+    public bool ShowDropAfter => dropEdge == KastnDropEdge.After;
+
     public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+// Where a reordered bucket will be inserted relative to a row.
+internal enum KastnDropEdge
+{
+    None,
+    Before,
+    After
 }
 
 internal static class KastnWorkbench
@@ -192,10 +223,12 @@ internal static class KastnWorkbench
         IReadOnlyList<KastnTreeNode> BuildLevel(string? parentId)
         {
             var nodes = new List<KastnTreeNode>();
+            // Buckets read in project.Buckets order — the canonical, manually
+            // reorderable order — so the tree and board match the default view and
+            // export instead of sorting alphabetically.
             foreach (var bucket in project.Buckets
                 .Where(bucket => bucket.ParentBucketId == parentId)
-                .Where(bucket => deletedOnly == IsDeletedBucket(bucket))
-                .OrderBy(bucket => bucket.Name, StringComparer.OrdinalIgnoreCase))
+                .Where(bucket => deletedOnly == IsDeletedBucket(bucket)))
             {
                 var bucketSlips = slipsByBucket.TryGetValue(bucket.Id, out var found)
                     ? found
