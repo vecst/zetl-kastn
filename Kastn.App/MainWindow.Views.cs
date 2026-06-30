@@ -1237,7 +1237,7 @@ internal partial class MainWindow
                 return;
             }
 
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.SaveProjectView,
                 new SaveProjectViewCommand { View = ZetlProjectSnapshotMapper.ToSnapshot(view) },
@@ -1279,7 +1279,7 @@ internal partial class MainWindow
 
             if (editingProjectScopedView && currentProject is not null)
             {
-                var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                     Guid.NewGuid().ToString("N"),
                     ZetlCommandKind.DeleteProjectView,
                     new DeleteProjectViewCommand { ViewId = view.Id },
@@ -1341,7 +1341,7 @@ internal partial class MainWindow
 
         if (IsProjectScopedView(view.Id) && currentProject is not null)
         {
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.DeleteProjectView,
                 new DeleteProjectViewCommand { ViewId = view.Id },
@@ -1712,7 +1712,7 @@ internal partial class MainWindow
         if (result.Delete)
         {
             // Execute DeleteSlip command
-            var deleteResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var deleteResponse = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.DeleteSlip,
                 new DeleteSlipCommand(),
@@ -1740,6 +1740,8 @@ internal partial class MainWindow
 
         if (result.Save)
         {
+            // A bucket move plus content update for one slip is a single undo step.
+            using var undoGesture = BeginGesture("Edit slip");
             // Update slip content and column/bucket and block kind
             var revision = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
                 ? editorState.Revision
@@ -1748,7 +1750,7 @@ internal partial class MainWindow
             // Send MoveSlip if bucket changed
             if (result.DestinationBucketId is not null && result.DestinationBucketId != slip.BucketId)
             {
-                var moveResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                var moveResponse = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                     Guid.NewGuid().ToString("N"),
                     ZetlCommandKind.MoveSlip,
                     new MoveSlipCommand { DestinationBucketId = result.DestinationBucketId },
@@ -1767,7 +1769,7 @@ internal partial class MainWindow
             }
 
             // Send UpdateSlip command for Text and BlockKind
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.UpdateSlip,
                 new UpdateSlipCommand

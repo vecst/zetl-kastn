@@ -140,6 +140,27 @@ picture, and include state rather than introducing board-specific content.
       Markdown task fidelity, deleted-slip browsing, editor/detail overflow,
       view scroll stability, Board Mode save shortcuts, and project bulk actions.
 
+### Kastn Undo
+
+Kastn has no in-app undo today; Zetl's coldkey undo cannot reach Kastn edits.
+Add a Kastn-local undo over the existing IPC.
+
+- [x] Add a client-side undo history of inverse domain commands bound to in-app
+      `Ctrl+Z` and isolated from the held-`Ctrl+Z` coldkey stack. All mutations
+      route through a single `ExecuteMutationAsync` choke point; the planner and
+      history are unit-tested.
+- [x] Add gesture grouping (coalesce by slip id) and enable `AddSlip`, `MoveSlip`,
+      and `ReorderSlip` undo. Divider insert, drag, the per-card edit dialog, and
+      the batch loops each record as one entry.
+- [x] Add redo via a symmetric undo/redo model, bound to `Ctrl+Y` (not
+      `Ctrl+Shift+Z`, which would overload Zetl's Shift-lane undo coldkey).
+- [ ] Route undo conflicts through the existing slip conflict-resolution panel
+      with Undo-anyway and Keep-current actions (today a conflicted operation is
+      skipped and reported in the status line).
+- [ ] Defer bucket/project undo until after the Board Mode render-order overhaul.
+
+The detailed design is in [`kastn-undo-roadmap.md`](kastn-undo-roadmap.md).
+
 ## Priority 3: Project Board And Cross-Project Organization
 
 Add a project-level board where projects are columns, buckets are expandable

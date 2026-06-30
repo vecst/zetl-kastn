@@ -36,6 +36,9 @@ These are the authoritative places to answer “what remains?”
 - [`kastn-templates-roadmap.md`](kastn-templates-roadmap.md) — template and
   creation-type design, including temporary consumables
 
+- [`kastn-undo-roadmap.md`](kastn-undo-roadmap.md) — in-Kastn undo via
+  client-side inverse commands, distinct from Zetl's coldkey undo
+
 - [`kastn-project-board-roadmap.md`](kastn-project-board-roadmap.md) - proposed
   project-level board, workspace asset store, and cross-project link/export
   design

@@ -108,6 +108,9 @@ internal partial class MainWindow
         SetEditingEnabled();
         var changed = 0;
         var failed = 0;
+        // One undo step for the whole batch; disposes at method end after the final
+        // refresh.
+        using var undoGesture = BeginGesture(ordered.Count == 1 ? $"{Capitalize(actionLabel)} slip" : $"{Capitalize(actionLabel)} slips");
         // Drop the per-mutation snapshot pushes during the loop so the tree/View
         // rebuild once at the end instead of flashing once per slip.
         batching = true;
@@ -116,7 +119,7 @@ internal partial class MainWindow
             for (var index = 0; index < ordered.Count; index++)
             {
                 var slip = ordered[index];
-                var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                     Guid.NewGuid().ToString("N"),
                     ZetlCommandKind.UpdateSlip,
                     build(slip, index),

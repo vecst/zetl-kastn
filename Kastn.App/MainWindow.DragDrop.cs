@@ -410,6 +410,9 @@ internal partial class MainWindow
         }
 
         pendingBucketSelectionId = plan.DestinationBucketId;
+        // Group the whole drag into one undo entry; it disposes at method end, after
+        // the final refresh, so the recorded positions read from fresh project state.
+        using var undoGesture = BeginGesture("Move slips");
         var moved = 0;
         string? failure = null;
         // Send every move/reorder as a batch: the service publishes a snapshot per
@@ -428,7 +431,7 @@ internal partial class MainWindow
 
                 if (slip.BucketId != plan.DestinationBucketId)
                 {
-                    var moveResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                    var moveResponse = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                         Guid.NewGuid().ToString("N"),
                         ZetlCommandKind.MoveSlip,
                         new MoveSlipCommand { DestinationBucketId = plan.DestinationBucketId! },
@@ -452,7 +455,7 @@ internal partial class MainWindow
                 if ((plan.BeforeSlipId is { } beforeId && !string.Equals(beforeId, slip.Id, StringComparison.Ordinal))
                     || needsEndReorder)
                 {
-                    var reorderResponse = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                    var reorderResponse = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                         Guid.NewGuid().ToString("N"),
                         ZetlCommandKind.ReorderSlip,
                         new ReorderSlipCommand { BeforeSlipId = plan.BeforeSlipId },
@@ -508,7 +511,7 @@ internal partial class MainWindow
         }
 
         pendingBucketSelectionId = bucket.Id;
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.UpdateBucket,
             new UpdateBucketCommand

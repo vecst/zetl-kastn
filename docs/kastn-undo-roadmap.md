@@ -1,0 +1,159 @@
+# Kastn Undo
+
+Kastn currently has no undo. Zetl's session undo stack lives in the shortcut
+coordinator and is fed only by the coldkey capture, quick-note, compile, Pop,
+and Replay handlers; Kastn's edits flow through `ZetlProjectService` and never
+reach it. Held `Ctrl+Z` therefore cannot reverse a Kastn edit, and Kastn offers
+no in-app equivalent.
+
+This record fixes the approach for an in-Kastn undo that stays out of Zetl's
+coldkey undo.
+
+## Boundary
+
+- In-app `Ctrl+Z` undoes the last Kastn edit. Held `Ctrl+Z` (and
+  `Ctrl+Shift+Z`) remain Zetl coldkeys for the capture lanes and are unchanged.
+- Undo is a Kastn-local history of **inverse domain commands**, replayed over the
+  existing IPC. Zetl stays the sole writer; an undo is just another
+  revision-checked command.
+- No protocol change. The common slip operations invert with the existing
+  `AddSlip`, `UpdateSlip`, `MoveSlip`, `ReorderSlip`, and `DeleteSlip` kinds, so
+  no new wire contract or protocol version is required.
+- A server-side undo log is explicitly rejected: it would force Zetl to track
+  per-client history across its multi-client model and would entangle Kastn's
+  undo with the coldkey stack. Keeping undo client-side keeps the two histories
+  isolated.
+
+## Scope (v1)
+
+Slip-level editing only:
+
+- `UpdateSlip` (title / body / format / block kind)
+- `MoveSlip` (across buckets)
+- `ReorderSlip` (within a bucket)
+- `DeleteSlip` (soft-delete to `Deleted`)
+- `AddSlip`
+
+Bucket and project structural operations (`AddBucket`, `UpdateBucket`,
+`SetBucketHeading`, `DeleteBucket`, rename / status / view commands) are out of
+scope for v1. Bucket undo is deferred until the Board Mode render-order work is
+settled; its rules will be decided alongside that overhaul.
+
+## Inverse Map
+
+Each entry captures the prior state and the revision to invert against at the
+moment the forward command succeeds.
+
+| Forward command | Undo command | Captured before sending |
+| --- | --- | --- |
+| `UpdateSlip` | `UpdateSlip` with prior title, body, format, block kind | the pre-edit slip snapshot |
+| `MoveSlip` | `MoveSlip` back to the original bucket, then `ReorderSlip` to the original anchor | original bucket id and neighbour |
+| `ReorderSlip` | `ReorderSlip` with the prior anchor | the prior preceding-slip id |
+| `DeleteSlip` | `MoveSlip` back to the original bucket (then `ReorderSlip`) | original bucket id and position |
+| `AddSlip` | `DeleteSlip` of the new slip id | the id returned in the response |
+
+### AddSlip undo is a soft delete
+
+Undoing an add moves the new slip to `Deleted` rather than hard-removing it.
+This is deliberate: a change of mind can restore it, consistent with the rest of
+Kastn's non-destructive delete model. There is no hard-delete command and v1 does
+not add one.
+
+## Conflict Handling
+
+Each inverse command carries the revision Kastn recorded for the forward
+mutation. If the record moved since — a Zetl capture or another edit bumped its
+revision — the inverse returns `conflict` (or `notFound`).
+
+Undo does not silently force or silently abort. It reuses the existing slip
+conflict-resolution affordance (the `conflictPanel` with current-vs-yours text
+and the Use-current / Keep-mine actions) so the user sees what changed and
+chooses:
+
+- **Undo anyway** — re-issue the inverse against the record's current revision,
+  overwriting the intervening change.
+- **Keep current** — abandon this undo entry and leave the record as it is.
+
+A conflicted entry is consumed either way; it is not silently retried.
+
+## Undo History
+
+- A bounded client-side stack of entries, each pairing a description with an
+  async inverse closure. Capacity matches Zetl's coldkey stack (100).
+- A single user gesture that issues several commands (multi-slip delete, batch
+  formatting) pushes one compound entry whose inverses replay in reverse order,
+  so one `Ctrl+Z` reverts the whole gesture.
+- The stack is cleared on disconnect, a server-instance-id change, or a
+  snapshot-sequence gap. The revisions it captured are stale after a resync, and
+  dropping the history is safer than replaying against a refreshed model.
+
+Redo is the symmetric twin of undo (see below) and is included.
+
+## Symmetric Undo / Redo
+
+Undo and redo share one shape and one executor. A reversible action is a set of
+per-slip operations, each saying "the slip is in state *From* (with neighbour
+*FromFollowing*); return it to *To* (before *ToFollowing*)", where *To* is either
+a snapshot to restore or a soft delete. Applying an operation yields its opposite
+by swapping *From* and *To* and reading the slip's resulting snapshot, so undo
+produces a redo entry and redo produces an undo entry from the same machinery.
+Soft delete is what makes this closed: a deleted slip still exists, so the
+opposite of a delete is always a restore.
+
+A gesture coalesces by slip id: the first time a gesture touches a slip it records
+that slip's pre-gesture snapshot, and it tracks the latest snapshot after. At
+gesture close it emits one operation per affected slip — diffing pre against final
+to issue only the needed move / update / reorder. This is what lets a gesture that
+hits one slip with several commands (divider insert = add + reorder, drag = move +
+reorder) invert correctly, where naive per-command recording would bake a stale
+revision.
+
+## Keybinding
+
+- `Ctrl+Z` undoes and `Ctrl+Y` redoes, from the main `OnKeyDown` handler.
+- `Ctrl+Shift+Z` is deliberately **not** a redo binding: held `Ctrl+Shift+Z` is
+  Zetl's Shift-lane undo coldkey, so mapping its tap to redo would overload one
+  chord with opposite meanings (tap redo vs hold undo). `Ctrl+Y` is free of any
+  Zetl coldkey.
+- While a text box is focused, both defer to the box's own undo/redo and only the
+  tree and card surfaces drive Kastn history. This is the feel-sensitive case:
+  workbench history applies from the tree and cards, not mid-edit.
+
+## Status
+
+Slices 1 and 2 landed: full slip undo/redo.
+
+- `KastnUndoHistory`, the symmetric `KastnUndoEntry` / `KastnUndoOperation`
+  model, and `KastnUndoPlanner` (`BuildSteps`, `Opposite`, `IsNoOp`) — pure,
+  snapshot-based, unit-tested.
+- `MainWindow.ExecuteMutationAsync` is the single choke point for Kastn mutations;
+  it records into the active gesture or as its own one-operation entry, and passes
+  non-slip commands through unchanged. Workbench, Views, drag-and-drop, and
+  batch-format mutations route through it.
+- All five slip kinds (`AddSlip`, `UpdateSlip`, `MoveSlip`, `ReorderSlip`,
+  `DeleteSlip`) record. Same-slip gestures are wrapped with `BeginGesture` so they
+  coalesce into one entry: divider insert, drag move/reorder, the per-card edit
+  dialog, and the batch move / delete / format loops.
+- `Ctrl+Z` / `Ctrl+Y` drive undo and redo from the tree and card surfaces; a
+  focused text box keeps its own. `Ctrl+Shift+Z` is avoided so it does not overload
+  Zetl's Shift-lane undo coldkey. History clears on project switch or loss of a
+  live connection.
+- Conflicts are handled without data loss but without the rich panel yet: an
+  operation whose record changed since is skipped and reported in the status line
+  ("N items changed since and were skipped"); the rest of the entry still applies.
+
+Remaining:
+
+- Conflict resolution UI reusing the slip conflict panel (Undo-anyway /
+  Keep-current) in place of the skip-and-report fallback.
+- Bucket and project undo, after the Board Mode render-order overhaul.
+
+## Test Gates
+
+- `KastnUndoTests` covers the history, the inverse builder for each operation
+  shape (delete, move+reorder, property restore, reorder-only, no-op), the
+  `Opposite` swap, and following-slip ordering.
+- Manual GUI checks that automated tests cannot reproduce: editor-focus
+  `Ctrl+Z`/`Ctrl+Y` passthrough; one `Ctrl+Z` reverting a whole drag or batch;
+  redo replaying it; undo refreshing the editor/view; and that held `Ctrl+Shift+Z`
+  still reaches Zetl's Shift-lane undo while Kastn is focused.

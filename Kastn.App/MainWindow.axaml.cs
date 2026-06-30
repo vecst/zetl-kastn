@@ -444,6 +444,15 @@ internal partial class MainWindow : Window
         var selectedBucketId = SelectedBucketId;
         var selectedSlipId = pendingSlipSelectionId ?? editorState.SlipId;
 
+        // Undo/redo entries hold revisions captured against the open project. Drop
+        // them when the open project changes or the live connection drops, since those
+        // revisions go stale after a resync.
+        if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal)
+            || snapshot.ConnectionState != KastnConnectionState.Online)
+        {
+            ClearUndoHistory();
+        }
+
         refreshing = true;
         try
         {
@@ -1513,6 +1522,32 @@ internal partial class MainWindow : Window
         {
             args.Handled = true;
             await CloseProjectAsync();
+        }
+        else if (args.KeyModifiers == KeyModifiers.Control && args.Key == Key.Z)
+        {
+            // In-app undo. A focused text box keeps its own Ctrl+Z (the window
+            // handler does not see edits the box already consumed, but guard anyway).
+            // Held Ctrl+Z remains a Zetl coldkey and never reaches Kastn.
+            if (IsTextInputFocused())
+            {
+                return;
+            }
+
+            args.Handled = true;
+            await UndoLastAsync();
+        }
+        else if (args.KeyModifiers == KeyModifiers.Control && args.Key == Key.Y)
+        {
+            // In-app redo. Ctrl+Y only — Ctrl+Shift+Z is deliberately avoided because
+            // held Ctrl+Shift+Z is Zetl's Shift-lane undo coldkey, and mapping its tap
+            // to redo would overload one chord with opposite meanings.
+            if (IsTextInputFocused())
+            {
+                return;
+            }
+
+            args.Handled = true;
+            await RedoLastAsync();
         }
         else if (args.Key == Key.F2 && SelectedBucket is not null)
         {

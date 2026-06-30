@@ -1,0 +1,214 @@
+using System.Text.Json;
+using ZETL.Contracts;
+
+namespace KASTN;
+
+// The state to restore one slip to: a snapshot to match, or Delete (the slip
+// should not be present — soft-deleted). Soft-delete keeps the slip, so the
+// opposite of a delete is always expressible as a restore to a snapshot.
+internal sealed record KastnSlipMemento(ZetlSlipSnapshot? Restore)
+{
+    public bool IsDelete => Restore is null;
+
+    public static readonly KastnSlipMemento Delete = new((ZetlSlipSnapshot?)null);
+
+    public static KastnSlipMemento To(ZetlSlipSnapshot snapshot) => new(snapshot);
+}
+
+// One slip's part of a reversible edit: the slip is expected in state From (with
+// its following neighbour FromFollowing) and should be returned to To (placed
+// before ToFollowing). Undo and redo are symmetric — applying an operation yields
+// its opposite by swapping From and To.
+internal sealed record KastnUndoOperation(
+    string SlipId,
+    ZetlSlipSnapshot From,
+    string? FromFollowing,
+    KastnSlipMemento To,
+    string? ToFollowing);
+
+// One reversible user action — a single edit or a whole gesture — as the set of
+// per-slip operations needed to reverse it.
+internal sealed record KastnUndoEntry(
+    string Description,
+    string ProjectId,
+    IReadOnlyList<KastnUndoOperation> Operations);
+
+// One inverse command. BestEffort steps (position restore) may fail without
+// failing the operation; a stale reorder anchor must not block an undo.
+internal sealed record KastnInverseStep(ZetlCommandKind Kind, JsonElement Payload, bool BestEffort);
+
+// Bounded, newest-on-top history of reversible actions. Used for both the undo
+// and redo stacks. Cleared on project switch or loss of a live connection,
+// because the revisions it captured go stale after a resync.
+internal sealed class KastnUndoHistory
+{
+    public const int DefaultCapacity = 100;
+
+    private readonly List<KastnUndoEntry> entries = new();
+
+    public KastnUndoHistory(int capacity = DefaultCapacity)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
+        Capacity = capacity;
+    }
+
+    public int Capacity { get; }
+
+    public int Count => entries.Count;
+
+    public bool CanUndo => entries.Count > 0;
+
+    public string? NextDescription => entries.Count > 0 ? entries[^1].Description : null;
+
+    public void Push(KastnUndoEntry entry)
+    {
+        entries.Add(entry);
+        if (entries.Count > Capacity)
+        {
+            entries.RemoveRange(0, entries.Count - Capacity);
+        }
+    }
+
+    public bool TryPop(out KastnUndoEntry? entry)
+    {
+        if (entries.Count == 0)
+        {
+            entry = null;
+            return false;
+        }
+
+        entry = entries[^1];
+        entries.RemoveAt(entries.Count - 1);
+        return true;
+    }
+
+    public void Clear() => entries.Clear();
+}
+
+// Pure construction of the inverse commands for an operation, and of an
+// operation's opposite. Snapshot-based so it can be unit-tested without a live
+// connection.
+internal static class KastnUndoPlanner
+{
+    // The commands that move a slip from its From state to its To state, expecting
+    // From's revision on the first step. An empty result means the operation is a
+    // no-op and should not be recorded.
+    public static IReadOnlyList<KastnInverseStep> BuildSteps(KastnUndoOperation op)
+    {
+        if (op.To.IsDelete)
+        {
+            return [Step(ZetlCommandKind.DeleteSlip, new DeleteSlipCommand(), bestEffort: false)];
+        }
+
+        var target = op.To.Restore!;
+        var steps = new List<KastnInverseStep>();
+
+        var moved = !string.Equals(op.From.BucketId, target.BucketId, StringComparison.Ordinal);
+        if (moved)
+        {
+            steps.Add(Step(
+                ZetlCommandKind.MoveSlip,
+                new MoveSlipCommand { DestinationBucketId = target.BucketId },
+                bestEffort: false));
+        }
+
+        if (PropsDiffer(op.From, target))
+        {
+            steps.Add(Step(ZetlCommandKind.UpdateSlip, RestoreCommand(target), bestEffort: false));
+        }
+
+        if (moved || !string.Equals(op.FromFollowing, op.ToFollowing, StringComparison.Ordinal))
+        {
+            steps.Add(Step(
+                ZetlCommandKind.ReorderSlip,
+                new ReorderSlipCommand { BeforeSlipId = op.ToFollowing },
+                bestEffort: true));
+        }
+
+        return steps;
+    }
+
+    // The operation that reverses op once it has been applied, given the slip's
+    // snapshot afterwards. Swaps From and To so undo and redo share one executor.
+    public static KastnUndoOperation Opposite(KastnUndoOperation op, ZetlSlipSnapshot now) =>
+        new(op.SlipId, From: now, FromFollowing: op.ToFollowing, To: KastnSlipMemento.To(op.From), ToFollowing: op.FromFollowing);
+
+    // True when the operation changes nothing, so it need not be recorded.
+    public static bool IsNoOp(KastnUndoOperation op) => BuildSteps(op).Count == 0;
+
+    private static bool PropsDiffer(ZetlSlipSnapshot a, ZetlSlipSnapshot b) =>
+        !string.Equals(a.Title, b.Title, StringComparison.Ordinal)
+        || !string.Equals(a.Text, b.Text, StringComparison.Ordinal)
+        || !string.Equals(Align(a), Align(b), StringComparison.Ordinal)
+        || !string.Equals(a.BlockKind, b.BlockKind, StringComparison.Ordinal)
+        || a.ExcludedFromViews != b.ExcludedFromViews
+        || a.IgnoreBucketRenderKind != b.IgnoreBucketRenderKind
+        || a.Checked != b.Checked
+        || !InlineStylesEqual(a.InlineStyles, b.InlineStyles);
+
+    private static string Align(ZetlSlipSnapshot slip) =>
+        string.IsNullOrEmpty(slip.Align) ? "left" : slip.Align;
+
+    private static bool InlineStylesEqual(
+        IReadOnlyList<ZetlInlineStyleRange> a,
+        IReadOnlyList<ZetlInlineStyleRange> b)
+    {
+        if (a.Count != b.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (a[i] != b[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // A full property restore, so the inverse returns the slip to its target state
+    // regardless of which field changed.
+    private static UpdateSlipCommand RestoreCommand(ZetlSlipSnapshot slip) => new()
+    {
+        Title = slip.Title,
+        Text = slip.Text,
+        ExcludedFromViews = slip.ExcludedFromViews,
+        Align = slip.Align ?? "left",
+        BlockKind = slip.BlockKind,
+        IgnoreBucketRenderKind = slip.IgnoreBucketRenderKind,
+        Checked = slip.Checked,
+        InlineStyles = slip.InlineStyles
+    };
+
+    private static KastnInverseStep Step<TPayload>(ZetlCommandKind kind, TPayload payload, bool bestEffort) =>
+        new(kind, ZetlProtocolJson.ToElement(payload), bestEffort);
+
+    // The slip immediately after the given slip within the same bucket, in project
+    // order, or null when it is the last in its bucket.
+    public static string? FollowingSlipId(ZetlProjectSnapshot project, string bucketId, string slipId)
+    {
+        var seenTarget = false;
+        foreach (var slip in project.Slips)
+        {
+            if (!string.Equals(slip.BucketId, bucketId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (seenTarget)
+            {
+                return slip.Id;
+            }
+
+            if (string.Equals(slip.Id, slipId, StringComparison.Ordinal))
+            {
+                seenTarget = true;
+            }
+        }
+
+        return null;
+    }
+}

@@ -84,7 +84,7 @@ internal partial class MainWindow
                 var revision = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
                     ? editorState.Revision
                     : slip.Revision;
-                var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                     Guid.NewGuid().ToString("N"),
                     ZetlCommandKind.UpdateSlip,
                     new UpdateSlipCommand
@@ -190,21 +190,22 @@ internal partial class MainWindow
         SetEditingEnabled();
         try
         {
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.UpdateSlip,
-                new UpdateSlipCommand
-                {
-                    Text = text,
-                    InlineStyles = editorState.InlineStylesAreDirty
-                        ? InlineStylesForTrimmedCommand(
-                            refreshedText,
-                            editorState.DraftInlineStyles)
-                        : null
-                },
-                currentProject.Id,
-                editorState.SlipId,
-                editorState.Revision));
+            var response = await ExecuteMutationAsync(
+                ZetlCommandEnvelope.Create(
+                    Guid.NewGuid().ToString("N"),
+                    ZetlCommandKind.UpdateSlip,
+                    new UpdateSlipCommand
+                    {
+                        Text = text,
+                        InlineStyles = editorState.InlineStylesAreDirty
+                            ? InlineStylesForTrimmedCommand(
+                                refreshedText,
+                                editorState.DraftInlineStyles)
+                            : null
+                    },
+                    currentProject.Id,
+                    editorState.SlipId,
+                    editorState.Revision));
             if (response.Status == ZetlResponseStatus.Conflict)
             {
                 var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
@@ -277,7 +278,7 @@ internal partial class MainWindow
         SetEditingEnabled();
         try
         {
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.UpdateSlip,
                 new UpdateSlipCommand { Text = text, Align = align },
@@ -519,7 +520,7 @@ internal partial class MainWindow
         SetEditingEnabled();
         try
         {
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.UpdateSlip,
                 buildWithText(text),
@@ -893,7 +894,7 @@ internal partial class MainWindow
         var parentId = SelectedBucketId is not null && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
             ? SelectedBucketId
             : null;
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.AddBucket,
             new AddBucketCommand
@@ -971,7 +972,7 @@ internal partial class MainWindow
                 return;
             }
 
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.AddSlip,
                 new AddSlipCommand
@@ -1024,7 +1025,7 @@ internal partial class MainWindow
         var parentId = SelectedBucketId is not null && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
             ? SelectedBucketId
             : null;
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.AddBucket,
             new AddBucketCommand { Name = "Group", ParentBucketId = parentId, RenderKind = ZetlBucketRenderKinds.Group },
@@ -1075,11 +1076,14 @@ internal partial class MainWindow
                 return;
             }
 
+            // The add and its follow-up reorder are one undo step.
+            using var undoGesture = BeginGesture("Insert divider");
+
             // The note that follows the anchor in document order — the reorder target so
             // the new divider lands just after the anchor (null = keep it last).
             var nextSlipId = anchor is null ? null : NextSlipInBucket(bucketId, anchor.Id);
 
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.AddSlip,
                 new AddSlipCommand
@@ -1101,7 +1105,7 @@ internal partial class MainWindow
             {
                 // The divider lands at the end of the bucket; move it before the note that
                 // followed the anchor (no-op when the anchor was already last).
-                await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+                await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                     Guid.NewGuid().ToString("N"),
                     ZetlCommandKind.ReorderSlip,
                     new ReorderSlipCommand { BeforeSlipId = nextSlipId },
@@ -1161,7 +1165,7 @@ internal partial class MainWindow
         try
         {
             pendingBucketSelectionId = bucket.Id;
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.UpdateBucket,
                 new UpdateBucketCommand
@@ -1213,7 +1217,7 @@ internal partial class MainWindow
         var parentId = (parentBucketBox.SelectedItem as KastnBucketItem)?.Id;
         var renderKind = (bucketRenderKindBox.SelectedItem as KastnRenderKindItem)?.Value ?? "";
         pendingBucketSelectionId = bucket.Id;
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.UpdateBucket,
             new UpdateBucketCommand
@@ -1250,7 +1254,7 @@ internal partial class MainWindow
         }
 
         pendingBucketSelectionId = bucket.ParentBucketId;
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.DeleteBucket,
             new DeleteBucketCommand(),
@@ -1319,7 +1323,7 @@ internal partial class MainWindow
             return;
         }
 
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.RenameProject,
             new RenameProjectCommand { Name = name },
@@ -1342,7 +1346,7 @@ internal partial class MainWindow
         }
 
         var turningOn = !currentProject.JournalMode;
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.SetJournalMode,
             new SetJournalModeCommand { JournalMode = turningOn },
@@ -1368,7 +1372,7 @@ internal partial class MainWindow
             return;
         }
 
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.SetProjectStatus,
             new SetProjectStatusCommand { Status = status },
@@ -1393,7 +1397,7 @@ internal partial class MainWindow
             return;
         }
 
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.SetActiveProject,
             new SetActiveProjectCommand { ActivateShifted = shifted },
@@ -1449,7 +1453,7 @@ internal partial class MainWindow
             return;
         }
 
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.CreateTemporaryProjectFromReplay,
             new CreateTemporaryProjectFromReplayCommand
@@ -1496,7 +1500,7 @@ internal partial class MainWindow
             return;
         }
 
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.DeleteProject,
             new DeleteProjectCommand(),
@@ -1545,6 +1549,7 @@ internal partial class MainWindow
         // editor/inspector/View re-sync), matching drag-drop. Batch moves clear.
         var reselectSlipId = selected.Count == 1 ? selected[0].Id : null;
         pendingBucketSelectionId = destination.Id;
+        using var undoGesture = BeginGesture(selected.Count == 1 ? "Move slip" : "Move slips");
         foreach (var slip in selected)
         {
             if (slip.BucketId == destination.Id)
@@ -1553,7 +1558,7 @@ internal partial class MainWindow
                 continue;
             }
 
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.MoveSlip,
                 new MoveSlipCommand { DestinationBucketId = destination.Id },
@@ -1609,7 +1614,7 @@ internal partial class MainWindow
         pendingBucketSelectionId = destination.Id;
         pendingSlipSelectionId = slip.Id;
         pendingSlipFocus = false;
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.MoveSlip,
             new MoveSlipCommand { DestinationBucketId = destination.Id },
@@ -1650,9 +1655,10 @@ internal partial class MainWindow
         var moved = 0;
         var failed = 0;
         var projectId = currentProject.Id;
+        using var undoGesture = BeginGesture(selected.Count == 1 ? "Delete slip" : "Delete slips");
         foreach (var slip in selected)
         {
-            var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.DeleteSlip,
                 new DeleteSlipCommand(),
