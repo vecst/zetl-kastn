@@ -233,6 +233,17 @@ should be disposed by Zetl.
 ## Interaction Cleanup
 
 - [x] Add a live drop-target indicator during drag-and-drop.
+- [x] Add an insertion line for both bucket and slip tree drags: the row under the
+      pointer and its vertical fraction choose before / after / nest, drawn as an
+      accent line (between) or a row highlight (into). Slip and bucket drags share
+      one hit-test (`RowUnderPointer` + `EdgeFromFraction`) and one move-then-reorder
+      step (`SendThreadedAsync`); the apply paths stay separate because slips are
+      multi-select and never nest into each other while buckets do both. A sticky
+      last-resolved position keeps a between-rows gap from rejecting the drop.
+- [ ] Insertion-line jitter: the line can still flicker at the before/after flip
+      point (a row's vertical midpoint) when the pointer hovers right on the
+      boundary. Add a small dead-band/hysteresis around the flip so it does not
+      oscillate. Minor; deferred.
 - [ ] Keep keyboard-accessible movement controls while reducing redundant
       always-visible Move/parent UI.
 - [ ] Improve reading width and font-size controls.

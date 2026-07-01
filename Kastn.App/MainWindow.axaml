@@ -800,7 +800,7 @@
                         <Grid ColumnDefinitions="Auto,Auto,*,Auto"
                               ColumnSpacing="6"
                               MinWidth="225"
-                              Tag="treeRow"
+                              Tag="dragRow"
                               Background="Transparent"
                               Opacity="{Binding NodeOpacity}">
                           <Viewbox Grid.Column="0"

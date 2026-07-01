@@ -1514,6 +1514,7 @@ internal partial class MainWindow
         var columnBorder = new Border
         {
             DataContext = laneNode,
+            Tag = "dragRow",
             Background = ThemeBrush("ZetlSurfaceBrush"),
             BorderBrush = ThemeBrush("ZetlBorderBrush"),
             BorderThickness = new Thickness(1),
@@ -1657,6 +1658,7 @@ internal partial class MainWindow
         var cardBorder = new Border
         {
             DataContext = slipNode,
+            Tag = "dragRow",
             Background = ThemeBrush("ZetlSurfaceAltBrush"),
             BorderBrush = ThemeBrush("ZetlBorderBrush"),
             BorderThickness = new Thickness(1),
