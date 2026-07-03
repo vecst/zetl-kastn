@@ -195,6 +195,18 @@ internal static class ZetlMarkdown
                 {
                     var width = doubled ? 2 : 1;
                     var close = IndexOf(s, c, width, i + width, end);
+                    // A doubled marker opened by a run of three is the canonical
+                    // bold+italic emission (`***text***`): the outer pair must close
+                    // at the END of the closing run, so the run's remaining single
+                    // marker stays inside the children and closes the inner style.
+                    if (close > i + width && doubled && i + 2 < end && s[i + 2] == c)
+                    {
+                        while (close + width < end && s[close + width] == c)
+                        {
+                            close++;
+                        }
+                    }
+
                     if (close > i + width)
                     {
                         FlushText(i);
