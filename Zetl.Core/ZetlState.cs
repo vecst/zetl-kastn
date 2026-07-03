@@ -238,6 +238,12 @@ internal sealed class ZetlSlip
     // Kastn-only: checked state for a "task" note; ignored for other kinds.
     public bool Checked { get; set; }
 
+    // Kastn-only: whole-slip text styles for rendered views. Default false so
+    // existing slips load unstyled and an unstyled slip writes no field.
+    public bool Bold { get; set; }
+    public bool Italic { get; set; }
+    public bool Strike { get; set; }
+
     // Kastn-only: property-backed inline styling over Text.
     public List<ZetlInlineStyleRange> InlineStyles { get; set; } = [];
 
@@ -1233,7 +1239,10 @@ internal sealed class ZetlStateStore
         string? blockKind = null,
         bool? ignoreBucketRenderKind = null,
         bool? @checked = null,
-        IReadOnlyList<ZetlInlineStyleRange>? inlineStyles = null)
+        IReadOnlyList<ZetlInlineStyleRange>? inlineStyles = null,
+        bool? bold = null,
+        bool? italic = null,
+        bool? strike = null)
     {
         note.Text = text.Trim();
         if (title is not null)
@@ -1276,6 +1285,21 @@ internal sealed class ZetlStateStore
         if (blockKind is not null && note.BlockKind != ZetlBlockKinds.Task)
         {
             note.Checked = false;
+        }
+
+        if (bold is { } isBold)
+        {
+            note.Bold = isBold;
+        }
+
+        if (italic is { } isItalic)
+        {
+            note.Italic = isItalic;
+        }
+
+        if (strike is { } isStrike)
+        {
+            note.Strike = isStrike;
         }
 
         note.InlineStyles = ZetlInlineStyles.Normalize(
@@ -2817,6 +2841,9 @@ internal sealed class ZetlStateStore
             BlockKind = source.BlockKind,
             IgnoreBucketRenderKind = source.IgnoreBucketRenderKind,
             Checked = source.Checked,
+            Bold = source.Bold,
+            Italic = source.Italic,
+            Strike = source.Strike,
             InlineStyles = source.InlineStyles.Select(style => style with { }).ToList(),
             CaptureOrigin = source.CaptureOrigin is null
                 ? null

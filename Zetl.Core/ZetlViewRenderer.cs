@@ -400,7 +400,9 @@ internal static class ZetlViewRenderer
                 }
 
                 var slipText = ZetlMarkdown.ResolveWikiLinksInNote(
-                    ZetlMarkdown.ApplyInlineStyleMarkers(SlipText(slip), slip.InlineStyles),
+                    ZetlMarkdown.ApplyInlineStyleMarkers(
+                        SlipText(slip),
+                        EffectiveInlineStyles(slip, SlipText(slip))),
                     slipIds.Contains);
                 var slipKind = SlipBlockKind(slip);
                 var bucketListKind = BucketListKind(project, slip, preferSlipKindOverBucketKind);
@@ -705,7 +707,7 @@ internal static class ZetlViewRenderer
                     or ZetlBlockKinds.Code or ZetlBlockKinds.Divider)
                 {
                     CloseList();
-                    parts.Add($"<div id=\"{slip.Id}\">" + ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text, slip.InlineStyles), slipIds.Contains) + "</div>");
+                    parts.Add($"<div id=\"{slip.Id}\">" + ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text, EffectiveInlineStyles(slip, text)), slipIds.Contains) + "</div>");
                     continue;
                 }
 
@@ -718,7 +720,7 @@ internal static class ZetlViewRenderer
                 // HTML (the parser escapes literal runs). Literal views stay verbatim.
                 var align = SlipAlignment(slip);
                 var style = align == "left" ? "" : $" style=\"text-align:{align}\"";
-                var styledText = ZetlMarkdown.ApplyInlineStyleMarkers(text, slip.InlineStyles);
+                var styledText = ZetlMarkdown.ApplyInlineStyleMarkers(text, EffectiveInlineStyles(slip, text));
                 var inner = ZetlMarkdown.BlocksToHtml(styledText, slipIds.Contains);
                 if (FirstContentLineStartsWithMarkdownListMarker(text))
                 {
@@ -811,6 +813,80 @@ internal static class ZetlViewRenderer
 
     private static string EscapeMarkdownAlt(string text) =>
         text.Replace("[", "\\[").Replace("]", "\\]");
+
+    // The slip's inline styles for rendering: its stored ranges plus per-line
+    // ranges for the whole-slip Bold/Italic/Strike flags, so slip-level styling
+    // flows through the same marker pipeline as typed and range styling. Emitted
+    // per content line (emphasis markers cannot span line breaks) and after any
+    // typed block marker so a "- item" line stays a list item; code-kind slips
+    // and fenced lines take no styling — their body is literal.
+    public static IReadOnlyList<ZetlInlineStyleRange> EffectiveInlineStyles(
+        ZetlSlipSnapshot slip,
+        string text)
+    {
+        text ??= "";
+        if ((!slip.Bold && !slip.Italic && !slip.Strike)
+            || text.Length == 0
+            || SlipBlockKind(slip) == ZetlBlockKinds.Code)
+        {
+            return slip.InlineStyles;
+        }
+
+        var styles = new List<ZetlInlineStyleRange>(slip.InlineStyles);
+        var inFence = false;
+        var lineStart = 0;
+        var i = 0;
+        while (i <= text.Length)
+        {
+            if (i < text.Length && text[i] is not ('\n' or '\r'))
+            {
+                i++;
+                continue;
+            }
+
+            var line = text[lineStart..i];
+            if (ZetlMarkdown.IsCodeFenceLine(line))
+            {
+                inFence = !inFence;
+            }
+            else if (!inFence && ZetlMarkdown.StyleTargetWithinLine(line) is { } target)
+            {
+                AddLineStyles(styles, slip, lineStart + target.Start, target.Length);
+            }
+
+            if (i < text.Length && text[i] == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
+            {
+                i++;
+            }
+
+            i++;
+            lineStart = i;
+        }
+
+        return styles;
+    }
+
+    private static void AddLineStyles(
+        List<ZetlInlineStyleRange> styles,
+        ZetlSlipSnapshot slip,
+        int start,
+        int length)
+    {
+        if (slip.Bold)
+        {
+            styles.Add(new ZetlInlineStyleRange { Start = start, Length = length, Kind = ZetlInlineStyleKinds.Bold });
+        }
+
+        if (slip.Italic)
+        {
+            styles.Add(new ZetlInlineStyleRange { Start = start, Length = length, Kind = ZetlInlineStyleKinds.Italic });
+        }
+
+        if (slip.Strike)
+        {
+            styles.Add(new ZetlInlineStyleRange { Start = start, Length = length, Kind = ZetlInlineStyleKinds.Strike });
+        }
+    }
 
     // Per-slip block alignment, normalized to one of left/center/right. Honored as
     // a block style by the HTML/PDF renderers and the on-screen View; the literal

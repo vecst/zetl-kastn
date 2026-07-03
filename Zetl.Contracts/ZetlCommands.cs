@@ -153,6 +153,11 @@ public sealed record UpdateSlipCommand
     // when the note's list kind is "task").
     public bool? Checked { get; init; }
 
+    // Null preserves the current whole-slip style; true/false set it.
+    public bool? Bold { get; init; }
+    public bool? Italic { get; init; }
+    public bool? Strike { get; init; }
+
     // Null preserves the current inline style ranges; an empty list explicitly clears
     // them. Ranges are normalized against Text before persisting.
     public IReadOnlyList<ZetlInlineStyleRange>? InlineStyles { get; init; }

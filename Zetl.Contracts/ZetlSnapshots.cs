@@ -164,6 +164,12 @@ public sealed record ZetlSlipSnapshot
     // Kastn-only: the checked state when BlockKind is "task"; ignored otherwise.
     public bool Checked { get; init; }
 
+    // Kastn-only: whole-slip text styles for rendered views. Styling is a property
+    // of the slip, not of ranges within its text; inline emphasis is typed Markdown.
+    public bool Bold { get; init; }
+    public bool Italic { get; init; }
+    public bool Strike { get; init; }
+
     // Kastn-only: property-backed inline styling over Text. Typed Markdown remains
     // valid; these ranges are the toolbar/editor intent layer.
     public IReadOnlyList<ZetlInlineStyleRange> InlineStyles { get; init; } = [];

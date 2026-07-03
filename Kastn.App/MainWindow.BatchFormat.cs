@@ -32,18 +32,60 @@ internal partial class MainWindow
             (slip, _) => new UpdateSlipCommand { Text = slip.Text, Align = align });
     }
 
-    private async Task StrikeSlipsAsync()
+    // Bold/italic/strike are whole-slip render properties (like alignment and the
+    // note kind) — nothing is written into the body text, and inline emphasis
+    // stays typed Markdown. A single selection toggles the flag; a multi-selection
+    // applies uniformly (styled when any selected slip is still unstyled). Bold on
+    // a bucket title toggles the heading's own bold instead.
+    private async Task ToggleSlipStyleAsync(string kind)
     {
-        if (!HasBatchSelection())
+        if (kind == ZetlInlineStyleKinds.Bold && TitleModeBucket() is { } bucket)
         {
-            await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Strike);
+            await SendBucketHeadingAsync(bucket, bucket.HeadingAlign, !bucket.HeadingBold, bucket.HeadingLevel);
             return;
         }
 
+        if (!HasBatchSelection())
+        {
+            if (SelectedSlips() is not [var slip])
+            {
+                return;
+            }
+
+            var enabled = !SlipStyleFlag(slip, kind);
+            await UpdateSlipPropertyAsync(
+                slip,
+                text => SlipStyleCommand(text, kind, enabled),
+                $"{InlineStyleLabel(kind)} {(enabled ? "on" : "off")}.");
+            return;
+        }
+
+        var enable = SelectedSlips().Any(slip => !SlipStyleFlag(slip, kind));
         await ApplyBatchAsync(
-            "struck through",
-            (slip, _) => new UpdateSlipCommand { Text = KastnBatchFormat.ToggleStrike(slip.Text) });
+            SlipStyleActionLabel(kind, enable),
+            (slip, _) => SlipStyleCommand(slip.Text, kind, enable));
     }
+
+    private static bool SlipStyleFlag(ZetlSlipSnapshot slip, string kind) => kind switch
+    {
+        ZetlInlineStyleKinds.Italic => slip.Italic,
+        ZetlInlineStyleKinds.Strike => slip.Strike,
+        _ => slip.Bold
+    };
+
+    private static UpdateSlipCommand SlipStyleCommand(string text, string kind, bool enabled) => kind switch
+    {
+        ZetlInlineStyleKinds.Italic => new UpdateSlipCommand { Text = text, Italic = enabled },
+        ZetlInlineStyleKinds.Strike => new UpdateSlipCommand { Text = text, Strike = enabled },
+        _ => new UpdateSlipCommand { Text = text, Bold = enabled }
+    };
+
+    private static string SlipStyleActionLabel(string kind, bool enable) => kind switch
+    {
+        ZetlInlineStyleKinds.Italic => enable ? "italicized" : "unitalicized",
+        ZetlInlineStyleKinds.Strike => enable ? "struck through" : "unstruck",
+        _ => enable ? "bolded" : "unbolded"
+    };
 
     // kind: bullet | ordered | task | heading | quote | code. The kind is the note's
     // own render property (nothing is written into the body); a single selection toggles

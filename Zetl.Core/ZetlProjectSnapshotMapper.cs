@@ -176,6 +176,9 @@ internal static class ZetlProjectSnapshotMapper
             BlockKind = slip.BlockKind,
             IgnoreBucketRenderKind = slip.IgnoreBucketRenderKind,
             Checked = slip.Checked,
+            Bold = slip.Bold,
+            Italic = slip.Italic,
+            Strike = slip.Strike,
             InlineStyles = slip.InlineStyles.Select(style => style with { }).ToList()
         };
     }

@@ -249,7 +249,8 @@ internal static class KastnPdfRenderer
         }
 
         // A whole-note kind (heading/quote/code/divider) synthesizes its one block.
-        foreach (var block in ZetlMarkdown.BlocksForNote(slip.BlockKind, text, slip.InlineStyles))
+        foreach (var block in ZetlMarkdown.BlocksForNote(
+            slip.BlockKind, text, ZetlViewRenderer.EffectiveInlineStyles(slip, text)))
         {
             if (block is ZetlParagraphBlock paragraphBlock)
             {

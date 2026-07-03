@@ -266,14 +266,6 @@ public class KastnWorkbenchTests
             "Deleted slips appear under the Deleted bucket.");
     }
 
-    [Fact] public void BatchFormatRewritesMarkersAndStrike()
-    {
-        // Strikethrough toggles. (List-item kind is now a per-note property, not body
-        // markup, so there is no marker-rewriting helper to test here.)
-        AssertEqual("~~done~~", KastnBatchFormat.ToggleStrike("done"), "Wrap in strike.");
-        AssertEqual("done", KastnBatchFormat.ToggleStrike("~~done~~"), "Unwrap strike.");
-    }
-
     [Fact] public void InlineStyleEditingTogglesAndSplitsRanges()
     {
         var text = "alpha beta gamma";

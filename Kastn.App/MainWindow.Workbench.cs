@@ -380,21 +380,11 @@ internal partial class MainWindow
         var end = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), start, text.Length);
         var styles = CurrentInlineStyles(slip);
         var emptyTarget = KastnInlineStyleEditing.StyleTargetForSelection(text, start, end).Length <= 0;
-        SetInlineFormatButtonActive(
-            ZetlInlineStyleKinds.Bold,
-            emptyTarget
-                ? editorState.HasPendingInlineStyle(ZetlInlineStyleKinds.Bold)
-                : KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Bold));
-        SetInlineFormatButtonActive(
-            ZetlInlineStyleKinds.Italic,
-            emptyTarget
-                ? editorState.HasPendingInlineStyle(ZetlInlineStyleKinds.Italic)
-                : KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Italic));
-        SetInlineFormatButtonActive(
-            ZetlInlineStyleKinds.Strike,
-            emptyTarget
-                ? editorState.HasPendingInlineStyle(ZetlInlineStyleKinds.Strike)
-                : KastnInlineStyleEditing.IsStyleActiveAtSelection(text, styles, start, end - start, ZetlInlineStyleKinds.Strike));
+        // Bold/italic/strike read the slip's own whole-slip flags; code and the links
+        // remain selection-scoped ranges.
+        SetInlineFormatButtonActive(ZetlInlineStyleKinds.Bold, slip.Bold);
+        SetInlineFormatButtonActive(ZetlInlineStyleKinds.Italic, slip.Italic);
+        SetInlineFormatButtonActive(ZetlInlineStyleKinds.Strike, slip.Strike);
         SetInlineFormatButtonActive(
             ZetlInlineStyleKinds.Code,
             emptyTarget
@@ -1794,8 +1784,10 @@ internal partial class MainWindow
             && TitleModeBucket() is { } bucket
             && !KastnWorkbench.IsDeletedBucket(bucket);
         var canFormatOrBatch = canFormat || canBatchFormat;
-        boldButton.IsEnabled = canFormat;
-        italicButton.IsEnabled = canFormat;
+        // Bold/italic/strike are whole-slip properties, so they batch like the
+        // list buttons; bold on a bucket title toggles the heading's bold.
+        boldButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
+        italicButton.IsEnabled = canFormatOrBatch;
         strikeButton.IsEnabled = canFormatOrBatch;
         codeButton.IsEnabled = canFormat;
         linkButton.IsEnabled = canFormat;

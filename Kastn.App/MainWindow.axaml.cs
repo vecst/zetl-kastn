@@ -246,16 +246,17 @@ internal partial class MainWindow : Window
         viewModeListButton.Click += (_, _) => SetBoardMode(false);
         viewModeBoardButton.Click += (_, _) => SetBoardMode(true);
         boardModeMenuItem.Click += (_, _) => SetBoardMode(boardModeMenuItem.IsChecked);
-        // Alignment, strikethrough, and the list markers fork: a single selected slip
-        // edits its render properties; a multi-slip / bucket selection applies the
-        // change to every selected slip at once (batch). Inline buttons set style
-        // ranges over the editor text rather than inserting Markdown markers.
+        // Alignment, bold/italic/strike, and the list markers are whole-slip render
+        // properties: a single selected slip toggles its own, a multi-slip / bucket
+        // selection applies the change to every selected slip at once (batch).
+        // Inline emphasis within the text is typed Markdown; only the code and link
+        // buttons still set style ranges over the editor selection.
         alignLeftButton.Click += async (_, _) => await AlignSlipsAsync("left");
         alignCenterButton.Click += async (_, _) => await AlignSlipsAsync("center");
         alignRightButton.Click += async (_, _) => await AlignSlipsAsync("right");
-        boldButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Bold);
-        italicButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Italic);
-        strikeButton.Click += async (_, _) => await StrikeSlipsAsync();
+        boldButton.Click += async (_, _) => await ToggleSlipStyleAsync(ZetlInlineStyleKinds.Bold);
+        italicButton.Click += async (_, _) => await ToggleSlipStyleAsync(ZetlInlineStyleKinds.Italic);
+        strikeButton.Click += async (_, _) => await ToggleSlipStyleAsync(ZetlInlineStyleKinds.Strike);
         codeButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Code);
         linkButton.Click += async (_, _) => await SetEditorWebLinkAsync();
         wikiLinkButton.Click += async (_, _) => await InsertSlipLinkAsync();

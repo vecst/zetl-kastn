@@ -916,7 +916,8 @@ internal sealed class ZetlProjectService
         store.UpdateNote(
             note, payload.Text, payload.Title, payload.ExcludedFromViews,
             payload.Align, payload.BlockKind, payload.IgnoreBucketRenderKind,
-            payload.Checked, payload.InlineStyles);
+            payload.Checked, payload.InlineStyles,
+            payload.Bold, payload.Italic, payload.Strike);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);

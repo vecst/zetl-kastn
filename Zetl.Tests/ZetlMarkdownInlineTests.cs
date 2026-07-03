@@ -61,6 +61,76 @@ public class ZetlMarkdownInlineTests
             "An early inner close should still nest under the outer bold.");
     }
 
+    private static ZetlSlipSnapshot StyledSlip(
+        string text,
+        bool bold = false,
+        bool italic = false,
+        bool strike = false,
+        string blockKind = "") => new()
+    {
+        Id = "s1",
+        Revision = 1,
+        Type = ZetlSlipType.Text,
+        BucketId = "b1",
+        Text = text,
+        BlockKind = blockKind,
+        Bold = bold,
+        Italic = italic,
+        Strike = strike,
+        Source = "kastn",
+        CapturedAtUtc = DateTimeOffset.UnixEpoch
+    };
+
+    private static string RenderWholeSlip(ZetlSlipSnapshot slip)
+    {
+        var styles = ZetlViewRenderer.EffectiveInlineStyles(slip, slip.Text);
+        return ZetlMarkdown.InlinesToHtml(ZetlMarkdown.ApplyInlineStyleMarkers(slip.Text, styles));
+    }
+
+    [Fact] public void WholeSlipBoldAndItalicRenderNestedWithoutMarkers()
+    {
+        var html = RenderWholeSlip(StyledSlip("note", bold: true, italic: true));
+        AssertEqual(
+            "<strong><em>note</em></strong>",
+            html,
+            "Whole-slip flags render through the same nested emphasis pipeline.");
+    }
+
+    [Fact] public void WholeSlipStylesApplyPerLineAndSkipBlockMarkers()
+    {
+        var slip = StyledSlip("- item\nplain line", bold: true);
+        var styles = ZetlViewRenderer.EffectiveInlineStyles(slip, slip.Text);
+        var styled = ZetlMarkdown.ApplyInlineStyleMarkers(slip.Text, styles);
+        AssertEqual(
+            "- **item**\n**plain line**",
+            styled,
+            "Styling starts after a typed list marker and never spans a line break.");
+
+        var html = ZetlMarkdown.BlocksToHtml(styled);
+        AssertTrue(
+            html.Contains("<li><strong>item</strong></li>", StringComparison.Ordinal),
+            "The list line stays a list item with bold content.");
+        AssertTrue(!html.Contains('*'), "No literal markers may leak into the rendering.");
+    }
+
+    [Fact] public void WholeSlipStylesLeaveCodeAlone()
+    {
+        var codeSlip = StyledSlip("var x = 1;", bold: true, blockKind: ZetlBlockKinds.Code);
+        AssertEqual(
+            0,
+            ZetlViewRenderer.EffectiveInlineStyles(codeSlip, codeSlip.Text).Count,
+            "A code-kind slip takes no whole-slip styling — its body is literal.");
+
+        var fenced = StyledSlip("before\n```\nlet y = 2;\n```", bold: true);
+        var styled = ZetlMarkdown.ApplyInlineStyleMarkers(
+            fenced.Text,
+            ZetlViewRenderer.EffectiveInlineStyles(fenced, fenced.Text));
+        AssertEqual(
+            "**before**\n```\nlet y = 2;\n```",
+            styled,
+            "Fenced lines inside the body stay literal.");
+    }
+
     [Fact] public void PlainDoubledEmphasisIsUnchanged()
     {
         AssertEqual(

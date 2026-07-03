@@ -594,6 +594,41 @@ public class ZetlProjectServiceTests
         AssertEqual(0, cleared.InlineStyles.Count, "An explicit empty style list clears inline styling.");
     }
 
+    [Fact] public void WholeSlipStylesRoundTripAndPreserveWhenOmitted()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "styled note", "copy");
+        var service = new ZetlProjectService(store);
+
+        ZetlSlipSnapshot Update(string id, UpdateSlipCommand command, long revision) =>
+            service.Execute(ZetlCommandEnvelope.Create(
+                id, ZetlCommandKind.UpdateSlip, command, project.Id, note.Id, revision))
+                .Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException($"{id} did not return a slip.");
+
+        var styled = Update(
+            "style-on",
+            new UpdateSlipCommand { Text = note.Text, Bold = true, Italic = true, Strike = true },
+            note.Revision);
+        AssertTrue(styled.Bold, "Whole-slip bold should persist.");
+        AssertTrue(styled.Italic, "Whole-slip italic should persist.");
+        AssertTrue(styled.Strike, "Whole-slip strike should persist.");
+
+        var edited = Update("edit", new UpdateSlipCommand { Text = "edited note" }, styled.Revision);
+        AssertTrue(
+            edited.Bold && edited.Italic && edited.Strike,
+            "Omitting the style flags on a text edit preserves them.");
+
+        var plain = Update(
+            "style-off",
+            new UpdateSlipCommand { Text = edited.Text, Bold = false, Italic = false, Strike = false },
+            edited.Revision);
+        AssertTrue(
+            !plain.Bold && !plain.Italic && !plain.Strike,
+            "Explicit false clears each whole-slip style.");
+    }
+
     [Fact] public void DividerNoteAddsWithoutContent()
     {
         using var temp = new TempStateDirectory();

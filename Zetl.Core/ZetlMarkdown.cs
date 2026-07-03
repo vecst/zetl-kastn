@@ -420,6 +420,89 @@ internal static class ZetlMarkdown
         }
     }
 
+    public static bool IsCodeFenceLine(string line) => IsCodeFence(line, out _);
+
+    // The span of one line that whole-slip styling may wrap: after any leading
+    // block marker (heading/quote/list/task), trimmed of surrounding whitespace,
+    // so the marker keeps parsing as structure and the emitted emphasis markers
+    // hug the text. Null for lines that must stay unstyled (blank, fence, divider).
+    public static (int Start, int Length)? StyleTargetWithinLine(string line)
+    {
+        if (IsCodeFence(line, out _) || IsDivider(line))
+        {
+            return null;
+        }
+
+        var contentStart = IndentLength(line);
+        if (IsHeading(line, out _, out _))
+        {
+            var i = contentStart;
+            while (i < line.Length && line[i] == '#')
+            {
+                i++;
+            }
+
+            contentStart = i + 1;
+        }
+        else if (IsQuote(line, out _))
+        {
+            var i = contentStart + 1;
+            if (i < line.Length && line[i] == ' ')
+            {
+                i++;
+            }
+
+            contentStart = i;
+        }
+        else if (TryClassifyListLine(line, out var kind, out _, out _, out _))
+        {
+            var i = contentStart;
+            if (kind == ZetlBlockKinds.Task)
+            {
+                i += 5;
+                if (i < line.Length && line[i] == ' ')
+                {
+                    i++;
+                }
+            }
+            else if (kind == ZetlBlockKinds.Bullet)
+            {
+                i += 2;
+            }
+            else
+            {
+                i = line.IndexOf(". ", i, StringComparison.Ordinal) + 2;
+            }
+
+            contentStart = i;
+        }
+
+        var start = contentStart;
+        while (start < line.Length && char.IsWhiteSpace(line[start]))
+        {
+            start++;
+        }
+
+        var end = line.Length;
+        while (end > start && char.IsWhiteSpace(line[end - 1]))
+        {
+            end--;
+        }
+
+        return end > start ? (start, end - start) : null;
+    }
+
+    private static int IndentLength(string line)
+    {
+        var i = 0;
+        while (i < line.Length && char.IsWhiteSpace(line[i]))
+        {
+            i++;
+        }
+
+        return i;
+    }
+
     private sealed record InlineMarker(string Open, string Close, int Priority);
 
     private static void AddMarker(

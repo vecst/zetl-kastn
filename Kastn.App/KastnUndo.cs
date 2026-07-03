@@ -170,6 +170,9 @@ internal static class KastnUndoPlanner
         || a.ExcludedFromViews != b.ExcludedFromViews
         || a.IgnoreBucketRenderKind != b.IgnoreBucketRenderKind
         || a.Checked != b.Checked
+        || a.Bold != b.Bold
+        || a.Italic != b.Italic
+        || a.Strike != b.Strike
         || !InlineStylesEqual(a.InlineStyles, b.InlineStyles);
 
     private static string Align(ZetlSlipSnapshot slip) =>
@@ -206,6 +209,9 @@ internal static class KastnUndoPlanner
         BlockKind = slip.BlockKind,
         IgnoreBucketRenderKind = slip.IgnoreBucketRenderKind,
         Checked = slip.Checked,
+        Bold = slip.Bold,
+        Italic = slip.Italic,
+        Strike = slip.Strike,
         InlineStyles = slip.InlineStyles
     };
 
