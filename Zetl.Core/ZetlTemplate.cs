@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using ZETL.Contracts;
 
 namespace ZETL;
@@ -134,7 +133,7 @@ internal sealed class ZetlTemplateSlipDocument
 /// document shape as future user templates so a copied built-in is a valid,
 /// inspectable starting point for authoring.
 /// </summary>
-internal static partial class ZetlTemplateDefaults
+internal static class ZetlTemplateDefaults
 {
     // Bucket names Zetl manages itself; templates must not define them. Scratch is
     // always added to a new project, and Deleted is the protected soft-delete
@@ -172,12 +171,8 @@ internal static partial class ZetlTemplateDefaults
 
     // A deep copy via the same JSON path the store persists through, so a clone
     // can be edited without disturbing the source (e.g. a built-in preset).
-    public static ZetlTemplateDocument Clone(ZetlTemplateDocument template)
-    {
-        var json = JsonSerializer.Serialize(template, JsonFile.Options);
-        return JsonSerializer.Deserialize<ZetlTemplateDocument>(json, JsonFile.Options)
-            ?? CreateDraft();
-    }
+    public static ZetlTemplateDocument Clone(ZetlTemplateDocument template) =>
+        JsonFile.Clone(template);
 
     // Make an independent user copy of a template (typically a built-in) with a
     // fresh id and name, so the original stays immutable.
@@ -190,22 +185,7 @@ internal static partial class ZetlTemplateDefaults
         return copy;
     }
 
-    // A stable, filesystem-safe id from a display name plus a uniqueness suffix,
-    // matching the theme id scheme so user files never collide.
-    public static string CreateId(string name)
-    {
-        var slug = NonSlugCharacters().Replace(name.Trim().ToLowerInvariant(), "-").Trim('-');
-        if (slug.Length == 0)
-        {
-            slug = "template";
-        }
-
-        slug = slug[..Math.Min(slug.Length, 30)];
-        return $"{slug}-{Guid.NewGuid():N}"[..Math.Min(slug.Length + 9, 48)];
-    }
-
-    [GeneratedRegex("[^a-z0-9]+")]
-    private static partial Regex NonSlugCharacters();
+    public static string CreateId(string name) => ZetlDocumentId.Create(name, "template");
 
     private static ZetlTemplateDocument Blank() => new()
     {
@@ -440,125 +420,24 @@ internal static class ZetlTemplateValidator
 /// </summary>
 internal sealed class ZetlTemplateStore
 {
-    private readonly string templateDirectory;
-    private readonly Action<string>? log;
+    private readonly ZetlDocumentStore<ZetlTemplateDocument> store;
 
-    public ZetlTemplateStore(string? templateDirectory = null, Action<string>? log = null)
-    {
-        this.templateDirectory = templateDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Zetl",
-            "templates");
-        this.log = log;
-    }
+    public ZetlTemplateStore(string? templateDirectory = null, Action<string>? log = null) =>
+        store = new(
+            templateDirectory,
+            "templates",
+            "template",
+            ZetlTemplateDefaults.CreateAll,
+            ZetlTemplateValidator.Validate,
+            ZetlTemplateDefaults.IsBuiltIn,
+            template => template.Id,
+            log);
 
-    public string TemplateDirectory => templateDirectory;
+    public string TemplateDirectory => store.Directory;
 
-    public IReadOnlyList<ZetlTemplateDocument> LoadAll()
-    {
-        var templates = ZetlTemplateDefaults.CreateAll().ToList();
-        if (!Directory.Exists(templateDirectory))
-        {
-            return templates;
-        }
+    public IReadOnlyList<ZetlTemplateDocument> LoadAll() => store.LoadAll();
 
-        string[] paths;
-        try
-        {
-            paths = Directory.GetFiles(templateDirectory, "*.json");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            log?.Invoke($"Could not list template directory '{templateDirectory}': {ex.Message}");
-            return templates;
-        }
+    public void Save(ZetlTemplateDocument template) => store.Save(template);
 
-        var seenIds = new HashSet<string>(
-            templates.Select(template => template.Id), StringComparer.Ordinal);
-
-        foreach (var path in paths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-        {
-            var name = Path.GetFileName(path);
-            // ReadOrQuarantine moves a corrupt file aside (a visible .corrupt-*
-            // copy) and returns null, so a damaged user file degrades to "skipped"
-            // rather than aborting the load.
-            var template = JsonFile.ReadOrQuarantine<ZetlTemplateDocument>(path, log);
-            if (template is null)
-            {
-                continue;
-            }
-
-            var errors = ZetlTemplateValidator.Validate(template);
-            if (errors.Count > 0)
-            {
-                log?.Invoke($"Ignoring invalid template '{name}': {string.Join("; ", errors)}");
-                continue;
-            }
-
-            if (ZetlTemplateDefaults.IsBuiltIn(template.Id))
-            {
-                log?.Invoke(
-                    $"Ignoring user template '{name}': id '{template.Id}' is reserved by a built-in.");
-                continue;
-            }
-
-            if (!seenIds.Add(template.Id))
-            {
-                log?.Invoke($"Ignoring user template '{name}': duplicate id '{template.Id}'.");
-                continue;
-            }
-
-            templates.Add(template);
-        }
-
-        return templates;
-    }
-
-    /// <summary>
-    /// Writes a user template as JSON. The document must be valid and must not use
-    /// a built-in id, so authoring can never overwrite a protected preset. The file
-    /// is named from the (stable) id, so renaming a template never moves its file.
-    /// </summary>
-    public void Save(ZetlTemplateDocument template)
-    {
-        var errors = ZetlTemplateValidator.Validate(template);
-        if (errors.Count > 0)
-        {
-            throw new InvalidDataException(string.Join(Environment.NewLine, errors));
-        }
-
-        if (ZetlTemplateDefaults.IsBuiltIn(template.Id))
-        {
-            throw new InvalidOperationException("Built-in templates cannot be overwritten.");
-        }
-
-        JsonFile.WriteAtomic(PathFor(template.Id), template);
-    }
-
-    /// <summary>
-    /// Removes a user template file. Built-ins are never deletable. A missing file
-    /// is a no-op so a double-delete is harmless.
-    /// </summary>
-    public void Delete(string id)
-    {
-        if (ZetlTemplateDefaults.IsBuiltIn(id))
-        {
-            throw new InvalidOperationException("Built-in templates cannot be deleted.");
-        }
-
-        var path = PathFor(id);
-        if (File.Exists(path))
-        {
-            File.Delete(path);
-        }
-    }
-
-    private string PathFor(string id)
-    {
-        var safeId = string.Concat(id.Select(character =>
-            char.IsAsciiLetterOrDigit(character) || character is '-' or '_'
-                ? character
-                : '-'));
-        return Path.Combine(templateDirectory, $"{safeId}.json");
-    }
+    public void Delete(string id) => store.Delete(id);
 }

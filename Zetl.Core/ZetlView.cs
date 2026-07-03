@@ -178,7 +178,7 @@ internal sealed class ZetlViewSection
 /// formats so the existing fast workflows are expressible as views; Markdown is the
 /// first new artifact kind.
 /// </summary>
-internal static partial class ZetlViewDefaults
+internal static class ZetlViewDefaults
 {
     public static IReadOnlyList<ZetlViewDocument> CreateAll() =>
     [
@@ -240,12 +240,7 @@ internal static partial class ZetlViewDefaults
     public static ZetlViewDocument? FindBuiltIn(string? id) =>
         CreateAll().FirstOrDefault(view => view.Id == id);
 
-    public static ZetlViewDocument Clone(ZetlViewDocument view)
-    {
-        var json = JsonSerializer.Serialize(view, JsonFile.Options);
-        return JsonSerializer.Deserialize<ZetlViewDocument>(json, JsonFile.Options)
-            ?? CreateAll()[0];
-    }
+    public static ZetlViewDocument Clone(ZetlViewDocument view) => JsonFile.Clone(view);
 
     // An independent user copy of a view (typically a built-in) with a fresh id and
     // name, so the original stays immutable.
@@ -258,20 +253,7 @@ internal static partial class ZetlViewDefaults
         return copy;
     }
 
-    public static string CreateId(string name)
-    {
-        var slug = NonSlugCharacters().Replace(name.Trim().ToLowerInvariant(), "-").Trim('-');
-        if (slug.Length == 0)
-        {
-            slug = "view";
-        }
-
-        slug = slug[..Math.Min(slug.Length, 30)];
-        return $"{slug}-{Guid.NewGuid():N}"[..Math.Min(slug.Length + 9, 48)];
-    }
-
-    [GeneratedRegex("[^a-z0-9]+")]
-    private static partial Regex NonSlugCharacters();
+    public static string CreateId(string name) => ZetlDocumentId.Create(name, "view");
 }
 
 /// <summary>
@@ -357,110 +339,24 @@ internal static class ZetlViewValidator
 /// </summary>
 internal sealed class ZetlViewStore
 {
-    private readonly string viewDirectory;
-    private readonly Action<string>? log;
+    private readonly ZetlDocumentStore<ZetlViewDocument> store;
 
-    public ZetlViewStore(string? viewDirectory = null, Action<string>? log = null)
-    {
-        this.viewDirectory = viewDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Zetl",
-            "views");
-        this.log = log;
-    }
+    public ZetlViewStore(string? viewDirectory = null, Action<string>? log = null) =>
+        store = new(
+            viewDirectory,
+            "views",
+            "view",
+            ZetlViewDefaults.CreateAll,
+            ZetlViewValidator.Validate,
+            ZetlViewDefaults.IsBuiltIn,
+            view => view.Id,
+            log);
 
-    public string ViewDirectory => viewDirectory;
+    public string ViewDirectory => store.Directory;
 
-    public IReadOnlyList<ZetlViewDocument> LoadAll()
-    {
-        var views = ZetlViewDefaults.CreateAll().ToList();
-        if (!Directory.Exists(viewDirectory))
-        {
-            return views;
-        }
+    public IReadOnlyList<ZetlViewDocument> LoadAll() => store.LoadAll();
 
-        string[] paths;
-        try
-        {
-            paths = Directory.GetFiles(viewDirectory, "*.json");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            log?.Invoke($"Could not list view directory '{viewDirectory}': {ex.Message}");
-            return views;
-        }
+    public void Save(ZetlViewDocument view) => store.Save(view);
 
-        var seenIds = new HashSet<string>(views.Select(view => view.Id), StringComparer.Ordinal);
-        foreach (var path in paths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-        {
-            var name = Path.GetFileName(path);
-            var view = JsonFile.ReadOrQuarantine<ZetlViewDocument>(path, log);
-            if (view is null)
-            {
-                continue;
-            }
-
-            var errors = ZetlViewValidator.Validate(view);
-            if (errors.Count > 0)
-            {
-                log?.Invoke($"Ignoring invalid view '{name}': {string.Join("; ", errors)}");
-                continue;
-            }
-
-            if (ZetlViewDefaults.IsBuiltIn(view.Id))
-            {
-                log?.Invoke($"Ignoring user view '{name}': id '{view.Id}' is reserved by a built-in.");
-                continue;
-            }
-
-            if (!seenIds.Add(view.Id))
-            {
-                log?.Invoke($"Ignoring user view '{name}': duplicate id '{view.Id}'.");
-                continue;
-            }
-
-            views.Add(view);
-        }
-
-        return views;
-    }
-
-    public void Save(ZetlViewDocument view)
-    {
-        var errors = ZetlViewValidator.Validate(view);
-        if (errors.Count > 0)
-        {
-            throw new InvalidDataException(string.Join(Environment.NewLine, errors));
-        }
-
-        if (ZetlViewDefaults.IsBuiltIn(view.Id))
-        {
-            throw new InvalidOperationException("Built-in views cannot be overwritten.");
-        }
-
-        JsonFile.WriteAtomic(PathFor(view.Id), view);
-    }
-
-    public void Delete(string id)
-    {
-        if (ZetlViewDefaults.IsBuiltIn(id))
-        {
-            throw new InvalidOperationException("Built-in views cannot be deleted.");
-        }
-
-        var path = PathFor(id);
-        if (File.Exists(path))
-        {
-            File.Delete(path);
-        }
-    }
-
-    private string PathFor(string id)
-    {
-        var safeId = string.Concat(id.Select(character =>
-            char.IsAsciiLetterOrDigit(character) || character is '-' or '_'
-                ? character
-                : '-'));
-        return Path.Combine(viewDirectory, $"{safeId}.json");
-    }
+    public void Delete(string id) => store.Delete(id);
 }

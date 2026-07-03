@@ -79,6 +79,15 @@ internal static class JsonFile
         }
     }
 
+    /// <summary>
+    /// Deep copy through the same JSON path documents persist through, so a
+    /// clone can be edited without disturbing the source (e.g. a built-in
+    /// preset). Serializing a non-null object never yields JSON null, so the
+    /// deserialized copy is always present.
+    /// </summary>
+    public static T Clone<T>(T value) where T : class =>
+        JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, Options), Options)!;
+
     public static void WriteAtomic<T>(string path, T value)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);

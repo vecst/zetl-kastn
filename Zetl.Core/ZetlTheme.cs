@@ -78,7 +78,7 @@ internal sealed class ZetlThemeMetrics
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
-internal static partial class ZetlThemeDefaults
+internal static class ZetlThemeDefaults
 {
     public const string BuiltInId = "zetl-default";
     public const string DuskId = "zetl-dusk";
@@ -277,12 +277,7 @@ internal static partial class ZetlThemeDefaults
         return CreateAll().FirstOrDefault(theme => theme.Id == id);
     }
 
-    public static ZetlThemeDocument Clone(ZetlThemeDocument theme)
-    {
-        var json = JsonSerializer.Serialize(theme, JsonFile.Options);
-        return JsonSerializer.Deserialize<ZetlThemeDocument>(json, JsonFile.Options)
-            ?? Create();
-    }
+    public static ZetlThemeDocument Clone(ZetlThemeDocument theme) => JsonFile.Clone(theme);
 
     public static ZetlThemeDocument CreateCustom(string name)
     {
@@ -292,20 +287,7 @@ internal static partial class ZetlThemeDefaults
         return theme;
     }
 
-    public static string CreateId(string name)
-    {
-        var slug = NonSlugCharacters().Replace(name.Trim().ToLowerInvariant(), "-").Trim('-');
-        if (slug.Length == 0)
-        {
-            slug = "theme";
-        }
-
-        slug = slug[..Math.Min(slug.Length, 30)];
-        return $"{slug}-{Guid.NewGuid():N}"[..Math.Min(slug.Length + 9, 48)];
-    }
-
-    [GeneratedRegex("[^a-z0-9]+")]
-    private static partial Regex NonSlugCharacters();
+    public static string CreateId(string name) => ZetlDocumentId.Create(name, "theme");
 }
 
 internal static class ZetlThemeValidator
@@ -407,68 +389,22 @@ internal static class ZetlThemeValidator
 
 internal sealed class ZetlThemeStore
 {
-    private readonly string themeDirectory;
+    private readonly ZetlDocumentStore<ZetlThemeDocument> store;
 
-    public ZetlThemeStore(string? themeDirectory = null)
-    {
-        this.themeDirectory = themeDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Zetl",
-            "themes");
-    }
+    public ZetlThemeStore(string? themeDirectory = null, Action<string>? log = null) =>
+        store = new(
+            themeDirectory,
+            "themes",
+            "theme",
+            ZetlThemeDefaults.CreateAll,
+            ZetlThemeValidator.Validate,
+            ZetlThemeDefaults.IsBuiltIn,
+            theme => theme.Id,
+            log);
 
-    public string ThemeDirectory => themeDirectory;
+    public string ThemeDirectory => store.Directory;
 
-    public IReadOnlyList<ZetlThemeDocument> LoadAll()
-    {
-        var themes = ZetlThemeDefaults.CreateAll().ToList();
-        if (!Directory.Exists(themeDirectory))
-        {
-            return themes;
-        }
-
-        string[] paths;
-        try
-        {
-            paths = Directory.GetFiles(themeDirectory, "*.json");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return themes;
-        }
-
-        foreach (var path in paths
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-        {
-            try
-            {
-                var theme = JsonFile.Read<ZetlThemeDocument>(path);
-                if (ZetlThemeValidator.Validate(theme).Count == 0
-                    && !ZetlThemeDefaults.IsBuiltIn(theme!.Id))
-                {
-                    themes.Add(theme);
-                }
-            }
-            catch (JsonException)
-            {
-                // Invalid user themes are ignored so startup always has a fallback.
-            }
-            catch (IOException)
-            {
-                // A temporarily unavailable theme file must not block startup.
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // An unreadable user theme must not block startup.
-            }
-            catch (NotSupportedException)
-            {
-                // Unsupported future JSON values fall back to the built-in theme.
-            }
-        }
-
-        return themes;
-    }
+    public IReadOnlyList<ZetlThemeDocument> LoadAll() => store.LoadAll();
 
     public ZetlThemeDocument Resolve(string? id)
     {
@@ -476,21 +412,7 @@ internal sealed class ZetlThemeStore
             ?? ZetlThemeDefaults.Create();
     }
 
-    public void Save(ZetlThemeDocument theme)
-    {
-        var errors = ZetlThemeValidator.Validate(theme);
-        if (errors.Count > 0)
-        {
-            throw new InvalidDataException(string.Join(Environment.NewLine, errors));
-        }
-
-        if (ZetlThemeDefaults.IsBuiltIn(theme.Id))
-        {
-            throw new InvalidOperationException("The built-in theme cannot be overwritten.");
-        }
-
-        JsonFile.WriteAtomic(PathFor(theme.Id), theme);
-    }
+    public void Save(ZetlThemeDocument theme) => store.Save(theme);
 
     public ZetlThemeDocument Import(string path)
     {
@@ -503,7 +425,7 @@ internal sealed class ZetlThemeStore
         }
 
         if (ZetlThemeDefaults.IsBuiltIn(theme.Id)
-            || File.Exists(PathFor(theme.Id)))
+            || File.Exists(store.PathFor(theme.Id)))
         {
             theme.Id = ZetlThemeDefaults.CreateId(theme.Name);
         }
@@ -521,14 +443,5 @@ internal sealed class ZetlThemeStore
         }
 
         JsonFile.WriteAtomic(path, theme);
-    }
-
-    private string PathFor(string id)
-    {
-        var safeId = string.Concat(id.Select(character =>
-            char.IsAsciiLetterOrDigit(character) || character is '-' or '_'
-                ? character
-                : '-'));
-        return Path.Combine(themeDirectory, $"{safeId}.json");
     }
 }
