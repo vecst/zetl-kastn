@@ -254,7 +254,6 @@ internal partial class MainWindow
     private void BuildViewDocument(IReadOnlyList<ZetlSlipSnapshot> visible)
     {
         var generation = ++pictureRenderGeneration;
-        DisposeDisplayedPictures();
         viewerDocumentPanel.Children.Clear();
         viewSlipBlocks.Clear();
         highlightedViewSlipId = null;
@@ -414,7 +413,15 @@ internal partial class MainWindow
                 });
             }
 
-            _ = LoadPicturePreviewAsync(slip, image, loading, generation);
+            if (CachedDecodedPicture(slip, 1100) is { } cachedBitmap)
+            {
+                image.Source = cachedBitmap;
+                loading.IsVisible = false;
+            }
+            else
+            {
+                _ = LoadPicturePreviewAsync(slip, image, loading, generation);
+            }
         }
         else
         {
@@ -791,15 +798,14 @@ internal partial class MainWindow
                 return;
             }
 
-            using var stream = new MemoryStream(content.Bytes, writable: false);
-            var bitmap = Bitmap.DecodeToWidth(stream, 1100);
+            // The cache owns the bitmap, so a stale load neither disposes nor
+            // assigns — the next rebuild picks the decoded bitmap up synchronously.
+            var bitmap = DecodeAndCachePicture(content, slip.Picture!.Sha256, 1100);
             if (generation != pictureRenderGeneration)
             {
-                bitmap.Dispose();
                 return;
             }
 
-            displayedPictureBitmaps.Add(bitmap);
             image.Source = bitmap;
             status.IsVisible = false;
         }
@@ -920,16 +926,38 @@ internal partial class MainWindow
         viewerDocumentPanel.Children.Clear();
         viewSlipBlocks.Clear();
         highlightedViewSlipId = null;
-        DisposeDisplayedPictures();
     }
 
-    private void DisposeDisplayedPictures()
+    // A cached decoded bitmap for the slip's picture at the given decode width,
+    // or null when it has not been decoded yet. A hit lets the caller assign the
+    // image synchronously, so a rebuild neither re-decodes nor blinks "Loading…".
+    private Bitmap? CachedDecodedPicture(ZetlSlipSnapshot slip, int width) =>
+        slip.Picture is { } picture
+        && decodedPictureCache.TryGetValue((picture.Sha256, width), out var bitmap)
+            ? bitmap
+            : null;
+
+    private Bitmap DecodeAndCachePicture(ZetlPictureContent content, string sha, int width)
     {
-        foreach (var bitmap in displayedPictureBitmaps)
+        if (decodedPictureCache.TryGetValue((sha, width), out var existing))
+        {
+            return existing;
+        }
+
+        using var stream = new MemoryStream(content.Bytes, writable: false);
+        var bitmap = Bitmap.DecodeToWidth(stream, width);
+        decodedPictureCache[(sha, width)] = bitmap;
+        return bitmap;
+    }
+
+    private void ClearDecodedPictureCache()
+    {
+        foreach (var bitmap in decodedPictureCache.Values)
         {
             bitmap.Dispose();
         }
-        displayedPictureBitmaps.Clear();
+
+        decodedPictureCache.Clear();
     }
 
     private ZetlViewDocument SelectedView =>
@@ -1423,9 +1451,9 @@ internal partial class MainWindow
         public required Grid Wrapper { get; init; }
         public required Border CardBorder { get; init; }
         public required string RenderKey { get; init; }
-        public Bitmap? PictureBitmap { get; set; }
 
-        // The thumbnail targets of a picture card, waiting for the async load. The
+        // The thumbnail targets of a picture card, waiting for the async load
+        // (the decoded bitmap lives in the shared decodedPictureCache). The
         // reconcile starts the load after the card is registered, so a load that
         // completes synchronously still sees itself as the current card.
         public (Image Image, TextBlock Status)? PendingPictureLoad { get; set; }
@@ -1563,8 +1591,6 @@ internal partial class MainWindow
 
         boardCards.Remove(slipId);
         boardSlipCards.Remove(slipId);
-        card.PictureBitmap?.Dispose();
-        card.PictureBitmap = null;
         if (card.Wrapper.Parent is Panel parent)
         {
             parent.Children.Remove(card.Wrapper);
@@ -2007,7 +2033,15 @@ internal partial class MainWindow
             };
             mainPanel.Children.Add(image);
             mainPanel.Children.Add(statusText);
-            pendingPictureLoad = (image, statusText);
+            if (CachedDecodedPicture(slip, 260) is { } cachedThumbnail)
+            {
+                image.Source = cachedThumbnail;
+                statusText.IsVisible = false;
+            }
+            else
+            {
+                pendingPictureLoad = (image, statusText);
+            }
         }
 
         if (footer.Children.Count > 0)
@@ -2203,10 +2237,10 @@ internal partial class MainWindow
         }
     }
 
-    // Load a board card's thumbnail. The bitmap is owned by the card entry (not
-    // the shared reading-view pool), so an incremental refresh disposes it exactly
-    // when its card is rebuilt or removed. A load that outlives its card — the
-    // card was replaced while the bytes were in flight — drops its result.
+    // Load a board card's thumbnail into the shared decoded-picture cache. A load
+    // that outlives its card — the card was replaced while the bytes were in
+    // flight — drops its assignment; the decoded bitmap stays cached either way,
+    // so the replacement card picks it up synchronously.
     private async void LoadBoardCardPictureAsync(
         ZetlSlipSnapshot slip,
         BoardCardUi card,
@@ -2230,16 +2264,13 @@ internal partial class MainWindow
                 return;
             }
 
-            using var stream = new MemoryStream(content.Bytes, writable: false);
-            var bitmap = Bitmap.DecodeToWidth(stream, 260); // smaller width for board card thumbnails!
+            // 260: smaller decode width for board card thumbnails.
+            var bitmap = DecodeAndCachePicture(content, slip.Picture!.Sha256, 260);
             if (!IsCurrent())
             {
-                bitmap.Dispose();
                 return;
             }
 
-            card.PictureBitmap?.Dispose();
-            card.PictureBitmap = bitmap;
             image.Source = bitmap;
             status.IsVisible = false;
         }

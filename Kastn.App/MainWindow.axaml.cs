@@ -95,7 +95,13 @@ internal partial class MainWindow : Window
     private readonly Dictionary<string, ZetlPictureContent> pictureCache = new(StringComparer.Ordinal);
     private readonly Queue<string> pictureCacheOrder = [];
     private readonly Dictionary<string, Task<ZetlPictureContent?>> pictureLoads = new(StringComparer.Ordinal);
-    private readonly List<Bitmap> displayedPictureBitmaps = [];
+    // Decoded picture bitmaps by content hash and decode width. Pictures are
+    // content-addressed, so an entry never goes stale; the cache clears on project
+    // switch (and window close). Owning decoded bitmaps here lets view and board
+    // rebuilds reuse them synchronously instead of re-decoding every picture on
+    // every action — the main cost behind the editor sitting disabled with the
+    // view flashing for a second per mutation.
+    private readonly Dictionary<(string Sha, int Width), Bitmap> decodedPictureCache = new();
     private ZetlProjectSnapshot? currentProject;
     private bool refreshing;
     private bool editorUpdating;
@@ -103,6 +109,7 @@ internal partial class MainWindow : Window
     // Set while a batch loops many UpdateSlip commands; OnSnapshotChanged (off-thread)
     // reads it to drop the per-mutation snapshot pushes until the batch's final refresh.
     private volatile bool batching;
+    private string lastViewCatalogSignature = "";
     // The single in-flight editor save, so a focus-loss save and a navigation
     // save (e.g. clicking another slip) coalesce instead of racing the `saving`
     // guard.
@@ -335,7 +342,7 @@ internal partial class MainWindow : Window
         Closed += (_, _) =>
         {
             connection.SnapshotChanged -= OnSnapshotChanged;
-            DisposeDisplayedPictures();
+            ClearDecodedPictureCache();
         };
         ApplySnapshot(connection.Current);
     }
@@ -459,6 +466,12 @@ internal partial class MainWindow : Window
             ClearUndoHistory();
         }
 
+        // Decoded pictures belong to the outgoing project.
+        if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal))
+        {
+            ClearDecodedPictureCache();
+        }
+
         refreshing = true;
         try
         {
@@ -475,7 +488,16 @@ internal partial class MainWindow : Window
                 var selectedViewId = string.Equals(priorProjectId, projectSnapshot.Id, StringComparison.Ordinal)
                     ? (viewPickerBox.SelectedItem as ZetlViewDocument)?.Id
                     : projectSnapshot.DefaultViewId;
-                RefreshViewCatalog(projectSnapshot, selectedViewId);
+                // The catalog only changes with the project's metadata revision
+                // (view saves/deletes bump it; slip captures do not), so skip the
+                // disk reload and picker reset on ordinary mutations. The view
+                // editors refresh the catalog explicitly when they save.
+                var viewCatalogSignature = $"{projectSnapshot.Id}|{projectSnapshot.MetadataRevision}";
+                if (!string.Equals(viewCatalogSignature, lastViewCatalogSignature, StringComparison.Ordinal))
+                {
+                    lastViewCatalogSignature = viewCatalogSignature;
+                    RefreshViewCatalog(projectSnapshot, selectedViewId);
+                }
                 if (!string.Equals(priorProjectId, projectSnapshot.Id, StringComparison.Ordinal))
                 {
                     // Remember the opened project for the "reopen last project" startup
