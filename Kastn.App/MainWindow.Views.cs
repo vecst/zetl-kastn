@@ -1396,12 +1396,17 @@ internal partial class MainWindow
         return list;
     }
 
+    // Each board column's cards panel by bucket id, so the drag hit-test can pick
+    // the precise insertion slot from the pointer's place among the cards.
+    private readonly Dictionary<string, StackPanel> boardColumnCardPanels = new(StringComparer.Ordinal);
+
     private void BuildBoardView(IReadOnlyList<ZetlSlipSnapshot> visible)
     {
         var generation = ++pictureRenderGeneration;
         DisposeDisplayedPictures();
         boardColumnsPanel.Children.Clear();
         boardSlipCards.Clear();
+        boardColumnCardPanels.Clear();
         highlightedBoardSlipId = null;
 
         if (currentProject is null)
@@ -1475,7 +1480,10 @@ internal partial class MainWindow
         var headerGrid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
-            Margin = new Thickness(0, 0, 0, 8)
+            Margin = new Thickness(0, 0, 0, 8),
+            // Hit-testable everywhere so the whole header (not just its text) can
+            // start a column drag; the + button keeps its click.
+            Background = Brushes.Transparent
         };
         Grid.SetColumn(titleText, 0);
         Grid.SetColumn(countText, 1);
@@ -1483,6 +1491,11 @@ internal partial class MainWindow
         headerGrid.Children.Add(titleText);
         headerGrid.Children.Add(countText);
         headerGrid.Children.Add(addCardButton);
+
+        // Column-header drag reorders columns via ReorderBucket.
+        headerGrid.PointerPressed += OnBoardColumnHeaderPointerPressed;
+        headerGrid.PointerMoved += OnBoardColumnHeaderPointerMoved;
+        headerGrid.PointerReleased += OnBoardColumnHeaderPointerReleased;
 
         // Cards list
         var cardsPanel = new StackPanel
@@ -1532,7 +1545,57 @@ internal partial class MainWindow
         columnBorder.AddHandler(DragDrop.DragLeaveEvent, OnBoardDragLeave);
         columnBorder.AddHandler(DragDrop.DropEvent, OnBoardDrop);
 
-        return columnBorder;
+        boardColumnCardPanels[bucket.Id] = cardsPanel;
+        if (laneNode is null)
+        {
+            return columnBorder;
+        }
+
+        // Drag feedback overlays, bound to the same node flags the tree rows bind:
+        // an accent outline while cards would drop into this column, and vertical
+        // insertion lines at the left/right edges while a dragged column would land
+        // before/after it.
+        var columnWrapper = new Grid { DataContext = laneNode };
+        columnWrapper.Children.Add(columnBorder);
+        var intoOverlay = new Border
+        {
+            BorderBrush = ThemeBrush("ZetlAccentBrush"),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(6),
+            IsHitTestVisible = false,
+            IsVisible = false
+        };
+        intoOverlay.Bind(Visual.IsVisibleProperty, new Avalonia.Data.Binding(nameof(KastnTreeNode.IsDropTarget)));
+        columnWrapper.Children.Add(intoOverlay);
+        columnWrapper.Children.Add(CreateBoardDropLine(horizontal: false, atStart: true, nameof(KastnTreeNode.ShowDropBefore)));
+        columnWrapper.Children.Add(CreateBoardDropLine(horizontal: false, atStart: false, nameof(KastnTreeNode.ShowDropAfter)));
+        return columnWrapper;
+    }
+
+    // An accent insertion line overlaying one edge of a board card or column,
+    // visibility-bound to the node's drop-edge state: horizontal lines mark card
+    // slots (top/bottom), vertical lines mark column slots (left/right).
+    private Control CreateBoardDropLine(bool horizontal, bool atStart, string visibilityProperty)
+    {
+        var line = new Border
+        {
+            Background = ThemeBrush("ZetlAccentBrush"),
+            IsHitTestVisible = false,
+            IsVisible = false
+        };
+        if (horizontal)
+        {
+            line.Height = 2;
+            line.VerticalAlignment = atStart ? VerticalAlignment.Top : VerticalAlignment.Bottom;
+        }
+        else
+        {
+            line.Width = 3;
+            line.HorizontalAlignment = atStart ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        }
+
+        line.Bind(Visual.IsVisibleProperty, new Avalonia.Data.Binding(visibilityProperty));
+        return line;
     }
 
     private Control CreateBoardCard(ZetlSlipSnapshot slip)
@@ -1695,7 +1758,18 @@ internal partial class MainWindow
         cardBorder.AddHandler(DragDrop.DragLeaveEvent, OnBoardDragLeave);
         cardBorder.AddHandler(DragDrop.DropEvent, OnBoardDrop);
 
-        return cardBorder;
+        if (slipNode is null)
+        {
+            return cardBorder;
+        }
+
+        // Insertion lines at the card's top/bottom edges, bound to the same node
+        // flags the tree rows bind, so a drag shows exactly where the card lands.
+        var cardWrapper = new Grid { DataContext = slipNode };
+        cardWrapper.Children.Add(cardBorder);
+        cardWrapper.Children.Add(CreateBoardDropLine(horizontal: true, atStart: true, nameof(KastnTreeNode.ShowDropBefore)));
+        cardWrapper.Children.Add(CreateBoardDropLine(horizontal: true, atStart: false, nameof(KastnTreeNode.ShowDropAfter)));
+        return cardWrapper;
     }
 
     private async Task EditBoardSlipAsync(ZetlSlipSnapshot slip)

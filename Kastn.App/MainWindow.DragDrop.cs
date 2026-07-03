@@ -323,21 +323,44 @@ internal partial class MainWindow
             return null;
         }
 
-        // No row under the pointer (empty space below the list) → move to the end of the
-        // top level. This is what makes "drop past the last bucket" reach the bottom.
+        // No row under the pointer. In the tree that is the empty space below the
+        // list → move to the end of the top level (what makes "drop past the last
+        // bucket" reach the bottom). On the board it is the gap between columns —
+        // hold the sticky last-resolved slot instead of silently retargeting the end.
         if (RowUnderPointer(args) is not { } row)
         {
-            return BucketReorderPlan(project, source, moving, newParentId: null, beforeBucketId: null,
-                markerNode: null, markerEdge: KastnDropEdge.None);
+            return boardDragInProgress
+                ? null
+                : BucketReorderPlan(project, source, moving, newParentId: null, beforeBucketId: null,
+                    markerNode: null, markerEdge: KastnDropEdge.None);
         }
 
-        var (targetNode, fraction) = row;
+        var (targetNode, fraction, fractionX) = row;
         var targetBucket = targetNode.Kind == KastnTreeNodeKind.Bucket
             ? targetNode.Bucket
             : project.Buckets.FirstOrDefault(bucket => bucket.Id == targetNode.Slip?.BucketId);
         if (targetBucket is null || KastnWorkbench.IsDeletedBucket(targetBucket))
         {
             return null;
+        }
+
+        // A board column drag reorders side-by-side columns: the pointer's horizontal
+        // half picks before (left) or after (right) the target column. The board never
+        // nests — a middle drop has no meaning between flattened columns, so reparenting
+        // stays a tree gesture.
+        if (boardDragInProgress)
+        {
+            var columnNode = targetNode.Kind == KastnTreeNodeKind.Bucket
+                ? targetNode
+                : FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, targetBucket.Id);
+            return fractionX < 0.5
+                ? BucketReorderPlan(project, source, moving,
+                    newParentId: targetBucket.ParentBucketId, beforeBucketId: targetBucket.Id,
+                    markerNode: columnNode, markerEdge: KastnDropEdge.Before)
+                : BucketReorderPlan(project, source, moving,
+                    newParentId: targetBucket.ParentBucketId,
+                    beforeBucketId: NextSiblingBucketId(project, targetBucket),
+                    markerNode: columnNode, markerEdge: KastnDropEdge.After);
         }
 
         // Over a bucket row: the top edge inserts before it, the bottom edge after it, and
@@ -377,19 +400,27 @@ internal partial class MainWindow
             return null;
         }
 
-        var (targetNode, fraction) = row;
+        var (targetNode, fraction, _) = row;
         var draggedIds = (draggingNodes.Count > 0 ? draggingNodes : [source])
             .Where(node => node.Kind == KastnTreeNodeKind.Slip)
             .Select(node => node.Id)
             .ToHashSet(StringComparer.Ordinal);
 
-        // Onto a bucket row → append into the bucket (no slip nests inside a slip); a no-op
-        // when the dragged set is already last there.
+        // Onto a bucket row → into the bucket (no slip nests inside a slip). On the
+        // board the pointer's place among the column's cards picks the exact slot, so
+        // the gaps between cards and the space below the last card mean "insert here";
+        // in the tree (and for an empty column) it appends, a no-op when the dragged
+        // set is already last there.
         if (targetNode.Kind == KastnTreeNodeKind.Bucket)
         {
             if (targetNode.Bucket is not { } bucket || KastnWorkbench.IsDeletedBucket(bucket))
             {
                 return null;
+            }
+
+            if (boardDragInProgress && BoardColumnSlipPlan(args, source, bucket, draggedIds) is { } boardPlan)
+            {
+                return boardPlan;
             }
 
             var bucketSlips = project.Slips.Where(item => item.BucketId == bucket.Id).ToList();
@@ -400,6 +431,69 @@ internal partial class MainWindow
                 : new DropPlan(DropAction.SlipMove, source, bucket.Id, null, null) { MarkerNode = targetNode };
         }
 
+        return PlanSlipRowDrop(source, targetNode, fraction, draggedIds);
+    }
+
+    // The precise slot for a card dropped over a board column's body: the first
+    // non-dragged card whose midpoint sits below the pointer is the insert-before
+    // anchor; past the last card inserts after it. Null for an empty column (the
+    // caller's append-into path covers it) or when the column isn't on the board.
+    private DropPlan? BoardColumnSlipPlan(
+        DragEventArgs args,
+        KastnTreeNode source,
+        ZetlBucketSnapshot bucket,
+        HashSet<string> draggedIds)
+    {
+        if (!boardColumnCardPanels.TryGetValue(bucket.Id, out var cardsPanel))
+        {
+            return null;
+        }
+
+        var y = args.GetPosition(cardsPanel).Y;
+        KastnTreeNode? anchor = null;
+        KastnTreeNode? last = null;
+        foreach (var child in cardsPanel.Children)
+        {
+            if (child is not Control { DataContext: KastnTreeNode cardNode } control
+                || draggedIds.Contains(cardNode.Id))
+            {
+                continue;
+            }
+
+            last = cardNode;
+            if (anchor is null && y < control.Bounds.Y + (control.Bounds.Height / 2))
+            {
+                anchor = cardNode;
+            }
+        }
+
+        if (anchor is not null)
+        {
+            return new DropPlan(DropAction.SlipMove, source, bucket.Id, anchor.Id, null)
+            {
+                MarkerNode = anchor,
+                MarkerEdge = KastnDropEdge.Before
+            };
+        }
+
+        if (last is not null)
+        {
+            return new DropPlan(DropAction.SlipMove, source, bucket.Id, null, null)
+            {
+                MarkerNode = last,
+                MarkerEdge = KastnDropEdge.After
+            };
+        }
+
+        return null;
+    }
+
+    private DropPlan? PlanSlipRowDrop(
+        KastnTreeNode source,
+        KastnTreeNode targetNode,
+        double fraction,
+        HashSet<string> draggedIds)
+    {
         // Onto a slip row → before (top half) or after (bottom half) that slip. Dropping
         // onto a member of the dragged set is a no-op.
         if (targetNode.Slip is not { } targetSlip
@@ -505,21 +599,24 @@ internal partial class MainWindow
         return index >= 0 && index + 1 < siblings.Count ? siblings[index + 1].Id : null;
     }
 
-    // The node under the pointer and the pointer's vertical fraction (0 = top, 1 = bottom)
-    // within that row, used to choose between inserting before/after and nesting into it.
-    // Works for tree rows and board cards/columns, which all carry the "dragRow" tag.
-    private (KastnTreeNode Node, double Fraction)? RowUnderPointer(DragEventArgs args)
+    // The node under the pointer and the pointer's fraction within that row —
+    // vertical (0 = top, 1 = bottom) for tree rows and cards, horizontal
+    // (0 = left, 1 = right) for side-by-side board columns — used to choose
+    // between inserting before/after and nesting into it. Works for tree rows
+    // and board cards/columns, which all carry the "dragRow" tag.
+    private (KastnTreeNode Node, double Fraction, double FractionX)? RowUnderPointer(DragEventArgs args)
     {
         var visual = args.Source as Visual;
         while (visual is not null)
         {
             if (visual is Control { Tag: "dragRow", DataContext: KastnTreeNode node } rowControl)
             {
+                var position = args.GetPosition(rowControl);
                 var height = rowControl.Bounds.Height;
-                var fraction = height > 0
-                    ? Math.Clamp(args.GetPosition(rowControl).Y / height, 0, 1)
-                    : 0.5;
-                return (node, fraction);
+                var fraction = height > 0 ? Math.Clamp(position.Y / height, 0, 1) : 0.5;
+                var width = rowControl.Bounds.Width;
+                var fractionX = width > 0 ? Math.Clamp(position.X / width, 0, 1) : 0.5;
+                return (node, fraction, fractionX);
             }
 
             visual = visual.GetVisualParent();
@@ -852,7 +949,13 @@ internal partial class MainWindow
 
         var node = boardDragCandidate;
         boardDragCandidate = null;
+        await RunBoardDragAsync(node, args);
+    }
 
+    // The shared board drag session for cards and column headers: publish the node,
+    // run the drag, and clear every marker and flag however the drag ends.
+    private async Task RunBoardDragAsync(KastnTreeNode node, PointerEventArgs args)
+    {
         draggingNode = node;
         draggingNodes = [node];
         boardDragInProgress = true;
@@ -868,12 +971,68 @@ internal partial class MainWindow
         finally
         {
             boardDragScrollTimer?.Stop();
+            ApplyDropMarker(null);
             stickyDropPlan = null;
             draggingNode = null;
             draggingNodes = [];
             boardDragInProgress = false;
             boardDragPointerInsideBoard = false;
         }
+    }
+
+    // Column headers start a bucket drag, mirroring the card handlers; the +
+    // button inside the header keeps its click.
+    private KastnTreeNode? boardColumnDragCandidate;
+    private Point boardColumnDragStart;
+
+    private void OnBoardColumnHeaderPointerPressed(object? sender, PointerPressedEventArgs args)
+    {
+        boardColumnDragCandidate = null;
+        if (!args.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+            || (args.Source as Visual)?.FindAncestorOfType<Button>(includeSelf: true) is not null)
+        {
+            return;
+        }
+
+        if ((sender as Control)?.DataContext is not KastnTreeNode node
+            || node.Kind != KastnTreeNodeKind.Bucket
+            || !CanDragNode(node))
+        {
+            return;
+        }
+
+        boardColumnDragCandidate = node;
+        boardColumnDragStart = args.GetPosition(this);
+    }
+
+    private void OnBoardColumnHeaderPointerReleased(object? sender, PointerReleasedEventArgs args)
+    {
+        boardColumnDragCandidate = null;
+    }
+
+    private async void OnBoardColumnHeaderPointerMoved(object? sender, PointerEventArgs args)
+    {
+        if (boardColumnDragCandidate is null || boardDragInProgress || dragInProgress)
+        {
+            return;
+        }
+
+        if (!args.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            boardColumnDragCandidate = null;
+            return;
+        }
+
+        var position = args.GetPosition(this);
+        if (Math.Abs(position.X - boardColumnDragStart.X) < DragThreshold
+            && Math.Abs(position.Y - boardColumnDragStart.Y) < DragThreshold)
+        {
+            return;
+        }
+
+        var node = boardColumnDragCandidate;
+        boardColumnDragCandidate = null;
+        await RunBoardDragAsync(node, args);
     }
 
     private void OnBoardDragOver(object? sender, DragEventArgs args)
@@ -887,9 +1046,9 @@ internal partial class MainWindow
             stickyDropPlan = resolved;
         }
 
-        args.DragEffects = (resolved ?? stickyDropPlan) is not null
-            ? DragDropEffects.Move
-            : DragDropEffects.None;
+        var plan = resolved ?? stickyDropPlan;
+        args.DragEffects = plan is not null ? DragDropEffects.Move : DragDropEffects.None;
+        ApplyDropMarker(plan);
         args.Handled = true;
     }
 

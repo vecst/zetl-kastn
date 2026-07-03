@@ -252,6 +252,116 @@ public class ZetlUITests
     }
 
     [AvaloniaFact]
+    public void BoardCardsAndColumnsRenderDropMarkers()
+    {
+        // The board's drag feedback binds card and column overlays to the same
+        // KastnTreeNode drop flags the tree template binds; flipping the flags must
+        // light the card insertion lines, the column insertion lines, and the
+        // column drop-into outline.
+        var connection = new KastnConnectionController(_ => Task.CompletedTask);
+        var window = new MainWindow(connection);
+        window.Show();
+
+        var project = new ZETL.Contracts.ZetlProjectSnapshot
+        {
+            Id = "proj-1",
+            Name = "Board Project",
+            MetadataRevision = 1,
+            ChangeSequence = 1,
+            Buckets = new[]
+            {
+                new ZETL.Contracts.ZetlBucketSnapshot { Id = "b-1", Revision = 1, Name = "One" },
+                new ZETL.Contracts.ZetlBucketSnapshot { Id = "b-2", Revision = 1, Name = "Two" }
+            },
+            Slips = new[]
+            {
+                new ZETL.Contracts.ZetlSlipSnapshot
+                {
+                    Id = "slip-a",
+                    Revision = 1,
+                    Type = ZETL.Contracts.ZetlSlipType.Text,
+                    BucketId = "b-1",
+                    Text = "card a",
+                    Source = "copy",
+                    CapturedAtUtc = DateTimeOffset.UtcNow
+                }
+            }
+        };
+        var snapshot = new KastnSessionSnapshot(
+            KastnConnectionState.Online,
+            "Connected",
+            new[] { new ZETL.Contracts.ZetlProjectSummary { Id = "proj-1", Name = "Board Project", MetadataRevision = 1, ChangeSequence = 1 } },
+            project);
+        var eventField = typeof(KastnConnectionController)
+            .GetField("SnapshotChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var eventDelegate = (EventHandler<KastnSessionSnapshot>?)eventField!.GetValue(connection);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => eventDelegate?.Invoke(connection, snapshot));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        window.viewModeBoardButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(window.boardColumnsPanel.Children.Count >= 2, "The board should build a column per bucket.");
+
+        var findMethod = typeof(MainWindow).GetMethod(
+            "FindTreeNode",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        var slipNode = (KastnTreeNode?)findMethod.Invoke(null, new object?[] { window.projectTree.ItemsSource, "slip-a" });
+        var bucketNode = (KastnTreeNode?)findMethod.Invoke(null, new object?[] { window.projectTree.ItemsSource, "b-2" });
+        Assert.NotNull(slipNode);
+        Assert.NotNull(bucketNode);
+
+        static List<Avalonia.Controls.Border> VisibleOverlays(Avalonia.Controls.Panel root)
+        {
+            var result = new List<Avalonia.Controls.Border>();
+            void Walk(Avalonia.Controls.Control control)
+            {
+                if (control is Avalonia.Controls.Border { IsHitTestVisible: false, IsVisible: true } overlay)
+                {
+                    result.Add(overlay);
+                }
+
+                foreach (var child in ((Avalonia.LogicalTree.ILogical)control).LogicalChildren)
+                {
+                    if (child is Avalonia.Controls.Control childControl)
+                    {
+                        Walk(childControl);
+                    }
+                }
+            }
+
+            Walk(root);
+            return result;
+        }
+
+        Assert.Empty(VisibleOverlays(window.boardColumnsPanel));
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => slipNode!.DropEdge = KastnDropEdge.Before);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Contains(VisibleOverlays(window.boardColumnsPanel), overlay => overlay.Height == 2);
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            slipNode!.DropEdge = KastnDropEdge.None;
+            bucketNode!.DropEdge = KastnDropEdge.After;
+            bucketNode.IsDropTarget = true;
+        });
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var overlays = VisibleOverlays(window.boardColumnsPanel);
+        Assert.Contains(overlays, overlay => overlay.Width == 3);
+        Assert.Contains(overlays, overlay => overlay.BorderThickness.Left == 2);
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            bucketNode!.DropEdge = KastnDropEdge.None;
+            bucketNode.IsDropTarget = false;
+        });
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Empty(VisibleOverlays(window.boardColumnsPanel));
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void WikiLinkClickNavigatesToTarget()
     {
         var connection = new KastnConnectionController(_ => Task.CompletedTask);
