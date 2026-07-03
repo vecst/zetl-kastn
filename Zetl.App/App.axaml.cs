@@ -81,13 +81,12 @@ public partial class App : Application
             var themeStore = new ZetlThemeStore(
                 Path.Combine(stateDir, "themes"));
             var templateStore = CreatePreviewTemplateStore(stateDir);
-            var themeManager = new ZetlThemeManager(this, settingsStore);
+            var themeManager = new ZetlThemeManager(this);
             themeManager.Apply(
                 themeStore.Resolve(themeIdArgument ?? settingsStore.Settings.ThemeId),
                 themeArgument is "light" or "dark"
                     ? themeArgument
-                    : settingsStore.Settings.ThemeVariant,
-                persist: false);
+                    : settingsStore.Settings.ThemeVariant);
             var store = new ZetlStateStore(Path.Combine(stateDir, "state.json"));
             ZetlProject? CreatePreviewProject(
                 ZetlTemplateDocument template,

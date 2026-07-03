@@ -227,7 +227,7 @@ internal partial class ZetlSettingsWindow : Window
         {
             if (dirty && themeManager is not null && baselineTheme is not null)
             {
-                themeManager.Apply(baselineTheme, baselineVariant, persist: false);
+                themeManager.Apply(baselineTheme, baselineVariant);
             }
         };
     }
@@ -469,7 +469,7 @@ internal partial class ZetlSettingsWindow : Window
     {
         if (themeManager is not null && workingTheme is not null && ReadThemeFields())
         {
-            themeManager.Apply(workingTheme, SelectedVariant, persist: false);
+            themeManager.Apply(workingTheme, SelectedVariant);
         }
     }
 
@@ -533,7 +533,15 @@ internal partial class ZetlSettingsWindow : Window
         {
             return;
         }
-        themeManager.Apply(workingTheme, SelectedVariant, persist: true);
+        themeManager.Apply(workingTheme, SelectedVariant);
+        // Persist the committed choice; live previews and baseline restores above
+        // apply without saving.
+        if (settingsStore is not null)
+        {
+            settingsStore.Settings.ThemeId = themeManager.CurrentTheme.Id;
+            settingsStore.Settings.ThemeVariant = themeManager.CurrentVariant;
+            settingsStore.Save();
+        }
         baselineTheme = ZetlThemeDefaults.Clone(workingTheme);
         baselineVariant = SelectedVariant;
         dirty = false;

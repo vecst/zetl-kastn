@@ -100,11 +100,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         clickAwayWatcher = new ZetlClickAwayWatcher(OnClickOutsideApp);
         captureOriginProvider = new WindowsCaptureOriginProvider();
 
-        themeManager = new ZetlThemeManager(application, settingsStore);
+        themeManager = new ZetlThemeManager(application);
         themeManager.Apply(
             themeStore.Resolve(settingsStore.Settings.ThemeId),
-            settingsStore.Settings.ThemeVariant,
-            persist: false);
+            settingsStore.Settings.ThemeVariant);
 
         var requestedInjectedInputForTesting = Program.StartupArgs.Contains(
             AllowInjectedInputArgument,

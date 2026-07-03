@@ -11,12 +11,12 @@ namespace KASTN;
 // selected theme id/variant; themes/<id>.json carries an edited theme's palette.
 internal sealed class KastnThemeWatcher : IDisposable
 {
-    private readonly KastnThemeManager themeManager;
+    private readonly ZetlThemeManager themeManager;
     private readonly string settingsFileName;
     private readonly FileSystemWatcher? watcher;
     private readonly DispatcherTimer debounce;
 
-    public KastnThemeWatcher(KastnThemeManager themeManager)
+    public KastnThemeWatcher(ZetlThemeManager themeManager)
     {
         this.themeManager = themeManager;
         var settingsStore = new ZetlAppSettingsStore();

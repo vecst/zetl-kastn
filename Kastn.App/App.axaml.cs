@@ -10,7 +10,7 @@ namespace KASTN;
 public partial class App : Application
 {
     private KastnConnectionController? connection;
-    private KastnThemeManager? themeManager;
+    private ZetlThemeManager? themeManager;
     private KastnThemeWatcher? themeWatcher;
     private MainWindow? mainWindow;
 
@@ -37,7 +37,7 @@ public partial class App : Application
                 projectId = new KastnStateStore().State.LastProjectId;
             }
             var themeStore = new ZetlThemeStore();
-            themeManager = new KastnThemeManager(this);
+            themeManager = new ZetlThemeManager(this);
             themeManager.Apply(
                 themeStore.Resolve(settingsStore.Settings.ThemeId),
                 settingsStore.Settings.ThemeVariant);

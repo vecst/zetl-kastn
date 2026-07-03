@@ -12,6 +12,7 @@
     <InternalsVisibleTo Include="Zetl" />
     <InternalsVisibleTo Include="Zetl.App" />
     <InternalsVisibleTo Include="Zetl.Runtime" />
+    <InternalsVisibleTo Include="Zetl.UI" />
     <InternalsVisibleTo Include="Zetl.Tests" />
     <InternalsVisibleTo Include="Kastn" />
   </ItemGroup>

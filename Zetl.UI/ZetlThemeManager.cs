@@ -1,25 +1,29 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Styling;
 
 namespace ZETL;
 
+/// <summary>
+/// Applies a shared theme document to an Avalonia application: resource brushes,
+/// typography, metrics, and the Fluent accent colors. Zetl and Kastn both apply
+/// themes through this one implementation so the resource-key table can never
+/// drift between the two apps; persistence of the chosen theme stays with the
+/// host that owns the settings file.
+/// </summary>
 internal sealed class ZetlThemeManager
 {
     private readonly Application application;
-    private readonly ZetlAppSettingsStore settingsStore;
 
-    public ZetlThemeManager(
-        Application application,
-        ZetlAppSettingsStore settingsStore)
+    public ZetlThemeManager(Application application)
     {
         this.application = application;
-        this.settingsStore = settingsStore;
         application.ActualThemeVariantChanged += (_, _) =>
         {
             if (CurrentVariant == "System")
             {
-                Apply(CurrentTheme, CurrentVariant, persist: false);
+                Apply(CurrentTheme, CurrentVariant);
             }
         };
     }
@@ -32,15 +36,9 @@ internal sealed class ZetlThemeManager
     public string EffectiveVariant =>
         application.ActualThemeVariant == ThemeVariant.Light ? "Light" : "Dark";
 
-    public event EventHandler? ThemeChanged;
-
-    public void Apply(
-        ZetlThemeDocument theme,
-        string variant,
-        bool persist)
+    public void Apply(ZetlThemeDocument theme, string variant)
     {
-        var errors = ZetlThemeValidator.Validate(theme);
-        if (errors.Count > 0)
+        if (ZetlThemeValidator.Validate(theme).Count > 0)
         {
             theme = ZetlThemeDefaults.Create();
         }
@@ -54,42 +52,41 @@ internal sealed class ZetlThemeManager
             _ => ThemeVariant.Default
         };
 
-        var palette = ResolvePalette(CurrentTheme, CurrentVariant);
-        ApplyResources(CurrentTheme, palette);
-
-        if (persist)
-        {
-            settingsStore.Settings.ThemeId = CurrentTheme.Id;
-            settingsStore.Settings.ThemeVariant = CurrentVariant;
-            settingsStore.Save();
-        }
-
-        ThemeChanged?.Invoke(this, EventArgs.Empty);
+        ApplyResources(CurrentTheme, ResolvePalette(CurrentTheme, CurrentVariant));
     }
 
-    private ZetlThemePalette ResolvePalette(
-        ZetlThemeDocument theme,
-        string variant)
+    // Re-apply only when the resolved theme or variant actually differs from what is
+    // already applied. The shared settings.json is rewritten for many unrelated Zetl
+    // settings; skipping a no-op apply avoids a needless resource churn/flicker.
+    public void ApplyIfChanged(ZetlThemeDocument theme, string variant)
     {
-        if (variant == "Light")
+        if (NormalizeVariant(variant) == CurrentVariant && ThemesEqual(theme, CurrentTheme))
         {
-            return theme.Light;
+            return;
         }
 
-        if (variant == "Dark")
-        {
-            return theme.Dark;
-        }
-
-        return EffectiveVariant == "Light" ? theme.Light : theme.Dark;
+        Apply(theme, variant);
     }
 
-    private void ApplyResources(
-        ZetlThemeDocument theme,
-        ZetlThemePalette palette)
+    private static bool ThemesEqual(ZetlThemeDocument a, ZetlThemeDocument b) =>
+        JsonSerializer.Serialize(a, CompareOptions) == JsonSerializer.Serialize(b, CompareOptions);
+
+    private static readonly JsonSerializerOptions CompareOptions = new();
+
+    private ZetlThemePalette ResolvePalette(ZetlThemeDocument theme, string variant)
+    {
+        return variant switch
+        {
+            "Light" => theme.Light,
+            "Dark" => theme.Dark,
+            _ => EffectiveVariant == "Light" ? theme.Light : theme.Dark
+        };
+    }
+
+    private void ApplyResources(ZetlThemeDocument theme, ZetlThemePalette palette)
     {
         var resources = application.Resources;
-        var accent = ParseColor(palette.Accent);
+        var accent = Color.Parse(palette.Accent);
         resources["ZetlWindowBackgroundBrush"] = Brush(palette.WindowBackground);
         resources["ZetlSurfaceBrush"] = Brush(palette.Surface);
         resources["ZetlSurfaceAltBrush"] = Brush(palette.SurfaceAlt);
@@ -121,12 +118,7 @@ internal sealed class ZetlThemeManager
 
     private static SolidColorBrush Brush(string value)
     {
-        return new SolidColorBrush(ParseColor(value));
-    }
-
-    private static Color ParseColor(string value)
-    {
-        return Color.Parse(value);
+        return new SolidColorBrush(Color.Parse(value));
     }
 
     private static Color Shift(Color color, double amount)

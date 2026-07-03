@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Zetl.UI</AssemblyName>
+    <RootNamespace>ZETL</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Both Avalonia hosts consume these internal types directly, the same way
+         they consume Zetl.Core. -->
+    <InternalsVisibleTo Include="Zetl" />
+    <InternalsVisibleTo Include="Kastn" />
+    <InternalsVisibleTo Include="Zetl.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.17" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Zetl.Core\Zetl.Core.csproj" />
+  </ItemGroup>
+</Project>

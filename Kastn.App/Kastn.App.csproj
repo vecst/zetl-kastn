@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Zetl.Contracts\Zetl.Contracts.csproj" />
     <ProjectReference Include="..\Zetl.Core\Zetl.Core.csproj" />
+    <ProjectReference Include="..\Zetl.UI\Zetl.UI.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Zetl.Tests" />
