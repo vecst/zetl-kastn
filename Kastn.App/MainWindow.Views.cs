@@ -1410,6 +1410,12 @@ internal partial class MainWindow
         public required TextBlock TitleText { get; init; }
         public required TextBlock CountText { get; init; }
         public required StackPanel CardsPanel { get; init; }
+
+        // The inline "type a card in place" composer under the cards; it lives
+        // outside the reconciled cards panel so refreshes never disturb it.
+        public required Border Composer { get; init; }
+        public required TextBox ComposerBox { get; init; }
+        public bool ComposerBusy { get; set; }
     }
 
     private sealed class BoardCardUi
@@ -1639,11 +1645,7 @@ internal partial class MainWindow
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center
         };
-        ToolTip.SetTip(addCardButton, "Add slip to this bucket");
-        addCardButton.Click += async (_, _) =>
-        {
-            await AddSlipAsync(bucketId);
-        };
+        ToolTip.SetTip(addCardButton, "Add a card (Enter adds, Esc closes)");
 
         var headerGrid = new Grid
         {
@@ -1678,14 +1680,38 @@ internal partial class MainWindow
             Content = cardsPanel
         };
 
+        // The inline composer: type a card in place instead of a modal round-trip.
+        // Enter adds and keeps composing, Shift+Enter inserts a newline, Esc
+        // discards, and leaving the box commits any typed text so it is never lost.
+        var composerBox = new TextBox
+        {
+            Watermark = "New card",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 13
+        };
+        var composer = new Border
+        {
+            Background = ThemeBrush("ZetlSurfaceAltBrush"),
+            BorderBrush = ThemeBrush("ZetlAccentBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(4),
+            Margin = new Thickness(0, 8, 0, 0),
+            Child = composerBox,
+            IsVisible = false
+        };
+
         var mainGrid = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,*")
+            RowDefinitions = new RowDefinitions("Auto,*,Auto")
         };
         Grid.SetRow(headerGrid, 0);
         Grid.SetRow(scrollViewer, 1);
+        Grid.SetRow(composer, 2);
         mainGrid.Children.Add(headerGrid);
         mainGrid.Children.Add(scrollViewer);
+        mainGrid.Children.Add(composer);
 
         // The border inherits its KastnTreeNode DataContext from the wrapper, which
         // the reconcile pass repoints at the fresh tree node on every refresh.
@@ -1728,13 +1754,117 @@ internal partial class MainWindow
         columnWrapper.Children.Add(intoOverlay);
         columnWrapper.Children.Add(CreateBoardDropLine(horizontal: false, atStart: true, nameof(KastnTreeNode.ShowDropBefore)));
         columnWrapper.Children.Add(CreateBoardDropLine(horizontal: false, atStart: false, nameof(KastnTreeNode.ShowDropAfter)));
-        return new BoardColumnUi
+
+        var column = new BoardColumnUi
         {
             Wrapper = columnWrapper,
             TitleText = titleText,
             CountText = countText,
-            CardsPanel = cardsPanel
+            CardsPanel = cardsPanel,
+            Composer = composer,
+            ComposerBox = composerBox
         };
+
+        addCardButton.Click += (_, _) =>
+        {
+            composer.IsVisible = true;
+            composerBox.Focus();
+        };
+        composerBox.AddHandler(KeyDownEvent, async (_, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                CloseBoardComposer(column);
+            }
+            else if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                e.Handled = true;
+                await CommitBoardComposerAsync(bucketId, column, keepOpen: true);
+            }
+        }, RoutingStrategies.Tunnel);
+        composerBox.LostFocus += async (_, _) =>
+        {
+            // Leaving the box commits typed text (capture must never silently drop
+            // it) and closes; an empty composer just closes. A failed commit keeps
+            // the composer open so the text stays recoverable.
+            if (string.IsNullOrWhiteSpace(composerBox.Text))
+            {
+                CloseBoardComposer(column);
+                return;
+            }
+
+            if (await CommitBoardComposerAsync(bucketId, column, keepOpen: false))
+            {
+                CloseBoardComposer(column);
+            }
+        };
+
+        return column;
+    }
+
+    private static void CloseBoardComposer(BoardColumnUi column)
+    {
+        column.ComposerBox.Text = "";
+        column.Composer.IsVisible = false;
+    }
+
+    // Send the composer text as a new slip at the end of the bucket. Returns true
+    // when the card was added (or there was nothing to add); the composer clears
+    // and, for Enter-to-add, stays focused for the next card.
+    private async Task<bool> CommitBoardComposerAsync(string bucketId, BoardColumnUi column, bool keepOpen)
+    {
+        if (column.ComposerBusy)
+        {
+            return false;
+        }
+
+        var text = (column.ComposerBox.Text ?? "").Trim();
+        if (text.Length == 0)
+        {
+            return true;
+        }
+
+        if (!IsOnline || currentProject is null)
+        {
+            statusText.Text = "Connect to Zetl to edit.";
+            return false;
+        }
+
+        column.ComposerBusy = true;
+        try
+        {
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                ZetlCommandKind.AddSlip,
+                new AddSlipCommand { BucketId = bucketId, Text = text, Source = "kastn" },
+                currentProject.Id));
+            if (response.Status != ZetlResponseStatus.Success)
+            {
+                statusText.Text = response.Error?.Message ?? $"Add failed: {response.Status}.";
+                return false;
+            }
+
+            column.ComposerBox.Text = "";
+            await connection.RefreshAsync();
+            statusText.Text = "Card added.";
+            if (keepOpen)
+            {
+                column.ComposerBox.Focus();
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            statusText.Text = ex.Message;
+            return false;
+        }
+        finally
+        {
+            column.ComposerBusy = false;
+        }
     }
 
     // An accent insertion line overlaying one edge of a board card or column,

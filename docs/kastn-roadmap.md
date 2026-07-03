@@ -67,8 +67,9 @@ shape:
 - [x] Keep Zetl quick Compile `Plain` and `TSV` literal while letting
       `Formatted` stage printable rich clipboard content with plain-text
       fallback.
-- [ ] Tighten Board Mode spacing, column state, and card creation as a focused
-      overhaul rather than a new data model.
+- [ ] Tighten Board Mode spacing. (The rest of the focused overhaul — column
+      state, precise drops, incremental rendering, and inline card creation —
+      is landed; see the Board Mode slices.)
 
 ## Priority 1: Reliability And Release
 
@@ -121,9 +122,10 @@ picture, and include state rather than introducing board-specific content.
 - [x] Add the List/Board mode switch.
 - [x] Reuse drag-and-drop for cards and columns.
 - [x] Auto-collapse the Tree and Detail panes while Board mode is active.
-- [ ] Run a small Board Mode overhaul focused on everyday capture/editing:
-      clearer column state, faster card creation, keyboard-save parity, and
-      tighter spacing without changing the underlying bucket/slip model.
+- [x] Run a small Board Mode overhaul focused on everyday capture/editing:
+      clearer column state, faster card creation, and keyboard-save parity,
+      without changing the underlying bucket/slip model. All four slices below
+      are landed; only spacing polish remains (see the High-Win list).
 
 The overhaul is sequenced as four slices (design in
 [`kastn-ui-roadmap.md`](kastn-ui-roadmap.md#board-mode)):
@@ -149,8 +151,10 @@ The overhaul is sequenced as four slices (design in
       context changes), so a refresh keeps every scroll position and only touches
       the affected card/column. Card thumbnails are card-owned bitmaps disposed
       with their card rather than pooled per full rebuild.
-- [ ] **Faster card creation.** Inline "type a card in place" instead of the
-      `+` → modal round-trip (keyboard-save parity already exists).
+- [x] **Faster card creation.** The column `+` opens an inline composer under
+      the cards: Enter adds and keeps composing, Shift+Enter inserts a newline,
+      Esc discards, and leaving the box commits typed text (a failed add keeps
+      the composer open so capture is never silently lost).
 
 ### Interaction Cleanup
 

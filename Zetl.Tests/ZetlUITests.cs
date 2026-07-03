@@ -448,6 +448,78 @@ public class ZetlUITests
     }
 
     [AvaloniaFact]
+    public void BoardComposerOpensCommitsAndDiscards()
+    {
+        // The inline card composer: + opens and focuses it, Escape discards and
+        // closes, and a commit that fails (offline here) keeps the composer open
+        // with the typed text so capture is never silently lost.
+        var connection = new KastnConnectionController(_ => Task.CompletedTask);
+        var window = new MainWindow(connection);
+        window.Show();
+
+        var project = new ZETL.Contracts.ZetlProjectSnapshot
+        {
+            Id = "proj-1",
+            Name = "Board Project",
+            MetadataRevision = 1,
+            ChangeSequence = 1,
+            Buckets = new[]
+            {
+                new ZETL.Contracts.ZetlBucketSnapshot { Id = "b-1", Revision = 1, Name = "One" }
+            },
+            Slips = Array.Empty<ZETL.Contracts.ZetlSlipSnapshot>()
+        };
+        var snapshot = new KastnSessionSnapshot(
+            KastnConnectionState.Online,
+            "Connected",
+            new[] { new ZETL.Contracts.ZetlProjectSummary { Id = "proj-1", Name = "Board Project", MetadataRevision = 1, ChangeSequence = 1 } },
+            project);
+        var eventField = typeof(KastnConnectionController)
+            .GetField("SnapshotChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var eventDelegate = (EventHandler<KastnSessionSnapshot>?)eventField!.GetValue(connection);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => eventDelegate?.Invoke(connection, snapshot));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        window.viewModeBoardButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var columnWrapper = (Avalonia.Controls.Grid)window.boardColumnsPanel.Children[0];
+        var mainGrid = (Avalonia.Controls.Grid)((Avalonia.Controls.Border)columnWrapper.Children[0]).Child!;
+        var headerGrid = (Avalonia.Controls.Grid)mainGrid.Children[0];
+        var addButton = (Avalonia.Controls.Button)headerGrid.Children[2];
+        var composer = (Avalonia.Controls.Border)mainGrid.Children[2];
+        var composerBox = (Avalonia.Controls.TextBox)composer.Child!;
+        Assert.False(composer.IsVisible);
+
+        addButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(composer.IsVisible, "The + button opens the composer.");
+
+        // Enter with a dead connection: the add fails, so the text must survive.
+        composerBox.Text = "typed card";
+        composerBox.RaiseEvent(new Avalonia.Input.KeyEventArgs
+        {
+            RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent,
+            Key = Avalonia.Input.Key.Enter
+        });
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(composer.IsVisible, "A failed commit keeps the composer open.");
+        Assert.Equal("typed card", composerBox.Text);
+
+        // Escape is the explicit discard.
+        composerBox.RaiseEvent(new Avalonia.Input.KeyEventArgs
+        {
+            RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent,
+            Key = Avalonia.Input.Key.Escape
+        });
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(composer.IsVisible, "Escape closes the composer.");
+        Assert.True(string.IsNullOrEmpty(composerBox.Text), "Escape discards the draft.");
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void WikiLinkClickNavigatesToTarget()
     {
         var connection = new KastnConnectionController(_ => Task.CompletedTask);
