@@ -12,10 +12,18 @@ internal partial class MainWindow
     private readonly KastnUndoHistory undoStack = new();
     private readonly KastnUndoHistory redoStack = new();
 
-    // While non-null, slip mutations accumulate into one gesture instead of each
-    // becoming its own undo entry. Coalescing by slip id keeps a gesture that
-    // touches one slip with several commands (divider insert, drag) revision-correct.
-    private GestureAccumulator? gesture;
+    // While non-null, mutations accumulate into one gesture instead of each
+    // becoming its own undo entry. Coalescing by id keeps a gesture that touches
+    // one record with several commands (divider insert, drag) revision-correct.
+    //
+    // AsyncLocal, not a field: a gesture's commands await IPC round-trips, and the
+    // UI stays live during those awaits — a plain field would let an unrelated
+    // user action (clicking another slip, its autosave) join the open gesture and
+    // get reverted with it by one Ctrl+Z. AsyncLocal scopes the gesture to the
+    // async flow that opened it; input-driven flows start without one.
+    private static readonly AsyncLocal<GestureAccumulator?> activeGesture = new();
+
+    private static GestureAccumulator? gesture => activeGesture.Value;
 
     private sealed class GestureAccumulator(string description, string projectId)
     {
@@ -46,16 +54,17 @@ internal partial class MainWindow
     }
 
     // Group the mutations issued inside the scope into a single undo entry. Nested
-    // calls join the outer gesture. Dispose finalizes synchronously — the gesture
-    // body has already refreshed the project, so no further IPC is needed.
+    // calls within the same flow join the outer gesture. Dispose finalizes
+    // synchronously — the gesture body has already refreshed the project, so no
+    // further IPC is needed.
     private IDisposable BeginGesture(string description)
     {
-        if (gesture is not null || currentProject is null)
+        if (activeGesture.Value is not null || currentProject is null)
         {
             return NullScope.Instance;
         }
 
-        gesture = new GestureAccumulator(description, currentProject.Id);
+        activeGesture.Value = new GestureAccumulator(description, currentProject.Id);
         return new GestureScope(this);
     }
 
@@ -75,8 +84,8 @@ internal partial class MainWindow
 
     private void EndGesture()
     {
-        var accumulated = gesture;
-        gesture = null;
+        var accumulated = activeGesture.Value;
+        activeGesture.Value = null;
         if (accumulated is null || currentProject is null)
         {
             return;
@@ -314,8 +323,26 @@ internal partial class MainWindow
             return;
         }
 
+        // Show what is about to change: select the entry's primary target first,
+        // so the user watches the step apply instead of hunting afterwards for
+        // which record moved. Re-select after the refresh rebuilds the tree so
+        // the changed record stays in view.
+        var targetSlipId = entry.Operations.Count > 0 ? entry.Operations[0].SlipId : null;
+        if (targetSlipId is not null)
+        {
+            ReselectSlipNode(targetSlipId);
+        }
+        else if (entry.BucketOperations.Count > 0)
+        {
+            pendingBucketSelectionId = entry.BucketOperations[0].BucketId;
+        }
+
         var (opposite, applied, kept) = await ApplyEntryAsync(entry, verb);
         await connection.RefreshAsync();
+        if (targetSlipId is not null)
+        {
+            ReselectSlipNode(targetSlipId);
+        }
 
         if (opposite is not null)
         {

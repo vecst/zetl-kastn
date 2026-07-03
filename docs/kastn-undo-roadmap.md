@@ -111,6 +111,16 @@ hits one slip with several commands (divider insert = add + reorder, drag = move
 reorder) invert correctly, where naive per-command recording would bake a stale
 revision.
 
+The active gesture is `AsyncLocal`, scoped to the async flow that opened it. A
+gesture's commands await IPC round-trips and the UI stays live during those
+awaits, so a shared field would let an unrelated interleaved action (clicking
+another slip, its autosave) join the open gesture and get reverted with it by
+one Ctrl+Z. Input-driven flows always start without a gesture.
+
+Applying an undo/redo entry first selects the entry's primary target (and
+re-selects it after the refresh), so the user watches the step apply instead of
+hunting afterwards for which record changed.
+
 ## Keybinding
 
 - `Ctrl+Z` undoes and `Ctrl+Y` redoes, from the main `OnKeyDown` handler.
