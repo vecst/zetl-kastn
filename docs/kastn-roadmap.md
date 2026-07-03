@@ -143,8 +143,12 @@ The overhaul is sequenced as four slices (design in
       cards picks the exact slot (gaps and the space below the last card mean
       "insert here"); and column headers drag via `ReorderBucket`, horizontal
       half picking before/after, never nesting.
-- [ ] **Incremental board rendering.** Update only the affected card/column
-      instead of rebuilding the whole board, removing the flash and scroll reset.
+- [x] **Incremental board rendering.** The board reconciles instead of
+      rebuilding: columns and cards are keyed by id and reused while their render
+      inputs are unchanged (a card rebuilds only when its slip revision or marker
+      context changes), so a refresh keeps every scroll position and only touches
+      the affected card/column. Card thumbnails are card-owned bitmaps disposed
+      with their card rather than pooled per full rebuild.
 - [ ] **Faster card creation.** Inline "type a card in place" instead of the
       `+` → modal round-trip (keyboard-save parity already exists).
 

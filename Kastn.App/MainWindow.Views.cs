@@ -1400,48 +1400,216 @@ internal partial class MainWindow
     // the precise insertion slot from the pointer's place among the cards.
     private readonly Dictionary<string, StackPanel> boardColumnCardPanels = new(StringComparer.Ordinal);
 
+    // Reconciled board state, keyed by bucket/slip id, so a refresh updates only
+    // what changed instead of rebuilding the whole board (which flashed and reset
+    // every scroll position). A card is reused while its render inputs are
+    // unchanged; its picture bitmap is card-owned and disposed with it.
+    private sealed class BoardColumnUi
+    {
+        public required Grid Wrapper { get; init; }
+        public required TextBlock TitleText { get; init; }
+        public required TextBlock CountText { get; init; }
+        public required StackPanel CardsPanel { get; init; }
+    }
+
+    private sealed class BoardCardUi
+    {
+        public required Grid Wrapper { get; init; }
+        public required Border CardBorder { get; init; }
+        public required string RenderKey { get; init; }
+        public Bitmap? PictureBitmap { get; set; }
+
+        // The thumbnail targets of a picture card, waiting for the async load. The
+        // reconcile starts the load after the card is registered, so a load that
+        // completes synchronously still sees itself as the current card.
+        public (Image Image, TextBlock Status)? PendingPictureLoad { get; set; }
+    }
+
+    private readonly Dictionary<string, BoardColumnUi> boardColumns = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BoardCardUi> boardCards = new(StringComparer.Ordinal);
+
     private void BuildBoardView(IReadOnlyList<ZetlSlipSnapshot> visible)
     {
-        var generation = ++pictureRenderGeneration;
-        DisposeDisplayedPictures();
-        boardColumnsPanel.Children.Clear();
-        boardSlipCards.Clear();
-        boardColumnCardPanels.Clear();
-        highlightedBoardSlipId = null;
-
         if (currentProject is null)
         {
+            ClearBoard();
             return;
         }
 
-        // 1. Build the active tree nodes (which excludes Deleted bucket)
+        // The active tree nodes (which exclude the Deleted bucket), flattened to
+        // pre-order traversal so columns follow the canonical bucket order.
         var treeNodes = KastnWorkbench.BuildProjectTree(currentProject, currentProject.Slips, deletedOnly: false);
-        // 2. Flatten to get all buckets in pre-order traversal tree layout order
         var buckets = FlattenBucketNodes(treeNodes);
-
-        // 3. For each bucket, render a column!
-        // Group the visible slips by bucket ID for fast card rendering
         var visibleSlipsByBucket = visible
             .Where(slip => !IsSlipInDeleted(slip))
             .GroupBy(slip => slip.BucketId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<ZetlSlipSnapshot>)g.ToList(), StringComparer.Ordinal);
 
+        var desiredColumns = new List<Control>();
+        var liveBucketIds = new HashSet<string>(StringComparer.Ordinal);
+        var liveSlipIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var bucketNode in buckets)
         {
             var bucket = bucketNode.Bucket;
-            if (bucket is null) continue;
+            if (bucket is null)
+            {
+                continue;
+            }
 
+            liveBucketIds.Add(bucket.Id);
             var slips = visibleSlipsByBucket.TryGetValue(bucket.Id, out var found) ? found : [];
+            if (!boardColumns.TryGetValue(bucket.Id, out var column))
+            {
+                column = CreateBoardColumn(bucket);
+                boardColumns[bucket.Id] = column;
+            }
 
-            // Render the column
-            var columnControl = CreateBoardColumn(bucket, slips);
-            boardColumnsPanel.Children.Add(columnControl);
+            // Per-refresh state: the header text and the node context. The tree
+            // rebuilds its nodes on every snapshot, and the drag markers bind the
+            // node's drop flags, so a reused column must point at the fresh node.
+            column.TitleText.Text = bucket.Name;
+            column.CountText.Text = $"({slips.Count})";
+            column.Wrapper.DataContext =
+                FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, bucket.Id);
+
+            ReconcileColumnCards(column, bucket, slips, liveSlipIds);
+            desiredColumns.Add(column.Wrapper);
+        }
+
+        foreach (var staleId in boardColumns.Keys.Where(id => !liveBucketIds.Contains(id)).ToList())
+        {
+            boardColumns.Remove(staleId);
+            boardColumnCardPanels.Remove(staleId);
+        }
+
+        foreach (var staleId in boardCards.Keys.Where(id => !liveSlipIds.Contains(id)).ToList())
+        {
+            RemoveBoardCard(staleId);
+        }
+
+        SyncPanelChildren(boardColumnsPanel.Children, desiredColumns);
+    }
+
+    private void ClearBoard()
+    {
+        foreach (var id in boardCards.Keys.ToList())
+        {
+            RemoveBoardCard(id);
+        }
+
+        boardColumns.Clear();
+        boardColumnCardPanels.Clear();
+        boardColumnsPanel.Children.Clear();
+        boardSlipCards.Clear();
+        highlightedBoardSlipId = null;
+    }
+
+    private void ReconcileColumnCards(
+        BoardColumnUi column,
+        ZetlBucketSnapshot bucket,
+        IReadOnlyList<ZetlSlipSnapshot> slips,
+        HashSet<string> liveSlipIds)
+    {
+        var desiredCards = new List<Control>();
+        foreach (var slip in slips)
+        {
+            liveSlipIds.Add(slip.Id);
+            var renderKey = BoardCardRenderKey(slip, bucket);
+            if (boardCards.TryGetValue(slip.Id, out var card)
+                && !string.Equals(card.RenderKey, renderKey, StringComparison.Ordinal))
+            {
+                // Content changed: rebuild this one card.
+                RemoveBoardCard(slip.Id);
+                card = null;
+            }
+
+            if (card is null)
+            {
+                card = CreateBoardCard(slip, renderKey);
+                boardCards[slip.Id] = card;
+                boardSlipCards[slip.Id] = card.CardBorder;
+                if (card.PendingPictureLoad is { } load)
+                {
+                    card.PendingPictureLoad = null;
+                    LoadBoardCardPictureAsync(slip, card, load.Image, load.Status);
+                }
+            }
+
+            card.Wrapper.DataContext =
+                FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, slip.Id);
+            desiredCards.Add(card.Wrapper);
+        }
+
+        SyncPanelChildren(column.CardsPanel.Children, desiredCards);
+    }
+
+    // The inputs a rendered card depends on beyond its position: the slip's own
+    // revision plus the bucket/setting context that shapes its footer markers.
+    private string BoardCardRenderKey(ZetlSlipSnapshot slip, ZetlBucketSnapshot bucket) =>
+        $"{slip.Revision}|{bucket.RenderKind}|{CurrentAppSettings().KastnPreferSlipKindOverBucketKind}|{UntitledSlipTitle}";
+
+    private void RemoveBoardCard(string slipId)
+    {
+        if (!boardCards.TryGetValue(slipId, out var card))
+        {
+            return;
+        }
+
+        boardCards.Remove(slipId);
+        boardSlipCards.Remove(slipId);
+        card.PictureBitmap?.Dispose();
+        card.PictureBitmap = null;
+        if (card.Wrapper.Parent is Panel parent)
+        {
+            parent.Children.Remove(card.Wrapper);
         }
     }
 
-    private Control CreateBoardColumn(ZetlBucketSnapshot bucket, IReadOnlyList<ZetlSlipSnapshot> slips)
+    // Make the panel's children match the desired sequence with minimal moves, so
+    // untouched controls keep their layout and scroll state. A control arriving
+    // from another panel (a card moved across columns) is detached first.
+    private static void SyncPanelChildren(Avalonia.Controls.Controls children, IReadOnlyList<Control> desired)
     {
-        var laneNode = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, bucket.Id);
+        var desiredSet = new HashSet<Control>(desired);
+        for (var i = children.Count - 1; i >= 0; i--)
+        {
+            if (!desiredSet.Contains(children[i]))
+            {
+                children.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var control = desired[i];
+            if (i < children.Count && ReferenceEquals(children[i], control))
+            {
+                continue;
+            }
+
+            if (control.Parent is Panel elsewhere && !ReferenceEquals(elsewhere.Children, children))
+            {
+                elsewhere.Children.Remove(control);
+            }
+
+            var existing = children.IndexOf(control);
+            if (existing >= 0)
+            {
+                children.Move(existing, i);
+            }
+            else
+            {
+                children.Insert(i, control);
+            }
+        }
+    }
+
+    // The reusable column shell: header, cards panel, drag wiring, and drop
+    // overlays. The reconcile pass owns the changing parts — header text, node
+    // DataContext, and the card list.
+    private BoardColumnUi CreateBoardColumn(ZetlBucketSnapshot bucket)
+    {
+        var bucketId = bucket.Id;
 
         // Header elements
         var titleText = new TextBlock
@@ -1455,7 +1623,7 @@ internal partial class MainWindow
 
         var countText = new TextBlock
         {
-            Text = $"({slips.Count})",
+            Text = "(0)",
             Classes = { "muted" },
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
@@ -1474,7 +1642,7 @@ internal partial class MainWindow
         ToolTip.SetTip(addCardButton, "Add slip to this bucket");
         addCardButton.Click += async (_, _) =>
         {
-            await AddSlipAsync(bucket.Id);
+            await AddSlipAsync(bucketId);
         };
 
         var headerGrid = new Grid
@@ -1497,17 +1665,11 @@ internal partial class MainWindow
         headerGrid.PointerMoved += OnBoardColumnHeaderPointerMoved;
         headerGrid.PointerReleased += OnBoardColumnHeaderPointerReleased;
 
-        // Cards list
+        // Cards list; the reconcile pass fills and maintains it.
         var cardsPanel = new StackPanel
         {
             Spacing = 6
         };
-
-        foreach (var slip in slips)
-        {
-            var card = CreateBoardCard(slip);
-            cardsPanel.Children.Add(card);
-        }
 
         var scrollViewer = new ScrollViewer
         {
@@ -1525,9 +1687,10 @@ internal partial class MainWindow
         mainGrid.Children.Add(headerGrid);
         mainGrid.Children.Add(scrollViewer);
 
+        // The border inherits its KastnTreeNode DataContext from the wrapper, which
+        // the reconcile pass repoints at the fresh tree node on every refresh.
         var columnBorder = new Border
         {
-            DataContext = laneNode,
             Tag = "dragRow",
             Background = ThemeBrush("ZetlSurfaceBrush"),
             BorderBrush = ThemeBrush("ZetlBorderBrush"),
@@ -1545,17 +1708,13 @@ internal partial class MainWindow
         columnBorder.AddHandler(DragDrop.DragLeaveEvent, OnBoardDragLeave);
         columnBorder.AddHandler(DragDrop.DropEvent, OnBoardDrop);
 
-        boardColumnCardPanels[bucket.Id] = cardsPanel;
-        if (laneNode is null)
-        {
-            return columnBorder;
-        }
+        boardColumnCardPanels[bucketId] = cardsPanel;
 
         // Drag feedback overlays, bound to the same node flags the tree rows bind:
         // an accent outline while cards would drop into this column, and vertical
         // insertion lines at the left/right edges while a dragged column would land
         // before/after it.
-        var columnWrapper = new Grid { DataContext = laneNode };
+        var columnWrapper = new Grid();
         columnWrapper.Children.Add(columnBorder);
         var intoOverlay = new Border
         {
@@ -1569,7 +1728,13 @@ internal partial class MainWindow
         columnWrapper.Children.Add(intoOverlay);
         columnWrapper.Children.Add(CreateBoardDropLine(horizontal: false, atStart: true, nameof(KastnTreeNode.ShowDropBefore)));
         columnWrapper.Children.Add(CreateBoardDropLine(horizontal: false, atStart: false, nameof(KastnTreeNode.ShowDropAfter)));
-        return columnWrapper;
+        return new BoardColumnUi
+        {
+            Wrapper = columnWrapper,
+            TitleText = titleText,
+            CountText = countText,
+            CardsPanel = cardsPanel
+        };
     }
 
     // An accent insertion line overlaying one edge of a board card or column,
@@ -1598,10 +1763,11 @@ internal partial class MainWindow
         return line;
     }
 
-    private Control CreateBoardCard(ZetlSlipSnapshot slip)
+    // The reusable card: rebuilt only when its render key changes, so the closures
+    // below always capture a snapshot equivalent to what is displayed. The node
+    // DataContext lives on the wrapper and is repointed by the reconcile pass.
+    private BoardCardUi CreateBoardCard(ZetlSlipSnapshot slip, string renderKey)
     {
-        var slipNode = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, slip.Id);
-
         // Preview text
         var previewText = new TextBlock
         {
@@ -1691,7 +1857,9 @@ internal partial class MainWindow
         var mainPanel = new StackPanel { Spacing = 4 };
         mainPanel.Children.Add(previewText);
 
-        // Picture thumbnail
+        // Picture thumbnail; the async load starts once the card exists so the
+        // bitmap can be card-owned (disposed when the card is rebuilt or removed).
+        (Image Image, TextBlock Status)? pendingPictureLoad = null;
         if (slip.Type == ZetlSlipType.Picture && slip.Picture is not null)
         {
             var image = new Image
@@ -1709,9 +1877,7 @@ internal partial class MainWindow
             };
             mainPanel.Children.Add(image);
             mainPanel.Children.Add(statusText);
-
-            // Load picture thumbnail asynchronously
-            LoadBoardCardPictureAsync(slip, image, statusText);
+            pendingPictureLoad = (image, statusText);
         }
 
         if (footer.Children.Count > 0)
@@ -1719,9 +1885,10 @@ internal partial class MainWindow
             mainPanel.Children.Add(footer);
         }
 
+        // The border inherits its KastnTreeNode DataContext from the wrapper, which
+        // the reconcile pass repoints at the fresh tree node on every refresh.
         var cardBorder = new Border
         {
-            DataContext = slipNode,
             Tag = "dragRow",
             Background = ThemeBrush("ZetlSurfaceAltBrush"),
             BorderBrush = ThemeBrush("ZetlBorderBrush"),
@@ -1731,9 +1898,6 @@ internal partial class MainWindow
             Child = mainPanel,
             Cursor = new Cursor(StandardCursorType.Hand)
         };
-
-        // Track UI element for selection highlight
-        boardSlipCards[slip.Id] = cardBorder;
 
         // Selection click
         cardBorder.PointerPressed += (sender, args) =>
@@ -1758,18 +1922,20 @@ internal partial class MainWindow
         cardBorder.AddHandler(DragDrop.DragLeaveEvent, OnBoardDragLeave);
         cardBorder.AddHandler(DragDrop.DropEvent, OnBoardDrop);
 
-        if (slipNode is null)
-        {
-            return cardBorder;
-        }
-
         // Insertion lines at the card's top/bottom edges, bound to the same node
         // flags the tree rows bind, so a drag shows exactly where the card lands.
-        var cardWrapper = new Grid { DataContext = slipNode };
+        var cardWrapper = new Grid();
         cardWrapper.Children.Add(cardBorder);
         cardWrapper.Children.Add(CreateBoardDropLine(horizontal: true, atStart: true, nameof(KastnTreeNode.ShowDropBefore)));
         cardWrapper.Children.Add(CreateBoardDropLine(horizontal: true, atStart: false, nameof(KastnTreeNode.ShowDropAfter)));
-        return cardWrapper;
+
+        return new BoardCardUi
+        {
+            Wrapper = cardWrapper,
+            CardBorder = cardBorder,
+            RenderKey = renderKey,
+            PendingPictureLoad = pendingPictureLoad
+        };
     }
 
     private async Task EditBoardSlipAsync(ZetlSlipSnapshot slip)
@@ -1907,40 +2073,50 @@ internal partial class MainWindow
         }
     }
 
+    // Load a board card's thumbnail. The bitmap is owned by the card entry (not
+    // the shared reading-view pool), so an incremental refresh disposes it exactly
+    // when its card is rebuilt or removed. A load that outlives its card — the
+    // card was replaced while the bytes were in flight — drops its result.
     private async void LoadBoardCardPictureAsync(
         ZetlSlipSnapshot slip,
+        BoardCardUi card,
         Avalonia.Controls.Image image,
         TextBlock status)
     {
-        var generation = pictureRenderGeneration;
+        bool IsCurrent() =>
+            boardCards.TryGetValue(slip.Id, out var current) && ReferenceEquals(current, card);
+
         try
         {
             var content = await GetPictureContentAsync(slip);
-            if (generation != pictureRenderGeneration || content is null)
+            if (!IsCurrent())
             {
-                if (generation == pictureRenderGeneration)
-                {
-                    status.Text = "Picture unavailable.";
-                }
+                return;
+            }
+
+            if (content is null)
+            {
+                status.Text = "Picture unavailable.";
                 return;
             }
 
             using var stream = new MemoryStream(content.Bytes, writable: false);
             var bitmap = Bitmap.DecodeToWidth(stream, 260); // smaller width for board card thumbnails!
-            if (generation != pictureRenderGeneration)
+            if (!IsCurrent())
             {
                 bitmap.Dispose();
                 return;
             }
 
-            displayedPictureBitmaps.Add(bitmap);
+            card.PictureBitmap?.Dispose();
+            card.PictureBitmap = bitmap;
             image.Source = bitmap;
             status.IsVisible = false;
         }
         catch (Exception ex) when (
             ex is IOException or InvalidOperationException or OperationCanceledException)
         {
-            if (generation == pictureRenderGeneration)
+            if (IsCurrent())
             {
                 status.Text = "Picture unavailable.";
             }

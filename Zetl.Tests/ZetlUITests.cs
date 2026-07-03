@@ -362,6 +362,92 @@ public class ZetlUITests
     }
 
     [AvaloniaFact]
+    public void BoardRefreshReusesUnchangedCardsAndColumns()
+    {
+        // Incremental board rendering: a refresh must reuse the column and card
+        // controls whose inputs are unchanged (keeping layout and scroll state)
+        // and rebuild only the affected card.
+        var connection = new KastnConnectionController(_ => Task.CompletedTask);
+        var window = new MainWindow(connection);
+        window.Show();
+
+        ZETL.Contracts.ZetlSlipSnapshot Slip(string id, long revision, string bucketId, string text) => new()
+        {
+            Id = id,
+            Revision = revision,
+            Type = ZETL.Contracts.ZetlSlipType.Text,
+            BucketId = bucketId,
+            Text = text,
+            Source = "copy",
+            CapturedAtUtc = DateTimeOffset.UtcNow
+        };
+
+        var eventField = typeof(KastnConnectionController)
+            .GetField("SnapshotChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var eventDelegate = (EventHandler<KastnSessionSnapshot>?)eventField!.GetValue(connection);
+
+        void Publish(long sequence, params ZETL.Contracts.ZetlSlipSnapshot[] slips)
+        {
+            var project = new ZETL.Contracts.ZetlProjectSnapshot
+            {
+                Id = "proj-1",
+                Name = "Board Project",
+                MetadataRevision = 1,
+                ChangeSequence = sequence,
+                Buckets = new[]
+                {
+                    new ZETL.Contracts.ZetlBucketSnapshot { Id = "b-1", Revision = 1, Name = "One" },
+                    new ZETL.Contracts.ZetlBucketSnapshot { Id = "b-2", Revision = 1, Name = "Two" }
+                },
+                Slips = slips
+            };
+            var snapshot = new KastnSessionSnapshot(
+                KastnConnectionState.Online,
+                "Connected",
+                new[] { new ZETL.Contracts.ZetlProjectSummary { Id = "proj-1", Name = "Board Project", MetadataRevision = 1, ChangeSequence = sequence } },
+                project);
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => eventDelegate?.Invoke(connection, snapshot));
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+
+        static Avalonia.Controls.StackPanel CardsPanelOf(Avalonia.Controls.Control columnWrapper)
+        {
+            var border = (Avalonia.Controls.Border)((Avalonia.Controls.Grid)columnWrapper).Children[0];
+            var mainGrid = (Avalonia.Controls.Grid)border.Child!;
+            var scroll = (Avalonia.Controls.ScrollViewer)mainGrid.Children[1];
+            return (Avalonia.Controls.StackPanel)scroll.Content!;
+        }
+
+        Publish(1, Slip("s1", 1, "b-1", "one"), Slip("s2", 1, "b-1", "two"));
+        window.viewModeBoardButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var column0 = window.boardColumnsPanel.Children[0];
+        var column1 = window.boardColumnsPanel.Children[1];
+        var cards0 = CardsPanelOf(column0);
+        Assert.Equal(2, cards0.Children.Count);
+        var card1 = cards0.Children[0];
+        var card2 = cards0.Children[1];
+
+        // Edit s2: its card rebuilds; everything else keeps its control instance.
+        Publish(2, Slip("s1", 1, "b-1", "one"), Slip("s2", 2, "b-1", "two edited"));
+        Assert.Same(column0, window.boardColumnsPanel.Children[0]);
+        Assert.Same(column1, window.boardColumnsPanel.Children[1]);
+        Assert.Same(card1, cards0.Children[0]);
+        Assert.NotSame(card2, cards0.Children[1]);
+
+        // Move s2 to the other column: its rebuilt card lands there; s1's card and
+        // both columns are still the same instances.
+        Publish(3, Slip("s1", 1, "b-1", "one"), Slip("s2", 3, "b-2", "two edited"));
+        Assert.Same(column0, window.boardColumnsPanel.Children[0]);
+        Assert.Same(card1, cards0.Children[0]);
+        Assert.Single(cards0.Children);
+        Assert.Single(CardsPanelOf(column1).Children);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void WikiLinkClickNavigatesToTarget()
     {
         var connection = new KastnConnectionController(_ => Task.CompletedTask);
