@@ -7,14 +7,10 @@ namespace KASTN;
 internal partial class MainWindow
 {
     // Kastn-local edit history, distinct from Zetl's held-Ctrl+Z coldkey stack.
+    // This is the only undo surface: the slip editor's native TextBox undo is
+    // disabled, so typing, style toggles, and moves all undo in one ordered run.
     private readonly KastnUndoHistory undoStack = new();
     private readonly KastnUndoHistory redoStack = new();
-
-    // True while typing in the slip editor is the most recent action, so Ctrl+Z
-    // there drives the box's native character undo. Any recorded mutation (a style
-    // toggle, a move) or a fresh editor load flips it back to Kastn's history —
-    // focus alone must not decide, because selecting a slip auto-focuses the editor.
-    private bool editorUndoIsLatest;
 
     // While non-null, slip mutations accumulate into one gesture instead of each
     // becoming its own undo entry. Coalescing by slip id keeps a gesture that
@@ -174,14 +170,12 @@ internal partial class MainWindow
     {
         undoStack.Push(entry);
         redoStack.Clear();
-        editorUndoIsLatest = false;
     }
 
     private void ClearUndoHistory()
     {
         undoStack.Clear();
         redoStack.Clear();
-        editorUndoIsLatest = false;
     }
 
     private Task UndoLastAsync() => StepHistoryAsync(undoStack, redoStack, "undo", "Nothing to undo.");
@@ -329,8 +323,9 @@ internal partial class MainWindow
         _ => null
     };
 
-    // True when a text field owns focus, so window-level Ctrl+Z/Ctrl+Y defer to the
-    // text box's own undo and only the tree/card surfaces drive Kastn history.
+    // True when a text field owns focus, so window-level Ctrl+Z/Ctrl+Y defer to
+    // that box's own undo. The slip editor never reaches this guard — its tunnel
+    // handler claims the keys for Kastn history first.
     private bool IsTextInputFocused() => FocusManager?.GetFocusedElement() is TextBox;
 
     private static string Capitalize(string value) =>

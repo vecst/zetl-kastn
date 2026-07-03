@@ -28,9 +28,6 @@ internal partial class MainWindow
         }
 
         editorState.ApplyTextEdit(slipEditor.Text ?? "");
-        // Typing is now the latest action, so Ctrl+Z in the editor should drive the
-        // box's native character undo until another mutation or load is recorded.
-        editorUndoIsLatest = true;
         UpdateInlineFormatButtons();
         statusText.Text = editorState.IsDirty
             ? "Unsaved changes — saved when you leave the editor."
@@ -1702,18 +1699,15 @@ internal partial class MainWindow
         viewerDocumentScroll.Focus();
     }
 
-    // Load text into the editor as fresh context rather than as an edit. The box's
-    // native undo stack is cleared (toggling IsUndoEnabled clears it, matching the
-    // documented WPF behavior) so Ctrl+Z can never revert a programmatic load and
-    // resurrect another slip's text into the selected slip.
+    // Load text into the editor as fresh context rather than as an edit: the guard
+    // keeps the load out of dirty-tracking, and the box's own undo is permanently
+    // disabled, so a load can never be "undone" into resurrecting another slip's
+    // text under the current selection.
     private void LoadEditorText(string text)
     {
         editorUpdating = true;
         slipEditor.Text = text;
         editorUpdating = false;
-        slipEditor.IsUndoEnabled = false;
-        slipEditor.IsUndoEnabled = true;
-        editorUndoIsLatest = false;
     }
 
     private void UpdateEditorFromState()

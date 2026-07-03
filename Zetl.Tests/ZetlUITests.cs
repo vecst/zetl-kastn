@@ -162,37 +162,14 @@ public class ZetlUITests
     }
 
     [AvaloniaFact]
-    public void TextBoxUndoClearsWhenUndoEnabledToggles()
-    {
-        // Pins the two Avalonia TextBox behaviors the slip editor depends on:
-        // a programmatic Text set enters the box's own undo history (why a slip
-        // load must clear it), and toggling IsUndoEnabled clears that history
-        // (the documented WPF behavior LoadEditorText relies on).
-        var box = new Avalonia.Controls.TextBox();
-        var window = new Avalonia.Controls.Window { Content = box };
-        window.Show();
-
-        box.Text = "slip A";
-        box.Text = "slip B";
-        Assert.True(
-            box.CanUndo,
-            "A programmatic Text set should be natively undoable — the premise of the load-clearing fix.");
-
-        box.IsUndoEnabled = false;
-        box.IsUndoEnabled = true;
-        Assert.False(box.CanUndo, "Toggling IsUndoEnabled should clear the box's undo history.");
-        Assert.Equal("slip B", box.Text);
-
-        window.Close();
-    }
-
-    [AvaloniaFact]
     public void SwitchingSlipsMustNotLeaveThePreviousTextNativelyUndoable()
     {
-        // Regression: selecting another slip swaps the editor text programmatically;
-        // that swap must not sit in the TextBox's own undo stack, or Ctrl+Z in the
-        // auto-focused editor resurrects slip A's text under slip B's selection
-        // (and autosave would then write it into slip B).
+        // Regression: selecting another slip swaps the editor text programmatically,
+        // and a programmatic Text set enters an Avalonia TextBox's own undo history —
+        // so with native undo enabled, Ctrl+Z in the auto-focused editor resurrected
+        // slip A's text under slip B's selection (and autosave then wrote it into
+        // slip B). The editor's native undo is permanently disabled; Kastn's single
+        // ordered history owns Ctrl+Z instead.
         var connection = new KastnConnectionController(_ => Task.CompletedTask);
         var window = new MainWindow(connection);
         window.Show();
