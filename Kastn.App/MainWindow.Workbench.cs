@@ -45,7 +45,7 @@ internal partial class MainWindow
             return;
         }
 
-        var targetIds = TreeSlips(node)
+        var targetIds = node.TreeSlips()
             .Select(slip => slip.Id)
             .Distinct(StringComparer.Ordinal)
             .ToList();
@@ -129,22 +129,6 @@ internal partial class MainWindow
             saving = false;
             visibilityUpdating = false;
             SetEditingEnabled();
-        }
-    }
-
-    private static IEnumerable<ZetlSlipSnapshot> TreeSlips(KastnTreeNode node)
-    {
-        if (node.Slip is { } slip)
-        {
-            yield return slip;
-        }
-
-        foreach (var child in node.Children)
-        {
-            foreach (var descendant in TreeSlips(child))
-            {
-                yield return descendant;
-            }
         }
     }
 

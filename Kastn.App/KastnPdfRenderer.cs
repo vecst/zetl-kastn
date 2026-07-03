@@ -88,6 +88,10 @@ internal static class KastnPdfRenderer
             title.Format.SpaceAfter = Unit.FromPoint(12);
         }
 
+        // One id set for the whole render: the wiki-link resolver runs per link,
+        // so a per-call scan of project.Slips would go quadratic on big projects.
+        var slipIds = project.Slips.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+
         // Reuse the shared grouping so the PDF honors view sections and bucket order
         // exactly like the text/Markdown/HTML renderers.
         foreach (var group in ZetlViewRenderer.BuildGroups(project, slips, view))
@@ -184,7 +188,7 @@ internal static class KastnPdfRenderer
                 var slipMarker = PdfOuterListMarker(markerKind, slip.Checked, ref orderedRun)
                     + PdfInnerListMarker(innerKind, slip.Checked);
 
-                AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker, id => project.Slips.Any(s => s.Id == id));
+                AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker, slipIds.Contains);
             }
         }
 

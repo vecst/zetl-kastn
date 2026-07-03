@@ -365,6 +365,9 @@ internal static class ZetlViewRenderer
         var parts = documentTitle is null
             ? new List<string>()
             : new List<string> { $"# {documentTitle}", "" };
+        // One id set for the whole render: the wiki-link resolver runs per link,
+        // so a per-call scan of project.Slips would go quadratic on big projects.
+        var slipIds = project.Slips.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var group in groups)
         {
             var level = group.EffectiveLevel;
@@ -397,7 +400,7 @@ internal static class ZetlViewRenderer
 
                 var slipText = ZetlMarkdown.ResolveWikiLinksInNote(
                     ZetlMarkdown.ApplyInlineStyleMarkers(SlipText(slip), slip.InlineStyles),
-                    id => project.Slips.Any(s => s.Id == id));
+                    slipIds.Contains);
                 var slipKind = SlipBlockKind(slip);
                 var bucketListKind = BucketListKind(project, slip, preferSlipKindOverBucketKind);
                 var kind = bucketListKind.Length > 0 && IsListRenderKind(slipKind)
@@ -577,10 +580,10 @@ internal static class ZetlViewRenderer
 
     public static string HtmlListItemMarker(string outerKind, string innerKind, bool isChecked)
     {
-        var outerMarker = outerKind == ZetlBlockKinds.Task ? TaskCheckboxHtml(isChecked) : "";
+        var outerMarker = outerKind == ZetlBlockKinds.Task ? ZetlMarkdown.TaskCheckboxHtml(isChecked) : "";
         var innerMarker = innerKind switch
         {
-            ZetlBlockKinds.Task => TaskCheckboxHtml(isChecked),
+            ZetlBlockKinds.Task => ZetlMarkdown.TaskCheckboxHtml(isChecked),
             ZetlBlockKinds.Bullet => "• ",
             ZetlBlockKinds.Ordered => "1. ",
             _ => ""
@@ -623,6 +626,9 @@ internal static class ZetlViewRenderer
             parts.Add($"<h1>{Escape(documentTitle)}</h1>");
         }
 
+        // One id set for the whole render: the wiki-link resolver runs per link,
+        // so a per-call scan of project.Slips would go quadratic on big projects.
+        var slipIds = project.Slips.Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var group in groups)
         {
             // A container bucket ("group") wraps its heading and slips in a bordered box.
@@ -698,7 +704,7 @@ internal static class ZetlViewRenderer
                     or ZetlBlockKinds.Code or ZetlBlockKinds.Divider)
                 {
                     CloseList();
-                    parts.Add($"<div id=\"{slip.Id}\">" + ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text, slip.InlineStyles), id => project.Slips.Any(s => s.Id == id)) + "</div>");
+                    parts.Add($"<div id=\"{slip.Id}\">" + ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text, slip.InlineStyles), slipIds.Contains) + "</div>");
                     continue;
                 }
 
@@ -712,7 +718,7 @@ internal static class ZetlViewRenderer
                 var align = SlipAlignment(slip);
                 var style = align == "left" ? "" : $" style=\"text-align:{align}\"";
                 var styledText = ZetlMarkdown.ApplyInlineStyleMarkers(text, slip.InlineStyles);
-                var inner = ZetlMarkdown.BlocksToHtml(styledText, id => project.Slips.Any(s => s.Id == id));
+                var inner = ZetlMarkdown.BlocksToHtml(styledText, slipIds.Contains);
                 if (FirstContentLineStartsWithMarkdownListMarker(text))
                 {
                     CloseList();
@@ -801,11 +807,6 @@ internal static class ZetlViewRenderer
     private static bool FirstContentLineStartsWithMarkdownListMarker(string text) =>
         FirstContentLineStartsWithMarkdownListMarker(
             (text ?? "").ReplaceLineEndings("\n").Split('\n'));
-
-    private static string TaskCheckboxHtml(bool isChecked) =>
-        isChecked
-            ? "<input type=\"checkbox\" checked /> "
-            : "<input type=\"checkbox\" /> ";
 
     private static string EscapeMarkdownAlt(string text) =>
         text.Replace("[", "\\[").Replace("]", "\\]");

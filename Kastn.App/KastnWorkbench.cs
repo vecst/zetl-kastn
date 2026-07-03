@@ -71,6 +71,23 @@ internal sealed class KastnTreeNode : INotifyPropertyChanged
         : $"{IncludedCount} · {HiddenCount} hidden";
     public IReadOnlyList<KastnTreeNode> Children { get; init; } = [];
 
+    // This node's slips: its own slip (if it is one) plus every slip beneath it.
+    public IEnumerable<ZetlSlipSnapshot> TreeSlips()
+    {
+        if (Slip is { } slip)
+        {
+            yield return slip;
+        }
+
+        foreach (var child in Children)
+        {
+            foreach (var descendant in child.TreeSlips())
+            {
+                yield return descendant;
+            }
+        }
+    }
+
     // Transient drag-and-drop feedback: true while this row is the live drop target, so
     // the template can draw a drop marker. Not part of the snapshot — set during a drag.
     private bool isDropTarget;

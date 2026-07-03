@@ -42,7 +42,7 @@ internal abstract record KastnSelection
                 continue;
             }
 
-            foreach (var slip in TreeSlips(node))
+            foreach (var slip in node.TreeSlips())
             {
                 if (seen.Add(slip.Id))
                 {
@@ -57,22 +57,5 @@ internal abstract record KastnSelection
         }
 
         return new None();
-    }
-
-    // A node's slips: its own slip (if it is one) plus every slip beneath it.
-    private static IEnumerable<ZetlSlipSnapshot> TreeSlips(KastnTreeNode node)
-    {
-        if (node.Slip is { } slip)
-        {
-            yield return slip;
-        }
-
-        foreach (var child in node.Children)
-        {
-            foreach (var descendant in TreeSlips(child))
-            {
-                yield return descendant;
-            }
-        }
     }
 }

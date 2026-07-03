@@ -709,7 +709,7 @@ internal static class ZetlMarkdown
 
     public static string InlinesToHtml(string text, Func<string, bool>? isResolved = null) => InlinesToHtml(ParseInlines(text), isResolved);
 
-    private static string TaskCheckboxHtml(bool isChecked) =>
+    public static string TaskCheckboxHtml(bool isChecked) =>
         isChecked
             ? "<input type=\"checkbox\" checked /> "
             : "<input type=\"checkbox\" /> ";

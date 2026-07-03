@@ -52,7 +52,7 @@ internal partial class BucketSettingsWindow : Window
 
     public int DefaultTsvRowLength => (int)(tsvRowLengthBox.Value ?? 5);
 
-    private int InferredTsvRowLength => SplitLines(defaultStartingTextBox.Text).Count;
+    private int InferredTsvRowLength => ZetlDialogText.SplitLines(defaultStartingTextBox.Text).Count;
 
     private void Commit()
     {
@@ -67,12 +67,4 @@ internal partial class BucketSettingsWindow : Window
         Close();
     }
 
-    private static IReadOnlyList<string> SplitLines(string? text)
-    {
-        return (text ?? "")
-            .Split(["\r\n", "\n", "\r"], StringSplitOptions.None)
-            .Select(line => line.Trim())
-            .Where(line => line.Length > 0)
-            .ToList();
-    }
 }

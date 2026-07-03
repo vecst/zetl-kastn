@@ -49,7 +49,7 @@ internal partial class ProjectSetupWindow : Window
 
     public string ProjectName => projectNameBox.Text?.Trim() ?? "";
 
-    public IReadOnlyList<string> BucketNames => SplitLines(bucketNamesBox.Text);
+    public IReadOnlyList<string> BucketNames => ZetlDialogText.SplitLines(bucketNamesBox.Text);
 
     public string? ActiveBucketName => activeBucketBox.SelectedItem as string;
 
@@ -140,12 +140,4 @@ internal partial class ProjectSetupWindow : Window
         public override string ToString() => Label;
     }
 
-    private static IReadOnlyList<string> SplitLines(string? text)
-    {
-        return (text ?? "")
-            .Split(["\r\n", "\n", "\r"], StringSplitOptions.None)
-            .Select(line => line.Trim())
-            .Where(line => line.Length > 0)
-            .ToList();
-    }
 }
