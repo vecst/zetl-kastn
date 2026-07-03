@@ -28,6 +28,9 @@ internal partial class MainWindow
         }
 
         editorState.ApplyTextEdit(slipEditor.Text ?? "");
+        // Typing is now the latest action, so Ctrl+Z in the editor should drive the
+        // box's native character undo until another mutation or load is recorded.
+        editorUndoIsLatest = true;
         UpdateInlineFormatButtons();
         statusText.Text = editorState.IsDirty
             ? "Unsaved changes — saved when you leave the editor."
@@ -809,11 +812,9 @@ internal partial class MainWindow
             replacedLength: 0,
             replacementLength: placeholder.Length);
         text = text[..start] + placeholder + text[start..];
-        editorUpdating = true;
-        slipEditor.Text = text;
+        LoadEditorText(text);
         slipEditor.SelectionStart = start;
         slipEditor.SelectionEnd = start + placeholder.Length;
-        editorUpdating = false;
         editorState.SetDraft(text);
         return (text, start, placeholder.Length, styles);
     }
@@ -1683,9 +1684,7 @@ internal partial class MainWindow
         editorState.PrepareOverwrite();
         UpdateEditorFromState();
         editorState.SetDraft(localConflictText.Text ?? "");
-        editorUpdating = true;
-        slipEditor.Text = editorState.DraftText;
-        editorUpdating = false;
+        LoadEditorText(editorState.DraftText);
         await SaveEditorAsync();
     }
 
@@ -1703,14 +1702,26 @@ internal partial class MainWindow
         viewerDocumentScroll.Focus();
     }
 
+    // Load text into the editor as fresh context rather than as an edit. The box's
+    // native undo stack is cleared (toggling IsUndoEnabled clears it, matching the
+    // documented WPF behavior) so Ctrl+Z can never revert a programmatic load and
+    // resurrect another slip's text into the selected slip.
+    private void LoadEditorText(string text)
+    {
+        editorUpdating = true;
+        slipEditor.Text = text;
+        editorUpdating = false;
+        slipEditor.IsUndoEnabled = false;
+        slipEditor.IsUndoEnabled = true;
+        editorUndoIsLatest = false;
+    }
+
     private void UpdateEditorFromState()
     {
         var selectedSlips = SelectedSlips();
         if (selectedSlips.Count > 1)
         {
-            editorUpdating = true;
-            slipEditor.Text = "";
-            editorUpdating = false;
+            LoadEditorText("");
             slipRenderOptionUpdating = true;
             ignoreBucketRenderKindCheck.IsChecked = false;
             ignoreBucketRenderKindCheck.IsEnabled = false;
@@ -1722,13 +1733,11 @@ internal partial class MainWindow
             return;
         }
 
-        editorUpdating = true;
-        slipEditor.Text = SelectedSlip is { } editorSlip
+        LoadEditorText(SelectedSlip is { } editorSlip
             && IsUntitledKastnSlip(editorSlip)
             && !editorState.IsDirty
                 ? ""
-                : editorState.DraftText;
-        editorUpdating = false;
+                : editorState.DraftText);
         conflictPanel.IsVisible = editorState.ConflictCurrent is not null;
         if (editorState.ConflictCurrent is { } conflict)
         {

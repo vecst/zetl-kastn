@@ -162,6 +162,119 @@ public class ZetlUITests
     }
 
     [AvaloniaFact]
+    public void TextBoxUndoClearsWhenUndoEnabledToggles()
+    {
+        // Pins the two Avalonia TextBox behaviors the slip editor depends on:
+        // a programmatic Text set enters the box's own undo history (why a slip
+        // load must clear it), and toggling IsUndoEnabled clears that history
+        // (the documented WPF behavior LoadEditorText relies on).
+        var box = new Avalonia.Controls.TextBox();
+        var window = new Avalonia.Controls.Window { Content = box };
+        window.Show();
+
+        box.Text = "slip A";
+        box.Text = "slip B";
+        Assert.True(
+            box.CanUndo,
+            "A programmatic Text set should be natively undoable — the premise of the load-clearing fix.");
+
+        box.IsUndoEnabled = false;
+        box.IsUndoEnabled = true;
+        Assert.False(box.CanUndo, "Toggling IsUndoEnabled should clear the box's undo history.");
+        Assert.Equal("slip B", box.Text);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void SwitchingSlipsMustNotLeaveThePreviousTextNativelyUndoable()
+    {
+        // Regression: selecting another slip swaps the editor text programmatically;
+        // that swap must not sit in the TextBox's own undo stack, or Ctrl+Z in the
+        // auto-focused editor resurrects slip A's text under slip B's selection
+        // (and autosave would then write it into slip B).
+        var connection = new KastnConnectionController(_ => Task.CompletedTask);
+        var window = new MainWindow(connection);
+        window.Show();
+
+        var project = new ZETL.Contracts.ZetlProjectSnapshot
+        {
+            Id = "proj-1",
+            Name = "Test Project",
+            MetadataRevision = 1,
+            ChangeSequence = 1,
+            Buckets = new[]
+            {
+                new ZETL.Contracts.ZetlBucketSnapshot { Id = "b-inbox", Revision = 1, Name = "Inbox" }
+            },
+            Slips = new[]
+            {
+                new ZETL.Contracts.ZetlSlipSnapshot
+                {
+                    Id = "slip-a",
+                    Revision = 1,
+                    Type = ZETL.Contracts.ZetlSlipType.Text,
+                    BucketId = "b-inbox",
+                    Title = "A",
+                    Text = "text of slip A",
+                    Source = "copy",
+                    CapturedAtUtc = DateTimeOffset.UtcNow
+                },
+                new ZETL.Contracts.ZetlSlipSnapshot
+                {
+                    Id = "slip-b",
+                    Revision = 1,
+                    Type = ZETL.Contracts.ZetlSlipType.Text,
+                    BucketId = "b-inbox",
+                    Title = "B",
+                    Text = "text of slip B",
+                    Source = "copy",
+                    CapturedAtUtc = DateTimeOffset.UtcNow
+                }
+            }
+        };
+        var snapshot = new KastnSessionSnapshot(
+            KastnConnectionState.Online,
+            "Connected",
+            new[] { new ZETL.Contracts.ZetlProjectSummary { Id = "proj-1", Name = "Test Project", MetadataRevision = 1, ChangeSequence = 1 } },
+            project);
+        var eventField = typeof(KastnConnectionController)
+            .GetField("SnapshotChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var eventDelegate = (EventHandler<KastnSessionSnapshot>?)eventField!.GetValue(connection);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => eventDelegate?.Invoke(connection, snapshot));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var findMethod = typeof(MainWindow).GetMethod(
+            "FindTreeNode",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        void Select(string slipId)
+        {
+            var node = (KastnTreeNode?)findMethod.Invoke(null, new object?[] { window.projectTree.ItemsSource, slipId });
+            Assert.NotNull(node);
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => window.projectTree.SelectedItem = node);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+
+        Select("slip-a");
+        Assert.Equal("text of slip A", window.slipEditor.Text);
+
+        Select("slip-b");
+        Assert.Equal("text of slip B", window.slipEditor.Text);
+        Assert.False(
+            window.slipEditor.CanUndo,
+            "A slip switch must clear the editor's native undo history.");
+
+        // Even if the box reported undo differently, undoing must not change the text.
+        window.slipEditor.Undo();
+        Assert.Equal(
+            "text of slip B",
+            window.slipEditor.Text);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void WikiLinkClickNavigatesToTarget()
     {
         var connection = new KastnConnectionController(_ => Task.CompletedTask);

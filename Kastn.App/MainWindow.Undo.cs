@@ -10,6 +10,12 @@ internal partial class MainWindow
     private readonly KastnUndoHistory undoStack = new();
     private readonly KastnUndoHistory redoStack = new();
 
+    // True while typing in the slip editor is the most recent action, so Ctrl+Z
+    // there drives the box's native character undo. Any recorded mutation (a style
+    // toggle, a move) or a fresh editor load flips it back to Kastn's history —
+    // focus alone must not decide, because selecting a slip auto-focuses the editor.
+    private bool editorUndoIsLatest;
+
     // While non-null, slip mutations accumulate into one gesture instead of each
     // becoming its own undo entry. Coalescing by slip id keeps a gesture that
     // touches one slip with several commands (divider insert, drag) revision-correct.
@@ -168,12 +174,14 @@ internal partial class MainWindow
     {
         undoStack.Push(entry);
         redoStack.Clear();
+        editorUndoIsLatest = false;
     }
 
     private void ClearUndoHistory()
     {
         undoStack.Clear();
         redoStack.Clear();
+        editorUndoIsLatest = false;
     }
 
     private Task UndoLastAsync() => StepHistoryAsync(undoStack, redoStack, "undo", "Nothing to undo.");

@@ -1434,6 +1434,20 @@ internal partial class MainWindow : Window
             e.Handled = true;
             await SaveEditorKeepingFocusAsync();
         }
+        else if (e.KeyModifiers == KeyModifiers.Control && e.Key is Key.Z or Key.Y)
+        {
+            // Route by the last interaction, not by focus: typing keeps the box's
+            // native character undo; after any recorded action (a style toggle, a
+            // slip load) the same keys drive Kastn's history even though selecting
+            // a slip auto-focused the editor. Tunnel phase, so this decides before
+            // the TextBox consumes the key.
+            var nativeAvailable = e.Key == Key.Z ? slipEditor.CanUndo : slipEditor.CanRedo;
+            if (!(editorUndoIsLatest && nativeAvailable))
+            {
+                e.Handled = true;
+                await (e.Key == Key.Z ? UndoLastAsync() : RedoLastAsync());
+            }
+        }
         else if (e.Key == Key.F12 && currentProject is not null)
         {
             var text = slipEditor.Text ?? "";
@@ -1526,7 +1540,9 @@ internal partial class MainWindow : Window
         else if (args.KeyModifiers == KeyModifiers.Control && args.Key == Key.Z)
         {
             // In-app undo. A focused text box keeps its own Ctrl+Z (the window
-            // handler does not see edits the box already consumed, but guard anyway).
+            // handler does not see edits the box already consumed, but guard anyway);
+            // the slip editor is the exception — its tunnel handler routes between
+            // native and Kastn undo by last interaction before this ever runs.
             // Held Ctrl+Z remains a Zetl coldkey and never reaches Kastn.
             if (IsTextInputFocused())
             {
