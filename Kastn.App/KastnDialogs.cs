@@ -552,6 +552,68 @@ internal static class KastnDialogs
         return await dialog.ShowDialog<EditSlipResult?>(owner);
     }
 
+    // The two-way choice for an undo/redo step whose record changed since it was
+    // recorded: apply the step anyway (overwriting the newer change) or keep the
+    // newer change and consume the entry. This is the editor conflict panel's
+    // current-vs-target affordance as a dialog, so it also works in Board Mode,
+    // where the docked panel is collapsed.
+    public static async Task<bool> UndoConflictAsync(
+        Window owner,
+        string verb,
+        string description,
+        string currentText,
+        string targetText)
+    {
+        var capitalizedVerb = char.ToUpperInvariant(verb[0]) + verb[1..];
+        var dialog = Dialog($"{capitalizedVerb} conflict", 560, 380);
+        var applyAnyway = false;
+        var apply = new Button { Content = $"{capitalizedVerb} anyway", IsDefault = true };
+        var keep = new Button { Content = "Keep newer change", IsCancel = true };
+        apply.Click += (_, _) =>
+        {
+            applyAnyway = true;
+            dialog.Close();
+        };
+        keep.Click += (_, _) => dialog.Close();
+
+        static Control Labeled(string label, string text) => new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                new TextBlock { Text = label, FontWeight = Avalonia.Media.FontWeight.Bold },
+                new ScrollViewer
+                {
+                    MaxHeight = 100,
+                    Content = new TextBlock
+                    {
+                        Text = text,
+                        TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                    }
+                }
+            }
+        };
+
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(18),
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = $"“{description}” cannot {verb} cleanly — this item changed since.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                },
+                Labeled("Newer change (kept if you decline)", currentText),
+                Labeled($"After {verb}", targetText),
+                Buttons(apply, keep)
+            }
+        };
+        await dialog.ShowDialog(owner);
+        return applyAnyway;
+    }
+
     private static Window Dialog(string title, double width, double height)
     {
         return new Window

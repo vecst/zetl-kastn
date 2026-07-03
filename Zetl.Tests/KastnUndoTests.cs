@@ -208,6 +208,131 @@ public class KastnUndoTests
             "The restore target is untouched.");
     }
 
+    private static ZetlBucketSnapshot Bucket(
+        string id,
+        long revision,
+        string name,
+        string? parentId = null,
+        string renderKind = "",
+        string headingAlign = "",
+        bool headingBold = false,
+        int headingLevel = 0) => new()
+    {
+        Id = id,
+        Revision = revision,
+        Name = name,
+        ParentBucketId = parentId,
+        RenderKind = renderKind,
+        HeadingAlign = headingAlign,
+        HeadingBold = headingBold,
+        HeadingLevel = headingLevel
+    };
+
+    [Fact] public void BucketRestoreEmitsOnlyTheNeededSteps()
+    {
+        // Rename-only: one UpdateBucket restore.
+        var renamed = new KastnBucketUndoOperation(
+            "b1", Bucket("b1", 5, "Renamed"), "sib", Bucket("b1", 4, "Original"), "sib");
+        var renameSteps = KastnUndoPlanner.BuildBucketSteps(renamed);
+        AssertEqual(1, renameSteps.Count, "A rename restores with one update.");
+        AssertEqual(ZetlCommandKind.UpdateBucket, renameSteps[0].Kind, "The update restores identity.");
+        AssertEqual(
+            "Original",
+            renameSteps[0].Payload.Deserialize<UpdateBucketCommand>(ZetlProtocolJson.Options)!.Name,
+            "The restore carries the prior name.");
+
+        // Heading-only: one SetBucketHeading restore.
+        var restyled = new KastnBucketUndoOperation(
+            "b1", Bucket("b1", 5, "Same", headingBold: true), "sib", Bucket("b1", 4, "Same"), "sib");
+        var headingSteps = KastnUndoPlanner.BuildBucketSteps(restyled);
+        AssertEqual(1, headingSteps.Count, "A heading change restores with one step.");
+        AssertEqual(ZetlCommandKind.SetBucketHeading, headingSteps[0].Kind, "Heading styling has its own command.");
+
+        // Reorder-only: one best-effort ReorderBucket with the prior anchor.
+        var reordered = new KastnBucketUndoOperation(
+            "b1", Bucket("b1", 5, "Same"), FromFollowing: "x", Bucket("b1", 4, "Same"), ToFollowing: "y");
+        var reorderSteps = KastnUndoPlanner.BuildBucketSteps(reordered);
+        AssertEqual(1, reorderSteps.Count, "Only the position changed.");
+        AssertEqual(ZetlCommandKind.ReorderBucket, reorderSteps[0].Kind, "A reorder restores position.");
+        AssertTrue(reorderSteps[0].BestEffort, "Position restore is best-effort.");
+        AssertEqual(
+            "y",
+            reorderSteps[0].Payload.Deserialize<ReorderBucketCommand>(ZetlProtocolJson.Options)!.BeforeBucketId,
+            "Reorder uses the prior anchor.");
+
+        // Reparent: identity restore plus a position restore under the old parent.
+        var reparented = new KastnBucketUndoOperation(
+            "b1", Bucket("b1", 5, "Same", parentId: "p2"), "x", Bucket("b1", 4, "Same", parentId: "p1"), "x");
+        var reparentSteps = KastnUndoPlanner.BuildBucketSteps(reparented);
+        AssertEqual(2, reparentSteps.Count, "A reparent restores parent then position.");
+        AssertEqual(ZetlCommandKind.UpdateBucket, reparentSteps[0].Kind, "The parent is restored first.");
+        AssertEqual(ZetlCommandKind.ReorderBucket, reparentSteps[1].Kind, "Position is restored second.");
+
+        // Unchanged: a no-op that should not be recorded.
+        var unchanged = new KastnBucketUndoOperation(
+            "b1", Bucket("b1", 5, "Same"), "x", Bucket("b1", 4, "Same"), "x");
+        AssertTrue(KastnUndoPlanner.IsNoOp(unchanged), "Identical state needs no inverse.");
+    }
+
+    [Fact] public void BucketOppositeSwapsFromAndTo()
+    {
+        var op = new KastnBucketUndoOperation(
+            "b1", Bucket("b1", 5, "Renamed"), "fa", Bucket("b1", 4, "Original"), "fb");
+        var now = Bucket("b1", 6, "Original");
+
+        var opposite = KastnUndoPlanner.Opposite(op, now);
+
+        AssertEqual(now, opposite.From, "The opposite starts from the applied state.");
+        AssertEqual("fb", opposite.FromFollowing, "The opposite's source anchor is the restored anchor.");
+        AssertEqual("Renamed", opposite.To.Name, "The opposite restores the original From state.");
+        AssertEqual("fa", opposite.ToFollowing, "The opposite targets the original source anchor.");
+    }
+
+    [Fact] public void FollowingBucketIdSkipsOtherParents()
+    {
+        var project = new ZetlProjectSnapshot
+        {
+            Id = "p",
+            Name = "Project",
+            MetadataRevision = 1,
+            ChangeSequence = 1,
+            Buckets =
+            [
+                Bucket("top1", 1, "Top 1"),
+                Bucket("child1", 1, "Child 1", parentId: "top1"),
+                Bucket("top2", 1, "Top 2"),
+                Bucket("child2", 1, "Child 2", parentId: "top1")
+            ]
+        };
+
+        AssertEqual("top2", KastnUndoPlanner.FollowingBucketId(project, "top1"), "Nested children are skipped.");
+        AssertEqual("child2", KastnUndoPlanner.FollowingBucketId(project, "child1"), "Siblings share a parent.");
+        AssertTrue(KastnUndoPlanner.FollowingBucketId(project, "top2") is null, "The last sibling has no follower.");
+        AssertTrue(KastnUndoPlanner.FollowingBucketId(project, "missing") is null, "An unknown bucket has no follower.");
+    }
+
+    [Fact] public void RethreadBucketRevisionRepointsStackedBucketOperations()
+    {
+        var history = new KastnUndoHistory();
+        history.Push(new KastnUndoEntry("Edit bucket", "p", [])
+        {
+            BucketOperations =
+                [new KastnBucketUndoOperation("b1", Bucket("b1", 2, "Renamed"), null, Bucket("b1", 1, "Original"), null)]
+        });
+
+        history.RethreadBucketRevision("b1", 7);
+
+        AssertTrue(history.TryPop(out var entry), "The entry remains poppable.");
+        AssertEqual(
+            7,
+            entry!.BucketOperations[0].From.Revision,
+            "A stacked bucket operation expects the new current revision.");
+        AssertEqual(
+            1,
+            entry.BucketOperations[0].To.Revision,
+            "The restore target is untouched.");
+    }
+
     [Fact] public void FollowingSlipIdSkipsOtherBuckets()
     {
         var project = new ZetlProjectSnapshot

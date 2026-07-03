@@ -33,10 +33,12 @@ Slip-level editing only:
 - `DeleteSlip` (soft-delete to `Deleted`)
 - `AddSlip`
 
-Bucket and project structural operations (`AddBucket`, `UpdateBucket`,
-`SetBucketHeading`, `DeleteBucket`, rename / status / view commands) are out of
-scope for v1. Bucket undo is deferred until the Board Mode render-order work is
-settled; its rules will be decided alongside that overhaul.
+Bucket editing is also covered (landed after canonical bucket order):
+`UpdateBucket` (rename / reparent / settings / render kind), `SetBucketHeading`,
+and `ReorderBucket` record and invert as bucket operations alongside the slip
+operations in one entry. Bucket **creation and deletion** stay unrecorded —
+their inverses need re-creation semantics — as do project-level commands
+(rename / status / view documents).
 
 ## Inverse Map
 
@@ -64,14 +66,16 @@ Each inverse command carries the revision Kastn recorded for the forward
 mutation. If the record moved since — a Zetl capture or another edit bumped its
 revision — the inverse returns `conflict` (or `notFound`).
 
-Undo does not silently force or silently abort. It reuses the existing slip
-conflict-resolution affordance (the `conflictPanel` with current-vs-yours text
-and the Use-current / Keep-mine actions) so the user sees what changed and
-chooses:
+Undo does not silently force or silently abort. It shows the same
+current-vs-target choice the editor conflict panel offers, as a dialog
+(`KastnDialogs.UndoConflictAsync`) rather than the docked panel — Board Mode
+collapses the Detail pane, so a docked affordance would be invisible exactly
+where drags and card edits happen:
 
 - **Undo anyway** — re-issue the inverse against the record's current revision,
-  overwriting the intervening change.
-- **Keep current** — abandon this undo entry and leave the record as it is.
+  overwriting the intervening change (it can conflict again if another change
+  races; the dialog re-asks with fresh text).
+- **Keep newer change** — abandon this operation and leave the record as it is.
 
 A conflicted entry is consumed either way; it is not silently retried.
 
@@ -150,11 +154,20 @@ Slices 1 and 2 landed: full slip undo/redo.
   operation whose record changed since is skipped and reported in the status line
   ("N items changed since and were skipped"); the rest of the entry still applies.
 
+Also landed:
+
+- Conflict resolution UI: a conflicted operation opens the Undo-anyway /
+  Keep-newer-change dialog (see Conflict Handling) instead of the old
+  skip-and-report fallback; declined operations count as "kept the newer
+  change" in the status line.
+- Bucket undo for `UpdateBucket` / `SetBucketHeading` / `ReorderBucket`, with
+  gesture coalescing (a column drag's reparent + reorder is one entry) and
+  bucket revision re-threading mirroring the slip stacks.
+
 Remaining:
 
-- Conflict resolution UI reusing the slip conflict panel (Undo-anyway /
-  Keep-current) in place of the skip-and-report fallback.
-- Bucket and project undo, after the Board Mode render-order overhaul.
+- Bucket creation/deletion and project-level undo (rename / status / view
+  documents) — excluded from v1 scope.
 
 ## Test Gates
 

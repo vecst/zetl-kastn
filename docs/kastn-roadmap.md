@@ -191,12 +191,15 @@ IPC, isolated from Zetl's coldkey stack.
       undo is disabled, `Ctrl+Z`/`Ctrl+Y` there drive Kastn history (pending
       typing flushes in as one entry), and stacked same-slip entries re-thread
       their expected revisions so a run of undos walks the whole history.
-- [ ] Route undo conflicts through the existing slip conflict-resolution panel
-      with Undo-anyway and Keep-current actions (today a conflicted operation is
-      skipped and reported in the status line).
-- [ ] Bucket/project undo — unblocked now that canonical bucket order and
-      `ReorderBucket` are landed; design its rules alongside the remaining Board
-      Mode slices.
+- [x] Route undo conflicts through an Undo-anyway / Keep-newer-change choice: a
+      conflicted operation opens a current-vs-target dialog (the panel's
+      affordance, but visible in Board Mode too); apply-anyway re-issues against
+      the record's current revision, declining keeps the newer change.
+- [x] Bucket undo for rename/reparent/settings/heading/reorder, coalescing a
+      drag's reparent + reorder into one entry and re-threading bucket revisions
+      like the slip stacks. Bucket creation/deletion and project-level undo
+      remain deliberately out of scope (their inverses need re-creation
+      semantics).
 
 The detailed design is in [`kastn-undo-roadmap.md`](kastn-undo-roadmap.md).
 

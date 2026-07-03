@@ -26,12 +26,27 @@ internal sealed record KastnUndoOperation(
     KastnSlipMemento To,
     string? ToFollowing);
 
+// One bucket's part of a reversible edit, mirroring the slip operation: the
+// bucket is expected in state From (with its following same-parent sibling
+// FromFollowing) and should be returned to To (placed before ToFollowing).
+// Bucket undo covers rename/reparent/settings/heading/reorder; bucket creation
+// and deletion are not recorded (their inverses need re-creation semantics).
+internal sealed record KastnBucketUndoOperation(
+    string BucketId,
+    ZetlBucketSnapshot From,
+    string? FromFollowing,
+    ZetlBucketSnapshot To,
+    string? ToFollowing);
+
 // One reversible user action — a single edit or a whole gesture — as the set of
-// per-slip operations needed to reverse it.
+// per-slip and per-bucket operations needed to reverse it.
 internal sealed record KastnUndoEntry(
     string Description,
     string ProjectId,
-    IReadOnlyList<KastnUndoOperation> Operations);
+    IReadOnlyList<KastnUndoOperation> Operations)
+{
+    public IReadOnlyList<KastnBucketUndoOperation> BucketOperations { get; init; } = [];
+}
 
 // One inverse command. BestEffort steps (position restore) may fail without
 // failing the operation; a stale reorder anchor must not block an undo.
@@ -108,6 +123,28 @@ internal sealed class KastnUndoHistory
         }
     }
 
+    // The bucket twin of RethreadRevision.
+    public void RethreadBucketRevision(string bucketId, long revision)
+    {
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (entry.BucketOperations.All(op => !string.Equals(op.BucketId, bucketId, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            entries[i] = entry with
+            {
+                BucketOperations = entry.BucketOperations
+                    .Select(op => string.Equals(op.BucketId, bucketId, StringComparison.Ordinal)
+                        ? op with { From = op.From with { Revision = revision } }
+                        : op)
+                    .ToList()
+            };
+        }
+    }
+
     public void Clear() => entries.Clear();
 }
 
@@ -161,6 +198,97 @@ internal static class KastnUndoPlanner
 
     // True when the operation changes nothing, so it need not be recorded.
     public static bool IsNoOp(KastnUndoOperation op) => BuildSteps(op).Count == 0;
+
+    // The commands that return a bucket from its From state to its To state:
+    // identity/settings via UpdateBucket, heading styling via SetBucketHeading,
+    // and a best-effort ReorderBucket when its sibling position (or parent)
+    // changed. An empty result means the operation is a no-op.
+    public static IReadOnlyList<KastnInverseStep> BuildBucketSteps(KastnBucketUndoOperation op)
+    {
+        var target = op.To;
+        var steps = new List<KastnInverseStep>();
+
+        var reparented = !string.Equals(op.From.ParentBucketId, target.ParentBucketId, StringComparison.Ordinal);
+        if (reparented
+            || !string.Equals(op.From.Name, target.Name, StringComparison.Ordinal)
+            || op.From.Settings != target.Settings
+            || !string.Equals(op.From.RenderKind, target.RenderKind, StringComparison.Ordinal))
+        {
+            steps.Add(Step(
+                ZetlCommandKind.UpdateBucket,
+                new UpdateBucketCommand
+                {
+                    Name = target.Name,
+                    ParentBucketId = target.ParentBucketId,
+                    Settings = target.Settings,
+                    RenderKind = target.RenderKind
+                },
+                bestEffort: false));
+        }
+
+        if (!string.Equals(op.From.HeadingAlign, target.HeadingAlign, StringComparison.Ordinal)
+            || op.From.HeadingBold != target.HeadingBold
+            || op.From.HeadingLevel != target.HeadingLevel)
+        {
+            steps.Add(Step(
+                ZetlCommandKind.SetBucketHeading,
+                new SetBucketHeadingCommand
+                {
+                    Align = target.HeadingAlign,
+                    Bold = target.HeadingBold,
+                    Level = target.HeadingLevel
+                },
+                bestEffort: false));
+        }
+
+        if (reparented || !string.Equals(op.FromFollowing, op.ToFollowing, StringComparison.Ordinal))
+        {
+            steps.Add(Step(
+                ZetlCommandKind.ReorderBucket,
+                new ReorderBucketCommand { BeforeBucketId = op.ToFollowing },
+                bestEffort: true));
+        }
+
+        return steps;
+    }
+
+    public static KastnBucketUndoOperation Opposite(KastnBucketUndoOperation op, ZetlBucketSnapshot now) =>
+        new(op.BucketId, From: now, FromFollowing: op.ToFollowing, To: op.From, ToFollowing: op.FromFollowing);
+
+    public static bool IsNoOp(KastnBucketUndoOperation op) => BuildBucketSteps(op).Count == 0;
+
+    // The next bucket under the same parent in project order, or null when the
+    // bucket is last among its siblings (or unknown).
+    public static string? FollowingBucketId(ZetlProjectSnapshot project, string bucketId)
+    {
+        var target = project.Buckets.FirstOrDefault(bucket =>
+            string.Equals(bucket.Id, bucketId, StringComparison.Ordinal));
+        if (target is null)
+        {
+            return null;
+        }
+
+        var seenTarget = false;
+        foreach (var bucket in project.Buckets)
+        {
+            if (!string.Equals(bucket.ParentBucketId, target.ParentBucketId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (seenTarget)
+            {
+                return bucket.Id;
+            }
+
+            if (string.Equals(bucket.Id, bucketId, StringComparison.Ordinal))
+            {
+                seenTarget = true;
+            }
+        }
+
+        return null;
+    }
 
     private static bool PropsDiffer(ZetlSlipSnapshot a, ZetlSlipSnapshot b) =>
         !string.Equals(a.Title, b.Title, StringComparison.Ordinal)

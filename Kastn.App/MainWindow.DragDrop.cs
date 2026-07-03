@@ -831,6 +831,8 @@ internal partial class MainWindow
             return;
         }
 
+        // The reparent + reorder pair is one drag, so it undoes as one entry.
+        using var undoGesture = BeginGesture("Reorder bucket");
         pendingBucketSelectionId = bucket.Id;
         var revision = bucket.Revision;
 
