@@ -82,6 +82,32 @@ internal sealed class KastnUndoHistory
         return true;
     }
 
+    // Point every stored operation on the slip at its new current revision. Called
+    // after the history itself changes a slip (an undo or redo step), so older
+    // stacked entries for the same slip stay appliable instead of conflicting on
+    // the revision the history's own step just advanced. A change made outside the
+    // history still bumps the revision without re-threading and conflicts as before.
+    public void RethreadRevision(string slipId, long revision)
+    {
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (entry.Operations.All(op => !string.Equals(op.SlipId, slipId, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            entries[i] = entry with
+            {
+                Operations = entry.Operations
+                    .Select(op => string.Equals(op.SlipId, slipId, StringComparison.Ordinal)
+                        ? op with { From = op.From with { Revision = revision } }
+                        : op)
+                    .ToList()
+            };
+        }
+    }
+
     public void Clear() => entries.Clear();
 }
 

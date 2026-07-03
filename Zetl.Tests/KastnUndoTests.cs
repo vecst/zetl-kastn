@@ -174,6 +174,40 @@ public class KastnUndoTests
         AssertEqual("b1", opposite.To.Restore!.BucketId, "The slip returns to its created bucket.");
     }
 
+    [Fact] public void RethreadRevisionRepointsStackedOperationsOnTheSameSlip()
+    {
+        // Two stacked entries on one slip: undoing the newer advances the slip's
+        // revision, so the older entry must be re-pointed at it or the second undo
+        // in a row conflicts and is skipped ("only one undo works").
+        var history = new KastnUndoHistory();
+        history.Push(new KastnUndoEntry("Edit slip", "p",
+            [Op(Slip("s1", 2, "b1", text: "after bold"), KastnSlipMemento.To(Slip("s1", 1, "b1")))]));
+        history.Push(new KastnUndoEntry("Edit slip", "p",
+            [Op(Slip("other", 7, "b1"), KastnSlipMemento.To(Slip("other", 6, "b1")))]));
+
+        history.RethreadRevision("s1", 5);
+
+        AssertTrue(history.TryPop(out var untouched), "The unrelated entry pops first.");
+        AssertEqual(
+            7,
+            untouched!.Operations[0].From.Revision,
+            "Operations on other slips keep their recorded revision.");
+
+        AssertTrue(history.TryPop(out var rethreaded), "The same-slip entry remains poppable.");
+        AssertEqual(
+            5,
+            rethreaded!.Operations[0].From.Revision,
+            "A stacked operation on the changed slip expects the new current revision.");
+        AssertEqual(
+            "after bold",
+            rethreaded.Operations[0].From.Text,
+            "Re-threading only repoints the revision; the recorded states stay intact.");
+        AssertEqual(
+            1,
+            rethreaded.Operations[0].To.Restore!.Revision,
+            "The restore target is untouched.");
+    }
+
     [Fact] public void FollowingSlipIdSkipsOtherBuckets()
     {
         var project = new ZetlProjectSnapshot

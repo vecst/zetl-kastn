@@ -241,6 +241,12 @@ internal partial class MainWindow
             if (ok)
             {
                 oppositeOps.Add(KastnUndoPlanner.Opposite(op, now));
+                // This step advanced the slip's revision; re-thread the stacked
+                // entries that still expect the older one, so a run of undos (or
+                // redos) over the same slip can walk the whole history instead of
+                // conflicting after the first step.
+                undoStack.RethreadRevision(op.SlipId, now.Revision);
+                redoStack.RethreadRevision(op.SlipId, now.Revision);
             }
             else
             {
