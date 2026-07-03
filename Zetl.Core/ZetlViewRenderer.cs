@@ -184,7 +184,7 @@ internal static class ZetlViewRenderer
             }
 
             slipsByBucketId.TryGetValue(bucket.Id, out var bucketSlips);
-            var depth = BucketDepth(bucket, bucketsById);
+            var depth = ZetlTreeText.BucketDepth(bucket, bucketsById);
             groups.Add(new ZetlViewGroup(bucket.Name.Trim(), depth, bucket, bucketSlips ?? [])
             {
                 OutlineNumber = numberer.Next(depth),
@@ -260,8 +260,9 @@ internal static class ZetlViewRenderer
         var parts = new List<string> { project.Name.Trim(), "" };
         foreach (var group in groups)
         {
-            parts.Add(IndentedLine(group.Heading, group.Depth));
-            parts.AddRange(group.Slips.Select(slip => IndentedText(SlipText(slip), group.Depth + 1)));
+            parts.Add(ZetlTreeText.IndentedLine(group.Heading, group.Depth));
+            parts.AddRange(group.Slips.Select(slip =>
+                ZetlTreeText.IndentedText(SlipText(slip), group.Depth + 1)));
             parts.Add("");
         }
 
@@ -847,36 +848,6 @@ internal static class ZetlViewRenderer
 
     private static string DataUri(ZetlPictureContent picture) =>
         $"data:image/png;base64,{Convert.ToBase64String(picture.Bytes)}";
-
-    private static int BucketDepth(
-        ZetlBucketSnapshot bucket,
-        Dictionary<string, ZetlBucketSnapshot> bucketsById)
-    {
-        var depth = 0;
-        var parentId = bucket.ParentBucketId;
-        while (parentId is not null && depth < bucketsById.Count)
-        {
-            depth++;
-            parentId = bucketsById.TryGetValue(parentId, out var parent)
-                ? parent.ParentBucketId
-                : null;
-        }
-
-        return depth;
-    }
-
-    private static string IndentedLine(string text, int depth) =>
-        $"{new string('\t', Math.Max(0, depth))}{text.Trim()}";
-
-    private static string IndentedText(string text, int depth)
-    {
-        var prefix = new string('\t', Math.Max(0, depth));
-        return string.Join(
-            Environment.NewLine,
-            text.ReplaceLineEndings("\n")
-                .Split('\n')
-                .Select(line => $"{prefix}{line.TrimEnd()}"));
-    }
 
     private static string NormalizeTsvCell(string text) =>
         text.ReplaceLineEndings(" ").Replace('\t', ' ').Trim();

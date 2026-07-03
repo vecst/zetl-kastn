@@ -165,7 +165,7 @@ internal static class KastnWorkbench
             {
                 result.Add(new KastnBucketItem(
                     bucket.Id,
-                    $"{new string(' ', Depth(bucket, project.Buckets) * 3)}{bucket.Name}",
+                    $"{new string(' ', ZetlTreeText.BucketDepth(bucket, project.Buckets) * 3)}{bucket.Name}",
                     bucket));
             }
         }
@@ -395,10 +395,10 @@ internal static class KastnWorkbench
                 continue;
             }
 
-            var depth = Depth(item.Bucket, project.Buckets);
-            parts.Add(IndentedText(item.Bucket.Name.Trim(), depth));
+            var depth = ZetlTreeText.BucketDepth(item.Bucket, project.Buckets);
+            parts.Add(ZetlTreeText.IndentedText(item.Bucket.Name.Trim(), depth));
             parts.AddRange(bucketSlips
-                .Select(slip => IndentedText(
+                .Select(slip => ZetlTreeText.IndentedText(
                     (string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text).Trim(),
                     depth + 1))
                 .Where(text => text.Trim().Length > 0));
@@ -431,31 +431,6 @@ internal static class KastnWorkbench
         return result;
     }
 
-    private static int Depth(
-        ZetlBucketSnapshot bucket,
-        IReadOnlyList<ZetlBucketSnapshot> allBuckets)
-    {
-        var depth = 0;
-        var parentId = bucket.ParentBucketId;
-        while (parentId is not null && depth < allBuckets.Count)
-        {
-            depth++;
-            parentId = allBuckets.FirstOrDefault(item => item.Id == parentId)
-                ?.ParentBucketId;
-        }
-
-        return depth;
-    }
-
-    private static string IndentedText(string text, int depth)
-    {
-        var indent = new string('\t', Math.Max(0, depth));
-        return string.Join(
-            Environment.NewLine,
-            text.ReplaceLineEndings("\n")
-                .Split('\n')
-                .Select(line => $"{indent}{line.TrimEnd()}"));
-    }
 }
 
 internal sealed class KastnEditorState

@@ -1856,11 +1856,11 @@ internal sealed class ZetlStateStore
         var parts = new List<string> { project.Name.Trim(), "" };
         foreach (var bucket in selectedBuckets.Where(bucket => !IsDeletedBucket(bucket)))
         {
-            var depth = BucketDepth(bucket, project.Buckets);
-            parts.Add(IndentedLine(bucket.Name.Trim(), depth));
+            var depth = ZetlTreeText.BucketDepth(bucket, project.Buckets);
+            parts.Add(ZetlTreeText.IndentedLine(bucket.Name.Trim(), depth));
             parts.AddRange(bucket.Slips
                 .Where(note => !note.IsImage)
-                .Select(note => IndentedText(note.Text, depth + 1)));
+                .Select(note => ZetlTreeText.IndentedText(note.Text, depth + 1)));
             parts.Add("");
         }
 
@@ -1872,11 +1872,11 @@ internal sealed class ZetlStateStore
         var parts = new List<string> { project.Name.Trim(), "" };
         foreach (var group in selectedNotes.GroupBy(item => item.Bucket))
         {
-            var depth = BucketDepth(group.Key, project.Buckets);
-            parts.Add(IndentedLine(group.Key.Name.Trim(), depth));
+            var depth = ZetlTreeText.BucketDepth(group.Key, project.Buckets);
+            parts.Add(ZetlTreeText.IndentedLine(group.Key.Name.Trim(), depth));
             parts.AddRange(group
                 .Where(item => !item.Note.IsImage)
-                .Select(item => IndentedText(item.Note.Text, depth + 1)));
+                .Select(item => ZetlTreeText.IndentedText(item.Note.Text, depth + 1)));
             parts.Add("");
         }
 
@@ -3031,35 +3031,6 @@ internal sealed class ZetlStateStore
             .Select(NormalizeTsvCell)
             .Where(text => text.Length > 0)
             .ToList();
-    }
-
-    private static int BucketDepth(ZetlBucket bucket, IReadOnlyList<ZetlBucket> allBuckets)
-    {
-        var depth = 0;
-        var parentId = bucket.ParentBucketId;
-        while (parentId is not null && depth < allBuckets.Count)
-        {
-            depth++;
-            parentId = allBuckets.FirstOrDefault(item => item.Id == parentId)
-                ?.ParentBucketId;
-        }
-
-        return depth;
-    }
-
-    private static string IndentedLine(string text, int depth)
-    {
-        return $"{new string('\t', Math.Max(0, depth))}{text.Trim()}";
-    }
-
-    private static string IndentedText(string text, int depth)
-    {
-        var prefix = new string('\t', Math.Max(0, depth));
-        return string.Join(
-            Environment.NewLine,
-            text.ReplaceLineEndings("\n")
-                .Split('\n')
-                .Select(line => $"{prefix}{line.TrimEnd()}"));
     }
 
     private static string NewId()
