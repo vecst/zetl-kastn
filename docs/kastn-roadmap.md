@@ -137,9 +137,12 @@ The overhaul is sequenced as four slices (design in
       reparent step when the target sits under a different parent. Custom-section
       views keep their own order. No migration. Unblocks column reorder and the
       deferred bucket undo.
-- [ ] **Card placement precision + column reorder UI.** A board drop indicator,
-      insert before/after by card half, and column-header drag wired to
-      `ReorderBucket`.
+- [x] **Card placement precision + column reorder UI.** Cards and columns render
+      the tree's drag feedback (insertion lines and a drop-into outline bound to
+      the shared node flags); over a column's body the pointer's place among the
+      cards picks the exact slot (gaps and the space below the last card mean
+      "insert here"); and column headers drag via `ReorderBucket`, horizontal
+      half picking before/after, never nesting.
 - [ ] **Incremental board rendering.** Update only the affected card/column
       instead of rebuilding the whole board, removing the flash and scroll reset.
 - [ ] **Faster card creation.** Inline "type a card in place" instead of the
