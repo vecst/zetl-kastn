@@ -1,10 +1,9 @@
 # Kastn Undo
 
-Kastn currently has no undo. Zetl's session undo stack lives in the shortcut
-coordinator and is fed only by the coldkey capture, quick-note, compile, Pop,
-and Replay handlers; Kastn's edits flow through `ZetlProjectService` and never
-reach it. Held `Ctrl+Z` therefore cannot reverse a Kastn edit, and Kastn offers
-no in-app equivalent.
+Kastn's in-app undo is landed (see Status). Zetl's session undo stack lives in
+the shortcut coordinator and is fed only by the coldkey capture, quick-note,
+compile, Pop, and Replay handlers; Kastn's edits flow through
+`ZetlProjectService` and never reach it, so Kastn keeps its own history.
 
 This record fixes the approach for an in-Kastn undo that stays out of Zetl's
 coldkey undo.
@@ -115,9 +114,14 @@ revision.
   Zetl's Shift-lane undo coldkey, so mapping its tap to redo would overload one
   chord with opposite meanings (tap redo vs hold undo). `Ctrl+Y` is free of any
   Zetl coldkey.
-- While a text box is focused, both defer to the box's own undo/redo and only the
-  tree and card surfaces drive Kastn history. This is the feel-sensitive case:
-  workbench history applies from the tree and cards, not mid-edit.
+- Kastn keeps **one ordered history** covering the slip editor. The editor's
+  native TextBox undo is disabled (an earlier focus-split model made Ctrl+Z
+  answer differently mid-edit and could resurrect another slip's text from the
+  box's own stack). The editor's tunnel handler claims `Ctrl+Z`/`Ctrl+Y` for
+  Kastn history; pending typing is flushed into the history as one entry when
+  undo runs, so typing, style toggles, and moves all undo strictly in the order
+  they happened. Typing granularity is one entry per saved burst, not per
+  character. Incidental text boxes (bucket name, search) keep their own undo.
 
 ## Status
 
@@ -134,10 +138,14 @@ Slices 1 and 2 landed: full slip undo/redo.
   `DeleteSlip`) record. Same-slip gestures are wrapped with `BeginGesture` so they
   coalesce into one entry: divider insert, drag move/reorder, the per-card edit
   dialog, and the batch move / delete / format loops.
-- `Ctrl+Z` / `Ctrl+Y` drive undo and redo from the tree and card surfaces; a
-  focused text box keeps its own. `Ctrl+Shift+Z` is avoided so it does not overload
-  Zetl's Shift-lane undo coldkey. History clears on project switch or loss of a
-  live connection.
+- `Ctrl+Z` / `Ctrl+Y` drive one ordered history from every surface, including
+  the slip editor (whose native text-box undo is disabled — see Keybinding).
+  `Ctrl+Shift+Z` is avoided so it does not overload Zetl's Shift-lane undo
+  coldkey. History clears on project switch or loss of a live connection.
+- Stacked entries on one slip re-thread their expected revisions as history
+  steps apply (`KastnUndoHistory.RethreadRevision`), so a run of undos or redos
+  walks the whole history for that slip. A change made outside the history
+  still bumps the revision without re-threading and conflicts as designed.
 - Conflicts are handled without data loss but without the rich panel yet: an
   operation whose record changed since is skipped and reported in the status line
   ("N items changed since and were skipped"); the rest of the entry still applies.

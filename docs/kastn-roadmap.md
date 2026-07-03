@@ -36,6 +36,8 @@ The two-application foundation is in place:
       structure
 - [x] Per-note block kinds (paragraph / list / heading / quote / code) as a slip
       property, blessed in-body Markdown, and an export-fidelity advisory
+- [x] Whole-slip bold/italic/strike as slip properties (inline emphasis stays
+      typed Markdown), and one ordered undo/redo history covering the editor
 - [x] Structural elements Zetl ignores: divider slips and container Group buckets
       (Table / LaTeX reserved), with multi-select drag, a drop indicator, and
       edge auto-scroll
@@ -162,8 +164,8 @@ The overhaul is sequenced as four slices (design in
 
 ### Kastn Undo
 
-Kastn has no in-app undo today; Zetl's coldkey undo cannot reach Kastn edits.
-Add a Kastn-local undo over the existing IPC.
+Kastn-local slip undo/redo is landed as one ordered history over the existing
+IPC, isolated from Zetl's coldkey stack.
 
 - [x] Add a client-side undo history of inverse domain commands bound to in-app
       `Ctrl+Z` and isolated from the held-`Ctrl+Z` coldkey stack. All mutations
@@ -174,10 +176,16 @@ Add a Kastn-local undo over the existing IPC.
       the batch loops each record as one entry.
 - [x] Add redo via a symmetric undo/redo model, bound to `Ctrl+Y` (not
       `Ctrl+Shift+Z`, which would overload Zetl's Shift-lane undo coldkey).
+- [x] One ordered history covering the editor: the slip editor's native TextBox
+      undo is disabled, `Ctrl+Z`/`Ctrl+Y` there drive Kastn history (pending
+      typing flushes in as one entry), and stacked same-slip entries re-thread
+      their expected revisions so a run of undos walks the whole history.
 - [ ] Route undo conflicts through the existing slip conflict-resolution panel
       with Undo-anyway and Keep-current actions (today a conflicted operation is
       skipped and reported in the status line).
-- [ ] Defer bucket/project undo until after the Board Mode render-order overhaul.
+- [ ] Bucket/project undo — unblocked now that canonical bucket order and
+      `ReorderBucket` are landed; design its rules alongside the remaining Board
+      Mode slices.
 
 The detailed design is in [`kastn-undo-roadmap.md`](kastn-undo-roadmap.md).
 

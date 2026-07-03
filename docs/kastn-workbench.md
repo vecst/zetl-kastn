@@ -75,15 +75,23 @@ toolbar. The marker is never written into the body:
 
 Pressing a block-kind button toggles that kind on the selected note (or every
 note in a multi-selection); pressing it again clears it, and the buttons
-highlight the active kind. Inline formatting — bold, italic, strikethrough,
-inline code, web links, and stable-ID wiki-links — is property-backed: toolbar
-actions apply style metadata to the current selection, to the whole slip when
-nothing is selected, or to the next typed text when the slip is empty.
-Alignment (left, center, right) is a per-note property.
+highlight the active kind. Bold, italic, and strikethrough are whole-slip
+properties exactly like alignment and the block kind: the toolbar toggles the
+slip's flag (uniformly across a multi-selection), nothing is written into the
+body text, and the buttons light from the slip's own state. Bold on a selected
+bucket title toggles the heading's bold instead. Only inline code, web links,
+and stable-ID wiki-links remain selection-scoped style ranges (kept for a
+future inline editor). Alignment (left, center, right) is a per-note property.
 
 Typing Markdown by hand in the body is also supported: `**bold**`, `## heading`,
 `> quote`, fenced code, `---` dividers, and `- ` / `1. ` lists all render. The
-buttons are the decision-free path; typing is the explicit one — both are valid.
+buttons are the decision-free whole-slip path; typed Markdown is how emphasis
+is applied to a span within the text — both are valid.
+
+Kastn keeps one ordered edit history: `Ctrl+Z` / `Ctrl+Y` undo and redo typing,
+style toggles, moves, adds, and deletes strictly in the order they happened,
+regardless of which pane has focus. The editor has no separate text-box undo;
+pending typing joins the history as one entry when undo runs.
 
 The on-screen View always renders the body richly; a view's kind only governs
 its Copy/Export artifact. So when the selected view would drop formatting on
