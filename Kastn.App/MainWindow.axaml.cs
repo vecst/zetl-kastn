@@ -105,7 +105,49 @@ internal partial class MainWindow : Window
     private ZetlProjectSnapshot? currentProject;
     private bool refreshing;
     private bool editorUpdating;
-    private bool saving;
+    // The logical in-flight-mutation flag every handler consults. The greyed-out
+    // look it used to drive immediately is deferred (savingVisual, ~150ms): a
+    // fast action never visibly disables the editor and toolbar — the per-action
+    // blink — while anything genuinely slow still locks the controls on screen.
+    private bool savingCore;
+    private bool savingVisual;
+    private DispatcherTimer? savingVisualTimer;
+
+    private bool saving
+    {
+        get => savingCore;
+        set
+        {
+            savingCore = value;
+            if (value)
+            {
+                if (savingVisualTimer is null)
+                {
+                    savingVisualTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+                    savingVisualTimer.Tick += (_, _) =>
+                    {
+                        savingVisualTimer!.Stop();
+                        if (savingCore && !savingVisual)
+                        {
+                            savingVisual = true;
+                            SetEditingEnabled();
+                        }
+                    };
+                }
+
+                savingVisualTimer.Start();
+            }
+            else
+            {
+                savingVisualTimer?.Stop();
+                if (savingVisual)
+                {
+                    savingVisual = false;
+                    SetEditingEnabled();
+                }
+            }
+        }
+    }
     // Set while a batch loops many UpdateSlip commands; OnSnapshotChanged (off-thread)
     // reads it to drop the per-mutation snapshot pushes until the batch's final refresh.
     private volatile bool batching;

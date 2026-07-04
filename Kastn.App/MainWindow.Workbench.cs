@@ -322,7 +322,7 @@ internal partial class MainWindow
                 && !IsSlipInDeleted(item)
                 && !ZetlViewRenderer.IsStructuralKind(item.BlockKind));
         var canAlign = IsOnline
-            && !saving
+            && !savingVisual
             && editorState.ConflictCurrent is null
             && (titleBucket is not null
                 || batchAlign
@@ -1759,10 +1759,10 @@ internal partial class MainWindow
             && editorState.SlipId is not null
             && !hasMultipleSelectedSlips
             && !selectedIsStructural
-            && !saving;
+            && !savingVisual;
         var canBatch = IsOnline
             && hasSelectedSlips
-            && !saving
+            && !savingVisual
             && editorState.ConflictCurrent is null;
         var canCreateSlip = IsOnline
             && currentProject is not null
@@ -1774,12 +1774,12 @@ internal partial class MainWindow
         // selection (applied to every selected text slip). When a bucket title is
         // selected, the three list buttons edit the bucket's default render mode.
         var canBatchFormat = IsOnline
-            && !saving
+            && !savingVisual
             && editorState.ConflictCurrent is null
             && hasMultipleSelectedSlips
             && selectedSlips.Any(slip => slip.Type == ZetlSlipType.Text && !IsSlipInDeleted(slip));
         var canBucketListFormat = IsOnline
-            && !saving
+            && !savingVisual
             && editorState.ConflictCurrent is null
             && TitleModeBucket() is { } bucket
             && !KastnWorkbench.IsDeletedBucket(bucket);

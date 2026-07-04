@@ -156,8 +156,21 @@ internal partial class MainWindow
         RenderSlipInspector(currentProject?.Slips.FirstOrDefault(slip => slip.Id == slipId));
     }
 
+    private string lastInspectorSignature = "";
+
     private void RenderSlipInspector(ZetlSlipSnapshot? slip)
     {
+        // Rebuild the detail fields only when their inputs changed (the slip, its
+        // revision, or the project — the change sequence covers backlink edits);
+        // the refreshes that follow one action otherwise re-cleared the pane
+        // several times, which read as a flash.
+        var signature = $"{currentProject?.Id}|{currentProject?.ChangeSequence}|{slip?.Id}|{slip?.Revision}";
+        if (string.Equals(signature, lastInspectorSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        lastInspectorSignature = signature;
         slipInspectorFieldsPanel.Children.Clear();
         if (currentProject is null || slip is null)
         {
