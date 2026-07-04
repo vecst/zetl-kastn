@@ -287,37 +287,41 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                 }
             }
 
-            // Nothing changed since the snapshot we already hold: the summary
-            // carries the open project's change sequence, so a redundant refresh
-            // (a command's own follow-up, the matching change event, and the
-            // caller's explicit refresh can all land for one action) costs one
-            // summary call and publishes nothing — no snapshot fetch, no UI pass.
-            if (Current is { ConnectionState: KastnConnectionState.Online, Project: { } openProject }
-                && string.Equals(projectId, openProject.Id, StringComparison.Ordinal)
-                && projects.SequenceEqual(Current.Projects)
-                && projects.FirstOrDefault(summary => summary.Id == projectId) is { } openSummary
-                && openSummary.ChangeSequence == openProject.ChangeSequence
-                && openSummary.MetadataRevision == openProject.MetadataRevision)
-            {
-                return;
-            }
-
             ZetlProjectSnapshot? projectSnapshot = null;
             if (projectId is not null)
             {
-                var projectResponse = await connected.ExecuteAsync(
-                    new ZetlCommandEnvelope
-                    {
-                        CommandId = Guid.NewGuid().ToString("N"),
-                        Kind = ZetlCommandKind.GetProject,
-                        ProjectId = projectId
-                    },
-                    cancellationToken).ConfigureAwait(false);
-                EnsureSuccess(projectResponse);
-                projectSnapshot = projectResponse.Payload?.Deserialize<ZetlProjectSnapshot>(
-                    ZetlProtocolJson.Options);
-                desiredProjectId = projectSnapshot?.Id;
-                projectSelectionRequested = projectSnapshot is null;
+                // The summary carries the open project's change sequence, so when a
+                // redundant refresh lands (a command's own follow-up, the matching
+                // change event, and the caller's explicit refresh can all arrive for
+                // one action) the full snapshot fetch is skipped and the held one
+                // reused. Publishing stays unconditional: a subscriber that
+                // suppressed earlier applies (batching) must still get a final one.
+                if (Current is { ConnectionState: KastnConnectionState.Online, Project: { } openProject }
+                    && string.Equals(projectId, openProject.Id, StringComparison.Ordinal)
+                    && projects.FirstOrDefault(summary => summary.Id == projectId) is { } openSummary
+                    && openSummary.ChangeSequence == openProject.ChangeSequence
+                    && openSummary.MetadataRevision == openProject.MetadataRevision)
+                {
+                    projectSnapshot = openProject;
+                    desiredProjectId = openProject.Id;
+                    projectSelectionRequested = false;
+                }
+                else
+                {
+                    var projectResponse = await connected.ExecuteAsync(
+                        new ZetlCommandEnvelope
+                        {
+                            CommandId = Guid.NewGuid().ToString("N"),
+                            Kind = ZetlCommandKind.GetProject,
+                            ProjectId = projectId
+                        },
+                        cancellationToken).ConfigureAwait(false);
+                    EnsureSuccess(projectResponse);
+                    projectSnapshot = projectResponse.Payload?.Deserialize<ZetlProjectSnapshot>(
+                        ZetlProtocolJson.Options);
+                    desiredProjectId = projectSnapshot?.Id;
+                    projectSelectionRequested = projectSnapshot is null;
+                }
             }
 
             Publish(new KastnSessionSnapshot(
