@@ -117,9 +117,15 @@ internal sealed class ZetlAppSettingsStore
         Save();
     }
 
+    // Bumped on every in-process save so read-side caches can invalidate
+    // immediately instead of waiting out their staleness window.
+    public static int SaveStamp => saveStamp;
+    private static int saveStamp;
+
     public void Save()
     {
         JsonFile.WriteAtomic(settingsPath, Settings);
+        Interlocked.Increment(ref saveStamp);
     }
 
     private ZetlAppSettings Load()

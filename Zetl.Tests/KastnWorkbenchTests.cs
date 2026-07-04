@@ -507,7 +507,7 @@ public class KastnWorkbenchTests
         Id = id,
         Label = id,
         IsDeletedBucket = deleted,
-        Children = children,
+        Children = new System.Collections.ObjectModel.ObservableCollection<KastnTreeNode>(children),
     };
 
     [Fact] public void SlipLabelTruncatesLongText()

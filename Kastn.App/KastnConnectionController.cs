@@ -287,6 +287,21 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                 }
             }
 
+            // Nothing changed since the snapshot we already hold: the summary
+            // carries the open project's change sequence, so a redundant refresh
+            // (a command's own follow-up, the matching change event, and the
+            // caller's explicit refresh can all land for one action) costs one
+            // summary call and publishes nothing — no snapshot fetch, no UI pass.
+            if (Current is { ConnectionState: KastnConnectionState.Online, Project: { } openProject }
+                && string.Equals(projectId, openProject.Id, StringComparison.Ordinal)
+                && projects.SequenceEqual(Current.Projects)
+                && projects.FirstOrDefault(summary => summary.Id == projectId) is { } openSummary
+                && openSummary.ChangeSequence == openProject.ChangeSequence
+                && openSummary.MetadataRevision == openProject.MetadataRevision)
+            {
+                return;
+            }
+
             ZetlProjectSnapshot? projectSnapshot = null;
             if (projectId is not null)
             {

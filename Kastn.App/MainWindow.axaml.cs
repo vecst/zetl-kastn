@@ -533,7 +533,7 @@ internal partial class MainWindow : Window
             else
             {
                 currentProject = null;
-                projectTree.ItemsSource = null;
+                projectTreeRoots.Clear();
                 slips.Clear();
                 editorState.Select(null);
                 UpdateEditorFromState();
@@ -889,24 +889,41 @@ internal partial class MainWindow : Window
     {
         var selectedSource = (sourceFilterBox.SelectedItem as FilterItem)?.Value;
         var selectedSession = (sessionFilterBox.SelectedItem as FilterItem)?.Value;
-        sources.Clear();
-        sources.Add(new FilterItem(null, "All sources"));
-        foreach (var source in project.Slips
+        var distinctSources = project.Slips
             .Select(slip => slip.Source)
             .Where(source => !string.IsNullOrWhiteSpace(source))
             .Distinct(StringComparer.Ordinal)
-            .OrderBy(source => source, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(source => source, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var distinctSessions = project.Slips
+            .Select(slip => slip.SessionId)
+            .Where(session => !string.IsNullOrWhiteSpace(session))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(session => session, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Rebuilding the bound combo lists item-by-item is visible churn; skip it
+        // when the choices themselves have not changed (they only change when a
+        // new source or session appears, not on ordinary edits).
+        var signature = string.Join('', distinctSources)
+            + ''
+            + string.Join('', distinctSessions);
+        if (string.Equals(signature, lastFilterChoicesSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        lastFilterChoicesSignature = signature;
+        sources.Clear();
+        sources.Add(new FilterItem(null, "All sources"));
+        foreach (var source in distinctSources)
         {
             sources.Add(new FilterItem(source, source));
         }
 
         sessions.Clear();
         sessions.Add(new FilterItem(null, "All sessions"));
-        foreach (var session in project.Slips
-            .Select(slip => slip.SessionId)
-            .Where(session => !string.IsNullOrWhiteSpace(session))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(session => session, StringComparer.OrdinalIgnoreCase))
+        foreach (var session in distinctSessions)
         {
             sessions.Add(new FilterItem(session, ShortSession(session!)));
         }
@@ -919,6 +936,8 @@ internal partial class MainWindow : Window
             ?? sessions[0];
     }
 
+    private string lastFilterChoicesSignature = "";
+
     private void RefreshBuckets(ZetlProjectSnapshot project, string? selectedBucketId)
     {
         // Capture the whole current selection (tree node ids) before the rebuild, so
@@ -929,8 +948,18 @@ internal partial class MainWindow : Window
             .Select(node => node.Id)
             .ToList() ?? [];
 
-        projectTree.ItemsSource = KastnWorkbench.BuildProjectTree(
-            project, project.Slips, deletedOnly: showingDeleted);
+        // Merge the fresh projection into the live tree instead of resetting
+        // ItemsSource: unchanged rows keep their realized containers (a full
+        // reset re-created every row — about a second per refresh on a
+        // few-hundred-slip project), and selection/expansion survive naturally.
+        ReconcileTreeLevel(
+            projectTreeRoots,
+            KastnWorkbench.BuildProjectTree(project, project.Slips, deletedOnly: showingDeleted));
+        if (!ReferenceEquals(projectTree.ItemsSource, projectTreeRoots))
+        {
+            projectTree.ItemsSource = projectTreeRoots;
+        }
+
         UpdateDeletedToggle(project);
         var treeNodes = projectTree.ItemsSource as IEnumerable<KastnTreeNode>;
 
@@ -958,6 +987,63 @@ internal partial class MainWindow : Window
         RefreshBucketEditor();
         RefreshDestinationBuckets();
         SetDetailPaneMode(detailShowingMetadata);
+    }
+
+    // The live tree roots the TreeView stays bound to across refreshes.
+    private readonly System.Collections.ObjectModel.ObservableCollection<KastnTreeNode> projectTreeRoots = [];
+
+    // Make one level of the live tree match the freshly built projection: reuse a
+    // node with the same id (updating its display state in place and recursing
+    // into its children), insert new ones, drop stale ones, and move the rest
+    // into order with minimal collection churn.
+    private static void ReconcileTreeLevel(
+        System.Collections.ObjectModel.ObservableCollection<KastnTreeNode> current,
+        IReadOnlyList<KastnTreeNode> desired)
+    {
+        var desiredIds = new HashSet<string>(desired.Select(node => node.Id), StringComparer.Ordinal);
+        for (var i = current.Count - 1; i >= 0; i--)
+        {
+            if (!desiredIds.Contains(current[i].Id))
+            {
+                current.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var want = desired[i];
+            var existingIndex = -1;
+            for (var j = i; j < current.Count; j++)
+            {
+                if (string.Equals(current[j].Id, want.Id, StringComparison.Ordinal))
+                {
+                    existingIndex = j;
+                    break;
+                }
+            }
+
+            if (existingIndex < 0)
+            {
+                current.Insert(i, want);
+                continue;
+            }
+
+            var node = current[existingIndex];
+            if (node.Kind != want.Kind)
+            {
+                current[existingIndex] = want;
+            }
+            else
+            {
+                node.UpdateFrom(want);
+                ReconcileTreeLevel(node.Children, want.Children);
+            }
+
+            if (existingIndex != i)
+            {
+                current.Move(existingIndex, i);
+            }
+        }
     }
 
     // Re-select a set of tree nodes by id: a single node sets SelectedItem, several

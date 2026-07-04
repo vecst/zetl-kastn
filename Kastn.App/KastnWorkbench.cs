@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using ZETL;
 using ZETL.Contracts;
@@ -32,29 +33,29 @@ internal sealed class KastnTreeNode : INotifyPropertyChanged
 {
     public required KastnTreeNodeKind Kind { get; init; }
     public required string Id { get; init; }
-    public required string Label { get; init; }
-    public ZetlBucketSnapshot? Bucket { get; init; }
-    public ZetlSlipSnapshot? Slip { get; init; }
+    public required string Label { get; set; }
+    public ZetlBucketSnapshot? Bucket { get; set; }
+    public ZetlSlipSnapshot? Slip { get; set; }
     public bool IsBucket => Kind == KastnTreeNodeKind.Bucket;
     // A container bucket (group/table/latex) Kastn renders specially; a plain bucket is
     // an ordinary section. Both still count and toggle visibility as buckets.
     public string BucketRenderKind { get; init; } = "";
-    public bool IsContainerBucket => IsBucket && BucketRenderKind.Length > 0;
-    public bool IsPlainBucket => IsBucket && BucketRenderKind.Length == 0;
+    public bool IsContainerBucket => IsBucket && CurrentBucketRenderKind.Length > 0;
+    public bool IsPlainBucket => IsBucket && CurrentBucketRenderKind.Length == 0;
     public bool IsText => Kind == KastnTreeNodeKind.Slip && !IsPicture && !IsStructural;
     public bool IsPicture { get; init; }
     // A Kastn-only structural element (a divider, later group/table/latex): no document
     // icon, a named label instead of derived text.
-    public bool IsStructural { get; init; }
-    public bool IsExcluded { get; init; }
+    public bool IsStructural { get; set; }
+    public bool IsExcluded { get; set; }
     public bool IsDeletedBucket { get; init; }
 
     // Dim hidden slips and fully hidden buckets so they read as present-but-inactive.
     public double NodeOpacity => IsVisibilityHidden ? 0.5 : 1.0;
     // Bucket nodes aggregate their complete subtree so one eye controls the same scope
     // represented by the badge.
-    public int IncludedCount { get; init; }
-    public int HiddenCount { get; init; }
+    public int IncludedCount { get; set; }
+    public int HiddenCount { get; set; }
     public int TotalSlipCount => IncludedCount + HiddenCount;
     public bool CanToggleVisibility => IsBucket ? TotalSlipCount > 0 : Slip is not null;
     public bool IsVisibilityHidden => IsBucket
@@ -69,7 +70,65 @@ internal sealed class KastnTreeNode : INotifyPropertyChanged
     public string CountLabel => HiddenCount == 0
         ? IncludedCount.ToString()
         : $"{IncludedCount} · {HiddenCount} hidden";
-    public IReadOnlyList<KastnTreeNode> Children { get; init; } = [];
+    public ObservableCollection<KastnTreeNode> Children { get; init; } = [];
+
+    // BucketRenderKind stays init-only for construction ergonomics; UpdateFrom
+    // tracks the live value here so a render-kind change updates in place.
+    private string? currentBucketRenderKind;
+    private string CurrentBucketRenderKind => currentBucketRenderKind ?? BucketRenderKind;
+
+    // Copy the fresh projection's state into this live node, notifying the
+    // template-bound properties only when something displayed actually changed.
+    // Reconciling in place (instead of resetting the TreeView's ItemsSource)
+    // keeps unchanged rows' containers alive — a full reset re-realized every
+    // row and cost about a second per refresh on a few-hundred-slip project.
+    public void UpdateFrom(KastnTreeNode fresh)
+    {
+        // Always adopt the fresh snapshots: drag plans and undo recording read
+        // current revisions from them.
+        Bucket = fresh.Bucket;
+        Slip = fresh.Slip;
+
+        var freshRenderKind = fresh.CurrentBucketRenderKind;
+        var displayChanged = !string.Equals(Label, fresh.Label, StringComparison.Ordinal)
+            || !string.Equals(CurrentBucketRenderKind, freshRenderKind, StringComparison.Ordinal)
+            || IsStructural != fresh.IsStructural
+            || IsExcluded != fresh.IsExcluded
+            || IncludedCount != fresh.IncludedCount
+            || HiddenCount != fresh.HiddenCount;
+        if (!displayChanged)
+        {
+            return;
+        }
+
+        Label = fresh.Label;
+        currentBucketRenderKind = freshRenderKind;
+        IsStructural = fresh.IsStructural;
+        IsExcluded = fresh.IsExcluded;
+        IncludedCount = fresh.IncludedCount;
+        HiddenCount = fresh.HiddenCount;
+        foreach (var property in DisplayProperties)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
+        }
+    }
+
+    private static readonly string[] DisplayProperties =
+    [
+        nameof(Label),
+        nameof(IsContainerBucket),
+        nameof(IsPlainBucket),
+        nameof(IsText),
+        nameof(IsStructural),
+        nameof(NodeOpacity),
+        nameof(TotalSlipCount),
+        nameof(CanToggleVisibility),
+        nameof(IsVisibilityMixed),
+        nameof(ShowOpenEye),
+        nameof(ShowClosedEye),
+        nameof(VisibilityToolTip),
+        nameof(CountLabel)
+    ];
 
     // This node's slips: its own slip (if it is one) plus every slip beneath it.
     public IEnumerable<ZetlSlipSnapshot> TreeSlips()
@@ -228,6 +287,7 @@ internal static class KastnWorkbench
         IReadOnlyList<ZetlSlipSnapshot> slips,
         bool deletedOnly = false)
     {
+        RefreshMaxSlipLabelLength();
         var slipsByBucket = slips
             .GroupBy(slip => slip.BucketId)
             .ToDictionary(
@@ -265,9 +325,8 @@ internal static class KastnWorkbench
                     IsDeletedBucket = IsDeletedBucket(bucket),
                     IncludedCount = includedCount,
                     HiddenCount = hiddenCount,
-                    Children = childNodes
-                        .Concat(bucketSlips.Select(SlipNode))
-                        .ToList()
+                    Children = new ObservableCollection<KastnTreeNode>(
+                        childNodes.Concat(bucketSlips.Select(SlipNode)))
                 });
             }
 
@@ -287,14 +346,19 @@ internal static class KastnWorkbench
     };
 
     // Keep slip leaves short so the tree stays scannable regardless of pane width.
-    private static int MaxSlipLabelLength => new ZETL.ZetlAppSettingsStore().Settings.MaxSlipLabelLength;
+    // Read once per tree build — a per-label read hit settings.json on disk for
+    // every slip on every refresh.
+    private static int maxSlipLabelLength = 40;
+
+    private static void RefreshMaxSlipLabelLength() =>
+        maxSlipLabelLength = new ZETL.ZetlAppSettingsStore().Settings.MaxSlipLabelLength;
 
     private static string SlipNodeLabel(ZetlSlipSnapshot slip)
     {
         var label = SlipLabelText(slip);
-        return label.Length <= MaxSlipLabelLength
+        return label.Length <= maxSlipLabelLength
             ? label
-            : label[..(MaxSlipLabelLength - 1)].TrimEnd() + "…";
+            : label[..(maxSlipLabelLength - 1)].TrimEnd() + "…";
     }
 
     private static string SlipLabelText(ZetlSlipSnapshot slip)

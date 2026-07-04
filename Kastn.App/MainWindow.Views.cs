@@ -251,53 +251,83 @@ internal partial class MainWindow
 
     // Build the whole-project readable document: one addressable block per slip,
     // grouped/nested by the chosen view's BuildGroups (which drops excluded slips).
+    // Reusable per-slip view blocks, group headings, and group boxes: each is
+    // rebuilt only when its render inputs change, and the document panel is
+    // reconciled with minimal moves instead of cleared — so the refresh that
+    // follows every mutation touches only the affected controls. A full
+    // clear-and-re-add re-measured every block and cost hundreds of ms per
+    // action on a few-hundred-slip project.
+    private readonly Dictionary<string, (Border Block, string RenderKey)> viewSlipBlockCache =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (TextBlock Heading, string RenderKey)> viewHeadingCache =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (Border Box, StackPanel Content)> viewGroupBoxCache =
+        new(StringComparer.Ordinal);
+
     private void BuildViewDocument(IReadOnlyList<ZetlSlipSnapshot> visible)
     {
         var generation = ++pictureRenderGeneration;
-        viewerDocumentPanel.Children.Clear();
         viewSlipBlocks.Clear();
-        highlightedViewSlipId = null;
         if (currentProject is null)
         {
+            ClearViewDocument();
             return;
         }
 
         var groups = ZetlViewRenderer.BuildGroups(currentProject, visible, SelectedView);
         if (groups.Count == 0)
         {
-            viewerDocumentPanel.Children.Add(new TextBlock
-            {
-                Text = visible.Count == 0
-                    ? "No slips match the current filters."
-                    : "Every slip in view is hidden from views.",
-                Classes = { "muted" },
-                TextWrapping = TextWrapping.Wrap
-            });
+            SyncPanelChildren(viewerDocumentPanel.Children,
+            [
+                new TextBlock
+                {
+                    Text = visible.Count == 0
+                        ? "No slips match the current filters."
+                        : "Every slip in view is hidden from views.",
+                    Classes = { "muted" },
+                    TextWrapping = TextWrapping.Wrap
+                }
+            ]);
             return;
         }
 
+        var preferSlipKindOverBucketKind = CurrentAppSettings().KastnPreferSlipKindOverBucketKind;
+        var renderedSlipIds = new HashSet<string>(StringComparer.Ordinal);
+        var renderedGroupKeys = new HashSet<string>(StringComparer.Ordinal);
+        var desiredChildren = new List<Control>();
         foreach (var group in groups)
         {
             // A container bucket ("group") wraps its heading and slips in a bordered box;
             // otherwise they go straight into the document.
             var isGroup = group.RenderKind == ZetlBucketRenderKinds.Group;
-            var groupBox = isGroup ? new StackPanel { Spacing = 2 } : null;
-            var target = (Panel?)groupBox ?? viewerDocumentPanel;
+            var groupKey = group.HeaderBucket?.Id ?? $"heading:{group.Heading}";
+            renderedGroupKeys.Add(groupKey);
 
-            target.Children.Add(new TextBlock
+            var headingText = ZetlViewRenderer.HeadingText(group, SelectedView);
+            var headingKey =
+                $"{headingText}|{group.EffectiveLevel}|{group.HeadingBold}|{group.HeadingAlign}|{group.Depth}|{isGroup}";
+            if (!viewHeadingCache.TryGetValue(groupKey, out var heading)
+                || !string.Equals(heading.RenderKey, headingKey, StringComparison.Ordinal))
             {
-                Text = ZetlViewRenderer.HeadingText(group, SelectedView),
-                FontSize = Math.Max(14, 27 - (3 * group.EffectiveLevel)),
-                FontWeight = group.HeadingBold ? FontWeight.Bold : FontWeight.SemiBold,
-                TextAlignment = ZetlViewRenderer.NormalizeHeadingAlign(group.HeadingAlign) switch
+                heading = (new TextBlock
                 {
-                    "center" => TextAlignment.Center,
-                    "right" => TextAlignment.Right,
-                    _ => TextAlignment.Left,
-                },
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Avalonia.Thickness(isGroup ? 0 : group.Depth * 14, isGroup ? 0 : 8, 0, 2)
-            });
+                    Text = headingText,
+                    FontSize = Math.Max(14, 27 - (3 * group.EffectiveLevel)),
+                    FontWeight = group.HeadingBold ? FontWeight.Bold : FontWeight.SemiBold,
+                    TextAlignment = ZetlViewRenderer.NormalizeHeadingAlign(group.HeadingAlign) switch
+                    {
+                        "center" => TextAlignment.Center,
+                        "right" => TextAlignment.Right,
+                        _ => TextAlignment.Left,
+                    },
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Avalonia.Thickness(isGroup ? 0 : group.Depth * 14, isGroup ? 0 : 8, 0, 2)
+                }, headingKey);
+                viewHeadingCache[groupKey] = heading;
+            }
+
+            var groupChildren = isGroup ? new List<Control>() : desiredChildren;
+            groupChildren.Add(heading.Heading);
 
             // Each note carries its own list kind (authoritative, not a view-wide
             // style); ordered notes count up over their run and any non-ordered note
@@ -308,7 +338,6 @@ internal partial class MainWindow
                 var slipKind = slip.Type == ZetlSlipType.Picture
                     ? ""
                     : ZetlViewRenderer.SlipBlockKind(slip);
-                var preferSlipKindOverBucketKind = CurrentAppSettings().KastnPreferSlipKindOverBucketKind;
                 var bucketListKind = !slip.IgnoreBucketRenderKind
                     && !(preferSlipKindOverBucketKind && slipKind.Length > 0)
                     && group.RenderKind is ZetlBucketRenderKinds.Bullet
@@ -328,22 +357,57 @@ internal partial class MainWindow
                     + ViewInnerListMarker(innerKind, slip.Checked);
                 var checkable = markerKind == ZetlBlockKinds.Task || innerKind == ZetlBlockKinds.Task;
 
-                target.Children.Add(
-                    BuildSlipBlock(slip, isGroup ? 0 : group.Depth, generation, marker, checkable: checkable));
+                var depth = isGroup ? 0 : group.Depth;
+                var renderKey = $"{slip.Revision}|{depth}|{marker}|{checkable}";
+                if (!viewSlipBlockCache.TryGetValue(slip.Id, out var cached)
+                    || !string.Equals(cached.RenderKey, renderKey, StringComparison.Ordinal))
+                {
+                    cached = (BuildSlipBlock(slip, depth, generation, marker, checkable: checkable), renderKey);
+                    viewSlipBlockCache[slip.Id] = cached;
+                }
+
+                viewSlipBlocks[slip.Id] = cached.Block;
+                renderedSlipIds.Add(slip.Id);
+                groupChildren.Add(cached.Block);
             }
 
-            if (groupBox is not null)
+            if (isGroup)
             {
-                viewerDocumentPanel.Children.Add(new Border
+                if (!viewGroupBoxCache.TryGetValue(groupKey, out var box))
                 {
-                    BorderThickness = new Avalonia.Thickness(1),
-                    BorderBrush = ThemeBrush("ZetlBorderBrush") ?? Brushes.Gray,
-                    CornerRadius = new Avalonia.CornerRadius(6),
-                    Padding = new Avalonia.Thickness(12, 8),
-                    Margin = new Avalonia.Thickness(group.Depth * 14, 10, 0, 4),
-                    Child = groupBox
-                });
+                    var content = new StackPanel { Spacing = 2 };
+                    box = (new Border
+                    {
+                        BorderThickness = new Avalonia.Thickness(1),
+                        BorderBrush = ThemeBrush("ZetlBorderBrush") ?? Brushes.Gray,
+                        CornerRadius = new Avalonia.CornerRadius(6),
+                        Padding = new Avalonia.Thickness(12, 8),
+                        Child = content
+                    }, content);
+                    viewGroupBoxCache[groupKey] = box;
+                }
+
+                box.Box.Margin = new Avalonia.Thickness(group.Depth * 14, 10, 0, 4);
+                SyncPanelChildren(box.Content.Children, groupChildren);
+                desiredChildren.Add(box.Box);
             }
+        }
+
+        SyncPanelChildren(viewerDocumentPanel.Children, desiredChildren);
+
+        foreach (var staleId in viewSlipBlockCache.Keys.Where(id => !renderedSlipIds.Contains(id)).ToList())
+        {
+            viewSlipBlockCache.Remove(staleId);
+        }
+
+        foreach (var staleKey in viewHeadingCache.Keys.Where(key => !renderedGroupKeys.Contains(key)).ToList())
+        {
+            viewHeadingCache.Remove(staleKey);
+        }
+
+        foreach (var staleKey in viewGroupBoxCache.Keys.Where(key => !renderedGroupKeys.Contains(key)).ToList())
+        {
+            viewGroupBoxCache.Remove(staleKey);
         }
     }
 
@@ -925,6 +989,9 @@ internal partial class MainWindow
         pictureRenderGeneration++;
         viewerDocumentPanel.Children.Clear();
         viewSlipBlocks.Clear();
+        viewSlipBlockCache.Clear();
+        viewHeadingCache.Clear();
+        viewGroupBoxCache.Clear();
         highlightedViewSlipId = null;
     }
 
@@ -986,7 +1053,28 @@ internal partial class MainWindow
     // The Kastn workbench preferences live in the shared Zetl settings file, edited
     // from Zetl's one Settings window. Read fresh at each use so a change made in Zetl
     // takes effect without restarting Kastn; these read points are all infrequent.
-    private static ZetlAppSettings CurrentAppSettings() => new ZetlAppSettingsStore().Settings;
+    private static ZetlAppSettings? cachedAppSettings;
+    private static DateTime cachedAppSettingsAt;
+    private static int cachedAppSettingsStamp;
+
+    // Settings live in a JSON file rewritten by Zetl; a fresh read per call put
+    // disk IO inside per-slip render loops. A short-lived cache keeps hot paths
+    // off the disk: in-process saves invalidate it immediately (the save stamp),
+    // and external settings changes from Zetl still land within a second.
+    private static ZetlAppSettings CurrentAppSettings()
+    {
+        var now = DateTime.UtcNow;
+        if (cachedAppSettings is null
+            || cachedAppSettingsStamp != ZetlAppSettingsStore.SaveStamp
+            || now - cachedAppSettingsAt > TimeSpan.FromSeconds(1))
+        {
+            cachedAppSettings = new ZetlAppSettingsStore().Settings;
+            cachedAppSettingsAt = now;
+            cachedAppSettingsStamp = ZetlAppSettingsStore.SaveStamp;
+        }
+
+        return cachedAppSettings;
+    }
 
     private void RefreshViewCatalog(ZetlProjectSnapshot? project, string? selectId = null)
     {
