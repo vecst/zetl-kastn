@@ -286,7 +286,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         menu.Items.Add(Item("Settings", () => _ = ShowSettingsAsync()));
         menu.Items.Add(new NativeMenuItemSeparator());
         // Unified tray: launch Kastn when it is not running, or focus/restore it
-        // (including from a tray-minimized state) when it is.
+        // when it is hidden after window close.
         menu.Items.Add(Item("Open Kastn", OpenKastn));
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(Item("Quit", RequestQuit));
@@ -427,8 +427,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         return item;
     }
 
-    // Open Kastn from the tray: focus/restore a connected Kastn (including one
-    // minimized into the tray) over the control pipe, or launch it when none is
+    // Open Kastn from the tray: focus/restore a connected Kastn, including one
+    // hidden after window close, over the control pipe, or launch it when none is
     // running.
     private async void OpenKastn()
     {
@@ -460,9 +460,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     }
 
     // Coordinated quit. With no Kastn connected, Zetl just shuts down. With Kastn
-    // connected, Zetl asks it to close too: a tray-minimized Kastn closes silently,
-    // an open one shows a confirm dialog. A cancel there aborts Zetl's quit, so
-    // closing Zetl no longer silently relaunches because Kastn was still open.
+    // connected, Zetl asks it to close too. Kastn raises itself for confirmation,
+    // and a cancel there aborts Zetl's quit, so closing Zetl no longer silently
+    // relaunches because Kastn was still open.
     private async void RequestQuit()
     {
         if (disposed)
@@ -933,7 +933,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.KastnAlternateLaneLabel = window.KastnAlternateLaneLabel;
         settings.KastnMinimizeAfterTemplate = window.KastnMinimizeAfterTemplate;
         settings.KastnTemporaryTemplateLaneDefault = window.KastnTemporaryTemplateLaneDefault;
-        settings.KastnMinimizeToTray = window.KastnMinimizeToTray;
+        settings.KastnCloseToTray = window.KastnCloseToTray;
         settings.KastnPreferSlipKindOverBucketKind = window.KastnPreferSlipKindOverBucketKind;
 
         // Map new advanced settings

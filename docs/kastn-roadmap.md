@@ -88,9 +88,9 @@ leverage.
       policy.
 - [ ] Dogfood both applications together through restart, capture, editing, and
       publishing workflows.
-- [x] Fix minimized-Kastn quit handoff: when the user chooses Quit from Zetl,
-      Kastn should surface the quit path or take focus instead of requiring the
-      user to manually restore Kastn first.
+- [x] Fix minimized/hidden Kastn quit handoff: when the user chooses Quit from
+      Zetl, Kastn should surface the quit path or take focus instead of
+      requiring the user to manually restore Kastn first.
 
 Done when no tested crash path loses an acknowledged mutation, conflict recovery
 never silently discards an edit, and capture latency remains acceptable while

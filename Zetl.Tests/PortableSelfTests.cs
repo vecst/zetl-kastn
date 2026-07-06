@@ -2026,6 +2026,9 @@ public class PortableSelfTests
             AssertTrue(
                 store.Settings.KastnMinimizeAfterTemplate,
                 "Kastn should default to stepping aside after a template create.");
+            AssertTrue(
+                store.Settings.KastnCloseToTray,
+                "Kastn should default to staying available in the tray on window close.");
             AssertEqual(
                 ZetlKastnTemplateLaneDefault.Ask,
                 store.Settings.KastnTemporaryTemplateLaneDefault,
@@ -2041,6 +2044,7 @@ public class PortableSelfTests
             store.Settings.KastnMainLaneLabel = "Capture";
             store.Settings.KastnAlternateLaneLabel = "Queue";
             store.Settings.KastnMinimizeAfterTemplate = false;
+            store.Settings.KastnCloseToTray = false;
             store.Settings.KastnTemporaryTemplateLaneDefault = ZetlStateStore.ShiftLane;
             store.Settings.KastnPreferSlipKindOverBucketKind = true;
             store.Save();
@@ -2071,6 +2075,9 @@ public class PortableSelfTests
             AssertFalse(
                 loaded.Settings.KastnMinimizeAfterTemplate,
                 "Kastn minimize-after-template flag should round-trip.");
+            AssertFalse(
+                loaded.Settings.KastnCloseToTray,
+                "Kastn close-to-tray flag should round-trip.");
             AssertEqual(
                 ZetlStateStore.ShiftLane,
                 loaded.Settings.KastnTemporaryTemplateLaneDefault,

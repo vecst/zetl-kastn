@@ -370,7 +370,8 @@ Settings are stored in `%AppData%\Zetl\settings.json`. They include:
 - quick-note clipboard behavior
 - default project buckets
 - default compile mode and TSV row length
-- Kastn autosave, startup, reading-view, and template handoff preferences
+- Kastn autosave, startup, close behavior, reading-view, and template handoff
+  preferences
 
 The Avalonia theme editor controls shared Zetl and Kastn colors, typography,
 spacing, padding, and corner radius. Themes have light and dark palettes and

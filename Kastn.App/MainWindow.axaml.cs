@@ -193,6 +193,7 @@ internal partial class MainWindow : Window
     // The project the center View was last built for, so an in-place rebuild
     // (e.g. hiding a slip) preserves scroll while switching projects resets it.
     private string? lastViewerProjectId;
+    private bool allowWindowClose;
 
     public MainWindow()
     {
@@ -381,6 +382,7 @@ internal partial class MainWindow : Window
         WireCreationEditor();
         SizeChanged += (_, _) => RefreshLandingGridLayout();
         KeyDown += OnKeyDown;
+        Closing += OnWindowClosing;
         Closed += (_, _) =>
         {
             connection.SnapshotChanged -= OnSnapshotChanged;
@@ -400,25 +402,24 @@ internal partial class MainWindow : Window
         Show();
         Activate();
         BringToForeground();
-        await connection.NavigateToProjectAsync(projectId);
+        if (!string.IsNullOrWhiteSpace(projectId))
+        {
+            await connection.NavigateToProjectAsync(projectId);
+        }
     }
 
-    // Unified-tray model: minimizing hides Kastn into Zetl's tray instead of
-    // leaving it on the taskbar. It comes back through Zetl's "Show Kastn" item,
-    // which sends an activate request handled by ActivateRequest. Closing (the X)
-    // still exits Kastn outright and leaves Zetl resident.
-    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    // Minimize remains normal window-manager behavior. Closing either hides
+    // Kastn behind Zetl's tray icon or exits the Kastn process, depending on the
+    // shared Kastn close preference.
+    private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
     {
-        base.OnPropertyChanged(change);
-        if (change.Property == WindowStateProperty
-            && change.GetNewValue<WindowState>() == WindowState.Minimized)
+        if (allowWindowClose || !CurrentAppSettings().KastnCloseToTray)
         {
-            if (CurrentAppSettings().KastnMinimizeToTray)
-            {
-                // Defer to avoid re-entering the WindowState change we are reacting to.
-                Dispatcher.UIThread.Post(HideToTray);
-            }
+            return;
         }
+
+        e.Cancel = true;
+        HideToTray();
     }
 
     private void HideToTray()
@@ -433,8 +434,8 @@ internal partial class MainWindow : Window
     }
 
     // Called from the control pipe (off the UI thread) when Zetl is quitting and
-    // wants Kastn to close too. Hidden in the tray → close silently; open → raise
-    // Kastn and confirm. Returns true to close, false to keep both apps running.
+    // wants Kastn to close too. Kastn raises itself from hidden or minimized state
+    // and confirms. Returns true to close, false to keep both apps running.
     public Task<bool> RequestShutdownDecisionAsync()
     {
         var decided = new TaskCompletionSource<bool>();
@@ -475,7 +476,11 @@ internal partial class MainWindow : Window
 
     public void CloseForShutdown()
     {
-        Dispatcher.UIThread.Post(Close);
+        Dispatcher.UIThread.Post(() =>
+        {
+            allowWindowClose = true;
+            Close();
+        });
     }
 
     private void OnSnapshotChanged(object? sender, KastnSessionSnapshot snapshot)

@@ -232,11 +232,11 @@
                         Width="180" HorizontalAlignment="Left" />
 
               <TextBlock Grid.Row="7" Grid.Column="0"
-                         Text="Minimize to tray"
+                         Text="Window close"
                          VerticalAlignment="Center"
                          TextWrapping="Wrap" />
-              <CheckBox Grid.Row="7" Grid.Column="1" x:Name="kastnMinimizeToTrayBox"
-                        Content="Hide Kastn to system tray when minimized" />
+              <CheckBox Grid.Row="7" Grid.Column="1" x:Name="kastnCloseToTrayBox"
+                        Content="Keep Kastn running in the Zetl tray" />
 
               <TextBlock Grid.Row="8" Grid.Column="0"
                          Text="Slip formatting"

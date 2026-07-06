@@ -39,7 +39,7 @@ public class ZetlUITests
         
         Assert.True(window.IsVisible);
         
-        window.Close();
+        CloseWindow(window);
     }
 
     [AvaloniaFact]
@@ -71,7 +71,7 @@ public class ZetlUITests
         Assert.DoesNotContain("view-format-active", window.viewModeBoardButton.Classes);
         Assert.Contains("view-format-active", window.viewModeListButton.Classes);
         
-        window.Close();
+        CloseWindow(window);
     }
 
     [AvaloniaFact]
@@ -158,7 +158,7 @@ public class ZetlUITests
         Assert.True(window.editorState.IsDirty);
         Assert.Equal("Hello from the test note - EDITED", window.editorState.DraftText);
 
-        window.Close();
+        CloseWindow(window);
     }
 
     [AvaloniaFact]
@@ -248,7 +248,7 @@ public class ZetlUITests
             "text of slip B",
             window.slipEditor.Text);
 
-        window.Close();
+        CloseWindow(window);
     }
 
     [AvaloniaFact]
@@ -358,7 +358,7 @@ public class ZetlUITests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Empty(VisibleOverlays(window.boardColumnsPanel));
 
-        window.Close();
+        CloseWindow(window);
     }
 
     [AvaloniaFact]
@@ -444,7 +444,7 @@ public class ZetlUITests
         Assert.Single(cards0.Children);
         Assert.Single(CardsPanelOf(column1).Children);
 
-        window.Close();
+        CloseWindow(window);
     }
 
     [AvaloniaFact]
@@ -516,7 +516,7 @@ public class ZetlUITests
         Assert.False(composer.IsVisible, "Escape closes the composer.");
         Assert.True(string.IsNullOrEmpty(composerBox.Text), "Escape discards the draft.");
 
-        window.Close();
+        CloseWindow(window);
     }
 
     [AvaloniaFact]
@@ -621,7 +621,7 @@ public class ZetlUITests
         Assert.NotNull(selectedNode);
         Assert.Equal("slip-target", selectedNode.Slip?.Id);
 
-        window.Close();
+        CloseWindow(window);
     }
 
     [AvaloniaFact]
@@ -717,59 +717,136 @@ public class ZetlUITests
         Assert.NotNull(selectedNode);
         Assert.Equal("slip-source", selectedNode.Slip?.Id);
 
-        window.Close();
+        CloseWindow(window);
     }
 
     [AvaloniaFact]
-    public void MainWindowMinimizationRespectsMinimizeToTraySetting()
+    public void MainWindowMinimizesNormallyAndCloseBehaviorFollowsSetting()
     {
-        var tempFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), System.IO.Path.GetRandomFileName() + ".json");
+        var tempFile = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            System.IO.Path.GetRandomFileName() + ".json");
         try
         {
-            // 1. Arrange settings with override
-            ZETL.ZetlAppSettingsStore.DefaultSettingsPathOverride = tempFile;
-            var settingsStore = new ZETL.ZetlAppSettingsStore();
-            settingsStore.Settings.KastnMinimizeToTray = true;
+            ZetlAppSettingsStore.DefaultSettingsPathOverride = tempFile;
+            var settingsStore = new ZetlAppSettingsStore();
+            settingsStore.Settings.KastnCloseToTray = true;
             settingsStore.Save();
 
             var connection = new KastnConnectionController(_ => Task.CompletedTask);
             var window = new MainWindow(connection);
             window.Show();
 
-            // 2. Act - Minimize window when setting is true (default)
             window.WindowState = Avalonia.Controls.WindowState.Minimized;
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-            // 3. Assert - it should be hidden (IsVisible is false, and ShowInTaskbar is false)
+            Assert.True(window.IsVisible);
+            Assert.True(window.ShowInTaskbar);
+            Assert.Equal(Avalonia.Controls.WindowState.Minimized, window.WindowState);
+
+            window.WindowState = Avalonia.Controls.WindowState.Normal;
+            window.Close();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
             Assert.False(window.IsVisible);
             Assert.False(window.ShowInTaskbar);
 
-            // 4. Arrange - restore window and change setting to false
-            window.WindowState = Avalonia.Controls.WindowState.Normal;
-            window.Show();
-            Assert.True(window.IsVisible);
+            CloseWindow(window);
 
-            settingsStore.Settings.KastnMinimizeToTray = false;
+            settingsStore.Settings.KastnCloseToTray = false;
             settingsStore.Save();
 
-            // 5. Act - Minimize window when setting is false
-            window.WindowState = Avalonia.Controls.WindowState.Minimized;
+            var exitWindow = new MainWindow(new KastnConnectionController(_ => Task.CompletedTask));
+            var closed = false;
+            exitWindow.Closed += (_, _) => closed = true;
+            exitWindow.Show();
+            exitWindow.Close();
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-            // 6. Assert - it should NOT be hidden (IsVisible is true, but WindowState is Minimized)
-            Assert.True(window.IsVisible);
-            Assert.Equal(Avalonia.Controls.WindowState.Minimized, window.WindowState);
-
-            window.Close();
+            Assert.True(closed);
         }
         finally
         {
-            ZETL.ZetlAppSettingsStore.DefaultSettingsPathOverride = null;
+            ZetlAppSettingsStore.DefaultSettingsPathOverride = null;
             if (System.IO.File.Exists(tempFile))
             {
                 System.IO.File.Delete(tempFile);
             }
         }
+    }
+
+    [AvaloniaFact]
+    public async Task ActivateRequestWithoutProjectKeepsOpenProject()
+    {
+        var directory = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "KastnUiTests",
+            Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        var pipeName = $"kastn-ui-{Guid.NewGuid():N}";
+        MainWindow? window = null;
+        try
+        {
+            var store = new ZetlStateStore(
+                System.IO.Path.Combine(directory, "state.json"),
+                "kastn-ui");
+            var project = store.CreateProject("Open Project", ["Inbox"], "Inbox");
+            using var server = new ZetlIpcServer(new ZetlProjectService(store), pipeName);
+            server.Start();
+            await using var controller = new KastnConnectionController(
+                _ => throw new InvalidOperationException("Zetl was already running."),
+                pipeName,
+                TimeSpan.FromMilliseconds(250),
+                TimeSpan.FromMilliseconds(25));
+            controller.Start(project.Id);
+            await WaitForConditionAsync(
+                () => controller.Current.Project?.Id == project.Id,
+                "Kastn should open the requested project before activation.");
+
+            window = new MainWindow(controller);
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            window.ActivateRequest(null);
+            await Task.Delay(250);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(project.Id, controller.Current.Project?.Id);
+        }
+        finally
+        {
+            if (window is not null)
+            {
+                CloseWindow(window);
+            }
+
+            if (System.IO.Directory.Exists(directory))
+            {
+                System.IO.Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    private static void CloseWindow(MainWindow window)
+    {
+        window.CloseForShutdown();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    private static async Task WaitForConditionAsync(Func<bool> predicate, string failureMessage)
+    {
+        var stopAt = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < stopAt)
+        {
+            if (predicate())
+            {
+                return;
+            }
+
+            await Task.Delay(25);
+        }
+
+        Assert.True(predicate(), failureMessage);
     }
 
     private static List<T> FindVisualChildren<T>(Avalonia.Visual parent) where T : Avalonia.Visual

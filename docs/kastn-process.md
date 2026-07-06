@@ -48,14 +48,16 @@ shutdown request expects a reply.
 Kastn participates in Zetl's single system-tray presence rather than carrying its
 own tray icon:
 
-- **Minimize hides into Zetl's tray.** Minimizing Kastn takes it off the taskbar
-  and hides the window. It returns through the `Open Kastn` item in Zetl's tray
-  menu, which focuses a connected Kastn (including a tray-minimized one) over the
-  control pipe and launches Kastn when none is running. Closing (the window's X)
-  still exits Kastn outright and leaves Zetl resident.
+- **Minimize behaves normally; close behavior is configurable.** Minimizing
+  Kastn leaves it as a normal minimized taskbar window. By default, closing the
+  Kastn window hides it and removes it from the taskbar while the process stays
+  connected to Zetl. The Kastn Settings page can instead make close exit the
+  Kastn process outright. A hidden Kastn returns through the `Open Kastn` item
+  in Zetl's tray menu, which focuses a connected Kastn over the control pipe and
+  launches Kastn when none is running.
 - **Quitting Zetl coordinates the shutdown.** When the user quits Zetl with a
   Kastn connected, Zetl sends a shutdown request and waits for Kastn's decision.
-  Kastn restores/focuses itself, including from the tray-minimized state, and
+  Kastn restores/focuses itself, including from hidden or minimized state, and
   shows a `Close both / Cancel` confirmation. Cancelling aborts Zetl's quit, so
   closing Zetl no longer silently relaunches because Kastn was still open. On a
   confirmed close, Kastn suppresses the reconnect-driven relaunch and exits.
@@ -84,8 +86,8 @@ reconnects, and reloads snapshots. The user does not need to restart Kastn.
 
 Kastn provides:
 
-- a windowed application with a taskbar presence that minimizes into Zetl's
-  tray (see Tray And Shutdown Coordination);
+- a windowed application with normal minimize behavior and a configurable close
+  action (see Tray And Shutdown Coordination);
 - a procedural window/taskbar icon (a white "K" over a dusk gradient, the sibling
   of Zetl's tray "Z");
 - File, View, and Help menus;
@@ -100,5 +102,7 @@ The Zetl Board has an `Open in Kastn` action for its selected project. Zetl
 starts Kastn with that project ID. If Kastn is already running, its second
 process forwards the ID over the activation pipe and exits.
 
-Closing Kastn disposes only its IPC client. Zetl, keyboard capture, and the Zetl
-IPC host continue running.
+When close-to-tray is enabled, closing the Kastn window hides it into Zetl's
+tray and keeps its IPC client connected. When disabled, closing Kastn disposes
+its IPC client and exits only Kastn. A confirmed coordinated Quit from Zetl also
+exits Kastn.

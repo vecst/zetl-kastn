@@ -30,7 +30,7 @@ internal sealed class ZetlAppSettings
     public string KastnAlternateLaneLabel { get; set; } = "";
     public string KastnTemporaryTemplateLaneDefault { get; set; } = "";
     public bool KastnMinimizeAfterTemplate { get; set; } = true;
-    public bool KastnMinimizeToTray { get; set; } = true;
+    public bool KastnCloseToTray { get; set; } = true;
     public bool KastnPreferSlipKindOverBucketKind { get; set; }
 
     // Advanced Zetl and log settings.

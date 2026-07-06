@@ -53,8 +53,8 @@ public partial class App : Application
             {
                 activation.ActivationRequested += OnActivationRequested;
                 // Zetl is quitting and asked whether Kastn may close too. Kastn owns
-                // the decision (silent when minimized to tray, a confirm dialog when
-                // open); on a "close" reply, suppress the auto-relaunch and exit.
+                // the decision; on a "close" reply, suppress the auto-relaunch and
+                // exit instead of hiding back to the tray.
                 var window = mainWindow!;
                 var session = connection!;
                 activation.ShutdownRequested = () => window.RequestShutdownDecisionAsync();

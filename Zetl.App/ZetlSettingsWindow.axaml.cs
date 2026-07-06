@@ -119,7 +119,7 @@ internal partial class ZetlSettingsWindow : Window
             };
         kastnMainLaneLabelBox.TextChanged += (_, _) => RefreshKastnLaneChoices();
         kastnAlternateLaneLabelBox.TextChanged += (_, _) => RefreshKastnLaneChoices();
-        kastnMinimizeToTrayBox.IsChecked = settings.KastnMinimizeToTray;
+        kastnCloseToTrayBox.IsChecked = settings.KastnCloseToTray;
         kastnPreferSlipKindOverBucketKindBox.IsChecked = settings.KastnPreferSlipKindOverBucketKind;
 
         // Kastn Advanced Settings binding
@@ -277,13 +277,13 @@ internal partial class ZetlSettingsWindow : Window
     public string KastnMainLaneLabel => TrimLaneLabel(kastnMainLaneLabelBox.Text);
     public string KastnAlternateLaneLabel => TrimLaneLabel(kastnAlternateLaneLabelBox.Text);
     public bool KastnMinimizeAfterTemplate => kastnMinimizeAfterTemplateBox.IsChecked == true;
+    public bool KastnCloseToTray => kastnCloseToTrayBox.IsChecked == true;
     public string KastnTemporaryTemplateLaneDefault => kastnTemporaryTemplateLaneBox.SelectedIndex switch
     {
         1 => ZetlStateStore.NormalLane,
         2 => ZetlStateStore.ShiftLane,
         _ => ZetlKastnTemplateLaneDefault.Ask
     };
-    public bool KastnMinimizeToTray => kastnMinimizeToTrayBox.IsChecked == true;
     public bool KastnPreferSlipKindOverBucketKind => kastnPreferSlipKindOverBucketKindBox.IsChecked == true;
 
     // Kastn Advanced getters

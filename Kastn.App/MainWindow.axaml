@@ -14,7 +14,7 @@
         <MenuItem x:Name="closeProjectMenuItem" Header="_Close Project" InputGesture="Ctrl+W" />
         <MenuItem x:Name="deleteProjectMenuItem" Header="_Delete Project" />
         <Separator />
-        <MenuItem x:Name="exitMenuItem" Header="E_xit" />
+        <MenuItem x:Name="exitMenuItem" Header="Close _Window" />
       </MenuItem>
       <MenuItem Header="_Edit">
         <MenuItem x:Name="newSlipMenuItem" Header="_New Slip" InputGesture="Ctrl+N" />
