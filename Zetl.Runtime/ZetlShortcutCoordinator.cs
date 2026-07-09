@@ -702,9 +702,16 @@ internal sealed class ZetlShortcutCoordinator
         {
             if (clipboard.GetChangeToken() != pending.ClipboardSequenceNumber)
             {
+                // Read both formats: spreadsheets put a bitmap rendering *and*
+                // the cell text on the clipboard, and capture keeps both.
                 var image = clipboard.TryGetImage();
-                var text = image is null ? clipboard.TryGetText()?.Trim() : null;
-                if (image is not null || !string.IsNullOrWhiteSpace(text))
+                var text = clipboard.TryGetText()?.Trim();
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    text = null;
+                }
+
+                if (image is not null || text is not null)
                 {
                     pending.SetObservedClipboardContent(text, image);
                     return;
@@ -779,6 +786,9 @@ internal sealed class ZetlShortcutCoordinator
                 return;
             }
 
+            // Both formats present (e.g. spreadsheet cells): keep both on one
+            // slip, presenting as text. The picture rides along so Kastn can
+            // offer the alternate representation later.
             var note = image is not null
                 ? store.AddImageNote(
                     project,
@@ -786,19 +796,22 @@ internal sealed class ZetlShortcutCoordinator
                     image,
                     "copy",
                     pending.CaptureOrigin,
-                    sourceUrl: imageSourceUrl)
+                    caption: text,
+                    sourceUrl: imageSourceUrl,
+                    preferTextContent: text is not null)
                 : store.AddNote(
                     bucket,
                     text!,
                     "copy",
                     pending.CaptureOrigin);
+            var capturedAsImage = image is not null && text is null;
             undoStack.Push(
                 pending.ShiftLane,
-                image is not null
+                capturedAsImage
                     ? $"Undid image capture to {bucket.Name}."
                     : $"Undid capture to {bucket.Name}.",
                 () => store.DeleteNote(bucket, note.Id));
-            notifications.Show(image is not null
+            notifications.Show(capturedAsImage
                 ? $"Captured image to {ZetlRuntimeLabels.Destination(project, bucket)}."
                 : $"Captured to {ZetlRuntimeLabels.Destination(project, bucket)}.");
         });
@@ -956,7 +969,7 @@ internal sealed class ZetlShortcutCoordinator
     {
         await delay.WaitAsync(PopClipboardDelay);
         var image = clipboard.TryGetImage();
-        var text = image is null ? clipboard.TryGetText() : null;
+        var text = clipboard.TryGetText();
         if (text is null && image is null)
         {
             return;
@@ -964,19 +977,28 @@ internal sealed class ZetlShortcutCoordinator
 
         dispatcher.Post(() =>
         {
+            // A paste can carry both formats (spreadsheet cells). Match the
+            // image hash first, then fall back to the text so a dual paste can
+            // still pop a text-only slip.
+            ZetlBucket? bucket = null;
+            ZetlSlip? note = null;
             var popped = image is not null
-                ? store.TryPopLastMatchingActiveImage(
+                && store.TryPopLastMatchingActiveImage(
                     Convert.ToHexString(
                         System.Security.Cryptography.SHA256.HashData(image.PngBytes))
                         .ToLowerInvariant(),
                     shifted,
-                    out var bucket,
-                    out var note)
-                : store.TryPopLastMatchingActiveNote(
-                    text!,
+                    out bucket,
+                    out note);
+            if (!popped && text is not null)
+            {
+                popped = store.TryPopLastMatchingActiveNote(
+                    text,
                     shifted,
                     out bucket,
                     out note);
+            }
+
             if (popped
                 && bucket is not null
                 && note is not null)

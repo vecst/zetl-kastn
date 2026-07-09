@@ -114,6 +114,10 @@ public class PortableSelfTests
                 ("Runtime activity log buffer drains safely", RuntimeActivityLogBufferDrainsSafely),
                 ("Runtime auto-captures copied text", RuntimeAutoCapturesCopiedText),
                 ("Runtime auto-captures copied images", RuntimeAutoCapturesCopiedImages),
+                ("Runtime auto-captures dual text+image clipboards as text", RuntimeAutoCapturesDualClipboardAsText),
+                ("Dual slips survive persistence text-preferred", DualSlipSurvivesPersistence),
+                ("Runtime Pop removes a dual slip by image hash", RuntimePopRemovesDualSlipByImageHash),
+                ("Runtime Replay pastes a dual slip as text", RuntimeReplayPastesDualSlipAsText),
                 ("Runtime downloads copied image URLs", RuntimeAutoCapturesCopiedImageUrls),
                 ("Runtime keeps non-image URLs as text", RuntimeKeepsNonImageUrlsAsText),
                 ("Runtime held copy opens image capture and saves captions", RuntimeHeldCopyCapturesImagesDirectly),
@@ -2629,6 +2633,135 @@ public class PortableSelfTests
                 "Captured image to Inbox in Demo.",
                 notifications.Messages.Single(),
                 "Image capture should report its destination clearly.");
+        }
+
+        private static void RuntimeAutoCapturesDualClipboardAsText()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            // A spreadsheet copy: the clipboard carries the cell text and a
+            // bitmap rendering at the same time.
+            var clipboard = new FakeClipboard("A1\tB1\nA2\tB2", changeToken: 2)
+            {
+                Image = new ZetlClipboardImage([1, 2, 3], 30, 20)
+            };
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out _,
+                out _);
+
+            coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                captureOrigin: null)
+                .GetAwaiter().GetResult();
+
+            var note = store.GetActiveBucket()!.Notes.Single();
+            AssertFalse(note.IsImage, "A dual capture should present as text, not as a picture.");
+            AssertEqual("A1\tB1\nA2\tB2", note.Text, "A dual capture should keep the clipboard text as content.");
+            AssertTrue(note.Image is not null, "A dual capture should retain the clipboard picture.");
+            AssertEqual(1, store.GetProjectAssets(project).Count, "A dual capture should write its picture asset.");
+            AssertEqual(
+                "Captured to Inbox in Demo.",
+                notifications.Messages.Single(),
+                "A dual capture should report as an ordinary text capture.");
+        }
+
+        private static void DualSlipSurvivesPersistence()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var bucket = store.GetActiveBucket()!;
+            store.AddImageNote(
+                project,
+                bucket,
+                new ZetlClipboardImage([9, 9, 9], 4, 4),
+                "copy",
+                caption: "A1\tB1",
+                preferTextContent: true);
+
+            var reloaded = new ZetlStateStore(temp.Path);
+
+            var note = reloaded.State.Projects
+                .Single(item => item.Name == "Demo")
+                .Buckets.Single(item => item.Name == "Inbox")
+                .Slips.Single();
+            AssertFalse(note.IsImage, "A reloaded dual slip should stay text-preferred.");
+            AssertEqual("A1\tB1", note.Text, "A reloaded dual slip should keep its text content.");
+            AssertTrue(note.Image is not null, "A reloaded dual slip should keep its attached picture.");
+        }
+
+        private static void RuntimePopRemovesDualSlipByImageHash()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var bucket = store.GetActiveBucket()!;
+            store.SetBucketPopMode(bucket, true);
+            var bytes = new byte[] { 3, 1, 4 };
+            store.AddImageNote(
+                project,
+                bucket,
+                new ZetlClipboardImage(bytes, 3, 1),
+                "copy",
+                caption: "A1\tB1",
+                preferTextContent: true);
+            // The paste re-offers both formats, exactly as the original copy did.
+            var clipboard = new FakeClipboard("A1\tB1", changeToken: 1)
+            {
+                Image = new ZetlClipboardImage(bytes, 3, 1)
+            };
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out var undo);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertFalse(handled, "Dual Pop should allow the physical paste through.");
+            AssertEqual(0, bucket.Notes.Count, "Pop should remove the matching dual slip via its image hash.");
+            AssertTrue(undo.TryPop(false, out _), "Popped dual slip should be undoable.");
+        }
+
+        private static void RuntimeReplayPastesDualSlipAsText()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddImageNote(
+                project,
+                queue,
+                new ZetlClipboardImage([5, 5, 5], 2, 2),
+                "copy",
+                caption: "A1\tB1",
+                preferTextContent: true);
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _,
+                replayResumeClipboard: false);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Dual Replay should suppress the physical paste.");
+            AssertEqual(1, keyboard.PasteCount, "Dual Replay should send one synthetic paste.");
+            AssertEqual("A1\tB1", clipboard.Text, "Dual Replay should paste the preferred text representation.");
+            AssertEqual(0, queue.Notes.Count, "Dual Replay should consume the queued slip.");
+            var review = project.Buckets.Single(item => item.Id == queue.Settings.ReplayReviewBucketId);
+            var reviewNote = review.Notes.Single();
+            AssertFalse(reviewNote.IsImage, "The review copy should stay text-preferred.");
+            AssertTrue(reviewNote.Image is not null, "The review copy should retain the attached picture.");
         }
 
         private static void RuntimeHeldCopyCapturesImagesDirectly()

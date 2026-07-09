@@ -207,7 +207,9 @@ internal sealed class ZetlProjectService
         }
 
         var (project, _, note) = found.Value;
-        if (!note.IsImage || note.Image is null)
+        // Any slip with an attached picture serves it, including text-preferred
+        // dual captures, so Kastn can preview the alternate representation.
+        if (note.Image is null)
         {
             return ValidationError(
                 command,

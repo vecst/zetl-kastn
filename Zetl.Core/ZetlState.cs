@@ -187,9 +187,16 @@ internal sealed class ZetlSlip
         set
         {
             image = value;
+            // Only an image-only slip is forced to Picture. A slip with text
+            // content keeps its type: Type is the preferred representation of a
+            // dual (text + picture) capture, and JSON populates Text before
+            // Image, so this must not override a persisted Text preference.
             if (image is not null)
             {
-                type = ZetlSlipType.Picture;
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    type = ZetlSlipType.Picture;
+                }
             }
             else if (type == ZetlSlipType.Picture)
             {
@@ -1164,6 +1171,10 @@ internal sealed class ZetlStateStore
         return note;
     }
 
+    // With preferTextContent, the caption is the slip's text *content* and the
+    // slip presents as Text/Url with the picture attached — a dual capture where
+    // the clipboard carried both formats (e.g. spreadsheet cells). Type stays
+    // the preferred representation; the picture rides along for Kastn.
     public ZetlSlip AddImageNote(
         ZetlProject project,
         ZetlBucket bucket,
@@ -1171,7 +1182,8 @@ internal sealed class ZetlStateStore
         string source,
         ZetlCaptureOrigin? captureOrigin = null,
         string? caption = null,
-        string? sourceUrl = null)
+        string? sourceUrl = null,
+        bool preferTextContent = false)
     {
         if (!project.Buckets.Any(item => item.Id == bucket.Id))
         {
@@ -1206,6 +1218,13 @@ internal sealed class ZetlStateStore
             CreatedAtUtc = DateTimeOffset.UtcNow,
             CaptureOrigin = captureOrigin
         };
+        if (preferTextContent && !string.IsNullOrWhiteSpace(note.Text))
+        {
+            note.Type = ZetlSlipClassifier.LooksLikeUrl(note.Text)
+                ? ZetlSlipType.Url
+                : ZetlSlipType.Text;
+        }
+
         bucket.Slips.Add(note);
         PersistProject(project);
         return note;
@@ -1213,14 +1232,14 @@ internal sealed class ZetlStateStore
 
     public byte[]? ReadImageAsset(ZetlProject project, ZetlSlip note)
     {
-        return note.IsImage && note.Image is not null
+        return note.Image is not null
             ? storage.ReadAsset(project, note.Image.RelativePath)
             : null;
     }
 
     public string? GetImageAssetPath(ZetlProject project, ZetlSlip note)
     {
-        return note.IsImage && note.Image is not null
+        return note.Image is not null
             ? storage.GetAssetPath(project, note.Image.RelativePath)
             : null;
     }
@@ -1847,8 +1866,9 @@ internal sealed class ZetlStateStore
 
         var last = bucket.Slips.LastOrDefault(
             note => IsCurrentSessionNote(note) && !IsStructuralNote(note));
-        if (last?.IsImage != true
-            || last.Image is null
+        // Match on the attached picture regardless of preferred representation,
+        // so a dual (text + picture) capture pops on its image hash too.
+        if (last?.Image is null
             || !string.Equals(last.Image.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
         {
             return false;
@@ -2571,7 +2591,12 @@ internal sealed class ZetlStateStore
                 note.Revision = Math.Max(note.Revision, 1);
                 note.Title ??= "";
                 note.Text ??= "";
-                if (note.Type == ZetlSlipType.Text && note.Image is not null)
+                // Heal an image slip that lost its type (legacy files), but keep
+                // dual captures: a slip with text content and a picture is
+                // legitimately Text-preferred.
+                if (note.Type == ZetlSlipType.Text
+                    && note.Image is not null
+                    && string.IsNullOrWhiteSpace(note.Text))
                 {
                     note.Type = ZetlSlipType.Picture;
                 }
@@ -2727,7 +2752,7 @@ internal sealed class ZetlStateStore
     {
         foreach (var note in sourceProject.Buckets
             .SelectMany(bucket => bucket.Slips)
-            .Where(note => note.IsImage && note.Image is not null))
+            .Where(note => note.Image is not null))
         {
             var bytes = storage.ReadAsset(sourceProject, note.Image!.RelativePath);
             if (bytes is null)
