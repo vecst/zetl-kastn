@@ -104,7 +104,9 @@ internal sealed class ZetlShortcutCoordinator
 
     public bool OnTapDispatched(ChordlEventContext context)
     {
-        if (context.KeyCode != VK_V || context.ReplayShift)
+        // Both V chords are paste coldkeys; the lane comes from ShiftLane, not
+        // from ReplayShift, which only describes the pass-through replay chord.
+        if (context.KeyCode != VK_V)
         {
             return false;
         }

@@ -122,6 +122,7 @@ public class PortableSelfTests
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
                 ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
+                ("Runtime Shift-lane Replay tap consumes a shifted paste chord", RuntimeShiftLaneReplayTapConsumesShiftedPaste),
                 ("Runtime Replay handles images and restores image clipboard", RuntimeReplayHandlesImagesAndRestoresImageClipboard),
                 ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
                 ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
@@ -1153,6 +1154,21 @@ public class PortableSelfTests
             var config = ChordlConfigLoader.LoadFromFile(configPath);
             AssertTrue(config.Actions.Count > 0, "Default config should define at least one hotkey.");
             AssertTrue(config.HoldDelay > TimeSpan.Zero, "Default config should define a positive hold delay.");
+
+            // Shift-lane TapOnly chords must replay the chord the user physically
+            // pressed. Dropping the Shift turns e.g. paste-special/paste-plain
+            // (Ctrl+Shift+V) into a plain Ctrl+V in the foreground app. Immediate
+            // chords (Ctrl+Shift+C/X) intentionally drop Shift so the app still
+            // copies or cuts for the Shift-lane capture.
+            foreach (var (chord, action) in config.Actions)
+            {
+                if (chord.Shift && action.Dispatch == ChordlDispatchMode.TapOnly)
+                {
+                    AssertTrue(
+                        action.ReplayShift,
+                        $"{action.Name} should replay Shift so the foreground app sees the chord the user pressed.");
+                }
+            }
         }
 
         private static void ConfigNullReplayModifiersDoesNotThrow()
@@ -2906,6 +2922,32 @@ public class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
+        private static void RuntimeShiftLaneReplayTapConsumesShiftedPaste()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo Shift", ["Queue"], "Queue", shifted: true);
+            var queue = store.GetActiveBucket(true)!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _);
+
+            // Ctrl+Shift+V replays its Shift on pass-through, so the tap context
+            // arrives with ReplayShift set; the Replay tap must still consume it.
+            var handled = coordinator.OnTapDispatched(
+                ShortcutContext(VK_V, shifted: true, replayShift: true));
+
+            AssertTrue(handled, "Shift-lane Replay tap should suppress the physical paste.");
+            AssertEqual(1, keyboard.PasteCount, "Shift-lane Replay tap should send one synthetic paste.");
+            AssertEqual(0, queue.Notes.Count, "Shift-lane Replay should consume the queued note.");
+        }
+
         private static void RuntimeReplayResumesClipboardWhenEnabled()
         {
             using var temp = new TempStateFile();
@@ -3998,13 +4040,14 @@ public class PortableSelfTests
         private static ChordlEventContext ShortcutContext(
             int keyCode,
             bool shifted = false,
-            uint clipboardSequenceNumber = 0)
+            uint clipboardSequenceNumber = 0,
+            bool replayShift = false)
         {
             return new ChordlEventContext(
                 keyCode,
                 ChordlKeys.FormatComboName(keyCode, shifted),
                 ChordlDispatchMode.None,
-                ReplayShift: false,
+                ReplayShift: replayShift,
                 ShiftLane: shifted,
                 ClipboardSequenceNumber: clipboardSequenceNumber);
         }

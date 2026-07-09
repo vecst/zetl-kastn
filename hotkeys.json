@@ -113,7 +113,8 @@
       "name": "Ctrl+Shift+V",
       "key": "V",
       "modifiers": ["Ctrl", "Shift"],
-      "dispatch": "TapOnly"
+      "dispatch": "TapOnly",
+      "replayModifiers": ["Ctrl", "Shift"]
     },
     {
       "name": "Ctrl+Shift+X",
