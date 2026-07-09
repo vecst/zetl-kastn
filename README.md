@@ -97,7 +97,16 @@ A slip may contain text or a picture, plus optional metadata:
 The normal and Shift lanes each have their own active project. When no deliberate
 project has been started or activated, Zetl falls back to the rolling Journal
 as the always-present default capture home (`Journal` and `Journal Shift`). The
-Journal organizes captured slips into dated day buckets (e.g. `2026-06-01`).
+Journal organizes captured slips into day buckets named for the weekday and date
+(e.g. `Mon 07-06`).
+
+The whole period's day buckets are seeded up front — the full Mon–Sun week for a
+weekly Journal, or every day of the month for a monthly one — so a note can be
+dropped into a *future* day as a lightweight reminder that is waiting there when
+that day arrives. Each day is a small nested structure: copy captures land in a
+`Capture` child and quick notes in a `Quick Note` child, both created lazily the
+first time that gesture fires on the day. The day boundary is the `DayStartHour`
+setting.
 
 Finishing a deliberate project sets it aside, clears it from its lane, and
 automatically returns the lane back to the rolling Journal. Setting a project
@@ -131,7 +140,8 @@ there is no copied content, the held gesture opens project management instead.
 Hold `Ctrl+X` to open a quick note. The dialog uses cut text when available and
 otherwise starts empty.
 
-When the rolling Journal is active, the note goes to today's dated day bucket.
+When the rolling Journal is active, the note goes to today's `Quick Note` child,
+while copy captures go to today's `Capture` child.
 
 When a deliberate project is active, quick notes default to its protected
 `Scratch` bucket (unless another bucket is selected), and the dialog remembers

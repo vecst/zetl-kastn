@@ -218,6 +218,9 @@ cross-project wiki-link/export rules.
       defaults.
 - [ ] Add cross-project bucket copy/move commands, starting with leaf buckets
       and then bucket subtrees.
+- [ ] Add "promote bucket to a new project" as the new-project destination case of
+      `MoveBucketToProject` (reuses the existing subtree primitives; see the
+      roadmap doc).
 - [ ] Extend wiki-links to resolve cross-project targets while keeping
       single-project exports clean for Obsidian-style wiki-links.
 - [ ] Add cohesive multi-project export rules for included linked material.

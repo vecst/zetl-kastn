@@ -41,9 +41,10 @@ internal sealed class ZetlProject
     public string Kind { get; set; } = ZetlStateStore.StandardProjectKind;
     public string? SourceTemplateId { get; set; }
     public string? TemporaryLane { get; set; }
-    // Journal mode: capture rolls into a fresh per-day bucket (named yyyy-MM-dd)
-    // instead of a fixed active bucket, so one rolling project reads as a dated
-    // journal. The day boundary is the app-level DayStartHour setting.
+    // Journal mode: one rolling project whose buckets are the days of the period
+    // (pre-seeded, named e.g. "Mon 07-06"). Capture routes into today's day parent —
+    // copy into its "Capture" child, quick notes into its "Quick Note" child — so the
+    // project reads as a dated journal. The day boundary is the DayStartHour setting.
     public bool JournalMode { get; set; }
     // Session-scoped activity stamp (not persisted) for the auto-return-to-Journal
     // check: refreshed when a deliberate project is activated or captured into. A
@@ -314,6 +315,13 @@ internal sealed class ZetlStateStore
     public const string DeletedBucketName = "Deleted";
     public const string DeletedBucketKind = "Deleted";
 
+    // A journal day is a parent bucket (named e.g. "Mon 07-06") holding two lazily
+    // created children: Capture receives copy captures, Quick Note receives held-cut
+    // quick notes. They are ordinary buckets with special routing, not protected like
+    // the singular Scratch/Deleted (a journal has one pair per day).
+    public const string JournalCaptureBucketName = "Capture";
+    public const string JournalQuickNoteBucketName = "Quick Note";
+
     // Project lifecycle statuses. Stored as readable words, matching the bucket
     // Kind / compile-mode string convention.
     public const string ActiveStatus = "Active";
@@ -463,9 +471,10 @@ internal sealed class ZetlStateStore
     public ZetlProject GetOrCreateDefaultProject(bool shifted = false)
     {
         var project = ResolveDefaultProject(shifted);
-        // A journal-mode project always captures into today's dated bucket, so roll
-        // it before the shared capture path resolves the active bucket.
-        RollJournalBucket(project, DateTime.Now);
+        // A journal-mode project always has today's day bucket present and highlighted
+        // before the capture path resolves a target. Its Capture / Quick Note children
+        // stay lazy — whichever gesture fires (copy vs. quick note) creates its own.
+        EnsureJournalDayBucket(project, DateTime.Now, setActive: true);
         // This capture counts as activity for the auto-return window.
         TouchProjectActivity(project);
         return project;
@@ -569,6 +578,10 @@ internal sealed class ZetlStateStore
             State.DefaultJournalProjectId = journal.Id;
         }
 
+        // Pre-seed the whole period's day-parent buckets so future/past days are
+        // ready as reminder slots, then highlight today.
+        SeedJournalDayBuckets(journal);
+        EnsureJournalDayBucket(journal, DateTime.Now, setActive: true);
         SetActiveProjectId(journal.Id, shifted);
         PersistProject(journal, workspace: true);
         DisposeInactiveTemporaryProjects(persistWorkspace: true);
@@ -616,9 +629,23 @@ internal sealed class ZetlStateStore
         return (ZetlProjectToggleOutcome.Activated, last.Name);
     }
 
-    // Roll a journal-mode project into the dated bucket for <localNow> (named
-    // yyyy-MM-dd, shifted by the configured day-start hour), creating it if needed
-    // and making it active. No-op (returns null) for a non-journal project.
+    // Ensure the day-parent bucket for <localNow> exists (named e.g. "Mon 07-06",
+    // shifted by the configured day-start hour). Returns it; optionally highlights it
+    // as the active bucket. No-op (returns null) for a non-journal project.
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlBucket? EnsureJournalDayBucket(ZetlProject project, DateTime localNow, bool setActive = false)
+    {
+        if (!project.JournalMode)
+        {
+            return null;
+        }
+
+        return GetOrCreateChildBucket(project, null, JournalBucketName(localNow, Defaults.DayStartHour), setActive);
+    }
+
+    // The copy-capture target for a journal: today's day parent's "Capture" child,
+    // created on first use and made the active bucket. No-op (null) for a non-journal
+    // project. Named RollJournalBucket because it also advances the active day.
     [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlBucket? RollJournalBucket(ZetlProject project, DateTime localNow)
     {
@@ -627,7 +654,66 @@ internal sealed class ZetlStateStore
             return null;
         }
 
-        return GetOrCreateBucket(project, JournalBucketName(localNow, Defaults.DayStartHour), setActive: true);
+        var day = EnsureJournalDayBucket(project, localNow)!;
+        return GetOrCreateChildBucket(project, day.Id, JournalCaptureBucketName, setActive: true);
+    }
+
+    // The quick-note target for a journal: today's day parent's "Quick Note" child,
+    // created on first use. Does not steal the active bucket from the copy target.
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlBucket? ResolveJournalQuickNoteBucket(ZetlProject project, DateTime localNow)
+    {
+        if (!project.JournalMode)
+        {
+            return null;
+        }
+
+        var day = EnsureJournalDayBucket(project, localNow)!;
+        return GetOrCreateChildBucket(project, day.Id, JournalQuickNoteBucketName, setActive: false);
+    }
+
+    // Seed the whole period's day-parent buckets up front — Mon–Sun for Weekly, the
+    // full month for Monthly, just today for Daily — in chronological order so the
+    // canonical bucket order reads as a calendar. Future and past days become empty
+    // reminder slots; their Capture / Quick Note children stay lazy.
+    private void SeedJournalDayBuckets(ZetlProject project)
+    {
+        if (!project.JournalMode)
+        {
+            return;
+        }
+
+        var dayStart = Math.Clamp(Defaults.DayStartHour, 0, 23);
+        var shiftedToday = DateTime.Now.AddHours(-dayStart).Date;
+        var interval = ZetlJournalInterval.Normalize(Defaults.JournalInterval);
+
+        DateTime firstDay;
+        int dayCount;
+        if (interval == ZetlJournalInterval.Weekly)
+        {
+            // ISO week starts Monday: DayOfWeek has Sunday = 0, so shift to Monday = 0.
+            var offsetFromMonday = ((int)shiftedToday.DayOfWeek + 6) % 7;
+            firstDay = shiftedToday.AddDays(-offsetFromMonday);
+            dayCount = 7;
+        }
+        else if (interval == ZetlJournalInterval.Monthly)
+        {
+            firstDay = new DateTime(shiftedToday.Year, shiftedToday.Month, 1);
+            dayCount = DateTime.DaysInMonth(shiftedToday.Year, shiftedToday.Month);
+        }
+        else
+        {
+            firstDay = shiftedToday;
+            dayCount = 1;
+        }
+
+        for (var i = 0; i < dayCount; i++)
+        {
+            // Re-add the day-start hour so JournalBucketName's own shift lands the name
+            // back on this calendar day.
+            var probe = firstDay.AddDays(i).AddHours(dayStart);
+            GetOrCreateChildBucket(project, null, JournalBucketName(probe, dayStart), setActive: false);
+        }
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -951,6 +1037,36 @@ internal sealed class ZetlStateStore
         }
 
         return AddBucket(project, normalizedName, setActive: setActive);
+    }
+
+    // Like GetOrCreateBucket but scoped to a parent: a name matches only among the
+    // given parent's own children. This is what lets every journal day carry its own
+    // "Capture" / "Quick Note" child without the seven of each colliding by name.
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlBucket GetOrCreateChildBucket(ZetlProject project, string? parentBucketId, string name, bool setActive = true)
+    {
+        var normalizedName = NormalizeName(name, "New Bucket");
+        if (IsDeletedBucketName(normalizedName))
+        {
+            return GetDeletedBucket(project);
+        }
+
+        var bucket = project.Buckets.FirstOrDefault(item =>
+            !IsDeletedBucket(item)
+            && string.Equals(item.ParentBucketId, parentBucketId, StringComparison.Ordinal)
+            && string.Equals(item.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+        if (bucket is not null)
+        {
+            if (setActive)
+            {
+                project.ActiveBucketId = bucket.Id;
+            }
+
+            PersistProject(project);
+            return bucket;
+        }
+
+        return AddBucket(project, normalizedName, parentBucketId, setActive);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -1619,14 +1735,30 @@ internal sealed class ZetlStateStore
         PersistBucket(bucket);
     }
 
+    // The bucket a copy capture (auto, held, or image) should land in for <project>.
+    // Journals roll to today's Capture child; deliberate projects use their active
+    // bucket, falling back to Scratch. Centralizes copy-target routing so the shortcut
+    // coordinator does not branch on journal mode itself.
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public ZetlBucket GetScratchBucket(ZetlProject project)
+    public ZetlBucket ResolveCaptureBucket(ZetlProject project, bool shifted)
     {
-        // A journal project has no Scratch bucket; its default catch-all is today's
-        // dated bucket, so every "default bucket" fallback routes there.
         if (project.JournalMode)
         {
             return RollJournalBucket(project, DateTime.Now)!;
+        }
+
+        return GetActiveBucket(shifted) ?? GetScratchBucket(project);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlBucket GetScratchBucket(ZetlProject project)
+    {
+        // A journal project has no Scratch bucket; its quick-note catch-all is today's
+        // "Quick Note" child, so the quick-note fallback routes there. (Copy capture
+        // routes to the "Capture" child via RollJournalBucket instead.)
+        if (project.JournalMode)
+        {
+            return ResolveJournalQuickNoteBucket(project, DateTime.Now)!;
         }
 
         EnsureScratchBucket(project.Buckets);
@@ -2095,13 +2227,34 @@ internal sealed class ZetlStateStore
 
         foreach (var candidate in candidates)
         {
-            // A journal project's "scratch" is today's dated bucket; a normal project's
-            // is the bucket literally named Scratch.
-            var scratchName = candidate.JournalMode
-                ? JournalBucketName(DateTime.Now, Defaults.DayStartHour)
-                : "Scratch";
+            if (candidate.JournalMode)
+            {
+                // A journal's "scratch" for quick compile is today's capture stream: the
+                // Capture / Quick Note children under today's day parent. Pick the first
+                // child holding current-session text.
+                var dayName = JournalBucketName(DateTime.Now, Defaults.DayStartHour);
+                var day = candidate.Buckets.FirstOrDefault(bucket =>
+                    bucket.ParentBucketId is null
+                    && string.Equals(bucket.Name, dayName, StringComparison.OrdinalIgnoreCase));
+                var journalScratch = day is null
+                    ? null
+                    : candidate.Buckets.FirstOrDefault(bucket =>
+                        string.Equals(bucket.ParentBucketId, day.Id, StringComparison.Ordinal)
+                        && !IsDeletedBucket(bucket)
+                        && bucket.Slips.Any(note => IsCurrentSessionNote(note) && !string.IsNullOrWhiteSpace(note.Text)));
+                if (journalScratch is not null)
+                {
+                    project = candidate;
+                    scratchBucket = journalScratch;
+                    return true;
+                }
+
+                continue;
+            }
+
+            // A normal project's scratch is the bucket literally named Scratch.
             var scratch = candidate.Buckets.FirstOrDefault(bucket =>
-                string.Equals(bucket.Name, scratchName, StringComparison.OrdinalIgnoreCase)
+                string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase)
                 && bucket.Slips.Any(note => IsCurrentSessionNote(note) && !string.IsNullOrWhiteSpace(note.Text)));
             if (scratch is not null)
             {
@@ -2365,7 +2518,18 @@ internal sealed class ZetlStateStore
             }
         }
         project.Buckets ??= new List<ZetlBucket>();
-        EnsureScratchBucket(project.Buckets);
+        if (project.JournalMode)
+        {
+            // A journal has no Scratch bucket — its per-day Quick Note child is the
+            // quick-note catch-all. Normalize is the single persist chokepoint, so
+            // dropping a stray empty Scratch here also cleans up journals seeded by an
+            // earlier build or by a shared bucket-cleanup path.
+            RemoveEmptyScratchBucket(project);
+        }
+        else
+        {
+            EnsureScratchBucket(project.Buckets);
+        }
         foreach (var bucket in project.Buckets)
         {
             bucket.Id = string.IsNullOrWhiteSpace(bucket.Id) ? NewId() : bucket.Id;
@@ -2469,8 +2633,40 @@ internal sealed class ZetlStateStore
 
     private static ZetlBucket? FirstActiveWorkflowBucket(ZetlProject project)
     {
-        EnsureScratchBucket(project.Buckets);
+        // Journals have no Scratch; their first day parent is the first workflow bucket.
+        if (!project.JournalMode)
+        {
+            EnsureScratchBucket(project.Buckets);
+        }
+
         return project.Buckets.FirstOrDefault(bucket => !IsDeletedBucket(bucket));
+    }
+
+    // Drop a journal's stray empty Scratch bucket. Only removes it when it holds no
+    // notes and no child buckets, so a Scratch that somehow gained content is never
+    // silently destroyed. Clears any active/quick-note pointer that named it.
+    private static void RemoveEmptyScratchBucket(ZetlProject project)
+    {
+        var scratch = project.Buckets.FirstOrDefault(bucket =>
+            !IsDeletedBucket(bucket)
+            && string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase));
+        if (scratch is null
+            || scratch.Notes.Count > 0
+            || project.Buckets.Any(bucket => string.Equals(bucket.ParentBucketId, scratch.Id, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        project.Buckets.Remove(scratch);
+        if (project.ActiveBucketId == scratch.Id)
+        {
+            project.ActiveBucketId = null;
+        }
+
+        if (project.QuickNoteBucketId == scratch.Id)
+        {
+            project.QuickNoteBucketId = null;
+        }
     }
 
     private static void EnsureDeletedBucketShape(ZetlBucket bucket)
@@ -3134,7 +3330,10 @@ internal sealed class ZetlStateStore
 
     // The journal "day" a capture belongs to: clock time shifted back by the
     // configured day-start hour, so e.g. with dayStartHour=4 a 1am capture lands in
-    // the previous calendar day's bucket. Returns the dated bucket name (yyyy-MM-dd).
+    // the previous calendar day's bucket. Returns the day-parent bucket name
+    // (e.g. "Mon 07-06") — weekday label for at-a-glance reading plus month-day for
+    // archival clarity. Invariant culture keeps the weekday stable across locales.
     public static string JournalBucketName(DateTime localNow, int dayStartHour) =>
-        localNow.AddHours(-Math.Clamp(dayStartHour, 0, 23)).ToString("yyyy-MM-dd");
+        localNow.AddHours(-Math.Clamp(dayStartHour, 0, 23))
+            .ToString("ddd MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 }

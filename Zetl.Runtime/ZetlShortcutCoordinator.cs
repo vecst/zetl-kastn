@@ -437,8 +437,7 @@ internal sealed class ZetlShortcutCoordinator
                     ?? context.ClipboardSequenceNumber);
         if (pendingImage is { } image)
         {
-            var imageBucket = store.GetActiveBucket(context.ShiftLane)
-                ?? store.GetScratchBucket(project);
+            var imageBucket = store.ResolveCaptureBucket(project, context.ShiftLane);
             return new ZetlNoteCaptureRequest(
                 context.ShiftLane,
                 project,
@@ -464,8 +463,7 @@ internal sealed class ZetlShortcutCoordinator
         var resolvedUrl = await TryResolveImageUrlAsync(text);
         if (resolvedUrl is not null)
         {
-            var imageBucket = store.GetActiveBucket(context.ShiftLane)
-                ?? store.GetScratchBucket(project);
+            var imageBucket = store.ResolveCaptureBucket(project, context.ShiftLane);
             return new ZetlNoteCaptureRequest(
                 context.ShiftLane,
                 project,
@@ -488,8 +486,7 @@ internal sealed class ZetlShortcutCoordinator
         // bucket as the default destination, activating the project by default
         // (StartProjectDefault), and keeping the clipboard in sync with the saved
         // note (handled in CompleteNoteCapture).
-        var preferredBucket = store.GetActiveBucket(context.ShiftLane)
-            ?? store.GetScratchBucket(project);
+        var preferredBucket = store.ResolveCaptureBucket(project, context.ShiftLane);
         return new ZetlNoteCaptureRequest(
             context.ShiftLane,
             project,
@@ -763,14 +760,19 @@ internal sealed class ZetlShortcutCoordinator
                 return;
             }
 
-            var bucket = store.GetActiveBucket(pending.ShiftLane);
-            if (bucket is null)
+            var project = store.GetActiveProject(pending.ShiftLane);
+            if (project is null)
             {
                 return;
             }
 
-            var project = store.GetActiveProject(pending.ShiftLane);
-            if (project is null)
+            // Journals roll to today's Capture child (also closing a stale-day gap where
+            // this path read a persisted, possibly outdated active bucket). Non-journal
+            // projects keep the exact active-bucket-or-nothing behavior.
+            var bucket = project.JournalMode
+                ? store.RollJournalBucket(project, DateTime.Now)
+                : store.GetActiveBucket(pending.ShiftLane);
+            if (bucket is null)
             {
                 return;
             }

@@ -74,6 +74,25 @@ the destination write succeeds and the source delete fails, the result is a
 duplicate plus a diagnostic, not data loss. Recovery can retry or clean up the
 source later.
 
+## Promote Bucket To A New Project
+
+A Kastn action to **promote a bucket into its own project** is the same operation
+as `MoveBucketToProject`, with the destination being a freshly minted project
+instead of an existing one. It is a Kastn-initiated command that Zetl executes;
+Zetl stays the sole writer and owns creating the destination project, moving the
+bucket subtree in as its root buckets, and (copy-then-delete) removing it from the
+source. The `copy`/`move` mode, new-IDs-on-transfer rule, protected-bucket rules,
+and wiki-link repair below all apply unchanged.
+
+The subtree primitives it needs already exist in Zetl and should be reused rather
+than reimplemented: `GetBucketAndDescendantIds` for enumeration, and the
+consolidation path's subtree clone with ID remap and `ParentBucketId` rewrite. No
+speculative command surface should be added until this feature is built — the work
+lands with the cross-project transfer commands here. Note the Journal's nested day
+buckets (a day parent with `Capture` / `Quick Note` children) make promotion a
+natural first exerciser of the **subtree** transfer case rather than just leaf
+buckets.
+
 ## Bucket Transfer Semantics
 
 Bucket transfer needs an explicit depth policy:

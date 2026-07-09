@@ -926,7 +926,26 @@ public class PortableSelfTests
             var project = store.GetOrCreateDefaultProject();
             AssertEqual(store.DefaultProjectName(), project.Name, "The default capture home is the Journal.");
             AssertTrue(project.JournalMode, "The default home is journal-mode.");
-            AssertEqual(DateTime.Now.ToString("yyyy-MM-dd"), store.ActiveBucket?.Name, "Capture lands in today's dated bucket.");
+            AssertEqual(ZetlStateStore.JournalBucketName(DateTime.Now, 0), store.ActiveBucket?.Name, "The journal highlights today's day bucket.");
+
+            // A fresh weekly journal seeds the whole Mon–Sun week up front as empty
+            // day-parent slots (children stay lazy), so future days are ready to hold
+            // reminder notes.
+            var monday = DateTime.Now.AddDays(-(((int)DateTime.Now.DayOfWeek + 6) % 7)).Date;
+            for (var i = 0; i < 7; i++)
+            {
+                var dayName = ZetlStateStore.JournalBucketName(monday.AddDays(i), 0);
+                var dayBucket = project.Buckets.SingleOrDefault(bucket => bucket.ParentBucketId is null
+                    && string.Equals(bucket.Name, dayName, StringComparison.OrdinalIgnoreCase));
+                AssertTrue(dayBucket is not null, $"The weekly journal seeds a day bucket for {dayName}.");
+                AssertEqual(0, dayBucket!.Notes.Count, $"Seeded day bucket {dayName} starts empty.");
+            }
+            AssertTrue(
+                project.Buckets.All(bucket => !string.Equals(bucket.Name, ZetlStateStore.JournalCaptureBucketName, StringComparison.OrdinalIgnoreCase)),
+                "Capture children are not created until a capture happens.");
+            AssertTrue(
+                project.Buckets.All(bucket => !string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase)),
+                "A journal has no Scratch bucket.");
 
             // Renaming the journal keeps it the default (it is tracked by id), and
             // compile reflects the new name.
@@ -2110,33 +2129,34 @@ public class PortableSelfTests
 
         private static void JournalBucketRollsAtDayStartHour()
         {
+            // Day parents are named "ddd MM-dd" (2026-06-24 is a Wednesday, 06-23 a Tuesday).
             // Midnight boundary: every clock hour maps to its own calendar day.
             AssertEqual(
-                "2026-06-24",
+                "Wed 06-24",
                 ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 0, 30, 0), 0),
                 "Midnight start: 00:30 belongs to that day.");
             AssertEqual(
-                "2026-06-24",
+                "Wed 06-24",
                 ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 23, 59, 0), 0),
                 "Midnight start: 23:59 belongs to that day.");
 
             // 4am start: captures before 04:00 belong to the previous day.
             AssertEqual(
-                "2026-06-23",
+                "Tue 06-23",
                 ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 1, 0, 0), 4),
                 "4am start: 01:00 rolls back to the previous day.");
             AssertEqual(
-                "2026-06-23",
+                "Tue 06-23",
                 ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 3, 59, 0), 4),
                 "4am start: 03:59 is still the previous day.");
             AssertEqual(
-                "2026-06-24",
+                "Wed 06-24",
                 ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 4, 0, 0), 4),
                 "4am start: 04:00 begins the new day.");
 
             // Out-of-range hours clamp rather than throw.
             AssertEqual(
-                "2026-06-24",
+                "Wed 06-24",
                 ZetlStateStore.JournalBucketName(new DateTime(2026, 6, 24, 23, 30, 0), 99),
                 "An out-of-range day-start hour clamps to 23.");
         }
@@ -2341,26 +2361,43 @@ public class PortableSelfTests
             var project = store.CreateProject("Journal", new[] { "Scratch" });
             project.JournalMode = true;
 
-            var day1 = new DateTime(2026, 6, 23, 9, 0, 0);
-            var day2 = new DateTime(2026, 6, 24, 9, 0, 0);
+            var day1 = new DateTime(2026, 6, 23, 9, 0, 0); // Tuesday
+            var day2 = new DateTime(2026, 6, 24, 9, 0, 0); // Wednesday
 
+            // Copy capture rolls into today's day parent's "Capture" child and activates it.
             var first = store.RollJournalBucket(project, day1);
             AssertTrue(first is not null, "Rolling a journal project yields a bucket.");
-            AssertEqual("2026-06-23", first!.Name, "The first roll creates that day's dated bucket.");
-            AssertEqual(first.Id, project.ActiveBucketId, "Today's bucket becomes active.");
+            AssertEqual(ZetlStateStore.JournalCaptureBucketName, first!.Name, "The copy-capture roll targets the Capture child.");
+            AssertEqual(first.Id, project.ActiveBucketId, "Today's Capture bucket becomes active.");
+            var day1Parent = project.Buckets.Single(bucket => bucket.Id == first.ParentBucketId);
+            AssertEqual("Tue 06-23", day1Parent.Name, "The Capture child sits under today's day parent.");
+            AssertTrue(day1Parent.ParentBucketId is null, "The day parent is a top-level bucket.");
 
             var sameDay = store.RollJournalBucket(project, day1);
-            AssertEqual(first.Id, sameDay!.Id, "A second capture the same day reuses the bucket.");
+            AssertEqual(first.Id, sameDay!.Id, "A second capture the same day reuses the Capture bucket.");
+
+            // Quick notes route to the same day parent's separate "Quick Note" child,
+            // without stealing the active bucket from the copy target.
+            var quickNote = store.ResolveJournalQuickNoteBucket(project, day1);
+            AssertEqual(ZetlStateStore.JournalQuickNoteBucketName, quickNote!.Name, "Quick notes target the Quick Note child.");
+            AssertEqual(day1Parent.Id, quickNote.ParentBucketId, "The Quick Note child shares the day parent.");
+            AssertTrue(quickNote.Id != first.Id, "Capture and Quick Note are distinct children.");
+            AssertEqual(first.Id, project.ActiveBucketId, "Quick notes do not steal the active bucket.");
 
             var nextDay = store.RollJournalBucket(project, day2);
-            AssertEqual("2026-06-24", nextDay!.Name, "A new day creates a new dated bucket.");
-            AssertTrue(nextDay.Id != first.Id, "The new day's bucket is distinct.");
-            AssertEqual(nextDay.Id, project.ActiveBucketId, "The new day's bucket becomes active.");
+            AssertEqual(ZetlStateStore.JournalCaptureBucketName, nextDay!.Name, "A new day creates its own Capture child.");
+            var day2Parent = project.Buckets.Single(bucket => bucket.Id == nextDay.ParentBucketId);
+            AssertEqual("Wed 06-24", day2Parent.Name, "The new day gets its own day parent.");
+            AssertTrue(nextDay.Id != first.Id, "The new day's Capture bucket is distinct.");
+            AssertEqual(nextDay.Id, project.ActiveBucketId, "The new day's Capture bucket becomes active.");
 
             var plain = store.CreateProject("Plain", new[] { "Scratch" });
             AssertTrue(
                 store.RollJournalBucket(plain, day1) is null,
-                "A non-journal project does not roll into a dated bucket.");
+                "A non-journal project does not roll into a day bucket.");
+            AssertTrue(
+                store.ResolveJournalQuickNoteBucket(plain, day1) is null,
+                "A non-journal project has no journal quick-note bucket.");
         }
 
         private static void JournalAutoReturnsFromQuietProject()
@@ -3203,9 +3240,13 @@ public class PortableSelfTests
             AssertTrue(request is ZetlNoteCaptureRequest, "Cut hold should always open note capture.");
             var note = (ZetlNoteCaptureRequest)request!;
             AssertEqual(
-                DateTime.Now.ToString("yyyy-MM-dd"),
+                ZetlStateStore.JournalQuickNoteBucketName,
                 note.PreferredBucket!.Name,
-                "First quick note defaults to today's journal bucket.");
+                "First quick note defaults to today's Quick Note child.");
+            AssertEqual(
+                ZetlStateStore.JournalBucketName(DateTime.Now, 0),
+                note.Project.Buckets.Single(bucket => bucket.Id == note.PreferredBucket!.ParentBucketId).Name,
+                "The Quick Note child sits under today's day parent.");
             AssertTrue(note.ShowStartProjectToggle, "First quick note should offer project activation.");
             AssertFalse(note.StartProjectDefault, "Quick note should not activate the project by default.");
         }
