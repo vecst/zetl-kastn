@@ -25,6 +25,11 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
     // The project the note will be filed into; follows the selector.
     private ZetlProject selectedProject = null!;
     private readonly ZetlClipboardImage? image;
+    // True when the picture replaces the note editor and the text box below it
+    // is a caption (pure image capture). A dual capture — clipboard text and
+    // picture together — keeps the note editor as the content instead and shows
+    // the picture as an attached strip.
+    private readonly bool imageCaptionMode;
     private Bitmap? imagePreviewBitmap;
 
     // Parameterless ctor for the Avalonia previewer / XAML tooling.
@@ -66,7 +71,8 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
         projectBox.SelectionChanged += (_, _) => OnSelectedProjectChanged();
 
         noteBox.Text = BuildInitialNoteText(text);
-        if (image is not null)
+        imageCaptionMode = image is not null && string.IsNullOrWhiteSpace(text);
+        if (imageCaptionMode)
         {
             Title = "Save Zetl Image";
             Height = 520;
@@ -74,13 +80,31 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
             imageCapturePanel.IsVisible = true;
             try
             {
-                using var stream = new MemoryStream(image.PngBytes, writable: false);
+                using var stream = new MemoryStream(image!.PngBytes, writable: false);
                 imagePreviewBitmap = Bitmap.DecodeToWidth(stream, 900);
                 captureImagePreview.Source = imagePreviewBitmap;
             }
             catch (Exception ex) when (ex is ArgumentException or IOException)
             {
                 captureImagePreview.Source = null;
+            }
+        }
+        else if (image is not null)
+        {
+            // Dual capture: keep the note editor as the content and show the
+            // clipboard picture as an attached strip below it.
+            Height = 356;
+            dualImagePanel.IsVisible = true;
+            dualImageLabel.Text = $"Picture attached · {image.Width}×{image.Height}";
+            try
+            {
+                using var stream = new MemoryStream(image.PngBytes, writable: false);
+                imagePreviewBitmap = Bitmap.DecodeToWidth(stream, 240);
+                dualImagePreview.Source = imagePreviewBitmap;
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException)
+            {
+                dualImagePreview.Source = null;
             }
         }
 
@@ -119,7 +143,7 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
 
     public string SelectedBucketName => SelectedBucket.Name;
 
-    public string NoteText => image is not null
+    public string NoteText => imageCaptionMode
         ? imageCaptionBox.Text?.Trim() ?? ""
         : noteBox.Text?.Trim() ?? "";
 
@@ -176,7 +200,7 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
 
     private void FocusNoteBox()
     {
-        if (image is not null)
+        if (imageCaptionMode)
         {
             imageCaptionBox.Focus();
             imageCaptionBox.CaretIndex = imageCaptionBox.Text?.Length ?? 0;

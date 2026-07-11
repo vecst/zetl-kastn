@@ -121,6 +121,8 @@ public class PortableSelfTests
                 ("Runtime downloads copied image URLs", RuntimeAutoCapturesCopiedImageUrls),
                 ("Runtime keeps non-image URLs as text", RuntimeKeepsNonImageUrlsAsText),
                 ("Runtime held copy opens image capture and saves captions", RuntimeHeldCopyCapturesImagesDirectly),
+                ("Runtime held dual copy saves text-preferred with the picture", RuntimeHeldCopyDualSavesTextPreferred),
+                ("Runtime held dual copy with cleared text saves a picture", RuntimeHeldCopyDualClearedTextSavesPicture),
                 ("Runtime held copy opens downloaded image URLs", RuntimeHeldCopyCapturesImageUrls),
                 ("Runtime hold cancellation prevents auto-capture", RuntimeHoldCancellationPreventsAutoCapture),
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
@@ -2814,6 +2816,98 @@ public class PortableSelfTests
             AssertTrue(
                 notifications.Messages.Single().StartsWith("Saved image to", StringComparison.Ordinal),
                 "Committed image capture should report its destination.");
+        }
+
+        private static void RuntimeHeldCopyDualSavesTextPreferred()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 2),
+                notifications,
+                out _,
+                out _);
+            var pending = new ZetlPendingShortcut(
+                VK_C,
+                shiftLane: false,
+                clipboardSequenceNumber: 1,
+                captureOrigin: null);
+            pending.SetObservedClipboardContent(
+                "A1\tB1",
+                new ZetlClipboardImage([7, 8, 9], 3, 2));
+
+            var request = coordinator.HandleClaimedHoldAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                pending).GetAwaiter().GetResult();
+
+            AssertTrue(request is ZetlNoteCaptureRequest, "Held dual copy should open the capture dialog.");
+            var capture = (ZetlNoteCaptureRequest)request!;
+            AssertEqual("A1\tB1", capture.Text, "The dialog should receive the clipboard text as content.");
+            AssertTrue(capture.Image is not null, "The dialog request should carry the clipboard picture.");
+            coordinator.CompleteNoteCapture(
+                capture,
+                new ZetlNoteCaptureResult(
+                    Committed: true,
+                    NoteText: "A1\tB1 edited",
+                    StartProject: true,
+                    CreateNewProject: false,
+                    ProjectName: capture.Project.Name,
+                    SelectedBucketName: capture.PreferredBucket!.Name,
+                    SelectedBucket: capture.PreferredBucket));
+
+            var note = store.GetActiveProject()!
+                .Buckets.SelectMany(bucket => bucket.Notes).Single();
+            AssertFalse(note.IsImage, "A held dual capture should save text-preferred.");
+            AssertEqual("A1\tB1 edited", note.Text, "The edited dialog text should be the slip content.");
+            AssertTrue(note.Image is not null, "The held dual capture should retain the picture.");
+            AssertTrue(
+                notifications.Messages.Single().StartsWith("Saved to", StringComparison.Ordinal),
+                "A text-preferred dual save should report as an ordinary note.");
+        }
+
+        private static void RuntimeHeldCopyDualClearedTextSavesPicture()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 2),
+                notifications,
+                out _,
+                out _);
+            var pending = new ZetlPendingShortcut(
+                VK_C,
+                shiftLane: false,
+                clipboardSequenceNumber: 1,
+                captureOrigin: null);
+            pending.SetObservedClipboardContent(
+                "A1\tB1",
+                new ZetlClipboardImage([7, 8, 9], 3, 2));
+
+            var request = coordinator.HandleClaimedHoldAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                pending).GetAwaiter().GetResult();
+            var capture = (ZetlNoteCaptureRequest)request!;
+            coordinator.CompleteNoteCapture(
+                capture,
+                new ZetlNoteCaptureResult(
+                    Committed: true,
+                    NoteText: "",
+                    StartProject: true,
+                    CreateNewProject: false,
+                    ProjectName: capture.Project.Name,
+                    SelectedBucketName: capture.PreferredBucket!.Name,
+                    SelectedBucket: capture.PreferredBucket));
+
+            var note = store.GetActiveProject()!
+                .Buckets.SelectMany(bucket => bucket.Notes).Single();
+            AssertTrue(note.IsImage, "Clearing the dialog text should fall back to a picture slip.");
+            AssertTrue(
+                notifications.Messages.Single().StartsWith("Saved image to", StringComparison.Ordinal),
+                "A picture fallback save should report as an image.");
         }
 
         private static void RuntimeAutoCapturesCopiedImageUrls()

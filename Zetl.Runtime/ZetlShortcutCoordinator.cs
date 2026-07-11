@@ -210,6 +210,10 @@ internal sealed class ZetlShortcutCoordinator
             store.SetQuickNoteBucket(noteProject, bucket.Id);
         }
 
+        // A request carrying both clipboard text and a picture is a dual
+        // capture: the (possibly edited) text is the content and the slip
+        // saves text-preferred. Clearing the text in the dialog falls back to
+        // an ordinary picture slip via AddImageNote's blank-text guard.
         var note = request.Image is not null
             ? store.AddImageNote(
                 noteProject,
@@ -218,7 +222,8 @@ internal sealed class ZetlShortcutCoordinator
                 request.Source,
                 request.CaptureOrigin,
                 result.NoteText,
-                request.ImageSourceUrl)
+                request.ImageSourceUrl,
+                preferTextContent: !string.IsNullOrWhiteSpace(request.Text))
             : store.AddNote(
                 bucket,
                 result.NoteText,
@@ -251,7 +256,7 @@ internal sealed class ZetlShortcutCoordinator
             store.ClearActiveProject(request.Shifted);
         }
 
-        notifications.Show(request.Image is not null
+        notifications.Show(note.IsImage
             ? $"Saved image to {ZetlRuntimeLabels.Destination(noteProject, bucket)}."
             : $"Saved to {ZetlRuntimeLabels.Destination(noteProject, bucket)}.");
         return ZetlNoteCaptureOutcome.None;
@@ -439,12 +444,16 @@ internal sealed class ZetlShortcutCoordinator
                     ?? context.ClipboardSequenceNumber);
         if (pendingImage is { } image)
         {
+            // A dual clipboard (spreadsheet cells) carries its text into the
+            // dialog as the editable content; the picture rides along and the
+            // save files text-preferred. An image-only clipboard keeps the
+            // picture-and-caption dialog.
             var imageBucket = store.ResolveCaptureBucket(project, context.ShiftLane);
             return new ZetlNoteCaptureRequest(
                 context.ShiftLane,
                 project,
                 imageBucket,
-                "",
+                ResolveHoldClipboardText(context, pending),
                 "copy",
                 ShowStartProjectToggle: !hadActiveProject,
                 StartProjectDefault: true,

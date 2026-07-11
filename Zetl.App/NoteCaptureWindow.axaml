@@ -30,11 +30,11 @@
       <Button x:Name="inlineCreateButton" Content="Create" />
     </StackPanel>
 
-    <Grid Grid.Row="4">
-      <TextBox x:Name="noteBox" AcceptsReturn="True" TextWrapping="Wrap"
+    <Grid Grid.Row="4" RowDefinitions="*,Auto">
+      <TextBox Grid.Row="0" x:Name="noteBox" AcceptsReturn="True" TextWrapping="Wrap"
                FontSize="16" VerticalContentAlignment="Top"
                ScrollViewer.VerticalScrollBarVisibility="Auto" />
-      <Grid x:Name="imageCapturePanel" RowDefinitions="*,Auto"
+      <Grid Grid.Row="0" x:Name="imageCapturePanel" RowDefinitions="*,Auto"
             IsVisible="False">
         <Border Grid.Row="0" Classes="surface" Padding="8">
           <Image x:Name="captureImagePreview" Stretch="Uniform" />
@@ -44,6 +44,15 @@
                  FontSize="16"
                  Margin="0,8,0,0" />
       </Grid>
+      <!-- Dual capture: the clipboard carried this picture alongside the text
+           above; the slip saves text-preferred with the picture attached. -->
+      <Border Grid.Row="1" x:Name="dualImagePanel" Classes="surface"
+              Padding="8" Margin="0,8,0,0" IsVisible="False">
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Image x:Name="dualImagePreview" Stretch="Uniform" MaxHeight="56" MaxWidth="120" />
+          <TextBlock x:Name="dualImageLabel" VerticalAlignment="Center" Opacity="0.75" />
+        </StackPanel>
+      </Border>
     </Grid>
 
     <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8"
