@@ -1556,12 +1556,19 @@ internal partial class MainWindow
         // The thumbnail targets of a picture card, waiting for the async load
         // (the decoded bitmap lives in the shared decodedPictureCache). The
         // reconcile starts the load after the card is registered, so a load that
-        // completes synchronously still sees itself as the current card.
-        public (Image Image, TextBlock Status)? PendingPictureLoad { get; set; }
+        // completes synchronously still sees itself as the current card. A dual
+        // card also feeds its click-to-peek expanded image from the same bitmap.
+        public (Image Image, Image? ExpandedImage, TextBlock Status)? PendingPictureLoad { get; set; }
     }
 
     private readonly Dictionary<string, BoardColumnUi> boardColumns = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BoardCardUi> boardCards = new(StringComparer.Ordinal);
+
+    // Dual (text + picture) cards the user expanded to peek at the picture.
+    // Keyed by slip id rather than stored on the card so a peek survives the
+    // card rebuilds a revision bump causes; pruned with stale cards and cleared
+    // with the board.
+    private readonly HashSet<string> expandedBoardPictures = new(StringComparer.Ordinal);
 
     private void BuildBoardView(IReadOnlyList<ZetlSlipSnapshot> visible)
     {
@@ -1620,6 +1627,7 @@ internal partial class MainWindow
         foreach (var staleId in boardCards.Keys.Where(id => !liveSlipIds.Contains(id)).ToList())
         {
             RemoveBoardCard(staleId);
+            expandedBoardPictures.Remove(staleId);
         }
 
         SyncPanelChildren(boardColumnsPanel.Children, desiredColumns);
@@ -1636,6 +1644,7 @@ internal partial class MainWindow
         boardColumnCardPanels.Clear();
         boardColumnsPanel.Children.Clear();
         boardSlipCards.Clear();
+        expandedBoardPictures.Clear();
         highlightedBoardSlipId = null;
     }
 
@@ -1666,7 +1675,7 @@ internal partial class MainWindow
                 if (card.PendingPictureLoad is { } load)
                 {
                     card.PendingPictureLoad = null;
-                    LoadBoardCardPictureAsync(slip, card, load.Image, load.Status);
+                    LoadBoardCardPictureAsync(slip, card, load.Image, load.ExpandedImage, load.Status);
                 }
             }
 
@@ -2112,11 +2121,78 @@ internal partial class MainWindow
         }
 
         var mainPanel = new StackPanel { Spacing = 4 };
-        mainPanel.Children.Add(previewText);
+
+        // A text-presenting dual slip keeps its text as the card content and adds
+        // a small thumbnail on the right; clicking the thumbnail peeks the
+        // attached picture below the text. The peek is view state only — the
+        // slip's preferred representation is unchanged.
+        (Image Image, Image? ExpandedImage, TextBlock Status)? pendingPictureLoad = null;
+        if (slip.Type != ZetlSlipType.Picture && slip.Picture is not null)
+        {
+            var thumbnail = new Image
+            {
+                MaxWidth = 44,
+                MaxHeight = 44,
+                Stretch = Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Top,
+                Cursor = new Cursor(StandardCursorType.Hand)
+            };
+            ToolTip.SetTip(thumbnail, "Show the attached picture");
+            previewText.Margin = new Thickness(0, 0, 6, 4);
+            var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            Grid.SetColumn(previewText, 0);
+            Grid.SetColumn(thumbnail, 1);
+            header.Children.Add(previewText);
+            header.Children.Add(thumbnail);
+            mainPanel.Children.Add(header);
+
+            var expandedImage = new Image
+            {
+                MaxWidth = 240,
+                MaxHeight = 160,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                IsVisible = expandedBoardPictures.Contains(slip.Id)
+            };
+            var pictureStatus = new TextBlock
+            {
+                Text = "Loading...",
+                Classes = { "muted" },
+                FontSize = 11,
+                IsVisible = false
+            };
+            mainPanel.Children.Add(expandedImage);
+            mainPanel.Children.Add(pictureStatus);
+
+            thumbnail.PointerPressed += (_, args) =>
+            {
+                args.Handled = true;
+                var expanded = !expandedBoardPictures.Remove(slip.Id);
+                if (expanded)
+                {
+                    expandedBoardPictures.Add(slip.Id);
+                }
+
+                expandedImage.IsVisible = expanded;
+            };
+
+            if (CachedDecodedPicture(slip, 260) is { } cachedDual)
+            {
+                thumbnail.Source = cachedDual;
+                expandedImage.Source = cachedDual;
+            }
+            else
+            {
+                pendingPictureLoad = (thumbnail, expandedImage, pictureStatus);
+            }
+        }
+        else
+        {
+            mainPanel.Children.Add(previewText);
+        }
 
         // Picture thumbnail; the async load starts once the card exists so the
         // bitmap can be card-owned (disposed when the card is rebuilt or removed).
-        (Image Image, TextBlock Status)? pendingPictureLoad = null;
         if (slip.Type == ZetlSlipType.Picture && slip.Picture is not null)
         {
             var image = new Image
@@ -2141,7 +2217,7 @@ internal partial class MainWindow
             }
             else
             {
-                pendingPictureLoad = (image, statusText);
+                pendingPictureLoad = (image, null, statusText);
             }
         }
 
@@ -2346,10 +2422,19 @@ internal partial class MainWindow
         ZetlSlipSnapshot slip,
         BoardCardUi card,
         Avalonia.Controls.Image image,
+        Avalonia.Controls.Image? expandedImage,
         TextBlock status)
     {
         bool IsCurrent() =>
             boardCards.TryGetValue(slip.Id, out var current) && ReferenceEquals(current, card);
+
+        // A dual card's status starts hidden (its thumbnail is a side affordance,
+        // not the card content), so a failure must reveal it to be seen.
+        void ReportUnavailable()
+        {
+            status.Text = "Picture unavailable.";
+            status.IsVisible = true;
+        }
 
         try
         {
@@ -2361,7 +2446,7 @@ internal partial class MainWindow
 
             if (content is null)
             {
-                status.Text = "Picture unavailable.";
+                ReportUnavailable();
                 return;
             }
 
@@ -2373,6 +2458,11 @@ internal partial class MainWindow
             }
 
             image.Source = bitmap;
+            if (expandedImage is not null)
+            {
+                expandedImage.Source = bitmap;
+            }
+
             status.IsVisible = false;
         }
         catch (Exception ex) when (
@@ -2380,7 +2470,7 @@ internal partial class MainWindow
         {
             if (IsCurrent())
             {
-                status.Text = "Picture unavailable.";
+                ReportUnavailable();
             }
         }
     }

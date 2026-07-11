@@ -45,6 +45,7 @@ Key features of Board Mode:
 - **Drag-and-Drop Column Reordering**: Cards can be dragged between columns or reordered within a column. Auto-scrolling scrolls the board horizontally when a card is dragged near the left or right boundaries.
 - **Quick Creation**: Each column features a `+` button to instantly add a new card directly to that bucket.
 - **Double-Click Modal Editor**: Double-clicking a board card opens a responsive popup editor, allowing rapid card modification without using the main pane editor. Adding a new card via the `+` button automatically triggers this dialog.
+- **Dual-Slip Picture Peek**: A text-presenting dual slip's card shows a small thumbnail on its right edge; clicking it expands the attached picture below the text and clicking again collapses it. The peek is view state only — it does not change the slip's preferred representation — and it survives card refreshes.
 
 ## Search And Filters
 
