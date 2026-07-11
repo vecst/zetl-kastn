@@ -116,6 +116,20 @@ public class KastnUndoTests
         AssertEqual(1, restore.InlineStyles?.Count ?? 0, "Inline styles are restored.");
     }
 
+    [Fact] public void RepresentationFlipRecordsAndRestoresType()
+    {
+        var from = Slip("s1", 9, "b1", text: "A1\tB1") with { Type = ZetlSlipType.Picture };
+        var target = Slip("s1", 4, "b1", text: "A1\tB1");
+
+        var steps = KastnUndoPlanner.BuildSteps(Op(from, KastnSlipMemento.To(target), "a", "a"));
+
+        AssertEqual(1, steps.Count, "A representation flip inverts as one update.");
+        AssertEqual(
+            ZetlSlipType.Text,
+            Payload<UpdateSlipCommand>(steps[0]).Type,
+            "The prior representation is restored.");
+    }
+
     [Fact] public void RestoreForcesLeftAlignmentExplicitly()
     {
         var from = Slip("s1", 2, "b1", align: "right");

@@ -1109,6 +1109,15 @@
                                   Content="Ignore bucket style for this slip"
                                   FontSize="12"
                                   Margin="0,4,0,0" />
+                        <!-- Dual slips (text content plus an attached picture) flip
+                             their preferred representation here. -->
+                        <Button x:Name="representationToggleButton"
+                                Content="Show as picture"
+                                FontSize="12"
+                                Padding="9,3"
+                                HorizontalAlignment="Left"
+                                IsVisible="False"
+                                Margin="0,6,0,0" />
                       </StackPanel>
                       <TextBox Grid.Row="2"
                                x:Name="slipEditor"

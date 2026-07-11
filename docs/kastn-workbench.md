@@ -153,6 +153,13 @@ Picture slips render inline in the View and above their editable captions in the
 Editor. Kastn requests normalized PNG content from Zetl through read-only IPC
 and keeps a bounded in-memory cache; it never opens project asset paths.
 
+A **dual slip** carries text content and a picture together — the shape a
+spreadsheet copy captures. Its slip type is the preferred representation:
+captured slips present as text, and a `Show as picture` / `Show as text`
+button in the editor pane flips the presentation. Renderers, exports, and
+Zetl's text-first flows all follow the current representation, the alternate
+one stays attached, and the flip participates in Kastn undo.
+
 The Details pane groups:
 
 - bucket and capture time

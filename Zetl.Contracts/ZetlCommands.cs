@@ -134,6 +134,12 @@ public sealed record UpdateSlipCommand
     public string? Title { get; init; }
     public required string Text { get; init; }
 
+    // Null preserves the current slip type. For a slip carrying both text and
+    // a picture (a dual capture), Picture / Text choose the preferred
+    // representation; Text is normalized to Url automatically when the body is
+    // a bare link. Picture is valid only for slips that have a picture.
+    public ZetlSlipType? Type { get; init; }
+
     // Null preserves the current value; true holds the slip out of Kastn's
     // rendered views and exports, false includes it.
     public bool? ExcludedFromViews { get; init; }

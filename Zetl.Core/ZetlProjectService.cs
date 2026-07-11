@@ -903,14 +903,25 @@ internal sealed class ZetlProjectService
 
         var payload = Payload<UpdateSlipCommand>(command);
         var title = payload.Title ?? note.Title;
+        if (payload.Type is ZetlSlipType.Picture && note.Image is null)
+        {
+            return ValidationError(
+                command,
+                "slip_no_picture",
+                "The slip has no picture to present.");
+        }
+
         // A structural note (divider, etc.) is content-less by design, so it is exempt
         // from the title-or-note rule — otherwise toggling its visibility or alignment,
-        // which re-sends its empty text, would be rejected.
+        // which re-sends its empty text, would be rejected. A slip presenting as a
+        // picture is likewise exempt (its text is an optional caption).
         var resultingKind = payload.BlockKind ?? note.BlockKind;
+        var presentsAsPicture = (payload.Type ?? note.Type) == ZetlSlipType.Picture
+            && note.Image is not null;
         if (!ZetlViewRenderer.IsStructuralKind(resultingKind)
             && string.IsNullOrWhiteSpace(payload.Text)
             && string.IsNullOrWhiteSpace(title)
-            && !note.IsImage)
+            && !presentsAsPicture)
         {
             return ValidationError(command, "slip_content_required", "A slip title or note is required.");
         }
@@ -919,7 +930,8 @@ internal sealed class ZetlProjectService
             note, payload.Text, payload.Title, payload.ExcludedFromViews,
             payload.Align, payload.BlockKind, payload.IgnoreBucketRenderKind,
             payload.Checked, payload.InlineStyles,
-            payload.Bold, payload.Italic, payload.Strike);
+            payload.Bold, payload.Italic, payload.Strike,
+            payload.Type);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);

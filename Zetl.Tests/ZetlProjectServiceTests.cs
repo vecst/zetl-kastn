@@ -1470,6 +1470,90 @@ public class ZetlProjectServiceTests
                 .Select(bucket => bucket.Name));
     }
 
+    [Fact] public void DualSlipRepresentationTogglesThroughUpdateSlip()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddImageNote(
+            project,
+            bucket,
+            new ZetlClipboardImage([1, 2, 3], 2, 2),
+            "copy",
+            caption: "A1\tB1",
+            preferTextContent: true);
+        var service = new ZetlProjectService(store);
+
+        var toPicture = service.Execute(ZetlCommandEnvelope.Create(
+            "to-picture",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = note.Text, Type = ZetlSlipType.Picture },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: note.Revision));
+        var pictureSnapshot = toPicture.Payload?.Deserialize<ZetlSlipSnapshot>(
+            ZetlProtocolJson.Options);
+
+        AssertEqual(ZetlResponseStatus.Success, toPicture.Status, "The picture flip should succeed.");
+        AssertEqual(ZetlSlipType.Picture, pictureSnapshot?.Type, "The slip should present as a picture.");
+        AssertEqual("A1\tB1", pictureSnapshot?.Text, "The flip should keep the text content.");
+
+        var toText = service.Execute(ZetlCommandEnvelope.Create(
+            "to-text",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = note.Text, Type = ZetlSlipType.Text },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: pictureSnapshot!.Revision));
+        var textSnapshot = toText.Payload?.Deserialize<ZetlSlipSnapshot>(
+            ZetlProtocolJson.Options);
+
+        AssertEqual(ZetlResponseStatus.Success, toText.Status, "The text flip should succeed.");
+        AssertEqual(ZetlSlipType.Text, textSnapshot?.Type, "The slip should present as text again.");
+        AssertTrue(textSnapshot?.Picture is not null, "The flip should keep the attached picture.");
+    }
+
+    [Fact] public void PictureFlipRequiresAPicture()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "plain text", "copy");
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "flip-no-picture",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = note.Text, Type = ZetlSlipType.Picture },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: note.Revision));
+
+        AssertEqual(ZetlResponseStatus.ValidationError, response.Status, "A slip without a picture cannot present as one.");
+        AssertEqual(ZetlSlipType.Text, note.Type, "The slip should keep its text representation.");
+    }
+
+    [Fact] public void TextFlipWithoutContentIsRejected()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddImageNote(
+            project,
+            bucket,
+            new ZetlClipboardImage([1, 2, 3], 2, 2),
+            "copy");
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "flip-captionless",
+            ZetlCommandKind.UpdateSlip,
+            new UpdateSlipCommand { Text = "", Type = ZetlSlipType.Text },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: note.Revision));
+
+        AssertEqual(ZetlResponseStatus.ValidationError, response.Status, "A captionless picture cannot present as text.");
+        AssertEqual(ZetlSlipType.Picture, note.Type, "The slip should stay a picture.");
+    }
+
     private static ZetlStateStore CreateStoreWithProject(
         TempStateDirectory temp,
         out ZetlProject project,

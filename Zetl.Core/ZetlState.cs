@@ -1377,9 +1377,22 @@ internal sealed class ZetlStateStore
         IReadOnlyList<ZetlInlineStyleRange>? inlineStyles = null,
         bool? bold = null,
         bool? italic = null,
-        bool? strike = null)
+        bool? strike = null,
+        ZetlSlipType? type = null)
     {
         note.Text = text.Trim();
+        // The preferred representation of a dual slip. Picture requires an
+        // attached picture (the caller validates); a text preference is
+        // re-classified so a bare link presents as Url.
+        if (type is { } preferredType)
+        {
+            note.Type = preferredType == ZetlSlipType.Picture && note.Image is not null
+                ? ZetlSlipType.Picture
+                : ZetlSlipClassifier.LooksLikeUrl(note.Text)
+                    ? ZetlSlipType.Url
+                    : ZetlSlipType.Text;
+        }
+
         if (title is not null)
         {
             note.Title = title.Trim();

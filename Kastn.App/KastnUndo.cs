@@ -291,7 +291,8 @@ internal static class KastnUndoPlanner
     }
 
     private static bool PropsDiffer(ZetlSlipSnapshot a, ZetlSlipSnapshot b) =>
-        !string.Equals(a.Title, b.Title, StringComparison.Ordinal)
+        a.Type != b.Type
+        || !string.Equals(a.Title, b.Title, StringComparison.Ordinal)
         || !string.Equals(a.Text, b.Text, StringComparison.Ordinal)
         || !string.Equals(Align(a), Align(b), StringComparison.Ordinal)
         || !string.Equals(a.BlockKind, b.BlockKind, StringComparison.Ordinal)
@@ -332,6 +333,7 @@ internal static class KastnUndoPlanner
     {
         Title = slip.Title,
         Text = slip.Text,
+        Type = slip.Type,
         ExcludedFromViews = slip.ExcludedFromViews,
         Align = slip.Align ?? "left",
         BlockKind = slip.BlockKind,

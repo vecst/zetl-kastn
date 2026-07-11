@@ -311,6 +311,7 @@ internal partial class MainWindow : Window
         linkButton.Click += async (_, _) => await SetEditorWebLinkAsync();
         wikiLinkButton.Click += async (_, _) => await InsertSlipLinkAsync();
         ignoreBucketRenderKindCheck.IsCheckedChanged += async (_, _) => await OnIgnoreBucketRenderKindChangedAsync();
+        representationToggleButton.Click += async (_, _) => await ToggleSlipRepresentationAsync();
         bulletListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Bullet);
         numberListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Ordered);
         taskListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Task);

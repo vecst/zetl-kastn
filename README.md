@@ -86,7 +86,7 @@ are configured in [`hotkeys.json`](hotkeys.json).
 
 A **project** contains buckets. A **bucket** contains ordered slips.
 
-A slip may contain text or a picture, plus optional metadata:
+A slip may contain text, a picture, or both, plus optional metadata:
 
 - title and body text or caption
 - source such as `copy`, `cut`, `compile`, or `replay`
@@ -127,6 +127,11 @@ Zetl captures:
 
 Pictures are normalized to PNG and stored as content-addressed project assets.
 Copying the same picture again reuses the existing asset file.
+
+Some applications put text and a picture on the clipboard together — copying
+spreadsheet cells is the common case. Zetl captures both on one slip, which
+presents as text so compile, Replay, and views see the table, while the picture
+rides along. Kastn can flip the slip's preferred representation later.
 
 Resolving a copied image URL contacts that URL's server. Downloads time out
 after 10 seconds, are limited to 25 MB, and fall back to an ordinary text slip

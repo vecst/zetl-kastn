@@ -431,6 +431,31 @@ internal partial class MainWindow
             slip, text => new UpdateSlipCommand { Text = text, BlockKind = target }, label);
     }
 
+    // A dual slip carries both text content and an attached picture; its Type is
+    // the preferred representation and every renderer, export, and Zetl text-first
+    // flow follows it.
+    private static bool IsDualRepresentationSlip(ZetlSlipSnapshot slip) =>
+        slip.Picture is not null && !string.IsNullOrWhiteSpace(slip.Text);
+
+    private Task ToggleSlipRepresentationAsync()
+    {
+        if (SelectedSlips() is not [var slip] || !IsDualRepresentationSlip(slip))
+        {
+            return Task.CompletedTask;
+        }
+
+        var toPicture = slip.Type != ZetlSlipType.Picture;
+        return UpdateSlipPropertyAsync(
+            slip,
+            text => new UpdateSlipCommand
+            {
+                Text = text,
+                Type = toPicture ? ZetlSlipType.Picture : ZetlSlipType.Text
+            },
+            toPicture ? "Presenting as a picture." : "Presenting as text.",
+            requireTextType: false);
+    }
+
     private async Task OnIgnoreBucketRenderKindChangedAsync()
     {
         if (slipRenderOptionUpdating || SelectedSlips() is not [var slip])
@@ -469,14 +494,17 @@ internal partial class MainWindow
     // Send one UpdateSlip for a single text note, preserving an in-progress editor draft
     // and resolving conflicts exactly like the editor save path. Used by the per-note
     // list-kind and checked toggles (alignment keeps its own copy for the title-bucket
-    // and batch cases).
+    // and batch cases). The representation toggle passes requireTextType: false
+    // because it legitimately targets Picture and Url slips too.
     private async Task UpdateSlipPropertyAsync(
         ZetlSlipSnapshot slip,
         Func<string, UpdateSlipCommand> buildWithText,
-        string successText)
+        string successText,
+        bool requireTextType = true)
     {
         if (!IsOnline || saving || currentProject is null
-            || slip.Type != ZetlSlipType.Text || IsSlipInDeleted(slip))
+            || (requireTextType && slip.Type != ZetlSlipType.Text)
+            || IsSlipInDeleted(slip))
         {
             return;
         }
@@ -1710,6 +1738,7 @@ internal partial class MainWindow
             ignoreBucketRenderKindCheck.IsChecked = false;
             ignoreBucketRenderKindCheck.IsEnabled = false;
             slipRenderOptionUpdating = false;
+            representationToggleButton.IsVisible = false;
             conflictPanel.IsVisible = false;
             slipMetadataText.Text = $"{selectedSlips.Count} slips selected. "
                 + "Choose a destination, then move or delete them together.";
@@ -1739,6 +1768,12 @@ internal partial class MainWindow
         slipRenderOptionUpdating = true;
         ignoreBucketRenderKindCheck.IsChecked = slip?.IgnoreBucketRenderKind == true;
         slipRenderOptionUpdating = false;
+        representationToggleButton.IsVisible = slip is not null
+            && IsDualRepresentationSlip(slip)
+            && !IsSlipInDeleted(slip);
+        representationToggleButton.Content = slip?.Type == ZetlSlipType.Picture
+            ? "Show as text"
+            : "Show as picture";
         SetEditingEnabled();
     }
 
@@ -1809,6 +1844,7 @@ internal partial class MainWindow
             && !selectedIsStructural
             && !selectedSlipIsDeleted
             && editorState.ConflictCurrent is null;
+        representationToggleButton.IsEnabled = ignoreBucketRenderKindCheck.IsEnabled;
         saveSlipButton.IsEnabled = canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = false;
         deleteSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive;

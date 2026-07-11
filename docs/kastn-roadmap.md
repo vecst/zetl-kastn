@@ -29,6 +29,8 @@ The two-application foundation is in place:
 - [x] Coordinated tray/minimize/shutdown behavior
 - [x] Live co-editing while Zetl continues capturing
 - [x] Text and picture slips, picture IPC, previews, and picture-aware exports
+- [x] Dual text+picture capture (spreadsheet copies keep both formats) with a
+      Kastn preferred-representation toggle
 - [x] Project landing cards and lifecycle actions
 - [x] Bucket/slip tree, search, filters, autosave, conflict resolution, batch
       actions, soft-delete, restore, and drag-and-drop
