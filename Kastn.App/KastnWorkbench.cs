@@ -624,6 +624,14 @@ internal sealed class KastnEditorState
         Accept(slip, keepDraft: false);
     }
 
+    // A saved mutation that did not touch the slip's text (attaching or removing
+    // its picture): move the baseline and revision forward but keep the
+    // in-progress draft, so the save neither clobbers typing nor false-conflicts.
+    public void AcceptSavedKeepDraft(ZetlSlipSnapshot slip)
+    {
+        Accept(slip, keepDraft: true);
+    }
+
     public void UseCurrent()
     {
         if (ConflictCurrent is { } current)

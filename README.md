@@ -292,7 +292,8 @@ Kastn provides:
 - search and source, session, and date filters
 - autosaving slip editing with explicit conflict resolution
 - optional slip titles and Markdown formatting
-- picture previews and capture details
+- picture previews, capture details, and attaching or removing a slip's picture
+- flipping a dual (text + picture) slip's preferred representation
 - soft-delete and restore
 - templates, creation types, and project-specific views
 - Formatted, Plain, TSV, Markdown, HTML, and PDF output

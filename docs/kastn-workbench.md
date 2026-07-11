@@ -154,12 +154,21 @@ Picture slips render inline in the View and above their editable captions in the
 Editor. Kastn requests normalized PNG content from Zetl through read-only IPC
 and keeps a bounded in-memory cache; it never opens project asset paths.
 
-A **dual slip** carries text content and a picture together — the shape a
-spreadsheet copy captures. Its slip type is the preferred representation:
-captured slips present as text, and a `Show as picture` / `Show as text`
-button in the editor pane flips the presentation. Renderers, exports, and
+A slip has exactly one text field. A picture slip's **caption is that text**,
+rendered under the picture — there is no separate caption storage. A **dual
+slip** is the same shape with the emphasis inverted: text content and a
+picture together (what a spreadsheet copy captures), presenting as text. The
+slip type is the preferred representation, and a `Show as picture` /
+`Show as text` button in the editor pane flips it. Renderers, exports, and
 Zetl's text-first flows all follow the current representation, the alternate
 one stays attached, and the flip participates in Kastn undo.
+
+Any non-structural slip can gain or shed its picture from the editor pane:
+`Add picture…` opens a file picker (the image is normalized to PNG and stored
+content-addressed through Zetl, replacing any existing picture), and
+`Remove picture` detaches it — offered only while the slip keeps text or a
+title to stand on. Attach and remove are not part of Kastn undo; removal is
+the manual inverse of attach.
 
 The Details pane groups:
 

@@ -83,5 +83,8 @@ protocols. A transient transport failure may retry the same command ID.
 - Version 1 covers text and picture slips plus the first Kastn workbench.
 - Unknown JSON properties are ignored for forward-compatible additions.
 - Breaking changes require a new protocol version and handshake negotiation.
-- Picture transfer is read-only and content-addressed. File-attachment transfer
-  remains deferred. Version 1 contracts contain no storage paths.
+- Picture transfer is content-addressed in both directions: `GetSlipPicture`
+  reads normalized bytes, and `SetSlipPicture` / `RemoveSlipPicture` attach or
+  detach a slip's picture as revision-checked mutations carrying normalized
+  PNG content capped at the capture limit. File-attachment transfer remains
+  deferred. Version 1 contracts contain no storage paths.

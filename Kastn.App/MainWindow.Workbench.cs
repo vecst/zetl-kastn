@@ -456,6 +456,148 @@ internal partial class MainWindow
             requireTextType: false);
     }
 
+    private async Task AttachSlipPictureAsync()
+    {
+        if (!IsOnline || saving || currentProject is null
+            || SelectedSlips() is not [var slip]
+            || IsSlipInDeleted(slip)
+            || ZetlViewRenderer.IsStructuralKind(slip.BlockKind))
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Add picture",
+            AllowMultiple = false,
+            FileTypeFilter = [FilePickerFileTypes.ImageAll]
+        });
+        if (files.Count != 1)
+        {
+            return;
+        }
+
+        byte[] pngBytes;
+        int width;
+        int height;
+        try
+        {
+            // Decode whatever format was picked and normalize it to PNG locally,
+            // so the wire carries the same normalized shape captures produce.
+            await using var stream = await files[0].OpenReadAsync();
+            using var source = new Bitmap(stream);
+            width = source.PixelSize.Width;
+            height = source.PixelSize.Height;
+            using var encoded = new MemoryStream();
+            source.Save(encoded);
+            pngBytes = encoded.ToArray();
+        }
+        catch (Exception ex) when (
+            ex is IOException or ArgumentException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            statusText.Text = $"Could not read the picture: {ex.Message}";
+            return;
+        }
+
+        if (pngBytes.Length > 25 * 1024 * 1024)
+        {
+            statusText.Text = "The picture exceeds the 25 MB limit.";
+            return;
+        }
+
+        await SendSlipPictureCommandAsync(
+            slip,
+            ZetlCommandKind.SetSlipPicture,
+            new SetSlipPictureCommand { Bytes = pngBytes, Width = width, Height = height },
+            slip.Picture is null ? "Picture attached." : "Picture replaced.");
+    }
+
+    private Task RemoveSlipPictureAsync()
+    {
+        if (SelectedSlips() is not [var slip] || slip.Picture is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return SendSlipPictureCommandAsync(
+            slip,
+            ZetlCommandKind.RemoveSlipPicture,
+            new RemoveSlipPictureCommand(),
+            "Picture removed.");
+    }
+
+    // Send one picture attach/remove for a slip. Mirrors UpdateSlipPropertyAsync
+    // except for the editor draft: the command never carries text, so on success
+    // the editor accepts the new revision while keeping in-progress typing.
+    private async Task SendSlipPictureCommandAsync<TPayload>(
+        ZetlSlipSnapshot slip,
+        ZetlCommandKind kind,
+        TPayload payload,
+        string successText)
+    {
+        if (!IsOnline || saving || currentProject is null || IsSlipInDeleted(slip))
+        {
+            return;
+        }
+
+        var isEditing = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal);
+        if (isEditing && editorState.ConflictCurrent is not null)
+        {
+            return;
+        }
+
+        var revision = isEditing ? editorState.Revision : slip.Revision;
+        saving = true;
+        SetEditingEnabled();
+        try
+        {
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
+                Guid.NewGuid().ToString("N"),
+                kind,
+                payload,
+                currentProject.Id,
+                slip.Id,
+                revision));
+            if (response.Status == ZetlResponseStatus.Conflict)
+            {
+                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
+                    ZetlProtocolJson.Options);
+                if (current is not null && isEditing)
+                {
+                    editorState.Reconcile(current);
+                    ShowConflict();
+                }
+
+                return;
+            }
+
+            if (response.Status != ZetlResponseStatus.Success)
+            {
+                statusText.Text = response.Error?.Message ?? $"Picture update failed: {response.Status}.";
+                return;
+            }
+
+            if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
+                && isEditing)
+            {
+                editorState.AcceptSavedKeepDraft(saved);
+            }
+
+            await connection.RefreshAsync();
+            statusText.Text = successText;
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            statusText.Text = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+            SetEditingEnabled();
+        }
+    }
+
     private async Task OnIgnoreBucketRenderKindChangedAsync()
     {
         if (slipRenderOptionUpdating || SelectedSlips() is not [var slip])
@@ -1739,6 +1881,8 @@ internal partial class MainWindow
             ignoreBucketRenderKindCheck.IsEnabled = false;
             slipRenderOptionUpdating = false;
             representationToggleButton.IsVisible = false;
+            attachPictureButton.IsVisible = false;
+            removePictureButton.IsVisible = false;
             conflictPanel.IsVisible = false;
             slipMetadataText.Text = $"{selectedSlips.Count} slips selected. "
                 + "Choose a destination, then move or delete them together.";
@@ -1774,6 +1918,15 @@ internal partial class MainWindow
         representationToggleButton.Content = slip?.Type == ZetlSlipType.Picture
             ? "Show as text"
             : "Show as picture";
+        var canHavePicture = slip is not null
+            && !IsSlipInDeleted(slip)
+            && !ZetlViewRenderer.IsStructuralKind(slip.BlockKind);
+        attachPictureButton.IsVisible = canHavePicture;
+        attachPictureButton.Content = slip?.Picture is null ? "Add picture…" : "Replace picture…";
+        // Removing must leave the slip standing on text or a title.
+        removePictureButton.IsVisible = canHavePicture
+            && slip?.Picture is not null
+            && (!string.IsNullOrWhiteSpace(slip.Text) || !string.IsNullOrWhiteSpace(slip.Title));
         SetEditingEnabled();
     }
 
@@ -1845,6 +1998,8 @@ internal partial class MainWindow
             && !selectedSlipIsDeleted
             && editorState.ConflictCurrent is null;
         representationToggleButton.IsEnabled = ignoreBucketRenderKindCheck.IsEnabled;
+        attachPictureButton.IsEnabled = ignoreBucketRenderKindCheck.IsEnabled;
+        removePictureButton.IsEnabled = ignoreBucketRenderKindCheck.IsEnabled;
         saveSlipButton.IsEnabled = canEdit && editorState.ConflictCurrent is null;
         saveSlipMenuItem.IsEnabled = false;
         deleteSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive;

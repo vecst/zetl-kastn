@@ -1554,6 +1554,134 @@ public class ZetlProjectServiceTests
         AssertEqual(ZetlSlipType.Picture, note.Type, "The slip should stay a picture.");
     }
 
+    private static byte[] FakePngBytes(byte marker) =>
+        [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, marker];
+
+    [Fact] public void SetSlipPictureAttachesToATextSlip()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "A1\tB1", "copy");
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "attach",
+            ZetlCommandKind.SetSlipPicture,
+            new SetSlipPictureCommand { Bytes = FakePngBytes(1), Width = 3, Height = 2 },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: note.Revision));
+        var snapshot = response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options);
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Attaching a picture should succeed.");
+        AssertEqual(ZetlSlipType.Text, snapshot?.Type, "A slip with text stays text-preferred after attach.");
+        AssertTrue(snapshot?.Picture is not null, "The snapshot should carry the attached picture.");
+        AssertEqual(1, store.GetProjectAssets(project).Count, "Attach should write one project asset.");
+    }
+
+    [Fact] public void SetSlipPictureReplacesAnExistingPicture()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "content", "copy");
+        var service = new ZetlProjectService(store);
+
+        var first = service.Execute(ZetlCommandEnvelope.Create(
+            "attach-first",
+            ZetlCommandKind.SetSlipPicture,
+            new SetSlipPictureCommand { Bytes = FakePngBytes(1), Width = 3, Height = 2 },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: note.Revision));
+        var firstSnapshot = first.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options);
+        var second = service.Execute(ZetlCommandEnvelope.Create(
+            "attach-second",
+            ZetlCommandKind.SetSlipPicture,
+            new SetSlipPictureCommand { Bytes = FakePngBytes(2), Width = 5, Height = 4 },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: firstSnapshot!.Revision));
+        var secondSnapshot = second.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options);
+
+        AssertEqual(ZetlResponseStatus.Success, second.Status, "Replacing a picture should succeed.");
+        AssertTrue(
+            !string.Equals(firstSnapshot.Picture?.Sha256, secondSnapshot?.Picture?.Sha256, StringComparison.Ordinal),
+            "The replacement should carry the new content hash.");
+        AssertEqual(5, secondSnapshot?.Picture?.Width, "The replacement should carry the new dimensions.");
+    }
+
+    [Fact] public void SetSlipPictureRejectsNonPngBytes()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "content", "copy");
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "attach-bad",
+            ZetlCommandKind.SetSlipPicture,
+            new SetSlipPictureCommand { Bytes = [1, 2, 3], Width = 3, Height = 2 },
+            project.Id,
+            note.Id,
+            expectedTargetRevision: note.Revision));
+
+        AssertEqual(ZetlResponseStatus.ValidationError, response.Status, "Non-PNG bytes should be rejected.");
+        AssertTrue(note.Image is null, "A rejected attach must not touch the slip.");
+    }
+
+    [Fact] public void RemoveSlipPictureReturnsADualSlipToText()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddImageNote(
+            project,
+            bucket,
+            new ZetlClipboardImage(FakePngBytes(1), 3, 2),
+            "copy",
+            caption: "A1\tB1",
+            preferTextContent: true);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "remove",
+            ZetlCommandKind.RemoveSlipPicture,
+            new RemoveSlipPictureCommand(),
+            project.Id,
+            note.Id,
+            expectedTargetRevision: note.Revision));
+        var snapshot = response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options);
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Removing the picture should succeed.");
+        AssertTrue(snapshot?.Picture is null, "The snapshot should no longer carry a picture.");
+        AssertEqual(ZetlSlipType.Text, snapshot?.Type, "The slip should stand on its text.");
+    }
+
+    [Fact] public void RemoveSlipPictureRejectsACaptionlessPicture()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddImageNote(
+            project,
+            bucket,
+            new ZetlClipboardImage(FakePngBytes(1), 3, 2),
+            "copy");
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "remove-captionless",
+            ZetlCommandKind.RemoveSlipPicture,
+            new RemoveSlipPictureCommand(),
+            project.Id,
+            note.Id,
+            expectedTargetRevision: note.Revision));
+
+        AssertEqual(
+            ZetlResponseStatus.ValidationError,
+            response.Status,
+            "A slip with nothing to stand on keeps its picture.");
+        AssertTrue(note.Image is not null, "The rejected removal must not touch the slip.");
+    }
+
     private static ZetlStateStore CreateStoreWithProject(
         TempStateDirectory temp,
         out ZetlProject project,

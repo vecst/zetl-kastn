@@ -184,3 +184,17 @@ public sealed record ReorderSlipCommand
 }
 
 public sealed record DeleteSlipCommand;
+
+// Attaches or replaces a slip's picture with normalized PNG content. A slip
+// with text keeps presenting as text (a dual slip); a slip without text
+// presents as a picture. The prior asset file stays on disk content-addressed.
+public sealed record SetSlipPictureCommand
+{
+    public required byte[] Bytes { get; init; }
+    public int Width { get; init; }
+    public int Height { get; init; }
+}
+
+// Detaches a slip's picture. Rejected when the slip would be left with neither
+// text nor a title. A picture-presenting slip returns to text presentation.
+public sealed record RemoveSlipPictureCommand;

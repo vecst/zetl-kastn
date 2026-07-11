@@ -1190,29 +1190,12 @@ internal sealed class ZetlStateStore
             throw new InvalidOperationException("The image destination bucket does not belong to the project.");
         }
 
-        if (image.PngBytes.Length == 0 || image.Width <= 0 || image.Height <= 0)
-        {
-            throw new InvalidDataException("The clipboard image is empty or has invalid dimensions.");
-        }
-
-        var hash = Convert.ToHexString(
-            System.Security.Cryptography.SHA256.HashData(image.PngBytes))
-            .ToLowerInvariant();
-        var relativePath = storage.WriteAsset(project, hash, ".png", image.PngBytes);
         var note = new ZetlSlip
         {
             Id = NewId(),
             Type = ZetlSlipType.Picture,
             Text = (caption ?? "").Trim(),
-            Image = new ZetlImageAsset
-            {
-                RelativePath = relativePath,
-                SourceUrl = sourceUrl,
-                Width = image.Width,
-                Height = image.Height,
-                ByteLength = image.PngBytes.LongLength,
-                Sha256 = hash
-            },
+            Image = CreateImageAsset(project, image, sourceUrl),
             Source = source,
             SessionId = sessionId,
             CreatedAtUtc = DateTimeOffset.UtcNow,
@@ -1228,6 +1211,52 @@ internal sealed class ZetlStateStore
         bucket.Slips.Add(note);
         PersistProject(project);
         return note;
+    }
+
+    // Attach or replace a slip's picture. The Image setter keeps a slip with
+    // text content presenting as text (a dual slip) and turns a text-less slip
+    // into a picture slip. The prior asset file stays content-addressed on disk.
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void SetNoteImage(ZetlProject project, ZetlSlip note, ZetlClipboardImage image)
+    {
+        note.Image = CreateImageAsset(project, image, sourceUrl: null);
+        note.Revision++;
+        PersistProject(project);
+    }
+
+    // Detach a slip's picture. The Image setter returns a picture-presenting
+    // slip to its text (or URL) representation.
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void RemoveNoteImage(ZetlProject project, ZetlSlip note)
+    {
+        note.Image = null;
+        note.Revision++;
+        PersistProject(project);
+    }
+
+    private ZetlImageAsset CreateImageAsset(
+        ZetlProject project,
+        ZetlClipboardImage image,
+        string? sourceUrl)
+    {
+        if (image.PngBytes.Length == 0 || image.Width <= 0 || image.Height <= 0)
+        {
+            throw new InvalidDataException("The image is empty or has invalid dimensions.");
+        }
+
+        var hash = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(image.PngBytes))
+            .ToLowerInvariant();
+        var relativePath = storage.WriteAsset(project, hash, ".png", image.PngBytes);
+        return new ZetlImageAsset
+        {
+            RelativePath = relativePath,
+            SourceUrl = sourceUrl,
+            Width = image.Width,
+            Height = image.Height,
+            ByteLength = image.PngBytes.LongLength,
+            Sha256 = hash
+        };
     }
 
     public byte[]? ReadImageAsset(ZetlProject project, ZetlSlip note)

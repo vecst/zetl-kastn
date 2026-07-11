@@ -94,7 +94,9 @@ public static class ZetlContractRules
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip
             or ZetlCommandKind.ReorderSlip
-            or ZetlCommandKind.DeleteSlip;
+            or ZetlCommandKind.DeleteSlip
+            or ZetlCommandKind.SetSlipPicture
+            or ZetlCommandKind.RemoveSlipPicture;
     }
 
     public static bool RequiresExpectedRevision(ZetlCommandKind kind)
@@ -113,7 +115,9 @@ public static class ZetlContractRules
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip
             or ZetlCommandKind.ReorderSlip
-            or ZetlCommandKind.DeleteSlip;
+            or ZetlCommandKind.DeleteSlip
+            or ZetlCommandKind.SetSlipPicture
+            or ZetlCommandKind.RemoveSlipPicture;
     }
 
     public static bool RequiresPayload(ZetlCommandKind kind)
@@ -134,7 +138,8 @@ public static class ZetlContractRules
             or ZetlCommandKind.AddSlip
             or ZetlCommandKind.UpdateSlip
             or ZetlCommandKind.MoveSlip
-            or ZetlCommandKind.ReorderSlip;
+            or ZetlCommandKind.ReorderSlip
+            or ZetlCommandKind.SetSlipPicture;
     }
 
     private static ZetlCommandValidation Invalid(

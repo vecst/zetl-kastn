@@ -1109,15 +1109,26 @@
                                   Content="Ignore bucket style for this slip"
                                   FontSize="12"
                                   Margin="0,4,0,0" />
-                        <!-- Dual slips (text content plus an attached picture) flip
-                             their preferred representation here. -->
-                        <Button x:Name="representationToggleButton"
-                                Content="Show as picture"
-                                FontSize="12"
-                                Padding="9,3"
-                                HorizontalAlignment="Left"
-                                IsVisible="False"
-                                Margin="0,6,0,0" />
+                        <!-- Picture actions: dual slips (text content plus an attached
+                             picture) flip their preferred representation, and any slip
+                             can gain or shed an attached picture. -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                          <Button x:Name="representationToggleButton"
+                                  Content="Show as picture"
+                                  FontSize="12"
+                                  Padding="9,3"
+                                  IsVisible="False" />
+                          <Button x:Name="attachPictureButton"
+                                  Content="Add picture…"
+                                  FontSize="12"
+                                  Padding="9,3"
+                                  IsVisible="False" />
+                          <Button x:Name="removePictureButton"
+                                  Content="Remove picture"
+                                  FontSize="12"
+                                  Padding="9,3"
+                                  IsVisible="False" />
+                        </StackPanel>
                       </StackPanel>
                       <TextBox Grid.Row="2"
                                x:Name="slipEditor"

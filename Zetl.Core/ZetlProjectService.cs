@@ -131,6 +131,8 @@ internal sealed class ZetlProjectService
             ZetlCommandKind.MoveSlip => MoveSlip(command),
             ZetlCommandKind.ReorderSlip => ReorderSlip(command),
             ZetlCommandKind.DeleteSlip => DeleteSlip(command),
+            ZetlCommandKind.SetSlipPicture => SetSlipPicture(command),
+            ZetlCommandKind.RemoveSlipPicture => RemoveSlipPicture(command),
             _ => ErrorResponse(
                 command,
                 ZetlResponseStatus.ValidationError,
@@ -932,6 +934,107 @@ internal sealed class ZetlProjectService
             payload.Checked, payload.InlineStyles,
             payload.Bold, payload.Italic, payload.Strike,
             payload.Type);
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
+        return Success(command, project, snapshot);
+    }
+
+    // Matches image capture's own 25 MiB ceiling; the 36 MiB IPC frame limit was
+    // sized to carry one such image base64-encoded.
+    private const int MaxSlipPictureBytes = 25 * 1024 * 1024;
+    private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+    private ZetlResponseEnvelope SetSlipPicture(ZetlCommandEnvelope command)
+    {
+        var found = FindNote(command.ProjectId!, command.TargetId!);
+        if (found is null)
+        {
+            return NotFound(command, ZetlEntityKind.Slip, command.TargetId!);
+        }
+
+        var (project, bucket, note) = found.Value;
+        var conflict = CheckRevision(
+            command,
+            ZetlEntityKind.Slip,
+            note.Id,
+            note.Revision,
+            ZetlProjectSnapshotMapper.ToSnapshot(bucket, note));
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        var payload = Payload<SetSlipPictureCommand>(command);
+        if (payload.Bytes.Length == 0 || payload.Width <= 0 || payload.Height <= 0)
+        {
+            return ValidationError(
+                command,
+                "picture_invalid",
+                "The picture is empty or has invalid dimensions.");
+        }
+
+        if (payload.Bytes.Length > MaxSlipPictureBytes)
+        {
+            return ValidationError(
+                command,
+                "picture_too_large",
+                "The picture exceeds the 25 MB limit.");
+        }
+
+        if (!payload.Bytes.AsSpan().StartsWith(PngSignature))
+        {
+            return ValidationError(
+                command,
+                "picture_not_png",
+                "The picture must be normalized PNG content.");
+        }
+
+        store.SetNoteImage(
+            project,
+            note,
+            new ZetlClipboardImage(payload.Bytes, payload.Width, payload.Height));
+        var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
+        Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
+        return Success(command, project, snapshot);
+    }
+
+    private ZetlResponseEnvelope RemoveSlipPicture(ZetlCommandEnvelope command)
+    {
+        var found = FindNote(command.ProjectId!, command.TargetId!);
+        if (found is null)
+        {
+            return NotFound(command, ZetlEntityKind.Slip, command.TargetId!);
+        }
+
+        var (project, bucket, note) = found.Value;
+        var conflict = CheckRevision(
+            command,
+            ZetlEntityKind.Slip,
+            note.Id,
+            note.Revision,
+            ZetlProjectSnapshotMapper.ToSnapshot(bucket, note));
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        if (note.Image is null)
+        {
+            return ValidationError(
+                command,
+                "slip_no_picture",
+                "The slip has no picture to remove.");
+        }
+
+        if (string.IsNullOrWhiteSpace(note.Text) && string.IsNullOrWhiteSpace(note.Title))
+        {
+            return ValidationError(
+                command,
+                "slip_content_required",
+                "Add text or a title before removing the picture.");
+        }
+
+        store.RemoveNoteImage(project, note);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);
