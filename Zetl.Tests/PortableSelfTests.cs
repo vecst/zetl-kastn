@@ -128,6 +128,8 @@ public class PortableSelfTests
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
                 ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
+                ("Runtime rapid Replay taps consume distinct slips", RuntimeRapidReplayTapsConsumeDistinctSlips),
+                ("Runtime Replay lanes progress independently", RuntimeReplayLanesProgressIndependently),
                 ("Runtime Shift-lane Replay tap consumes a shifted paste chord", RuntimeShiftLaneReplayTapConsumesShiftedPaste),
                 ("Runtime Replay handles images and restores image clipboard", RuntimeReplayHandlesImagesAndRestoresImageClipboard),
                 ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
@@ -3149,6 +3151,89 @@ public class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
+        private static void RuntimeRapidReplayTapsConsumeDistinctSlips()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "first queued value", "copy");
+            store.AddNote(queue, "second queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out var keyboard,
+                out _,
+                replayResumeClipboard: false);
+            var firstPaste = keyboard.DeferNextPaste();
+
+            var firstHandled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            var secondHandled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(firstHandled && secondHandled, "Both rapid Replay taps should be handled.");
+            AssertEqual(1, keyboard.PasteCount, "The second same-lane tap must wait for the first paste outcome.");
+            AssertEqual(2, queue.Notes.Count, "No slip should be consumed before the first paste succeeds.");
+
+            firstPaste.SetResult(true);
+            AssertTrue(
+                notifications.WaitForCount(2, TimeSpan.FromSeconds(5)),
+                "Both serialized Replay taps should persist and report completion within the timeout.");
+            AssertEqual(2, keyboard.PasteCount, "Both serialized Replay taps should send a paste.");
+            AssertEqual(0, queue.Notes.Count, "Both serialized Replay taps should consume their slips.");
+            var review = project.Buckets.Single(bucket => bucket.Id == queue.Settings.ReplayReviewBucketId);
+            AssertEqual(2, review.Notes.Count, "Rapid taps should archive two distinct slips, not paste one twice.");
+            AssertEqual(2, review.Notes.Select(note => note.Id).Distinct().Count(), "Each consumed Replay slip should remain distinct.");
+        }
+
+        private static void RuntimeReplayLanesProgressIndependently()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Main", ["Queue"], "Queue");
+            var mainQueue = store.GetActiveBucket()!;
+            store.SetBucketKind(mainQueue, "Replay");
+            store.AddNote(mainQueue, "main queued value", "copy");
+            store.CreateProject("Alternate", ["Queue"], "Queue", shifted: true);
+            var shiftQueue = store.GetActiveBucket(true)!;
+            store.SetBucketKind(shiftQueue, "Replay");
+            store.AddNote(shiftQueue, "alternate queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out var keyboard,
+                out _,
+                replayResumeClipboard: false);
+            var mainPaste = keyboard.DeferNextPaste();
+            var shiftPaste = keyboard.DeferNextPaste();
+
+            var mainHandled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            var shiftHandled = coordinator.OnTapDispatched(ShortcutContext(VK_V, shifted: true));
+
+            AssertTrue(mainHandled && shiftHandled, "Replay taps in both lanes should be handled.");
+            AssertEqual(1, keyboard.PasteCount, "The shared clipboard must remain staged for Main until its paste lands.");
+
+            mainPaste.SetResult(true);
+            AssertTrue(
+                notifications.WaitForCount(1, TimeSpan.FromSeconds(5)),
+                "Main Replay should persist and report its result within the timeout.");
+            AssertTrue(
+                SpinWait.SpinUntil(() => keyboard.PasteCount == 2, TimeSpan.FromSeconds(5)),
+                "Alternate Replay should begin after Main releases the shared clipboard.");
+            shiftPaste.SetResult(true);
+            AssertTrue(
+                notifications.WaitForCount(2, TimeSpan.FromSeconds(5)),
+                "Alternate Replay should persist and report its result within the timeout.");
+            AssertEqual(0, mainQueue.Notes.Count, "Main Replay should consume its slip.");
+            AssertEqual(0, shiftQueue.Notes.Count, "Alternate Replay should consume its slip.");
+        }
+
         private static void RuntimeShiftLaneReplayTapConsumesShiftedPaste()
         {
             using var temp = new TempStateFile();
@@ -3391,10 +3476,11 @@ public class PortableSelfTests
             AssertEqual(0, keyboard.PasteCount, "No paste should be sent before the queued work runs.");
             AssertEqual(1, queue.Notes.Count, "The queued note should not be consumed inline.");
 
-            dispatcher.RunAll();
-
-            AssertEqual(1, keyboard.PasteCount, "Running the queued work should send the replay paste.");
-            AssertEqual(0, queue.Notes.Count, "Running the queued work should consume the queued note.");
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => keyboard.PasteCount == 1 && queue.Notes.Count == 0,
+                    TimeSpan.FromSeconds(5)),
+                "Running the queued work should send the replay paste and durably consume its note.");
         }
 
         private static void RuntimePopTapRemovesMatchingNote()
@@ -4382,21 +4468,68 @@ public class PortableSelfTests
         // work was enqueued (deferred off the calling thread) and then run it.
         private sealed class QueuingDispatcher : IZetlDispatcher
         {
+            private readonly object gate = new();
             private readonly Queue<Action> pending = new();
 
-            public int PendingCount => pending.Count;
+            public int PendingCount
+            {
+                get
+                {
+                    lock (gate)
+                    {
+                        return pending.Count;
+                    }
+                }
+            }
 
             public void Post(Action action)
             {
-                pending.Enqueue(action);
+                lock (gate)
+                {
+                    pending.Enqueue(action);
+                    Monitor.PulseAll(gate);
+                }
             }
 
             public void RunAll()
             {
-                while (pending.Count > 0)
+                while (true)
                 {
-                    pending.Dequeue()();
+                    Action? action;
+                    lock (gate)
+                    {
+                        if (!pending.TryDequeue(out action))
+                        {
+                            return;
+                        }
+                    }
+                    action();
                 }
+            }
+
+            public bool RunUntil(Func<bool> condition, TimeSpan timeout)
+            {
+                var deadline = DateTime.UtcNow + timeout;
+                while (!condition())
+                {
+                    Action? action = null;
+                    lock (gate)
+                    {
+                        if (!pending.TryDequeue(out action))
+                        {
+                            var remaining = deadline - DateTime.UtcNow;
+                            if (remaining <= TimeSpan.Zero)
+                            {
+                                return condition();
+                            }
+                            Monitor.Wait(gate, remaining);
+                            continue;
+                        }
+                    }
+                    action();
+                }
+
+                return true;
             }
         }
 
@@ -4426,23 +4559,62 @@ public class PortableSelfTests
 
         private sealed class FakeNotificationSink : IZetlNotificationSink
         {
+            private readonly object messageGate = new();
+
             public List<string> Messages { get; } = new();
 
             public void Show(string message)
             {
-                Messages.Add(message);
+                lock (messageGate)
+                {
+                    Messages.Add(message);
+                    Monitor.PulseAll(messageGate);
+                }
+            }
+
+            public bool WaitForCount(int count, TimeSpan timeout)
+            {
+                var deadline = DateTime.UtcNow + timeout;
+                lock (messageGate)
+                {
+                    while (Messages.Count < count)
+                    {
+                        var remaining = deadline - DateTime.UtcNow;
+                        if (remaining <= TimeSpan.Zero || !Monitor.Wait(messageGate, remaining))
+                        {
+                            return Messages.Count >= count;
+                        }
+                    }
+
+                    return true;
+                }
             }
         }
 
         private sealed class FakeKeyboardBackend : IKeyboardBackend
         {
-            public int PasteCount { get; private set; }
+            private readonly object pasteGate = new();
+            private readonly Queue<TaskCompletionSource<bool>> deferredPastes = new();
+            private int pasteCount;
+
+            public int PasteCount => Volatile.Read(ref pasteCount);
 
             public bool PasteSucceeds { get; set; } = true;
 
             // Lets a test simulate the foreground app reacting to an injected chord
             // (e.g. Ctrl+C copying the selection onto the clipboard).
             public Action? OnSendChord { get; set; }
+
+            public TaskCompletionSource<bool> DeferNextPaste()
+            {
+                var completion = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                lock (pasteGate)
+                {
+                    deferredPastes.Enqueue(completion);
+                }
+                return completion;
+            }
 
             public bool Start(Func<int, bool, bool, bool, bool> handleKeyEvent)
             {
@@ -4461,7 +4633,14 @@ public class PortableSelfTests
 
             public Task<bool> SendPaste()
             {
-                PasteCount++;
+                Interlocked.Increment(ref pasteCount);
+                lock (pasteGate)
+                {
+                    if (deferredPastes.TryDequeue(out var completion))
+                    {
+                        return completion.Task;
+                    }
+                }
                 return Task.FromResult(PasteSucceeds);
             }
 

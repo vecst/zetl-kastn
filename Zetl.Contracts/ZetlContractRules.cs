@@ -84,6 +84,11 @@ public static class ZetlContractRules
             and not ZetlCommandKind.CreateProject;
     }
 
+    public static bool IsReadOnly(ZetlCommandKind kind) =>
+        kind is ZetlCommandKind.ListProjects
+            or ZetlCommandKind.GetProject
+            or ZetlCommandKind.GetSlipPicture;
+
     public static bool RequiresTarget(ZetlCommandKind kind)
     {
         return kind is ZetlCommandKind.UpdateBucket

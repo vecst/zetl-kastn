@@ -87,8 +87,24 @@ A conflicted entry is consumed either way; it is not silently retried.
   formatting) pushes one compound entry whose inverses replay in reverse order,
   so one `Ctrl+Z` reverts the whole gesture.
 - The stack is cleared on disconnect, a server-instance-id change, or a
-  snapshot-sequence gap. The revisions it captured are stale after a resync, and
-  dropping the history is safer than replaying against a refreshed model.
+- A transient disconnect no longer clears history by itself. Entries remain
+  revision-checked across reconnect to the same server instance; a project
+  change or different server instance clears them after reconciliation.
+
+### Failure atomicity and repair
+
+Undo and redo peek at the source entry and remove it only after all meaningful
+inverse commands have confirmed results. A command whose IPC write started but
+lost its response is marked outcome-unknown and retried with the same command ID
+only when Kastn reconnects to the same Zetl instance.
+
+If a compound entry is interrupted after one or more commands may have applied,
+Kastn refreshes the authoritative project and builds an explicit repair entry
+for the actual partial state. The repair sits above the original entry: running
+it returns every touched record to its pre-attempt state without creating a redo
+entry, after which the original undo/redo can be retried. If Zetl restarted, the
+history is cleared rather than replayed against an instance that cannot prove the
+old command outcome.
 
 Redo is the symmetric twin of undo (see below) and is included.
 
@@ -173,6 +189,8 @@ Also landed:
 - Bucket undo for `UpdateBucket` / `SetBucketHeading` / `ReorderBucket`, with
   gesture coalescing (a column drag's reparent + reorder is one entry) and
   bucket revision re-threading mirroring the slip stacks.
+- Failure-safe history commit, same-instance uncertain-command retry, and
+  authoritative repair entries for interrupted compound undo/redo.
 
 Remaining:
 

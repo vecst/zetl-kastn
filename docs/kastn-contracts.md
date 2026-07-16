@@ -10,6 +10,9 @@ the resident Zetl process. The public DTOs and enums live in `Zetl.Contracts`.
   JSON file.
 - A successful response means Zetl completed the durable JSON write.
 - A change event is published only after that successful write.
+- A failed project or workspace write restores Zetl's live state to its last
+  durable snapshot; a later command must not accidentally commit the failed
+  mutation.
 
 ## IDs And Revisions
 
@@ -36,6 +39,11 @@ slip edit in Kastn.
 
 - Every request has a protocol version and command ID.
 - A client retries an uncertain request with the same command ID.
+- IPC distinguishes a command rejected before transmission from a command whose
+  frame write started but whose response was lost. The latter is outcome-unknown:
+  retrying is safe only with the same command ID against the same Zetl server
+  instance. If Zetl restarted, the client refreshes and reconciles authoritative
+  state instead of risking a duplicate mutation.
 - Zetl keeps a bounded cache of completed command IDs and returns the original
   response for a duplicate. It must not execute the mutation twice.
 - The eventual cache size and retention time are implementation details, but
@@ -55,7 +63,9 @@ slip edit in Kastn.
 - `failure`: an unexpected server or persistence failure occurred.
 
 Clients do not automatically retry conflicts, validation errors, or unsupported
-protocols. A transient transport failure may retry the same command ID.
+protocols. Kastn retries an outcome-unknown command for a bounded interval when
+it reconnects to the same server instance; confirmed responses are never turned
+back into command failures merely because the follow-up projection refresh fails.
 
 ## Snapshots And Changes
 

@@ -353,9 +353,10 @@ internal sealed class ZetlStateStore
     public const string NormalLane = "Normal";
     public const string ShiftLane = "Shift";
 
-    private readonly ZetlStateStorage storage;
+    private readonly IZetlStateStorage storage;
     private readonly string sessionId;
     private readonly Action<string>? log;
+    private ZetlState? durableState;
 
     // Current UI/runtime mutations and the Kastn command service share this
     // instance monitor. Synchronized public mutators therefore cannot interleave
@@ -363,6 +364,24 @@ internal sealed class ZetlStateStore
     internal object MutationSyncRoot => this;
 
     public ZetlStateStore(string? statePath = null, string? sessionId = null, Action<string>? log = null)
+        : this(CreateStorage(statePath, log), sessionId, log)
+    {
+    }
+
+    internal ZetlStateStore(
+        IZetlStateStorage storage,
+        string? sessionId = null,
+        Action<string>? log = null)
+    {
+        this.storage = storage;
+        this.log = log;
+        this.sessionId = string.IsNullOrWhiteSpace(sessionId) ? NewId() : sessionId;
+        State = storage.Load();
+        NormalizeLoadedState();
+        durableState = JsonFile.Clone(State);
+    }
+
+    private static IZetlStateStorage CreateStorage(string? statePath, Action<string>? log)
     {
         // Historically callers passed a single state.json path. Storage is now a
         // directory layout, so treat that path's directory as the workspace root
@@ -377,11 +396,7 @@ internal sealed class ZetlStateStore
             rootDirectory = Directory.GetCurrentDirectory();
         }
 
-        storage = new ZetlStateStorage(rootDirectory, legacyStatePath, log);
-        this.log = log;
-        this.sessionId = string.IsNullOrWhiteSpace(sessionId) ? NewId() : sessionId;
-        State = storage.Load();
-        NormalizeLoadedState();
+        return new ZetlStateStorage(rootDirectory, legacyStatePath, log);
     }
 
     public ZetlState State { get; private set; }
@@ -964,18 +979,29 @@ internal sealed class ZetlStateStore
         }
 
         State.Projects.Remove(project);
-        storage.RemoveProject(projectId);
-        if (State.ActiveProjectId == projectId)
+        try
         {
-            State.ActiveProjectId = State.Projects.FirstOrDefault()?.Id;
+            storage.RemoveProject(projectId);
+            if (State.ActiveProjectId == projectId)
+            {
+                State.ActiveProjectId = State.Projects.FirstOrDefault()?.Id;
+            }
+
+            if (State.ShiftActiveProjectId == projectId)
+            {
+                State.ShiftActiveProjectId = State.Projects.FirstOrDefault()?.Id;
+            }
+
+            PersistWorkspace();
+        }
+        catch
+        {
+            RollBackProjectFile(projectId);
+            RestoreDurableState();
+            throw;
         }
 
-        if (State.ShiftActiveProjectId == projectId)
-        {
-            State.ShiftActiveProjectId = State.Projects.FirstOrDefault()?.Id;
-        }
-
-        PersistWorkspace();
+        CommitDurableProjectRemoval(projectId);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -2369,25 +2395,45 @@ internal sealed class ZetlStateStore
     // that changed instead of rewriting every project on disk.
     private void PersistProject(ZetlProject project, bool workspace = false)
     {
-        NormalizeProject(project);
         var previousSequence = project.ChangeSequence;
-        project.ChangeSequence = Math.Max(previousSequence, 0) + 1;
+        var projectWriteAttempted = false;
+        var workspaceWriteAttempted = false;
         try
         {
+            NormalizeProject(project);
+            project.ChangeSequence = Math.Max(previousSequence, 0) + 1;
+            projectWriteAttempted = true;
             storage.WriteProject(project);
+
+            if (workspace)
+            {
+                NormalizeWorkspacePointers();
+                workspaceWriteAttempted = true;
+                storage.WriteWorkspace(BuildWorkspaceFile());
+            }
         }
         catch
         {
             project.ChangeSequence = previousSequence;
+            if (projectWriteAttempted)
+            {
+                RollBackProjectFile(project.Id);
+            }
+
+            if (workspaceWriteAttempted)
+            {
+                RollBackWorkspaceFile();
+            }
+
+            RestoreDurableState();
             throw;
         }
 
+        CommitDurableProject(project);
         if (workspace)
         {
-            NormalizeWorkspacePointers();
-            storage.WriteWorkspace(BuildWorkspaceFile());
+            CommitDurableWorkspace();
         }
-
         RaiseProjectPersisted(
             new ZetlProjectPersistedEventArgs(project.Id, project.ChangeSequence));
         RaiseChanged();
@@ -2422,52 +2468,68 @@ internal sealed class ZetlStateStore
     private bool DisposeInactiveTemporaryProjects(bool persistWorkspace)
     {
         var removed = false;
-        foreach (var project in State.Projects.Where(IsTemporaryConsumableProject).ToList())
+        var removedProjectIds = new List<string>();
+        try
         {
-            var lane = CanonicalTemporaryLane(project.TemporaryLane);
-            if (lane is null)
+            foreach (var project in State.Projects.Where(IsTemporaryConsumableProject).ToList())
             {
-                lane = string.Equals(State.ActiveProjectId, project.Id, StringComparison.Ordinal)
-                    ? NormalLane
-                    : string.Equals(State.ShiftActiveProjectId, project.Id, StringComparison.Ordinal)
-                        ? ShiftLane
-                        : null;
-                project.TemporaryLane = lane;
-            }
-
-            var laneActiveId = string.Equals(lane, ShiftLane, StringComparison.Ordinal)
-                ? State.ShiftActiveProjectId
-                : State.ActiveProjectId;
-            if (lane is not null
-                && string.Equals(laneActiveId, project.Id, StringComparison.Ordinal)
-                && IsActiveStatus(project))
-            {
-                if (string.Equals(lane, ShiftLane, StringComparison.Ordinal)
-                    && string.Equals(State.ActiveProjectId, project.Id, StringComparison.Ordinal))
+                var lane = CanonicalTemporaryLane(project.TemporaryLane);
+                if (lane is null)
                 {
-                    State.ActiveProjectId = null;
-                    removed = true;
+                    lane = string.Equals(State.ActiveProjectId, project.Id, StringComparison.Ordinal)
+                        ? NormalLane
+                        : string.Equals(State.ShiftActiveProjectId, project.Id, StringComparison.Ordinal)
+                            ? ShiftLane
+                            : null;
+                    project.TemporaryLane = lane;
                 }
 
-                if (string.Equals(lane, NormalLane, StringComparison.Ordinal)
-                    && string.Equals(State.ShiftActiveProjectId, project.Id, StringComparison.Ordinal))
+                var laneActiveId = string.Equals(lane, ShiftLane, StringComparison.Ordinal)
+                    ? State.ShiftActiveProjectId
+                    : State.ActiveProjectId;
+                if (lane is not null
+                    && string.Equals(laneActiveId, project.Id, StringComparison.Ordinal)
+                    && IsActiveStatus(project))
                 {
-                    State.ShiftActiveProjectId = null;
-                    removed = true;
+                    if (string.Equals(lane, ShiftLane, StringComparison.Ordinal)
+                        && string.Equals(State.ActiveProjectId, project.Id, StringComparison.Ordinal))
+                    {
+                        State.ActiveProjectId = null;
+                        removed = true;
+                    }
+
+                    if (string.Equals(lane, NormalLane, StringComparison.Ordinal)
+                        && string.Equals(State.ShiftActiveProjectId, project.Id, StringComparison.Ordinal))
+                    {
+                        State.ShiftActiveProjectId = null;
+                        removed = true;
+                    }
+
+                    continue;
                 }
 
-                continue;
+                removedProjectIds.Add(project.Id);
+                RemoveTemporaryProject(project);
+                removed = true;
             }
 
-            RemoveTemporaryProject(project);
-            removed = true;
+            if (removed && persistWorkspace)
+            {
+                PersistWorkspace();
+                foreach (var projectId in removedProjectIds)
+                {
+                    CommitDurableProjectRemoval(projectId);
+                }
+            }
         }
-
-        if (removed && persistWorkspace)
+        catch
         {
-            NormalizeWorkspacePointers();
-            storage.WriteWorkspace(BuildWorkspaceFile());
-            RaiseChanged();
+            foreach (var projectId in removedProjectIds)
+            {
+                RollBackProjectFile(projectId);
+            }
+            RestoreDurableState();
+            throw;
         }
 
         return removed;
@@ -2513,8 +2575,19 @@ internal sealed class ZetlStateStore
 
     private void PersistWorkspace()
     {
-        NormalizeWorkspacePointers();
-        storage.WriteWorkspace(BuildWorkspaceFile());
+        try
+        {
+            NormalizeWorkspacePointers();
+            storage.WriteWorkspace(BuildWorkspaceFile());
+        }
+        catch
+        {
+            RollBackWorkspaceFile();
+            RestoreDurableState();
+            throw;
+        }
+
+        CommitDurableWorkspace();
         RaiseChanged();
     }
 
@@ -2522,15 +2595,132 @@ internal sealed class ZetlStateStore
     // net when a mutation can't resolve which project it touched.
     private void SaveAll()
     {
-        foreach (var project in State.Projects)
+        var attemptedProjectIds = new List<string>();
+        var workspaceWriteAttempted = false;
+        try
         {
-            NormalizeProject(project);
-            storage.WriteProject(project);
+            foreach (var project in State.Projects)
+            {
+                NormalizeProject(project);
+                attemptedProjectIds.Add(project.Id);
+                storage.WriteProject(project);
+            }
+
+            NormalizeWorkspacePointers();
+            workspaceWriteAttempted = true;
+            storage.WriteWorkspace(BuildWorkspaceFile());
+        }
+        catch
+        {
+            foreach (var projectId in attemptedProjectIds)
+            {
+                RollBackProjectFile(projectId);
+            }
+
+            if (workspaceWriteAttempted)
+            {
+                RollBackWorkspaceFile();
+            }
+
+            RestoreDurableState();
+            throw;
         }
 
-        NormalizeWorkspacePointers();
-        storage.WriteWorkspace(BuildWorkspaceFile());
+        durableState = JsonFile.Clone(State);
         RaiseChanged();
+    }
+
+    private void CommitDurableProject(ZetlProject project)
+    {
+        if (durableState is null)
+        {
+            return;
+        }
+
+        var snapshot = JsonFile.Clone(project);
+        var index = durableState.Projects.FindIndex(candidate => candidate.Id == project.Id);
+        if (index >= 0)
+        {
+            durableState.Projects[index] = snapshot;
+        }
+        else
+        {
+            durableState.Projects.Add(snapshot);
+        }
+    }
+
+    private void CommitDurableProjectRemoval(string projectId)
+    {
+        durableState?.Projects.RemoveAll(project => project.Id == projectId);
+    }
+
+    private void CommitDurableWorkspace()
+    {
+        if (durableState is null)
+        {
+            return;
+        }
+
+        durableState.Version = State.Version;
+        durableState.ActiveProjectId = State.ActiveProjectId;
+        durableState.ShiftActiveProjectId = State.ShiftActiveProjectId;
+        durableState.DefaultJournalProjectId = State.DefaultJournalProjectId;
+        durableState.ShiftDefaultJournalProjectId = State.ShiftDefaultJournalProjectId;
+        durableState.LastDeliberateProjectId = State.LastDeliberateProjectId;
+        durableState.ShiftLastDeliberateProjectId = State.ShiftLastDeliberateProjectId;
+    }
+
+    private void RestoreDurableState()
+    {
+        if (durableState is null)
+        {
+            return;
+        }
+
+        State = JsonFile.Clone(durableState);
+        RaiseChanged();
+    }
+
+    private void RollBackProjectFile(string projectId)
+    {
+        if (durableState?.Projects.FirstOrDefault(project => project.Id == projectId) is { } durableProject)
+        {
+            try
+            {
+                storage.WriteProject(durableProject);
+            }
+            catch (Exception rollbackError)
+            {
+                log?.Invoke($"Could not roll back project '{projectId}' after a failed write: {rollbackError.Message}");
+            }
+            return;
+        }
+
+        try
+        {
+            storage.RemoveProject(projectId);
+        }
+        catch (Exception rollbackError)
+        {
+            log?.Invoke($"Could not remove partially written project '{projectId}': {rollbackError.Message}");
+        }
+    }
+
+    private void RollBackWorkspaceFile()
+    {
+        if (durableState is null)
+        {
+            return;
+        }
+
+        try
+        {
+            storage.WriteWorkspace(BuildWorkspaceFile(durableState));
+        }
+        catch (Exception rollbackError)
+        {
+            log?.Invoke($"Could not roll back workspace pointers after a failed write: {rollbackError.Message}");
+        }
     }
 
     private void RaiseProjectPersisted(ZetlProjectPersistedEventArgs args)
@@ -2562,13 +2752,19 @@ internal sealed class ZetlStateStore
             project.Buckets.Any(bucket => bucket.Slips.Any(item => item.Id == note.Id)));
     }
 
-    private ZetlWorkspaceFile BuildWorkspaceFile()
+    private ZetlWorkspaceFile BuildWorkspaceFile() => BuildWorkspaceFile(State);
+
+    private static ZetlWorkspaceFile BuildWorkspaceFile(ZetlState state)
     {
         return new ZetlWorkspaceFile
         {
-            Version = Math.Max(State.Version, 1),
-            ActiveProjectId = State.ActiveProjectId,
-            ShiftActiveProjectId = State.ShiftActiveProjectId
+            Version = Math.Max(state.Version, 1),
+            ActiveProjectId = state.ActiveProjectId,
+            ShiftActiveProjectId = state.ShiftActiveProjectId,
+            DefaultJournalProjectId = state.DefaultJournalProjectId,
+            ShiftDefaultJournalProjectId = state.ShiftDefaultJournalProjectId,
+            LastDeliberateProjectId = state.LastDeliberateProjectId,
+            ShiftLastDeliberateProjectId = state.ShiftLastDeliberateProjectId
         };
     }
 
@@ -2705,15 +2901,83 @@ internal sealed class ZetlStateStore
     {
         State.Version = Math.Max(State.Version, 1);
         if (State.ActiveProjectId is not null
-            && State.Projects.All(project => project.Id != State.ActiveProjectId))
+            && State.Projects.All(project => project.Id != State.ActiveProjectId || !IsActiveStatus(project)))
         {
             State.ActiveProjectId = null;
         }
 
         if (State.ShiftActiveProjectId is not null
-            && State.Projects.All(project => project.Id != State.ShiftActiveProjectId))
+            && State.Projects.All(project => project.Id != State.ShiftActiveProjectId || !IsActiveStatus(project)))
         {
             State.ShiftActiveProjectId = null;
+        }
+
+        NormalizeJournalPointer(shifted: false);
+        NormalizeJournalPointer(shifted: true);
+        NormalizeLastDeliberatePointer(shifted: false);
+        NormalizeLastDeliberatePointer(shifted: true);
+    }
+
+    private void NormalizeJournalPointer(bool shifted)
+    {
+        var pointer = shifted ? State.ShiftDefaultJournalProjectId : State.DefaultJournalProjectId;
+        var valid = pointer is not null
+            && State.Projects.Any(project =>
+                project.Id == pointer && project.JournalMode && IsActiveStatus(project));
+        if (!valid)
+        {
+            pointer = null;
+        }
+
+        if (pointer is null)
+        {
+            var activeId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
+            pointer = State.Projects.FirstOrDefault(project =>
+                    project.Id == activeId && project.JournalMode && IsActiveStatus(project))?.Id
+                ?? State.Projects
+                    .Where(project => project.JournalMode
+                        && IsActiveStatus(project)
+                        && IsFormattedJournalName(project.Name, shifted))
+                    .OrderByDescending(project => project.ChangeSequence)
+                    .Select(project => project.Id)
+                    .FirstOrDefault();
+        }
+
+        if (shifted)
+        {
+            State.ShiftDefaultJournalProjectId = pointer;
+        }
+        else
+        {
+            State.DefaultJournalProjectId = pointer;
+        }
+    }
+
+    private void NormalizeLastDeliberatePointer(bool shifted)
+    {
+        var pointer = shifted ? State.ShiftLastDeliberateProjectId : State.LastDeliberateProjectId;
+        var valid = pointer is not null
+            && State.Projects.Any(project =>
+                project.Id == pointer && !project.JournalMode && IsActiveStatus(project));
+        if (!valid)
+        {
+            pointer = null;
+        }
+
+        if (pointer is null)
+        {
+            var activeId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
+            pointer = State.Projects.FirstOrDefault(project =>
+                project.Id == activeId && !project.JournalMode && IsActiveStatus(project))?.Id;
+        }
+
+        if (shifted)
+        {
+            State.ShiftLastDeliberateProjectId = pointer;
+        }
+        else
+        {
+            State.LastDeliberateProjectId = pointer;
         }
     }
 

@@ -11,4 +11,7 @@ internal sealed record KastnSessionSnapshot(
     KastnConnectionState ConnectionState,
     string Status,
     IReadOnlyList<ZETL.Contracts.ZetlProjectSummary> Projects,
-    ZETL.Contracts.ZetlProjectSnapshot? Project);
+    ZETL.Contracts.ZetlProjectSnapshot? Project)
+{
+    public string? ServerInstanceId { get; init; }
+}

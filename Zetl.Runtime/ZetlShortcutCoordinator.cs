@@ -9,6 +9,8 @@ internal sealed class ZetlShortcutCoordinator
     private readonly Dictionary<(int KeyCode, bool Shifted), ZetlPendingShortcut> pendingShortcuts = new();
     private readonly ZetlClipboardSnapshot?[] replayUserClipboard = new ZetlClipboardSnapshot?[2];
     private readonly ZetlClipboardSnapshot?[] replayInjectedClipboard = new ZetlClipboardSnapshot?[2];
+    private readonly SemaphoreSlim[] replayLaneGates = [new(1, 1), new(1, 1)];
+    private readonly SemaphoreSlim replayClipboardGate = new(1, 1);
     private readonly ZetlStateStore store;
     private readonly IKeyboardBackend keyboard;
     private readonly IClipboard clipboard;
@@ -853,6 +855,20 @@ internal sealed class ZetlShortcutCoordinator
     // hook-vs-dispatcher race the inline version had.
     private async Task HandleReplayTapAsync(bool shifted, ZetlBucket activeBucket)
     {
+        var laneGate = replayLaneGates[shifted ? 1 : 0];
+        await laneGate.WaitAsync();
+        try
+        {
+            await HandleReplayTapCoreAsync(shifted, activeBucket);
+        }
+        finally
+        {
+            laneGate.Release();
+        }
+    }
+
+    private async Task HandleReplayTapCoreAsync(bool shifted, ZetlBucket activeBucket)
+    {
         if (!store.TryPeekNextReplayNote(activeBucket, out var replayNote) || replayNote is null)
         {
             // The bucket is empty, so replay is genuinely done -- return to
@@ -870,7 +886,16 @@ internal sealed class ZetlShortcutCoordinator
                 store.SetBucketKind(activeBucket, "Standard");
             }
 
-            var finalPasted = await keyboard.SendPaste();
+            await replayClipboardGate.WaitAsync();
+            bool finalPasted;
+            try
+            {
+                finalPasted = await keyboard.SendPaste();
+            }
+            finally
+            {
+                replayClipboardGate.Release();
+            }
             dispatcher.Post(() => notifications.Show(finalPasted
                 ? $"{completedName} replay complete."
                 : $"{completedName} replay complete, but the final paste didn't land."));
@@ -895,24 +920,47 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         var resumeClipboard = replayResumeClipboard();
-        if (resumeClipboard)
+        await replayClipboardGate.WaitAsync();
+        bool clipboardStaged = false;
+        bool pasted = false;
+        try
         {
-            RememberUserClipboardBeforeReplay(shifted);
+            // A lane waiting for the shared clipboard may resume off the UI
+            // thread. Marshal staging back to the dispatcher before injection.
+            await RunOnDispatcherAsync(() =>
+            {
+                if (resumeClipboard)
+                {
+                    RememberUserClipboardBeforeReplay(shifted);
+                }
+                clipboardStaged = SetReplayClipboard(shifted, replayItem);
+                if (!clipboardStaged)
+                {
+                    notifications.Show($"Paste failed; {bucketName} item kept.");
+                }
+            });
+            if (clipboardStaged)
+            {
+                // Await the actual injection result, not just that the paste was
+                // queued. The shared gate keeps another lane from replacing the
+                // staged clipboard before Windows accepts this chord.
+                pasted = await keyboard.SendPaste();
+            }
         }
-        // If the clipboard write itself fails, don't paste -- the foreground app
-        // would receive whatever stale text was there instead of the replay item.
-        if (!SetReplayClipboard(shifted, replayItem))
+        finally
         {
-            notifications.Show($"Paste failed; {bucketName} item kept.");
+            replayClipboardGate.Release();
+        }
+        if (!clipboardStaged)
+        {
             return;
         }
 
-        // Await the actual injection result, not just that the paste was queued.
-        var pasted = await keyboard.SendPaste();
-
         // The await may resume off the dispatcher thread, so marshal the store
-        // mutations back through the dispatcher.
-        dispatcher.Post(() =>
+        // mutations back through the dispatcher. Await that posted mutation too:
+        // the per-lane gate must remain held until this exact item is consumed,
+        // otherwise a rapid second tap can peek and paste the same slip again.
+        await RunOnDispatcherAsync(() =>
         {
             if (!pasted)
             {
@@ -974,6 +1022,25 @@ internal sealed class ZetlShortcutCoordinator
         });
     }
 
+    private Task RunOnDispatcherAsync(Action action)
+    {
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        dispatcher.Post(() =>
+        {
+            try
+            {
+                action();
+                completion.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        });
+        return completion.Task;
+    }
+
     private async Task HandlePopTapAsync(bool shifted)
     {
         await delay.WaitAsync(PopClipboardDelay);
@@ -1025,12 +1092,22 @@ internal sealed class ZetlShortcutCoordinator
     {
         var index = shifted ? 1 : 0;
         var current = ReadClipboardSnapshot();
-        if (!ZetlClipboardSnapshot.ContentEquals(
-                current,
-                replayInjectedClipboard[index]))
+        if (ZetlClipboardSnapshot.ContentEquals(current, replayInjectedClipboard[index]))
         {
-            replayUserClipboard[index] = current;
+            return;
         }
+
+        var otherIndex = index == 0 ? 1 : 0;
+        if (ZetlClipboardSnapshot.ContentEquals(current, replayInjectedClipboard[otherIndex]))
+        {
+            // The other Replay lane owns the current clipboard. Carry its
+            // original user snapshot forward instead of mistaking its staged
+            // slip for user content.
+            replayUserClipboard[index] = replayUserClipboard[otherIndex];
+            return;
+        }
+
+        replayUserClipboard[index] = current;
     }
 
     private bool SetReplayClipboard(bool shifted, ZetlClipboardSnapshot item)

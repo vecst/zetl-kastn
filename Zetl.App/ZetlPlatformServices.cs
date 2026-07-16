@@ -151,6 +151,25 @@ internal sealed class AvaloniaWindowsKeyboardBackend(
 
     private IntPtr HookCallback(int code, IntPtr messagePointer, IntPtr dataPointer)
     {
+        try
+        {
+            return HookCallbackCore(code, messagePointer, dataPointer);
+        }
+        catch (Exception ex)
+        {
+            return ZetlCallbackSafety.FailOpen(
+                ex,
+                () => Win32Interop.CallNextHookEx(hookId, code, messagePointer, dataPointer),
+                failure =>
+                {
+                    downKeys.Clear();
+                    log($"Keyboard hook callback failed open: {failure.Message}");
+                });
+        }
+    }
+
+    private IntPtr HookCallbackCore(int code, IntPtr messagePointer, IntPtr dataPointer)
+    {
         if (code < 0)
         {
             return Win32Interop.CallNextHookEx(hookId, code, messagePointer, dataPointer);

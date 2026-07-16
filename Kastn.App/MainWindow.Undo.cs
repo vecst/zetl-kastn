@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Avalonia.Controls;
+using ZETL;
 using ZETL.Contracts;
 
 namespace KASTN;
@@ -11,6 +12,8 @@ internal partial class MainWindow
     // disabled, so typing, style toggles, and moves all undo in one ordered run.
     private readonly KastnUndoHistory undoStack = new();
     private readonly KastnUndoHistory redoStack = new();
+    private string? undoServerInstanceId;
+    private bool steppingHistory;
 
     // While non-null, mutations accumulate into one gesture instead of each
     // becoming its own undo entry. Coalescing by id keeps a gesture that touches
@@ -127,6 +130,21 @@ internal partial class MainWindow
     // handling is untouched.
     private async Task<ZetlResponseEnvelope> ExecuteMutationAsync(ZetlCommandEnvelope command)
     {
+        if (steppingHistory)
+        {
+            return new ZetlResponseEnvelope
+            {
+                CommandId = command.CommandId,
+                Status = ZetlResponseStatus.Failure,
+                ProjectId = command.ProjectId,
+                Error = new ZetlProtocolError
+                {
+                    Code = "edit_history_busy",
+                    Message = "Wait for the current undo or redo to finish."
+                }
+            };
+        }
+
         if (UndoDescription(command.Kind) is not { } description || command.ProjectId is null)
         {
             return await connection.ExecuteAsync(command);
@@ -298,12 +316,47 @@ internal partial class MainWindow
 
     private Task RedoLastAsync() => StepHistoryAsync(redoStack, undoStack, "redo", "Nothing to redo.");
 
+    private enum HistoryApplyStatus
+    {
+        Applied,
+        Conflict,
+        NotApplicable,
+        Interrupted,
+        OutcomeUnknown
+    }
+
+    private sealed record SlipApplyResult(
+        ZetlSlipSnapshot Now,
+        HistoryApplyStatus Status,
+        ZetlSlipSnapshot? Conflict = null);
+
+    private sealed record BucketApplyResult(
+        ZetlBucketSnapshot Now,
+        HistoryApplyStatus Status,
+        ZetlBucketSnapshot? Conflict = null);
+
+    private sealed record EntryApplyResult(
+        KastnUndoEntry? Opposite,
+        int Applied,
+        int Kept,
+        HistoryApplyStatus Status);
+
+    private readonly record struct InverseStepResult(
+        ZetlResponseEnvelope? Response,
+        HistoryApplyStatus Status);
+
     private async Task StepHistoryAsync(
         KastnUndoHistory source,
         KastnUndoHistory destination,
         string verb,
         string emptyMessage)
     {
+        if (steppingHistory)
+        {
+            statusText.Text = "Wait for the current undo or redo to finish.";
+            return;
+        }
+
         if (!IsOnline)
         {
             statusText.Text = "Connect to Zetl to edit.";
@@ -317,43 +370,93 @@ internal partial class MainWindow
             return;
         }
 
-        if (!source.TryPop(out var entry) || entry is null)
+        if (steppingHistory)
         {
-            statusText.Text = emptyMessage;
+            statusText.Text = "Wait for the current undo or redo to finish.";
             return;
         }
 
-        // Show what is about to change: select the entry's primary target first,
-        // so the user watches the step apply instead of hunting afterwards for
-        // which record moved. Re-select after the refresh rebuilds the tree so
-        // the changed record stays in view.
-        var targetSlipId = entry.Operations.Count > 0 ? entry.Operations[0].SlipId : null;
-        if (targetSlipId is not null)
+        steppingHistory = true;
+        try
         {
-            ReselectSlipNode(targetSlipId);
-        }
-        else if (entry.BucketOperations.Count > 0)
-        {
-            pendingBucketSelectionId = entry.BucketOperations[0].BucketId;
-        }
+            if (!source.TryPeek(out var entry) || entry is null)
+            {
+                statusText.Text = emptyMessage;
+                return;
+            }
 
-        var (opposite, applied, kept) = await ApplyEntryAsync(entry, verb);
-        await connection.RefreshAsync();
-        if (targetSlipId is not null)
-        {
-            ReselectSlipNode(targetSlipId);
-        }
+            // Show what is about to change: select the entry's primary target first,
+            // so the user watches the step apply instead of hunting afterwards for
+            // which record moved. Re-select after the refresh rebuilds the tree so
+            // the changed record stays in view.
+            var targetSlipId = entry.Operations.Count > 0 ? entry.Operations[0].SlipId : null;
+            if (targetSlipId is not null)
+            {
+                ReselectSlipNode(targetSlipId);
+            }
+            else if (entry.BucketOperations.Count > 0)
+            {
+                pendingBucketSelectionId = entry.BucketOperations[0].BucketId;
+            }
 
-        if (opposite is not null)
-        {
-            destination.Push(opposite);
-        }
+            var result = await ApplyEntryAsync(entry, verb);
+            if (result.Status is HistoryApplyStatus.Interrupted or HistoryApplyStatus.OutcomeUnknown)
+            {
+                var refreshed = await TryRefreshHistorySnapshotAsync(entry.ProjectId);
+                if (!source.TryPeek(out var retained)
+                    || retained is null
+                    || !string.Equals(retained.EntryId, entry.EntryId, StringComparison.Ordinal))
+                {
+                    statusText.Text = "Zetl restarted during edit history; undo and redo were cleared after reconciliation.";
+                    return;
+                }
+                var repair = refreshed is null
+                    ? null
+                    : KastnUndoPlanner.BuildRepairEntry(entry, refreshed, verb);
+                if (repair is not null)
+                {
+                    source.Push(repair);
+                }
 
-        statusText.Text = kept > 0
-            ? $"{Capitalize(verb)}: {entry.Description} — {kept} item{Plural(kept)} kept the newer change."
-            : applied == 0
-                ? $"Nothing to {verb} — {entry.Description} already changed."
-                : $"{Capitalize(verb)}: {entry.Description}";
+                statusText.Text = result.Status == HistoryApplyStatus.OutcomeUnknown
+                    ? repair is null
+                        ? $"{Capitalize(verb)} outcome unknown — history retained for reconciliation."
+                        : $"{Capitalize(verb)} outcome reconciled — repair the partial change before retrying."
+                    : repair is null
+                        ? $"{Capitalize(verb)} interrupted — history entry retained."
+                        : $"{Capitalize(verb)} interrupted — repair the partial change before retrying.";
+                return;
+            }
+
+            if (!source.TryPop(entry))
+            {
+                statusText.Text = $"{Capitalize(verb)} completed, but history changed concurrently; refresh before continuing.";
+                return;
+            }
+
+            if (!entry.IsRepair && result.Opposite is not null)
+            {
+                destination.Push(result.Opposite);
+            }
+
+            _ = await TryRefreshHistorySnapshotAsync(entry.ProjectId);
+            if (targetSlipId is not null)
+            {
+                ReselectSlipNode(targetSlipId);
+            }
+
+            statusText.Text = entry.IsRepair
+                ? $"Repair complete — retry {verb} when ready."
+                : result.Kept > 0
+                    ? $"{Capitalize(verb)}: {entry.Description} — {result.Kept} item{Plural(result.Kept)} kept the newer change."
+                    : result.Applied == 0
+                        ? $"Nothing to {verb} — {entry.Description} already changed."
+                        : $"{Capitalize(verb)}: {entry.Description}";
+        }
+        finally
+        {
+            steppingHistory = false;
+        }
     }
 
     // Apply every operation in the entry, returning the entry that reverses it
@@ -361,7 +464,7 @@ internal partial class MainWindow
     // many kept the newer change. A conflicted operation asks the user: apply
     // anyway re-issues the inverse against the record's current revision, keep
     // abandons that operation (the entry is consumed either way).
-    private async Task<(KastnUndoEntry? Opposite, int Applied, int Kept)> ApplyEntryAsync(
+    private async Task<EntryApplyResult> ApplyEntryAsync(
         KastnUndoEntry entry,
         string verb)
     {
@@ -372,30 +475,39 @@ internal partial class MainWindow
             var current = op;
             while (true)
             {
-                var (now, ok, conflict) = await ApplyOperationAsync(entry.ProjectId, current);
-                if (ok)
+                var result = await ApplyOperationAsync(entry.ProjectId, current);
+                if (result.Status == HistoryApplyStatus.Applied)
                 {
-                    oppositeOps.Add(KastnUndoPlanner.Opposite(current, now));
+                    oppositeOps.Add(KastnUndoPlanner.Opposite(current, result.Now));
                     // This step advanced the slip's revision; re-thread the stacked
                     // entries that still expect the older one, so a run of undos (or
                     // redos) over the same slip can walk the whole history instead of
                     // conflicting after the first step.
-                    undoStack.RethreadRevision(current.SlipId, now.Revision);
-                    redoStack.RethreadRevision(current.SlipId, now.Revision);
+                    undoStack.RethreadRevision(current.SlipId, result.Now.Revision);
+                    redoStack.RethreadRevision(current.SlipId, result.Now.Revision);
                     break;
                 }
 
-                if (conflict is null)
+                if (result.Status == HistoryApplyStatus.NotApplicable)
                 {
                     kept++;
                     break;
+                }
+
+                if (result.Status is HistoryApplyStatus.Interrupted or HistoryApplyStatus.OutcomeUnknown)
+                {
+                    return new EntryApplyResult(
+                        Opposite: null,
+                        Applied: oppositeOps.Count,
+                        Kept: kept,
+                        Status: result.Status);
                 }
 
                 var applyAnyway = await KastnDialogs.UndoConflictAsync(
                     this,
                     verb,
                     entry.Description,
-                    conflict.Text,
+                    result.Conflict!.Text,
                     current.To.IsDelete
                         ? "(The slip returns to Deleted.)"
                         : current.To.Restore!.Text);
@@ -407,7 +519,7 @@ internal partial class MainWindow
 
                 // Re-issue the inverse against the record's current state; it can
                 // conflict again if another change races, re-asking with fresh text.
-                current = current with { From = conflict };
+                current = current with { From = result.Conflict! };
             }
         }
 
@@ -417,26 +529,35 @@ internal partial class MainWindow
             var current = op;
             while (true)
             {
-                var (now, ok, conflict) = await ApplyBucketOperationAsync(entry.ProjectId, current);
-                if (ok)
+                var result = await ApplyBucketOperationAsync(entry.ProjectId, current);
+                if (result.Status == HistoryApplyStatus.Applied)
                 {
-                    oppositeBucketOps.Add(KastnUndoPlanner.Opposite(current, now));
-                    undoStack.RethreadBucketRevision(current.BucketId, now.Revision);
-                    redoStack.RethreadBucketRevision(current.BucketId, now.Revision);
+                    oppositeBucketOps.Add(KastnUndoPlanner.Opposite(current, result.Now));
+                    undoStack.RethreadBucketRevision(current.BucketId, result.Now.Revision);
+                    redoStack.RethreadBucketRevision(current.BucketId, result.Now.Revision);
                     break;
                 }
 
-                if (conflict is null)
+                if (result.Status == HistoryApplyStatus.NotApplicable)
                 {
                     kept++;
                     break;
+                }
+
+                if (result.Status is HistoryApplyStatus.Interrupted or HistoryApplyStatus.OutcomeUnknown)
+                {
+                    return new EntryApplyResult(
+                        Opposite: null,
+                        Applied: oppositeOps.Count + oppositeBucketOps.Count,
+                        Kept: kept,
+                        Status: result.Status);
                 }
 
                 var applyAnyway = await KastnDialogs.UndoConflictAsync(
                     this,
                     verb,
                     entry.Description,
-                    $"Bucket “{conflict.Name}”",
+                    $"Bucket “{result.Conflict!.Name}”",
                     $"Bucket “{current.To.Name}”");
                 if (!applyAnyway)
                 {
@@ -444,7 +565,7 @@ internal partial class MainWindow
                     break;
                 }
 
-                current = current with { From = conflict };
+                current = current with { From = result.Conflict! };
             }
         }
 
@@ -457,7 +578,11 @@ internal partial class MainWindow
                 BucketOperations = oppositeBucketOps
             }
             : null;
-        return (opposite, oppositeOps.Count + oppositeBucketOps.Count, kept);
+        return new EntryApplyResult(
+            opposite,
+            oppositeOps.Count + oppositeBucketOps.Count,
+            kept,
+            HistoryApplyStatus.Applied);
     }
 
     // Run one operation's inverse commands, threading the revision between steps.
@@ -465,18 +590,19 @@ internal partial class MainWindow
     // best-effort step (position restore) may fail quietly; a conflict on a real
     // step aborts the operation and carries the record's current snapshot so the
     // caller can offer apply-anyway.
-    private async Task<(ZetlSlipSnapshot Now, bool Ok, ZetlSlipSnapshot? Conflict)> ApplyOperationAsync(
+    private async Task<SlipApplyResult> ApplyOperationAsync(
         string projectId,
         KastnUndoOperation op)
     {
         var now = op.From;
         foreach (var step in KastnUndoPlanner.BuildSteps(op))
         {
-            var response = await ExecuteInverseStepAsync(projectId, op.SlipId, now.Revision, step);
-            if (response is null)
+            var execution = await ExecuteInverseStepAsync(projectId, op.SlipId, now.Revision, step);
+            if (execution.Status is HistoryApplyStatus.Interrupted or HistoryApplyStatus.OutcomeUnknown)
             {
-                return (now, false, null);
+                return new SlipApplyResult(now, execution.Status);
             }
+            var response = execution.Response!;
 
             if (response.Status == ZetlResponseStatus.Success)
             {
@@ -495,28 +621,36 @@ internal partial class MainWindow
                 continue;
             }
 
-            var conflict = response.Status == ZetlResponseStatus.Conflict
-                ? response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
-                : null;
-            return (now, false, conflict);
+            if (response.Status == ZetlResponseStatus.Conflict
+                && response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } conflict)
+            {
+                return new SlipApplyResult(now, HistoryApplyStatus.Conflict, conflict);
+            }
+
+            var notApplicable = response.Status is
+                ZetlResponseStatus.NotFound or ZetlResponseStatus.ValidationError;
+            return notApplicable && now.Revision == op.From.Revision
+                ? new SlipApplyResult(now, HistoryApplyStatus.NotApplicable)
+                : new SlipApplyResult(now, HistoryApplyStatus.Interrupted);
         }
 
-        return (now, true, null);
+        return new SlipApplyResult(now, HistoryApplyStatus.Applied);
     }
 
     // The bucket twin of ApplyOperationAsync.
-    private async Task<(ZetlBucketSnapshot Now, bool Ok, ZetlBucketSnapshot? Conflict)> ApplyBucketOperationAsync(
+    private async Task<BucketApplyResult> ApplyBucketOperationAsync(
         string projectId,
         KastnBucketUndoOperation op)
     {
         var now = op.From;
         foreach (var step in KastnUndoPlanner.BuildBucketSteps(op))
         {
-            var response = await ExecuteInverseStepAsync(projectId, op.BucketId, now.Revision, step);
-            if (response is null)
+            var execution = await ExecuteInverseStepAsync(projectId, op.BucketId, now.Revision, step);
+            if (execution.Status is HistoryApplyStatus.Interrupted or HistoryApplyStatus.OutcomeUnknown)
             {
-                return (now, false, null);
+                return new BucketApplyResult(now, execution.Status);
             }
+            var response = execution.Response!;
 
             if (response.Status == ZetlResponseStatus.Success)
             {
@@ -533,18 +667,26 @@ internal partial class MainWindow
                 continue;
             }
 
-            var conflict = response.Status == ZetlResponseStatus.Conflict
-                ? response.Conflict?.Current.Deserialize<ZetlBucketSnapshot>(ZetlProtocolJson.Options)
-                : null;
-            return (now, false, conflict);
+            if (response.Status == ZetlResponseStatus.Conflict
+                && response.Conflict?.Current.Deserialize<ZetlBucketSnapshot>(ZetlProtocolJson.Options) is { } conflict)
+            {
+                return new BucketApplyResult(now, HistoryApplyStatus.Conflict, conflict);
+            }
+
+            var notApplicable = response.Status is
+                ZetlResponseStatus.NotFound or ZetlResponseStatus.ValidationError;
+            return notApplicable && now.Revision == op.From.Revision
+                ? new BucketApplyResult(now, HistoryApplyStatus.NotApplicable)
+                : new BucketApplyResult(now, HistoryApplyStatus.Interrupted);
         }
 
-        return (now, true, null);
+        return new BucketApplyResult(now, HistoryApplyStatus.Applied);
     }
 
-    // One inverse command over the wire; null means a transport failure that was
-    // already surfaced in the status line.
-    private async Task<ZetlResponseEnvelope?> ExecuteInverseStepAsync(
+    // One inverse command over the wire, preserving the distinction between a
+    // confirmed response, a command that was not completed, and a sent command
+    // whose result is still unknown.
+    private async Task<InverseStepResult> ExecuteInverseStepAsync(
         string projectId,
         string targetId,
         long expectedRevision,
@@ -562,14 +704,63 @@ internal partial class MainWindow
 
         try
         {
-            return await connection.ExecuteAsync(command);
+            return new InverseStepResult(
+                await connection.ExecuteAsync(command),
+                HistoryApplyStatus.Applied);
+        }
+        catch (ZetlCommandOutcomeUnknownException ex)
+        {
+            statusText.Text = $"Edit history outcome unknown: {ex.Message}";
+            return new InverseStepResult(null, HistoryApplyStatus.OutcomeUnknown);
         }
         catch (Exception ex) when (
             ex is IOException or InvalidOperationException or OperationCanceledException)
         {
             statusText.Text = $"Edit history failed: {ex.Message}";
+            return new InverseStepResult(null, HistoryApplyStatus.Interrupted);
+        }
+    }
+
+    private async Task<ZetlProjectSnapshot?> TryRefreshHistorySnapshotAsync(string projectId)
+    {
+        try
+        {
+            await connection.RefreshAsync();
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidDataException or InvalidOperationException
+                or OperationCanceledException)
+        {
             return null;
         }
+
+        var session = connection.Current;
+        if (!connection.HasLiveConnection)
+        {
+            return null;
+        }
+
+        if (session.ConnectionState == KastnConnectionState.Online
+            && undoServerInstanceId is not null
+            && session.ServerInstanceId is not null
+            && !string.Equals(
+                undoServerInstanceId,
+                session.ServerInstanceId,
+                StringComparison.Ordinal))
+        {
+            ClearUndoHistory();
+            undoServerInstanceId = session.ServerInstanceId;
+            return null;
+        }
+
+        return session is
+            {
+                ConnectionState: KastnConnectionState.Online,
+                Project: { } project
+            }
+            && string.Equals(project.Id, projectId, StringComparison.Ordinal)
+                ? project
+                : null;
     }
 
     // The user-facing label for an undoable command, or null when the command is

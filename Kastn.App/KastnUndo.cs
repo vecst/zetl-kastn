@@ -45,7 +45,9 @@ internal sealed record KastnUndoEntry(
     string ProjectId,
     IReadOnlyList<KastnUndoOperation> Operations)
 {
+    public string EntryId { get; init; } = Guid.NewGuid().ToString("N");
     public IReadOnlyList<KastnBucketUndoOperation> BucketOperations { get; init; } = [];
+    public bool IsRepair { get; init; }
 }
 
 // One inverse command. BestEffort steps (position restore) may fail without
@@ -93,6 +95,24 @@ internal sealed class KastnUndoHistory
         }
 
         entry = entries[^1];
+        entries.RemoveAt(entries.Count - 1);
+        return true;
+    }
+
+    public bool TryPeek(out KastnUndoEntry? entry)
+    {
+        entry = entries.Count == 0 ? null : entries[^1];
+        return entry is not null;
+    }
+
+    public bool TryPop(KastnUndoEntry expected)
+    {
+        if (entries.Count == 0
+            || !string.Equals(entries[^1].EntryId, expected.EntryId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         entries.RemoveAt(entries.Count - 1);
         return true;
     }
@@ -288,6 +308,73 @@ internal static class KastnUndoPlanner
         }
 
         return null;
+    }
+
+    // Reconcile an interrupted compound history step against an authoritative
+    // snapshot. The repair returns every touched record to its state before the
+    // attempted step, including a command whose response was lost after Zetl may
+    // already have committed it.
+    public static KastnUndoEntry? BuildRepairEntry(
+        KastnUndoEntry interrupted,
+        ZetlProjectSnapshot project,
+        string verb)
+    {
+        var slipRepairs = new List<KastnUndoOperation>();
+        foreach (var original in interrupted.Operations)
+        {
+            var current = project.Slips.FirstOrDefault(slip =>
+                string.Equals(slip.Id, original.SlipId, StringComparison.Ordinal));
+            if (current is null)
+            {
+                continue;
+            }
+
+            var repair = new KastnUndoOperation(
+                original.SlipId,
+                current,
+                FollowingSlipId(project, current.BucketId, current.Id),
+                KastnSlipMemento.To(original.From),
+                original.FromFollowing);
+            if (!IsNoOp(repair))
+            {
+                slipRepairs.Add(repair);
+            }
+        }
+
+        var bucketRepairs = new List<KastnBucketUndoOperation>();
+        foreach (var original in interrupted.BucketOperations)
+        {
+            var current = project.Buckets.FirstOrDefault(bucket =>
+                string.Equals(bucket.Id, original.BucketId, StringComparison.Ordinal));
+            if (current is null)
+            {
+                continue;
+            }
+
+            var repair = new KastnBucketUndoOperation(
+                original.BucketId,
+                current,
+                FollowingBucketId(project, current.Id),
+                original.From,
+                original.FromFollowing);
+            if (!IsNoOp(repair))
+            {
+                bucketRepairs.Add(repair);
+            }
+        }
+
+        slipRepairs.Reverse();
+        bucketRepairs.Reverse();
+        return slipRepairs.Count == 0 && bucketRepairs.Count == 0
+            ? null
+            : new KastnUndoEntry(
+                $"Repair interrupted {verb}: {interrupted.Description}",
+                interrupted.ProjectId,
+                slipRepairs)
+            {
+                BucketOperations = bucketRepairs,
+                IsRepair = true
+            };
     }
 
     private static bool PropsDiffer(ZetlSlipSnapshot a, ZetlSlipSnapshot b) =>

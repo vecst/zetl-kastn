@@ -104,12 +104,8 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
     }
 
     [Fact(Skip = "Diagnostic latency probe — run manually when hunting per-action cost.")]
-    public void MeasureActionPipeline()
+    public async Task MeasureActionPipeline()
     {
-        Run().GetAwaiter().GetResult();
-
-        async Task Run()
-        {
             var directory = Path.Combine(
                 Path.GetTempPath(), "ZetlLatencyProbe", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
@@ -185,6 +181,5 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             }));
 
             Directory.Delete(directory, recursive: true);
-        }
     }
 }

@@ -10,10 +10,12 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     private readonly string? pipeName;
     private readonly TimeSpan connectTimeout;
     private readonly TimeSpan retryDelay;
+    private readonly TimeSpan uncertainRetryTimeout;
     private readonly CancellationTokenSource cancellation = new();
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private readonly object stateGate = new();
     private ZetlIpcClient? client;
+    private TaskCompletionSource connectionChanged = NewConnectionSignal();
     private Task? runTask;
     private string? desiredProjectId;
     private bool projectSelectionRequested = true;
@@ -25,12 +27,14 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         Func<CancellationToken, Task> launchZetl,
         string? pipeName = null,
         TimeSpan? connectTimeout = null,
-        TimeSpan? retryDelay = null)
+        TimeSpan? retryDelay = null,
+        TimeSpan? uncertainRetryTimeout = null)
     {
         this.launchZetl = launchZetl;
         this.pipeName = pipeName;
         this.connectTimeout = connectTimeout ?? TimeSpan.FromMilliseconds(750);
         this.retryDelay = retryDelay ?? TimeSpan.FromSeconds(1);
+        this.uncertainRetryTimeout = uncertainRetryTimeout ?? TimeSpan.FromSeconds(5);
         Current = new KastnSessionSnapshot(
             KastnConnectionState.Connecting,
             "Connecting to Zetl...",
@@ -41,6 +45,17 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     public event EventHandler<KastnSessionSnapshot>? SnapshotChanged;
 
     public KastnSessionSnapshot Current { get; private set; }
+
+    public bool HasLiveConnection
+    {
+        get
+        {
+            lock (stateGate)
+            {
+                return client is { IsConnected: true };
+            }
+        }
+    }
 
     public void Start(string? projectId = null)
     {
@@ -104,11 +119,13 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             throw new InvalidOperationException("Zetl is offline.");
         }
 
-        var response = await connected.ExecuteAsync(command, cancellationToken)
-            .ConfigureAwait(false);
+        var response = await ExecuteWithUncertainRetryAsync(
+            connected,
+            command,
+            cancellationToken).ConfigureAwait(false);
         if (response.Status == ZetlResponseStatus.Success)
         {
-            await RefreshAsync(connected, cancellationToken).ConfigureAwait(false);
+            await TryRefreshAfterConfirmedMutationAsync(cancellationToken).ConfigureAwait(false);
         }
 
         return response;
@@ -124,8 +141,10 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             throw new InvalidOperationException("Zetl is offline.");
         }
 
-        return await connected.ExecuteAsync(command, cancellationToken)
-            .ConfigureAwait(false);
+        return await ExecuteWithUncertainRetryAsync(
+            connected,
+            command,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -194,7 +213,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                 continue;
             }
 
-            client = nextClient;
+            SetClient(nextClient);
             hasEverConnected = true;
             launchAttemptedForOutage = false;
             var disconnected = new TaskCompletionSource(
@@ -218,10 +237,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             finally
             {
                 nextClient.ProjectChanged -= OnProjectChanged;
-                if (ReferenceEquals(client, nextClient))
-                {
-                    client = null;
-                }
+                ClearClient(nextClient);
 
                 await nextClient.DisposeAsync().ConfigureAwait(false);
             }
@@ -332,7 +348,10 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                         : "Connected to Zetl. Select a project."
                     : $"Connected to Zetl. Viewing {projectSnapshot.Name}.",
                 projects,
-                projectSnapshot));
+                projectSnapshot)
+            {
+                ServerInstanceId = connected.ServerInstanceId
+            });
         }
         finally
         {
@@ -348,6 +367,136 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                 response.Error?.Message ?? $"Zetl returned {response.Status}.");
         }
     }
+
+    private async Task<ZetlResponseEnvelope> ExecuteWithUncertainRetryAsync(
+        ZetlIpcClient initialClient,
+        ZetlCommandEnvelope command,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await initialClient.ExecuteAsync(command, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ZetlCommandOutcomeUnknownException firstUnknown) when (
+            !cancellationToken.IsCancellationRequested
+            && !cancellation.IsCancellationRequested)
+        {
+            var originalServerInstanceId = initialClient.ServerInstanceId;
+            var lastUnknown = firstUnknown;
+            using var timeout = new CancellationTokenSource(uncertainRetryTimeout);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                cancellation.Token,
+                timeout.Token);
+
+            try
+            {
+                while (true)
+                {
+                    ZetlIpcClient? retryClient;
+                    Task connectionSignal;
+                    lock (stateGate)
+                    {
+                        retryClient = client;
+                        connectionSignal = connectionChanged.Task;
+                    }
+
+                    if (retryClient is { IsConnected: true })
+                    {
+                        var sameServer = string.Equals(
+                            originalServerInstanceId,
+                            retryClient.ServerInstanceId,
+                            StringComparison.Ordinal);
+                        if (!sameServer && !ZetlContractRules.IsReadOnly(command.Kind))
+                        {
+                            throw new ZetlCommandOutcomeUnknownException(
+                                command.CommandId,
+                                $"The result of {command.Kind} is unknown and Zetl restarted before it could be reconciled.",
+                                lastUnknown,
+                                serverInstanceChanged: true);
+                        }
+
+                        try
+                        {
+                            // The same command id is essential: the still-running
+                            // Zetl instance returns its cached response instead of
+                            // executing a mutation twice.
+                            return await retryClient.ExecuteAsync(command, linked.Token)
+                                .ConfigureAwait(false);
+                        }
+                        catch (ZetlCommandOutcomeUnknownException ex)
+                        {
+                            lastUnknown = ex;
+                            continue;
+                        }
+                        catch (InvalidOperationException) when (!retryClient.IsConnected)
+                        {
+                            continue;
+                        }
+                    }
+
+                    await connectionSignal.WaitAsync(linked.Token).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException ex) when (
+                timeout.IsCancellationRequested
+                && !cancellationToken.IsCancellationRequested
+                && !cancellation.IsCancellationRequested)
+            {
+                throw new ZetlCommandOutcomeUnknownException(
+                    command.CommandId,
+                    $"The result of {command.Kind} is still unknown after waiting for Zetl to reconnect.",
+                    ex);
+            }
+        }
+    }
+
+    private async Task TryRefreshAfterConfirmedMutationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidDataException or InvalidOperationException
+                or OperationCanceledException)
+        {
+            // The mutation response is already confirmed. A projection refresh
+            // failure must not turn that confirmed result back into an apparent
+            // command failure; reconnect/change delivery will refresh it later.
+        }
+    }
+
+    private void SetClient(ZetlIpcClient value)
+    {
+        TaskCompletionSource signal;
+        lock (stateGate)
+        {
+            client = value;
+            signal = connectionChanged;
+            connectionChanged = NewConnectionSignal();
+        }
+        signal.TrySetResult();
+    }
+
+    private void ClearClient(ZetlIpcClient expected)
+    {
+        TaskCompletionSource? signal = null;
+        lock (stateGate)
+        {
+            if (ReferenceEquals(client, expected))
+            {
+                client = null;
+                signal = connectionChanged;
+                connectionChanged = NewConnectionSignal();
+            }
+        }
+        signal?.TrySetResult();
+    }
+
+    private static TaskCompletionSource NewConnectionSignal() => new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
 
     private void Publish(KastnConnectionState state, string status)
     {

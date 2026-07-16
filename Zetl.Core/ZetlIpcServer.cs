@@ -12,6 +12,7 @@ internal sealed class ZetlIpcServer : IDisposable
     private readonly string pipeName;
     private readonly ZetlProjectService service;
     private readonly Action<string>? log;
+    private readonly Func<ZetlCommandEnvelope, bool>? dropResponseForTesting;
     private readonly CancellationTokenSource cancellation = new();
     private readonly ConcurrentDictionary<int, ClientConnection> clients = new();
     private readonly string serverInstanceId = Guid.NewGuid().ToString("N");
@@ -22,12 +23,22 @@ internal sealed class ZetlIpcServer : IDisposable
         ZetlProjectService service,
         string? pipeName = null,
         Action<string>? log = null)
+        : this(service, pipeName, log, dropResponseForTesting: null)
+    {
+    }
+
+    internal ZetlIpcServer(
+        ZetlProjectService service,
+        string? pipeName,
+        Action<string>? log,
+        Func<ZetlCommandEnvelope, bool>? dropResponseForTesting)
     {
         this.service = service;
         this.pipeName = string.IsNullOrWhiteSpace(pipeName)
             ? ZetlIpcEndpoint.GetDefaultPipeName()
             : pipeName;
         this.log = log;
+        this.dropResponseForTesting = dropResponseForTesting;
     }
 
     public string PipeName => pipeName;
@@ -91,6 +102,7 @@ internal sealed class ZetlIpcServer : IDisposable
                     serverInstanceId,
                     service,
                     log,
+                    dropResponseForTesting,
                     () => clients.TryRemove(clientId, out _));
                 clients[clientId] = connection;
                 pipe = null;
@@ -126,6 +138,7 @@ internal sealed class ZetlIpcServer : IDisposable
         private readonly string serverInstanceId;
         private readonly ZetlProjectService service;
         private readonly Action<string>? log;
+        private readonly Func<ZetlCommandEnvelope, bool>? dropResponseForTesting;
         private readonly Action onClosed;
         private readonly CancellationTokenSource cancellation = new();
         private readonly Channel<ZetlIpcMessage> outbound = Channel.CreateBounded<ZetlIpcMessage>(
@@ -144,6 +157,7 @@ internal sealed class ZetlIpcServer : IDisposable
             string serverInstanceId,
             ZetlProjectService service,
             Action<string>? log,
+            Func<ZetlCommandEnvelope, bool>? dropResponseForTesting,
             Action onClosed)
         {
             this.clientId = clientId;
@@ -151,6 +165,7 @@ internal sealed class ZetlIpcServer : IDisposable
             this.serverInstanceId = serverInstanceId;
             this.service = service;
             this.log = log;
+            this.dropResponseForTesting = dropResponseForTesting;
             this.onClosed = onClosed;
         }
 
@@ -322,6 +337,15 @@ internal sealed class ZetlIpcServer : IDisposable
                     log?.Invoke(
                         $"IPC command {command.Kind} ({command.CommandId}) returned "
                         + $"{response.Status}.");
+                }
+
+                if (dropResponseForTesting?.Invoke(command) == true)
+                {
+                    // Fault injection: the service has completed (and cached) the
+                    // result, but this connection loses the response. A reconnect
+                    // using the same command id must recover the cached response.
+                    pipe.Dispose();
+                    return;
                 }
 
                 if (!TryQueue(ZetlIpcMessage.Create(

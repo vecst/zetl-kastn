@@ -84,8 +84,17 @@ leverage.
 - [ ] Test Zetl restart, Kastn restart, forced termination, login, and reboot.
 - [ ] Stress reconnect retries, duplicate command delivery, stale revisions,
       sequence gaps, and partial client messages.
-- [ ] Test JSON write failure, disk-full behavior, corrupt files, and migration
-      recovery.
+- [x] Inject project and workspace JSON write failures and verify that live
+      state and revisions roll back to the last durable snapshot.
+- [x] Keep the low-level Windows keyboard hook fail-open: callback and recovery
+      failures cannot cross the unmanaged boundary or suppress physical input.
+- [x] Serialize rapid Replay taps through durable consumption per lane while
+      keeping Main and Alternate Replay independent.
+- [x] Preserve undo/redo entries until inverse commands are confirmed; retry
+      outcome-unknown IPC mutations by command ID on the same server instance,
+      and generate repair entries for reconciled partial compounds.
+- [ ] Test disk-full behavior and recovery from interruption between related
+      project/workspace operations.
 - [ ] Re-run large-project measurements and investigate material regressions.
 - [ ] Verify diagnostics carry useful context without captured content.
 - [ ] Define packaging, installation, app identity, and protocol compatibility

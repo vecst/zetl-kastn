@@ -558,13 +558,26 @@ internal partial class MainWindow : Window
         var selectedBucketId = SelectedBucketId;
         var selectedSlipId = pendingSlipSelectionId ?? editorState.SlipId;
 
-        // Undo/redo entries hold revisions captured against the open project. Drop
-        // them when the open project changes or the live connection drops, since those
-        // revisions go stale after a resync.
+        // Undo/redo entries hold revision-checked commands. A transient pipe
+        // outage does not invalidate them: reconnecting to the same Zetl instance
+        // can validate (and, for an uncertain command, deduplicate) them. A project
+        // change or a different server instance does invalidate the captured run.
+        var serverChanged = snapshot.ConnectionState == KastnConnectionState.Online
+            && undoServerInstanceId is not null
+            && snapshot.ServerInstanceId is not null
+            && !string.Equals(
+                undoServerInstanceId,
+                snapshot.ServerInstanceId,
+                StringComparison.Ordinal);
         if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal)
-            || snapshot.ConnectionState != KastnConnectionState.Online)
+            || serverChanged)
         {
             ClearUndoHistory();
+        }
+        if (snapshot.ConnectionState == KastnConnectionState.Online
+            && snapshot.ServerInstanceId is not null)
+        {
+            undoServerInstanceId = snapshot.ServerInstanceId;
         }
 
         // Decoded pictures belong to the outgoing project.

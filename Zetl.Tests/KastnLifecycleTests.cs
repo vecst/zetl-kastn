@@ -225,6 +225,40 @@ public class KastnLifecycleTests
         });
     }
 
+    [Fact] public void ControllerRetriesUnknownMutationWithSameCommandId()
+    {
+        RunAsync(async () =>
+        {
+            const string commandId = "retry-unknown-mutation";
+            var dropped = 0;
+            using var fixture = new LifecycleFixture(
+                dropResponseForTesting: command =>
+                    command.CommandId == commandId
+                    && Interlocked.Exchange(ref dropped, 1) == 0);
+            await using var controller = CreateConnectedController(fixture);
+            await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Online);
+
+            var response = await controller.ExecuteAsync(ZetlCommandEnvelope.Create(
+                commandId,
+                ZetlCommandKind.AddSlip,
+                new AddSlipCommand
+                {
+                    BucketId = fixture.Bucket.Id,
+                    Text = "deduplicated retry",
+                    Source = "kastn"
+                },
+                fixture.Project.Id));
+
+            AssertEqual(ZetlResponseStatus.Success, response.Status, "The same-server retry should recover the cached result.");
+            AssertEqual(
+                1,
+                fixture.Bucket.Notes.Count(note => note.Text == "deduplicated retry"),
+                "An unknown mutation retry must not execute the command twice.");
+        });
+    }
+
     [Fact] public void ControllerReconnectsAfterZetlRestart()
     {
         RunAsync(async () =>
@@ -392,8 +426,13 @@ public class KastnLifecycleTests
         private readonly ZetlProjectService service;
         private ZetlIpcServer? server;
 
-        public LifecycleFixture(bool startServer = true)
+        private readonly Func<ZetlCommandEnvelope, bool>? dropResponseForTesting;
+
+        public LifecycleFixture(
+            bool startServer = true,
+            Func<ZetlCommandEnvelope, bool>? dropResponseForTesting = null)
         {
+            this.dropResponseForTesting = dropResponseForTesting;
             Directory.CreateDirectory(directory);
             PipeName = $"kastn-lifecycle-{Guid.NewGuid():N}";
             Store = new ZetlStateStore(
@@ -420,7 +459,11 @@ public class KastnLifecycleTests
                 return;
             }
 
-            server = new ZetlIpcServer(service, PipeName);
+            server = new ZetlIpcServer(
+                service,
+                PipeName,
+                log: null,
+                dropResponseForTesting: dropResponseForTesting);
             server.Start();
         }
 

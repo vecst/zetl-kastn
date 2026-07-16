@@ -95,11 +95,16 @@ public sealed class ZetlIpcClient : IAsyncDisposable
                 $"Command '{command.CommandId}' is already pending.");
         }
 
+        var transmissionStarted = false;
         try
         {
             await writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                // From this point forward even an exception during the frame
+                // write is ambiguous: the server may receive a complete command
+                // after the caller loses its response path.
+                transmissionStarted = true;
                 await ZetlIpcFraming.WriteAsync(
                     pipe,
                     ZetlIpcMessage.Create(
@@ -115,6 +120,17 @@ public sealed class ZetlIpcClient : IAsyncDisposable
 
             return await completion.Task.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (
+            transmissionStarted
+            && (ex is IOException or InvalidDataException or OperationCanceledException
+                or ObjectDisposedException or InvalidOperationException)
+            && ex is not ZetlCommandOutcomeUnknownException)
+        {
+            throw new ZetlCommandOutcomeUnknownException(
+                command.CommandId,
+                $"The result of {command.Kind} is unknown because the IPC response was lost.",
+                ex);
         }
         finally
         {

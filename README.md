@@ -189,7 +189,9 @@ the paste, archives the consumed slip into a review bucket, and restores the
 user's previous clipboard. Text and picture slips are both supported.
 
 If Windows rejects the synthetic paste, the slip stays in the queue. When the
-queue becomes empty, the bucket returns to Standard mode.
+queue becomes empty, the bucket returns to Standard mode. Rapid taps are
+serialized within each lane so one slip cannot be pasted twice, while Main and
+Alternate Replay queues can continue independently.
 
 ### Pop Mode
 
@@ -342,9 +344,11 @@ The live store is human-readable JSON:
   views\
 ```
 
-`workspace.json` contains store-wide state such as active lane pointers. Each
-project owns its own folder and `project.json`; saving a slip rewrites only that
-project.
+`workspace.json` contains both lanes' active project, default Journal, and last
+deliberate project pointers so capture routing survives a restart. Each project
+owns its own folder and `project.json`; saving a slip rewrites only that project.
+If a project or workspace write fails, live state returns to its last durable
+snapshot instead of carrying the failed mutation into a later save.
 
 Older installations with a single `state.json` are migrated automatically on
 first launch and retain `state.json.bak`.

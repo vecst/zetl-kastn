@@ -94,14 +94,21 @@ internal static class JsonFile
         // Unique per write so concurrent writers (two preview instances, or a
         // timer flush racing a UI-thread save) never contend on one temp file.
         var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(tempPath, JsonSerializer.Serialize(value, Options));
-        if (File.Exists(path))
+        try
         {
-            File.Replace(tempPath, path, null);
+            File.WriteAllText(tempPath, JsonSerializer.Serialize(value, Options));
+            if (File.Exists(path))
+            {
+                File.Replace(tempPath, path, null);
+            }
+            else
+            {
+                File.Move(tempPath, path);
+            }
         }
-        else
+        finally
         {
-            File.Move(tempPath, path);
+            DeleteTempFile(tempPath);
         }
     }
 
@@ -109,14 +116,76 @@ internal static class JsonFile
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
-        File.WriteAllBytes(tempPath, bytes);
-        if (File.Exists(path))
+        try
         {
-            File.Replace(tempPath, path, null);
+            File.WriteAllBytes(tempPath, bytes);
+            if (File.Exists(path))
+            {
+                File.Replace(tempPath, path, null);
+            }
+            else
+            {
+                File.Move(tempPath, path);
+            }
         }
-        else
+        finally
         {
-            File.Move(tempPath, path);
+            DeleteTempFile(tempPath);
+        }
+    }
+
+    public static void SweepStaleTempFiles(
+        string rootDirectory,
+        TimeSpan minimumAge,
+        Action<string>? log = null)
+    {
+        if (!Directory.Exists(rootDirectory))
+        {
+            return;
+        }
+
+        var cutoff = DateTime.UtcNow - minimumAge;
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(
+                rootDirectory,
+                "*.tmp",
+                SearchOption.AllDirectories))
+            {
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(path) <= cutoff)
+                    {
+                        File.Delete(path);
+                        log?.Invoke($"Removed stale temporary file '{path}'.");
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    log?.Invoke($"Could not remove stale temporary file '{path}': {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log?.Invoke($"Could not scan '{rootDirectory}' for stale temporary files: {ex.Message}");
+        }
+    }
+
+    private static void DeleteTempFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Preserve the original write/replace exception. Startup sweeping will
+            // retry abandoned unique temp files after they are old enough that no
+            // concurrent writer can still own them.
         }
     }
 }

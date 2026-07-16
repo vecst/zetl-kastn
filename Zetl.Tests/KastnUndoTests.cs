@@ -74,6 +74,61 @@ public class KastnUndoTests
         static KastnUndoEntry Entry(string description) => new(description, "p", []);
     }
 
+    [Fact] public void HistoryPeekRetainsEntryUntilConfirmedPop()
+    {
+        var history = new KastnUndoHistory();
+        var entry = new KastnUndoEntry(
+            "Edit slip",
+            "p",
+            [Op(Slip("s1", 2, "b1", text: "changed"), KastnSlipMemento.To(Slip("s1", 1, "b1", text: "before")))]);
+        history.Push(entry);
+
+        AssertTrue(history.TryPeek(out var peeked), "A pending history step should be inspectable without removal.");
+        AssertEqual(1, history.Count, "Peeking must retain the entry while transport is unresolved.");
+
+        // Applying a confirmed inverse rethreads the stored record by replacing
+        // it with a `with` copy. Stable entry identity must still allow the
+        // originally peeked transaction to commit afterward.
+        history.RethreadRevision("s1", 3);
+        AssertTrue(history.TryPop(peeked!), "A confirmed step should pop its stable entry after rethreading.");
+        AssertEqual(0, history.Count, "The committed entry should be removed exactly once.");
+    }
+
+    [Fact] public void InterruptedCompoundBuildsRepairForActualPartialState()
+    {
+        var firstChanged = Slip("s1", 2, "b1", text: "first changed");
+        var secondChanged = Slip("s2", 2, "b1", text: "second changed");
+        var entry = new KastnUndoEntry(
+            "Edit two slips",
+            "p",
+            [
+                Op(firstChanged, KastnSlipMemento.To(Slip("s1", 1, "b1", text: "first before"))),
+                Op(secondChanged, KastnSlipMemento.To(Slip("s2", 1, "b1", text: "second before")))
+            ]);
+        var refreshed = new ZetlProjectSnapshot
+        {
+            Id = "p",
+            Name = "Project",
+            MetadataRevision = 1,
+            ChangeSequence = 3,
+            Slips =
+            [
+                // The first inverse committed before the second failed.
+                Slip("s1", 3, "b1", text: "first before"),
+                secondChanged
+            ]
+        };
+
+        var repair = KastnUndoPlanner.BuildRepairEntry(entry, refreshed, "undo");
+
+        AssertTrue(repair?.IsRepair == true, "A partial compound must produce an explicit repair entry.");
+        AssertEqual(1, repair!.Operations.Count, "Only the record that actually changed needs repair.");
+        AssertEqual("s1", repair.Operations[0].SlipId, "The committed partial operation should be repaired.");
+        var steps = KastnUndoPlanner.BuildSteps(repair.Operations[0]);
+        var update = steps.Single(step => step.Kind == ZetlCommandKind.UpdateSlip);
+        AssertEqual("first changed", Payload<UpdateSlipCommand>(update).Text, "Repair restores the pre-undo state.");
+    }
+
     [Fact] public void DeleteMementoInvertsToASoftDelete()
     {
         var slip = Slip("s1", 5, "deleted");

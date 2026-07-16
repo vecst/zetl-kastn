@@ -13,6 +13,66 @@ namespace ZETL.Tests;
 
 public class ZetlIpcTests
 {
+    [Fact] public void CancellationAfterCommandWriteReportsOutcomeUnknown()
+    {
+        RunAsync(async () =>
+        {
+            var pipeName = $"zetl-unknown-{Guid.NewGuid():N}";
+            using var server = new NamedPipeServerStream(
+                pipeName,
+                PipeDirection.InOut,
+                1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            var commandReceived = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseServer = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var serverTask = Task.Run(async () =>
+            {
+                await server.WaitForConnectionAsync();
+                _ = await ZetlIpcFraming.ReadAsync(server, CancellationToken.None);
+                await ZetlIpcFraming.WriteAsync(
+                    server,
+                    ZetlIpcMessage.Create(
+                        ZetlIpcMessageKind.Welcome,
+                        new ZetlIpcWelcome
+                        {
+                            ServerInstanceId = "outcome-server",
+                            ProtocolVersion = ZetlProtocol.CurrentVersion
+                        }),
+                    CancellationToken.None);
+                _ = await ZetlIpcFraming.ReadAsync(server, CancellationToken.None);
+                commandReceived.TrySetResult();
+                await releaseServer.Task;
+            });
+
+            await using var client = new ZetlIpcClient("unknown-client", pipeName);
+            await client.ConnectAsync(TimeSpan.FromSeconds(5));
+            try
+            {
+                using var cancellation = new CancellationTokenSource();
+                var execute = client.ExecuteAsync(
+                    new ZetlCommandEnvelope
+                    {
+                        CommandId = "unknown-after-write",
+                        Kind = ZetlCommandKind.ListProjects
+                    },
+                    cancellation.Token);
+                await commandReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                cancellation.Cancel();
+
+                var error = await Assert.ThrowsAsync<ZetlCommandOutcomeUnknownException>(async () => await execute);
+                AssertEqual("unknown-after-write", error.CommandId, "The uncertain result should retain its command id.");
+            }
+            finally
+            {
+                releaseServer.TrySetResult();
+                await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
+    }
+
     [Fact] public void ClientListsOpensAndMutatesProject()
     {
         RunAsync(async () =>

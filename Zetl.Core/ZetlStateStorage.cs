@@ -12,8 +12,11 @@ namespace ZETL;
 /// project only rewrites a field inside its json -- the folder never has to
 /// move.
 /// </summary>
-internal sealed class ZetlStateStorage
+internal sealed class ZetlStateStorage : IZetlStateStorage
 {
+    private static readonly TimeSpan StaleTempAge = TimeSpan.FromDays(1);
+
+    private readonly string rootDirectory;
     private readonly string workspacePath;
     private readonly string projectsDirectory;
     private readonly string? legacyStatePath;
@@ -25,6 +28,7 @@ internal sealed class ZetlStateStorage
 
     public ZetlStateStorage(string rootDirectory, string? legacyStatePath, Action<string>? log = null)
     {
+        this.rootDirectory = rootDirectory;
         workspacePath = Path.Combine(rootDirectory, "workspace.json");
         projectsDirectory = Path.Combine(rootDirectory, "projects");
         this.legacyStatePath = legacyStatePath;
@@ -33,6 +37,7 @@ internal sealed class ZetlStateStorage
 
     public ZetlState Load()
     {
+        JsonFile.SweepStaleTempFiles(rootDirectory, StaleTempAge, log);
         MigrateLegacyStateIfNeeded();
 
         var workspace = JsonFile.ReadOrQuarantine<ZetlWorkspaceFile>(workspacePath, log) ?? new ZetlWorkspaceFile();
@@ -41,6 +46,10 @@ internal sealed class ZetlStateStorage
             Version = workspace.Version,
             ActiveProjectId = workspace.ActiveProjectId,
             ShiftActiveProjectId = workspace.ShiftActiveProjectId,
+            DefaultJournalProjectId = workspace.DefaultJournalProjectId,
+            ShiftDefaultJournalProjectId = workspace.ShiftDefaultJournalProjectId,
+            LastDeliberateProjectId = workspace.LastDeliberateProjectId,
+            ShiftLastDeliberateProjectId = workspace.ShiftLastDeliberateProjectId,
             Projects = ReadProjects()
         };
         return state;
@@ -241,7 +250,11 @@ internal sealed class ZetlStateStorage
         {
             Version = Math.Max(legacy.Version, 1),
             ActiveProjectId = legacy.ActiveProjectId,
-            ShiftActiveProjectId = legacy.ShiftActiveProjectId
+            ShiftActiveProjectId = legacy.ShiftActiveProjectId,
+            DefaultJournalProjectId = legacy.DefaultJournalProjectId,
+            ShiftDefaultJournalProjectId = legacy.ShiftDefaultJournalProjectId,
+            LastDeliberateProjectId = legacy.LastDeliberateProjectId,
+            ShiftLastDeliberateProjectId = legacy.ShiftLastDeliberateProjectId
         });
 
         // Keep the original file as a backup rather than deleting it outright.
@@ -294,7 +307,7 @@ internal sealed record ZetlProjectAssetFile(string RelativePath, string FullPath
 
 /// <summary>
 /// Serialized shape of <c>workspace.json</c>: the store-wide version and the
-/// two lanes' active-project pointers. Projects themselves live in their own
+/// two lanes' routing and recovery pointers. Projects themselves live in their own
 /// files, so they are intentionally absent here.
 /// </summary>
 internal sealed class ZetlWorkspaceFile
@@ -302,4 +315,8 @@ internal sealed class ZetlWorkspaceFile
     public int Version { get; set; } = 1;
     public string? ActiveProjectId { get; set; }
     public string? ShiftActiveProjectId { get; set; }
+    public string? DefaultJournalProjectId { get; set; }
+    public string? ShiftDefaultJournalProjectId { get; set; }
+    public string? LastDeliberateProjectId { get; set; }
+    public string? ShiftLastDeliberateProjectId { get; set; }
 }
