@@ -104,7 +104,7 @@ pending typing joins the history as one entry when undo runs.
 The on-screen View always renders the body richly; a view's kind only governs
 its Copy/Export artifact. So when the selected view would drop formatting on
 export (a Plain or TSV view, or alignment in Markdown), the toolbar shows a
-fidelity note. The editor also offers idle autosave, `Ctrl+S`, and optional
+fidelity note. The editor also offers focus-loss autosave, `Ctrl+S`, and optional
 include/exclude from views.
 
 `New` creates one title-only `Untitled` draft and focuses its title. Repeated
@@ -119,6 +119,13 @@ opens a conflict panel:
 - `Keep Mine` retries against the newest revision.
 
 There is no silent last-writer-wins overwrite.
+
+Dirty editor text and inline styles are also debounced into Kastn's local
+`kastn-draft.json`, separate from authoritative project revisions. A later launch
+opens the matching project and restores the draft as unsaved. If Zetl changed the
+slip after the recorded baseline, recovery opens the normal conflict panel instead
+of rebasing or overwriting either version. A confirmed save or `Use Zetl Version`
+removes the journal.
 
 ## Linked Slips
 

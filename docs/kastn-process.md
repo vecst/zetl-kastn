@@ -52,7 +52,9 @@ own tray icon:
   Kastn leaves it as a normal minimized taskbar window. By default, closing the
   Kastn window hides it and removes it from the taskbar while the process stays
   connected to Zetl. The Kastn Settings page can instead make close exit the
-  Kastn process outright. A hidden Kastn returns through the `Open Kastn` item
+  Kastn process outright. Before an actual exit, Kastn saves a dirty slip; if the
+  save cannot be confirmed, the user can keep the durable local recovery draft,
+  explicitly discard it, or cancel closing. A hidden Kastn returns through the `Open Kastn` item
   in Zetl's tray menu, which focuses a connected Kastn over the control pipe and
   launches Kastn when none is running.
 - **Quitting Zetl coordinates the shutdown.** When the user quits Zetl with a
@@ -60,7 +62,8 @@ own tray icon:
   Kastn restores/focuses itself, including from hidden or minimized state, and
   shows a `Close both / Cancel` confirmation. Cancelling aborts Zetl's quit, so
   closing Zetl no longer silently relaunches because Kastn was still open. On a
-  confirmed close, Kastn suppresses the reconnect-driven relaunch and exits.
+  confirmed close, Kastn applies the same save-or-recover gate, suppresses the
+  reconnect-driven relaunch, and exits.
 
 This coordinated path applies to the Zetl tray's `Quit`. An unexpected Zetl exit
 (a crash or kill) is still treated as an outage: Kastn reports offline and

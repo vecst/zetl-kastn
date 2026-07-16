@@ -527,6 +527,41 @@ internal sealed class KastnEditorState
         ConflictCurrent = null;
     }
 
+    public bool RestoreDraft(KastnDraftDocument draft, ZetlSlipSnapshot current)
+    {
+        if (!string.Equals(draft.SlipId, current.Id, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        SlipId = current.Id;
+        Revision = draft.BaselineRevision;
+        BaselineText = draft.BaselineText ?? "";
+        DraftText = draft.DraftText ?? "";
+        BaselineInlineStyles = CopyInlineStyles(draft.BaselineInlineStyles);
+        DraftInlineStyles = CopyInlineStyles(draft.DraftInlineStyles);
+        PendingInlineStyleKinds = new HashSet<string>(StringComparer.Ordinal);
+        ConflictCurrent = null;
+
+        if (!IsDirty)
+        {
+            Select(current);
+            return false;
+        }
+
+        var authoritativeChanged = current.Revision != draft.BaselineRevision
+            || !string.Equals(current.Text, BaselineText, StringComparison.Ordinal)
+            || !KastnInlineStyleEditing.StyleListsEqual(
+                current.InlineStyles,
+                BaselineInlineStyles);
+        if (authoritativeChanged)
+        {
+            ConflictCurrent = current;
+        }
+
+        return true;
+    }
+
     public void SetDraft(string text)
     {
         DraftText = text;

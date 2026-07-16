@@ -50,6 +50,8 @@ internal partial class MainWindow : Window
     private string viewBaselineJson = "";
     // Kastn-owned runtime state (last project opened) for the startup preference.
     private readonly KastnStateStore stateStore = new(log: Console.Error.WriteLine);
+    // One local editor draft, separate from authoritative Zetl project state.
+    private readonly KastnDraftStore draftStore;
     // Creation types: bundle a template with a default view.
     private readonly ZetlCreationTypeStore creationStore = new(log: Console.Error.WriteLine);
     private readonly ObservableCollection<CreationListItem> creations = [];
@@ -200,6 +202,9 @@ internal partial class MainWindow : Window
     // save (e.g. clicking another slip) coalesce instead of racing the `saving`
     // guard.
     private Task<bool>? inflightSave;
+    private DispatcherTimer? draftJournalTimer;
+    private string? restoredDraftKey;
+    private bool recoveredDraftActive;
     private bool addingSlip;
     private bool visibilityUpdating;
     private string? pendingSaveText;
@@ -239,16 +244,21 @@ internal partial class MainWindow : Window
     // (e.g. hiding a slip) preserves scroll while switching projects resets it.
     private string? lastViewerProjectId;
     private bool allowWindowClose;
+    private bool closeRequestInProgress;
 
     public MainWindow()
     {
         InitializeComponent();
         connection = null!;
+        draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
     }
 
-    public MainWindow(KastnConnectionController connection)
+    public MainWindow(
+        KastnConnectionController connection,
+        KastnDraftStore? draftStore = null)
     {
         this.connection = connection;
+        this.draftStore = draftStore ?? new KastnDraftStore(log: Console.Error.WriteLine);
         InitializeComponent();
         Icon = KastnIcon.Create();
         landingLaneItems.ItemsSource = laneCards;
@@ -467,13 +477,19 @@ internal partial class MainWindow : Window
     // shared Kastn close preference.
     private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
     {
-        if (allowWindowClose || !CurrentAppSettings().KastnCloseToTray)
+        if (allowWindowClose)
         {
             return;
         }
 
         e.Cancel = true;
-        HideToTray();
+        if (CurrentAppSettings().KastnCloseToTray)
+        {
+            HideToTray();
+            return;
+        }
+
+        _ = CompleteWindowCloseAsync();
     }
 
     private void HideToTray()
@@ -522,10 +538,15 @@ internal partial class MainWindow : Window
         ShowInTaskbar = true;
         Activate();
         BringToForeground();
-        return await KastnDialogs.ConfirmAsync(
+        if (!await KastnDialogs.ConfirmAsync(
             this,
             "Closing Zetl will also close Kastn. Close both apps?",
-            "Close both");
+            "Close both"))
+        {
+            return false;
+        }
+
+        return await PrepareEditorForExitAsync();
     }
 
     public void CloseForShutdown()
@@ -620,6 +641,11 @@ internal partial class MainWindow : Window
                     selectedBucketId = null;
                     selectedSlipId = null;
                     editorState.Select(null);
+                    if (RecoverySlipId(projectSnapshot) is { } recoverySlipId)
+                    {
+                        selectedSlipId = recoverySlipId;
+                        pendingSlipSelectionId = recoverySlipId;
+                    }
                     searchBox.Text = "";
                     // On opening a project, render with its default view (set by a
                     // creation type, or chosen earlier), falling back to the first.
@@ -641,6 +667,7 @@ internal partial class MainWindow : Window
                 editorState.Reconcile(currentSlip, pendingSaveText);
                 UpdateEditorFromState();
                 RefreshSlipView(force: true);
+                RestoreDraftIfAvailable(projectSnapshot);
                 projectView.IsVisible = true;
                 emptyState.IsVisible = false;
             }
@@ -1579,9 +1606,13 @@ internal partial class MainWindow : Window
 
     private void SetConnectionState(KastnSessionSnapshot snapshot)
     {
-        statusText.Text = editorState.IsDirty
-            ? "Unsaved changes."
-            : snapshot.Status;
+        statusText.Text = recoveredDraftActive
+            ? editorState.ConflictCurrent is not null
+                ? "Recovered local draft conflicts with the current Zetl slip."
+                : "Recovered unsaved local draft; not yet saved to Zetl."
+            : editorState.IsDirty
+                ? "Unsaved changes."
+                : snapshot.Status;
         var online = snapshot.ConnectionState == KastnConnectionState.Online;
         offlineBanner.IsVisible = snapshot.ConnectionState == KastnConnectionState.Offline;
         connectionProgress.IsVisible =

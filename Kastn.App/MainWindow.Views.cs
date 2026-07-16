@@ -2434,7 +2434,7 @@ internal partial class MainWindow
                     var saved = response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options);
                     if (saved is not null)
                     {
-                        editorState.AcceptSaved(saved);
+                        AcceptEditorSaved(saved);
                         UpdateEditorFromState();
                     }
                 }

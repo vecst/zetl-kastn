@@ -96,6 +96,12 @@ leverage.
 - [x] Allowlist active authored links across the reader, HTML, Markdown,
       clipboard, and PDF paths; unsupported schemes render inert, new links are
       validated, and self-contained HTML carries a restrictive CSP.
+- [x] Save-or-confirm dirty Kastn edits before normal and coordinated exits; when
+      saving is unavailable, offer durable local recovery, explicit discard, or
+      cancellation instead of silently closing.
+- [x] Journal the one active editor draft locally with its baseline revision,
+      text, and styles; reopen it on launch and surface a conflict if Zetl changed
+      the authoritative slip while Kastn was away.
 - [ ] Test disk-full behavior and recovery from interruption between related
       project/workspace operations.
 - [ ] Re-run large-project measurements and investigate material regressions.

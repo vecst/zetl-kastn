@@ -28,6 +28,7 @@ internal partial class MainWindow
         }
 
         editorState.ApplyTextEdit(slipEditor.Text ?? "");
+        ScheduleDraftJournal();
         UpdateInlineFormatButtons();
         statusText.Text = editorState.IsDirty
             ? "Unsaved changes — saved when you leave the editor."
@@ -104,7 +105,7 @@ internal partial class MainWindow
                             ZetlProtocolJson.Options) is { } saved
                         && string.Equals(saved.Id, editorState.SlipId, StringComparison.Ordinal))
                     {
-                        editorState.AcceptSaved(saved);
+                        AcceptEditorSaved(saved);
                     }
                 }
                 else
@@ -213,7 +214,7 @@ internal partial class MainWindow
                 ZetlProtocolJson.Options);
             if (saved is not null)
             {
-                editorState.AcceptSaved(saved);
+                AcceptEditorSaved(saved);
                 UpdateEditorFromState();
             }
 
@@ -291,7 +292,7 @@ internal partial class MainWindow
             if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
                 && isEditing)
             {
-                editorState.AcceptSaved(saved);
+                AcceptEditorSaved(saved);
             }
 
             await connection.RefreshAsync();
@@ -714,6 +715,14 @@ internal partial class MainWindow
                 && isEditing)
             {
                 editorState.AcceptSavedKeepDraft(saved);
+                if (editorState.IsDirty)
+                {
+                    FlushDraftJournal();
+                }
+                else
+                {
+                    ClearDraftJournal(currentProject.Id, saved.Id);
+                }
             }
 
             await connection.RefreshAsync();
@@ -826,7 +835,7 @@ internal partial class MainWindow
             if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
                 && isEditing)
             {
-                editorState.AcceptSaved(saved);
+                AcceptEditorSaved(saved);
             }
 
             await connection.RefreshAsync();
@@ -1119,6 +1128,7 @@ internal partial class MainWindow
         var commandStyles = InlineStylesForTrimmedCommand(text, styles);
         editorState.SetDraft(text);
         editorState.SetInlineStyles(commandStyles);
+        FlushDraftJournal();
         await UpdateSlipPropertyAsync(
             slip,
             _ => new UpdateSlipCommand
@@ -1973,7 +1983,11 @@ internal partial class MainWindow
 
     private void UseZetlVersion()
     {
+        var projectId = currentProject?.Id;
+        var slipId = editorState.SlipId;
         editorState.UseCurrent();
+        recoveredDraftActive = false;
+        ClearDraftJournal(projectId, slipId);
         UpdateEditorFromState();
         statusText.Text = "Using the current Zetl version.";
     }
@@ -1984,6 +1998,7 @@ internal partial class MainWindow
         UpdateEditorFromState();
         editorState.SetDraft(localConflictText.Text ?? "");
         LoadEditorText(editorState.DraftText);
+        FlushDraftJournal();
         await SaveEditorAsync();
     }
 

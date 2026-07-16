@@ -334,6 +334,8 @@ The live store is human-readable JSON:
 %AppData%\Zetl\
   workspace.json
   settings.json
+  kastn-state.json
+  kastn-draft.json       # present only while an unsaved Kastn draft needs recovery
   projects\
     Project-name-3f2a91\
       project.json

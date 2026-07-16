@@ -25,8 +25,31 @@ public static class TestAppBuilder
     }
 }
 
-public class ZetlUITests
+public class ZetlUITests : IDisposable
 {
+    private readonly string defaultDraftDirectory;
+
+    public ZetlUITests()
+    {
+        defaultDraftDirectory = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "KastnUiDrafts",
+            Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(defaultDraftDirectory);
+        KastnDraftStore.DefaultPathOverride = System.IO.Path.Combine(
+            defaultDraftDirectory,
+            "draft.json");
+    }
+
+    public void Dispose()
+    {
+        KastnDraftStore.DefaultPathOverride = null;
+        if (System.IO.Directory.Exists(defaultDraftDirectory))
+        {
+            System.IO.Directory.Delete(defaultDraftDirectory, recursive: true);
+        }
+    }
+
     [AvaloniaFact]
     public void MainWindowLoadsWithoutCrashing()
     {
@@ -781,6 +804,136 @@ public class ZetlUITests
             if (System.IO.File.Exists(tempFile))
             {
                 System.IO.File.Delete(tempFile);
+            }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task MainWindowRestoresPersistedDraftIntoTheMatchingSlip()
+    {
+        var directory = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "KastnUiTests",
+            Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        MainWindow? window = null;
+        try
+        {
+            var store = new ZetlStateStore(
+                System.IO.Path.Combine(directory, "state.json"),
+                "kastn-ui");
+            var project = store.CreateProject("Recovery", ["Inbox"], "Inbox");
+            var slip = store.AddNote(project.Buckets[0], "baseline", "copy");
+            var pipeName = $"kastn-ui-{Guid.NewGuid():N}";
+            using var server = new ZetlIpcServer(new ZetlProjectService(store), pipeName);
+            server.Start();
+            await using var controller = new KastnConnectionController(
+                _ => throw new InvalidOperationException("Zetl was already running."),
+                pipeName,
+                TimeSpan.FromMilliseconds(250),
+                TimeSpan.FromMilliseconds(25));
+            controller.Start(project.Id);
+            await WaitForConditionAsync(
+                () => controller.Current.Project?.Id == project.Id,
+                "Kastn should load the recovery project.");
+
+            var draftStore = new KastnDraftStore(System.IO.Path.Combine(directory, "draft.json"));
+            Assert.True(draftStore.Save(new KastnDraftDocument
+            {
+                ProjectId = project.Id,
+                SlipId = slip.Id,
+                BaselineRevision = slip.Revision,
+                BaselineText = slip.Text,
+                DraftText = "recovered local writing",
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            }));
+
+            window = new MainWindow(controller, draftStore);
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(slip.Id, window.editorState.SlipId);
+            Assert.Equal("recovered local writing", window.editorState.DraftText);
+            Assert.True(window.editorState.IsDirty);
+            Assert.Null(window.editorState.ConflictCurrent);
+        }
+        finally
+        {
+            if (window is not null)
+            {
+                CloseWindow(window);
+            }
+            if (System.IO.Directory.Exists(directory))
+            {
+                System.IO.Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task ClosingAnOnlineDirtyWindowSavesBeforeExit()
+    {
+        var directory = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "KastnUiTests",
+            Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        var settingsPath = System.IO.Path.Combine(directory, "settings.json");
+        MainWindow? window = null;
+        try
+        {
+            ZetlAppSettingsStore.DefaultSettingsPathOverride = settingsPath;
+            var settings = new ZetlAppSettingsStore();
+            settings.Settings.KastnCloseToTray = false;
+            settings.Save();
+
+            var store = new ZetlStateStore(
+                System.IO.Path.Combine(directory, "state.json"),
+                "kastn-ui");
+            var project = store.CreateProject("Close Save", ["Inbox"], "Inbox");
+            var slip = store.AddNote(project.Buckets[0], "before close", "copy");
+            var pipeName = $"kastn-ui-{Guid.NewGuid():N}";
+            using var server = new ZetlIpcServer(new ZetlProjectService(store), pipeName);
+            server.Start();
+            await using var controller = new KastnConnectionController(
+                _ => throw new InvalidOperationException("Zetl was already running."),
+                pipeName,
+                TimeSpan.FromMilliseconds(250),
+                TimeSpan.FromMilliseconds(25));
+            controller.Start(project.Id);
+            await WaitForConditionAsync(
+                () => controller.Current.Project?.Id == project.Id,
+                "Kastn should load the close-save project.");
+
+            var draftStore = new KastnDraftStore(System.IO.Path.Combine(directory, "draft.json"));
+            window = new MainWindow(controller, draftStore);
+            var closed = false;
+            window.Closed += (_, _) => closed = true;
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            window.slipEditor.Text = "saved during close";
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(window.editorState.IsDirty);
+
+            window.Close();
+            await WaitForConditionAsync(() => closed, "The window should close after saving its editor.");
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("saved during close", slip.Text);
+            Assert.Null(draftStore.Draft);
+            window = null;
+        }
+        finally
+        {
+            ZetlAppSettingsStore.DefaultSettingsPathOverride = null;
+            if (window is not null)
+            {
+                CloseWindow(window);
+            }
+            if (System.IO.Directory.Exists(directory))
+            {
+                System.IO.Directory.Delete(directory, recursive: true);
             }
         }
     }

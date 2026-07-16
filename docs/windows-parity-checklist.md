@@ -36,6 +36,11 @@ recursive shortcut handling.
 - [ ] `Quit` removes the tray icon and a later launch starts normally.
 - [ ] Ending Zetl from Task Manager does not corrupt state and a later launch
       starts normally.
+- [ ] With a dirty Kastn editor, test normal Exit and coordinated Zetl Quit both
+      online and offline; verify save, keep-recovery, discard, and cancel paths.
+- [ ] Force-terminate Kastn after typing, relaunch it, and confirm the matching
+      project/slip opens with the local draft; change the slip remotely first and
+      confirm recovery opens a conflict without losing either version.
 
 ## Shortcut Workflows
 

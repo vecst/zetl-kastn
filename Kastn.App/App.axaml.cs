@@ -27,6 +27,8 @@ public partial class App : Application
             var pipeName = Program.Value(Program.StartupArgs, "--ipc-pipe=");
             var zetlPath = Program.Value(Program.StartupArgs, "--zetl-path=");
             var projectId = Program.Value(Program.StartupArgs, "--project=");
+            var hasDirectProjectHandoff = !string.IsNullOrEmpty(projectId);
+            var draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
             var settingsStore = new ZetlAppSettingsStore();
             // With no direct handoff, honor the "reopen last project" startup preference.
             // A since-deleted id falls through to the landing page in the connection.
@@ -35,6 +37,12 @@ public partial class App : Application
                     == ZetlKastnStartup.LastProject)
             {
                 projectId = new KastnStateStore().State.LastProjectId;
+            }
+            // A crash-recovery draft takes precedence over the ordinary landing-page
+            // preference so it is visible and recoverable on the next launch.
+            if (!hasDirectProjectHandoff && draftStore.Draft is { } recoveryDraft)
+            {
+                projectId = recoveryDraft.ProjectId;
             }
             var themeStore = new ZetlThemeStore();
             themeManager = new ZetlThemeManager(this);
@@ -46,7 +54,7 @@ public partial class App : Application
             connection = new KastnConnectionController(
                 token => KastnZetlLauncher.LaunchAsync(zetlPath, pipeName, token),
                 pipeName);
-            mainWindow = new MainWindow(connection);
+            mainWindow = new MainWindow(connection, draftStore);
             desktop.MainWindow = mainWindow;
 
             if (Program.ActivationServer is { } activation)

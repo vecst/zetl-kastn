@@ -19,6 +19,13 @@ internal static class KastnDialogs
         Remove
     }
 
+    public enum UnsavedCloseAction
+    {
+        KeepRecovery,
+        Discard,
+        Cancel
+    }
+
     private sealed record SlipChoice(ZetlSlipSnapshot Slip, string Label)
     {
         public override string ToString() => Label;
@@ -213,6 +220,43 @@ internal static class KastnDialogs
             }
         };
         return await dialog.ShowDialog<bool>(owner);
+    }
+
+    public static async Task<UnsavedCloseAction> DecideUnsavedCloseAsync(
+        Window owner,
+        bool recoveryStored,
+        string reason)
+    {
+        var dialog = Dialog("Unsaved slip", 520, 240);
+        var keep = new Button
+        {
+            Content = "Keep recovery & close",
+            Width = 160,
+            IsDefault = recoveryStored,
+            IsEnabled = recoveryStored
+        };
+        var discard = new Button { Content = "Discard & close", Width = 120 };
+        var cancel = new Button { Content = "Cancel", Width = 84, IsCancel = true };
+        keep.Click += (_, _) => dialog.Close(UnsavedCloseAction.KeepRecovery);
+        discard.Click += (_, _) => dialog.Close(UnsavedCloseAction.Discard);
+        cancel.Click += (_, _) => dialog.Close(UnsavedCloseAction.Cancel);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(18),
+            Spacing = 16,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = recoveryStored
+                        ? $"{reason} Keep a local recovery draft for the next Kastn launch, discard it, or cancel closing."
+                        : $"{reason} The local recovery draft could not be written. Cancel closing to preserve the editor, or explicitly discard it.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                },
+                Buttons(keep, discard, cancel)
+            }
+        };
+        return await dialog.ShowDialog<UnsavedCloseAction>(owner);
     }
 
     public static async Task<TemporaryTemplateLaneResult?> PickTemporaryTemplateLaneAsync(
