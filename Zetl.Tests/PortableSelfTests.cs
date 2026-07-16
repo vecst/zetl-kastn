@@ -62,7 +62,7 @@ public class PortableSelfTests
                 ("Zetl state compiles TSV with bucket headers", StateCompilesTsvWithBucketHeaders),
                 ("Zetl state finds last active note", StateFindsLastActiveNote),
                 ("Zetl compile scope respects the session-only toggle", StateCompileScopeRespectsSessionToggle),
-                ("Zetl state Replay dequeues current-session slips in order", StateReplayDequeuesCurrentSessionSlipsInOrder),
+                ("Zetl state Replay resumes queued slips across restart", StateReplayResumesQueuedSlipsAcrossRestart),
                 ("Zetl state Replay archives consumed slips for review", StateReplayArchivesConsumedSlipsForReview),
                 ("Zetl state Replay restores consumed slips from review", StateReplayRestoresConsumedSlipsFromReview),
                 ("Zetl state Replay disables pop mode", StateReplayDisablesPopMode),
@@ -113,6 +113,7 @@ public class PortableSelfTests
                 ("Runtime undo stack keeps lanes separate", RuntimeUndoStackKeepsLanesSeparate),
                 ("Runtime activity log buffer drains safely", RuntimeActivityLogBufferDrainsSafely),
                 ("Runtime auto-captures copied text", RuntimeAutoCapturesCopiedText),
+                ("Runtime auto-captures and replays rich text", RuntimeAutoCapturesAndReplaysRichText),
                 ("Runtime auto-captures copied images", RuntimeAutoCapturesCopiedImages),
                 ("Runtime auto-captures dual text+image clipboards as text", RuntimeAutoCapturesDualClipboardAsText),
                 ("Dual slips survive persistence text-preferred", DualSlipSurvivesPersistence),
@@ -128,10 +129,14 @@ public class PortableSelfTests
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
                 ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
+                ("Runtime Replay resumes visible items after restart", RuntimeReplayResumesVisibleItemsAfterRestart),
                 ("Runtime rapid Replay taps consume distinct slips", RuntimeRapidReplayTapsConsumeDistinctSlips),
                 ("Runtime Replay lanes progress independently", RuntimeReplayLanesProgressIndependently),
                 ("Runtime Shift-lane Replay tap consumes a shifted paste chord", RuntimeShiftLaneReplayTapConsumesShiftedPaste),
                 ("Runtime Replay handles images and restores image clipboard", RuntimeReplayHandlesImagesAndRestoresImageClipboard),
+                ("Runtime Replay restores rich and mixed clipboard formats", RuntimeReplayRestoresRichAndMixedClipboardFormats),
+                ("Runtime Replay refuses a lossy clipboard replacement", RuntimeReplayRefusesLossyClipboardReplacement),
+                ("Runtime Replay does not overwrite a newer matching clipboard", RuntimeReplayDoesNotOverwriteNewerMatchingClipboard),
                 ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
                 ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
                 ("Runtime empty Replay reports a failed final paste", RuntimeEmptyReplayReportsFinalPasteFailure),
@@ -735,11 +740,19 @@ public class PortableSelfTests
                 project.Buckets[0],
                 "captured text",
                 "copy",
-                ZetlCaptureOrigin.Create(
+                captureOrigin: ZetlCaptureOrigin.Create(
                     "Editor",
                     "editor",
                     "Sensitive customer name",
-                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle),
+                richHtml: "<p data-private=\"producer-metadata\"><strong>captured text</strong></p>",
+                replayFormats:
+                [
+                    new ZetlClipboardFormatData(
+                        50002,
+                        [1, 2, 3],
+                        "Star Embed Source (XML)")
+                ]);
 
             var clean = ZetlProjectExportSnapshot.Create(project, includeCaptureOrigins: false);
             var archive = ZetlProjectExportSnapshot.Create(project, includeCaptureOrigins: true);
@@ -748,10 +761,26 @@ public class PortableSelfTests
                 null,
                 clean.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin,
                 "A clean export snapshot should remove the complete capture-origin envelope.");
+            AssertEqual<string?>(
+                null,
+                clean.Buckets.SelectMany(bucket => bucket.Notes).Single().RichHtml,
+                "A clean export snapshot should remove hidden source HTML.");
             AssertEqual(
                 "Sensitive customer name",
                 archive.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin?.WindowTitle,
                 "An archive export snapshot should preserve capture origin.");
+            AssertTrue(
+                archive.Buckets.SelectMany(bucket => bucket.Notes).Single().RichHtml
+                    ?.Contains("producer-metadata", StringComparison.Ordinal) == true,
+                "An archive export snapshot should preserve Replay's source HTML.");
+            AssertEqual<List<ZetlClipboardFormatData>?>(
+                null,
+                clean.Buckets.SelectMany(bucket => bucket.Notes).Single().ReplayFormats,
+                "A clean export snapshot should remove native Replay formats.");
+            AssertTrue(
+                archive.Buckets.SelectMany(bucket => bucket.Notes).Single().ReplayFormats
+                    ?.Any(item => item.RegisteredName == "Star Embed Source (XML)") == true,
+                "An archive export snapshot should preserve native Replay formats.");
             AssertTrue(note.CaptureOrigin is not null, "Sanitizing an export snapshot must not modify the live project.");
         }
 
@@ -1639,7 +1668,7 @@ public class PortableSelfTests
             AssertEqual(2, inbox.Notes.Count, "Old notes should remain stored for board/history.");
         }
 
-        private static void StateReplayDequeuesCurrentSessionSlipsInOrder()
+        private static void StateReplayResumesQueuedSlipsAcrossRestart()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path, "replay-session");
@@ -1652,15 +1681,14 @@ public class PortableSelfTests
             AssertTrue(store.TryPeekNextReplayNote(queue, out var first), "Replay bucket should expose its first slip.");
             AssertEqual("one", first?.Text, "Replay should start with the oldest current-session slip.");
             AssertTrue(store.TryConsumeReplayNote(queue, first!.Id), "Replay should consume the first slip.");
-            AssertTrue(store.TryPeekNextReplayNote(queue, out var second), "Replay bucket should expose the next slip.");
-            AssertEqual("two", second?.Text, "Replay should advance to the next slip.");
-            AssertTrue(store.TryConsumeReplayNote(queue, second!.Id), "Replay should consume the second slip.");
-            AssertFalse(store.TryPeekNextReplayNote(queue, out _), "Replay should be empty after its last slip is consumed.");
 
             var reloaded = new ZetlStateStore(temp.Path, "new-session");
             var loadedQueue = reloaded.State.Projects.Single().Buckets.Single(bucket => bucket.Name == "Queue");
-            AssertFalse(reloaded.TryPeekNextReplayNote(loadedQueue, out _), "Old-session Replay slips should not be active after restart.");
-            AssertEqual(0, loadedQueue.Notes.Count, "Consumed Replay slips should stay consumed after reload.");
+            AssertTrue(reloaded.TryPeekNextReplayNote(loadedQueue, out var second), "Replay should resume a visible queued slip after restart.");
+            AssertEqual("two", second?.Text, "Replay should resume at the first unconsumed slip.");
+            AssertTrue(reloaded.TryConsumeReplayNote(loadedQueue, second!.Id), "Replay should consume a prior-session slip.");
+            AssertFalse(reloaded.TryPeekNextReplayNote(loadedQueue, out _), "Replay should be empty after its last slip is consumed.");
+            AssertEqual(0, loadedQueue.Notes.Count, "Consumed Replay slips should stay consumed.");
         }
 
         private static void StateReplayArchivesConsumedSlipsForReview()
@@ -2602,6 +2630,70 @@ public class PortableSelfTests
             AssertEqual(project.Id, store.GetActiveProject()!.Id, "Auto-capture should keep the active project.");
         }
 
+        private static void RuntimeAutoCapturesAndReplaysRichText()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            var richHtml =
+                "<table><tr><td style=\"font-weight:bold;text-decoration:underline;text-align:right\">A1</td></tr></table>";
+            var clipboard = new FakeClipboard(null, changeToken: 2);
+            clipboard.SetMixedState("A1", richHtml, image: null, changeToken: 2);
+            clipboard.NativeReplayFormats =
+            [
+                new ZetlClipboardFormatData(
+                    13,
+                    System.Text.Encoding.Unicode.GetBytes("A1\0")),
+                new ZetlClipboardFormatData(
+                    50001,
+                    System.Text.Encoding.UTF8.GetBytes(richHtml),
+                    "HTML Format"),
+                new ZetlClipboardFormatData(
+                    50002,
+                    [1, 2, 3, 4],
+                    "Star Embed Source (XML)"),
+                new ZetlClipboardFormatData(
+                    50003,
+                    [5, 6, 7, 8],
+                    "Star Object Descriptor (XML)")
+            ];
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _,
+                replayResumeClipboard: false);
+
+            coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                captureOrigin: null).GetAwaiter().GetResult();
+
+            var captured = queue.Notes.Single();
+            AssertEqual(richHtml, captured.RichHtml, "Auto-capture should retain the source HTML fragment.");
+            AssertTrue(
+                captured.ReplayFormats?.Any(item =>
+                    item.RegisteredName == "Star Embed Source (XML)") == true,
+                "Auto-capture should retain Calc's native source representation.");
+            store.SetBucketKind(queue, "Replay");
+            clipboard.SetState("ordinary user clipboard", changeToken: 3);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Rich Replay should suppress the physical paste.");
+            AssertEqual(1, keyboard.PasteCount, "Rich Replay should send one synthetic paste.");
+            AssertEqual("A1", clipboard.Text, "Rich Replay should keep the plain-text fallback.");
+            AssertEqual(richHtml, clipboard.RichHtml, "Rich Replay should stage the captured HTML fragment.");
+            AssertTrue(
+                clipboard.LastRestoredRawFormats?.Any(item =>
+                    item.RegisteredName == "Star Embed Source (XML)") == true,
+                "Rich Replay should prefer Calc's native representation over HTML import.");
+            var review = store.GetActiveProject()!.Buckets
+                .Single(bucket => bucket.Id == queue.Settings.ReplayReviewBucketId);
+            AssertEqual(richHtml, review.Notes.Single().RichHtml, "Replay review should retain the rich representation.");
+        }
+
         private static void RuntimeAutoCapturesCopiedImages()
         {
             using var temp = new TempStateFile();
@@ -2646,10 +2738,13 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             // A spreadsheet copy: the clipboard carries the cell text and a
             // bitmap rendering at the same time.
-            var clipboard = new FakeClipboard("A1\tB1\nA2\tB2", changeToken: 2)
-            {
-                Image = new ZetlClipboardImage([1, 2, 3], 30, 20)
-            };
+            var richHtml = "<table><tr><td><strong>A1</strong></td><td>B1</td></tr></table>";
+            var clipboard = new FakeClipboard(null, changeToken: 2);
+            clipboard.SetMixedState(
+                "A1\tB1\nA2\tB2",
+                richHtml,
+                new ZetlClipboardImage([1, 2, 3], 30, 20),
+                changeToken: 2);
             var notifications = new FakeNotificationSink();
             var coordinator = CreateShortcutCoordinator(
                 store,
@@ -2667,6 +2762,7 @@ public class PortableSelfTests
             AssertFalse(note.IsImage, "A dual capture should present as text, not as a picture.");
             AssertEqual("A1\tB1\nA2\tB2", note.Text, "A dual capture should keep the clipboard text as content.");
             AssertTrue(note.Image is not null, "A dual capture should retain the clipboard picture.");
+            AssertEqual(richHtml, note.RichHtml, "A dual capture should retain the rich HTML representation.");
             AssertEqual(1, store.GetProjectAssets(project).Count, "A dual capture should write its picture asset.");
             AssertEqual(
                 "Captured to Inbox in Demo.",
@@ -2686,7 +2782,8 @@ public class PortableSelfTests
                 new ZetlClipboardImage([9, 9, 9], 4, 4),
                 "copy",
                 caption: "A1\tB1",
-                preferTextContent: true);
+                preferTextContent: true,
+                richHtml: "<table><tr><td><strong>A1</strong></td><td>B1</td></tr></table>");
 
             var reloaded = new ZetlStateStore(temp.Path);
 
@@ -2697,6 +2794,9 @@ public class PortableSelfTests
             AssertFalse(note.IsImage, "A reloaded dual slip should stay text-preferred.");
             AssertEqual("A1\tB1", note.Text, "A reloaded dual slip should keep its text content.");
             AssertTrue(note.Image is not null, "A reloaded dual slip should keep its attached picture.");
+            AssertTrue(
+                note.RichHtml?.Contains("<strong>A1</strong>", StringComparison.Ordinal) == true,
+                "A reloaded dual slip should keep its rich HTML representation.");
         }
 
         private static void RuntimePopRemovesDualSlipByImageHash()
@@ -3151,6 +3251,36 @@ public class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
+        private static void RuntimeReplayResumesVisibleItemsAfterRestart()
+        {
+            using var temp = new TempStateFile();
+            var firstSession = new ZetlStateStore(temp.Path, "first-session");
+            firstSession.CreateProject("Demo", ["Queue"], "Queue");
+            var originalQueue = firstSession.GetActiveBucket()!;
+            firstSession.SetBucketKind(originalQueue, "Replay");
+            firstSession.AddNote(originalQueue, "first queued value", "copy");
+            firstSession.AddNote(originalQueue, "second queued value", "copy");
+
+            var store = new ZetlStateStore(temp.Path, "restarted-session");
+            var queue = store.GetActiveBucket()!;
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Replay should handle a visible prior-session queue item.");
+            AssertEqual(1, keyboard.PasteCount, "Replay should paste rather than pass through an apparently empty queue.");
+            AssertEqual("user clipboard", clipboard.Text, "Replay should restore the user's clipboard after restart.");
+            AssertEqual(1, queue.Notes.Count, "Replay should consume exactly the first visible queued item.");
+            AssertEqual("second queued value", queue.Notes.Single().Text, "Replay should leave the next item queued.");
+            AssertEqual("Replay", queue.Settings.Kind, "Replay should remain enabled while a visible item remains.");
+        }
+
         private static void RuntimeRapidReplayTapsConsumeDistinctSlips()
         {
             using var temp = new TempStateFile();
@@ -3304,6 +3434,126 @@ public class PortableSelfTests
 
             AssertTrue(handled, "Replay tap should suppress the physical paste.");
             AssertEqual("queued value", clipboard.Text, "Replay should NOT restore the user's clipboard and keep the last paste when setting is disabled.");
+        }
+
+        private static void RuntimeReplayRestoresRichAndMixedClipboardFormats()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var userImage = new ZetlClipboardImage([1, 2, 3, 4], 2, 2);
+            var clipboard = new FakeClipboard(null, changeToken: 1);
+            clipboard.SetMixedState(
+                "formatted user text",
+                "<p><strong>formatted</strong> user text</p>",
+                userImage,
+                changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Replay tap should suppress the physical paste.");
+            AssertEqual(1, keyboard.PasteCount, "Replay should paste the queued item once.");
+            AssertEqual("formatted user text", clipboard.Text, "Replay should restore the plain-text format.");
+            AssertEqual(
+                "<p><strong>formatted</strong> user text</p>",
+                clipboard.RichHtml,
+                "Replay should restore the rich HTML format.");
+            AssertTrue(
+                clipboard.Image?.PngBytes.SequenceEqual(userImage.PngBytes) == true,
+                "Replay should restore an image format carried alongside text.");
+            AssertEqual(1, clipboard.BackupRestoreCount, "Replay should perform one complete clipboard restore.");
+            AssertEqual(0, queue.Notes.Count, "A successfully restored Replay should consume its item.");
+        }
+
+        private static void RuntimeReplayRefusesLossyClipboardReplacement()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1)
+            {
+                BackupFailureReason = "CF_BITMAP cannot be restored safely"
+            };
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out var keyboard,
+                out var undo);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Replay tap should remain handled when safe backup is impossible.");
+            AssertEqual(0, keyboard.PasteCount, "Replay must not paste after an incomplete clipboard backup.");
+            AssertEqual("user clipboard", clipboard.Text, "Replay must leave the user's clipboard untouched.");
+            AssertEqual(1, queue.Notes.Count, "Replay must keep the queued item after refusing replacement.");
+            AssertFalse(undo.TryPop(false, out _), "A refused Replay must not create an undo entry.");
+            AssertTrue(
+                notifications.Messages.Exists(message =>
+                    message.Contains("Replay paused", StringComparison.OrdinalIgnoreCase)
+                    && message.Contains("item kept", StringComparison.OrdinalIgnoreCase)),
+                "Replay should explain that it paused to avoid a lossy clipboard replacement.");
+        }
+
+        private static void RuntimeReplayDoesNotOverwriteNewerMatchingClipboard()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("original clipboard", changeToken: 1);
+            var dispatcher = new QueuingDispatcher();
+            var restoreDelay = new ManualDelay();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _,
+                delay: restoreDelay,
+                dispatcher: dispatcher);
+
+            AssertTrue(
+                coordinator.OnTapDispatched(ShortcutContext(VK_V)),
+                "Replay tap should be handled.");
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => keyboard.PasteCount == 1 && queue.Notes.Count == 0,
+                    TimeSpan.FromSeconds(5)),
+                "Replay should stage, paste, and consume before the delayed restore.");
+
+            // The user copies richer content with the same visible text as the
+            // Replay item while the restore delay is pending.
+            AssertTrue(
+                clipboard.SetRichText("queued value", "<p><em>new user copy</em></p>"),
+                "The simulated newer clipboard write should succeed.");
+            restoreDelay.Release();
+            AssertTrue(
+                SpinWait.SpinUntil(() => dispatcher.PendingCount > 0, TimeSpan.FromSeconds(5)),
+                "The delayed restore should return to the dispatcher.");
+            dispatcher.RunAll();
+
+            AssertEqual("queued value", clipboard.Text, "Replay should leave the newer clipboard text intact.");
+            AssertEqual(
+                "<p><em>new user copy</em></p>",
+                clipboard.RichHtml,
+                "Replay should not overwrite newer rich formats just because visible text matches.");
+            AssertEqual(0, clipboard.BackupRestoreCount, "A changed clipboard token must cancel restoration.");
         }
 
         private static void RuntimeReplayHandlesImagesAndRestoresImageClipboard()
@@ -4661,15 +4911,33 @@ public class PortableSelfTests
 
             public string? RichHtml { get; private set; }
 
+            public IReadOnlyList<ZetlClipboardFormatData>? NativeReplayFormats { get; set; }
+
+            public IReadOnlyList<ZetlClipboardFormatData>? LastRestoredRawFormats { get; private set; }
+
             public uint ChangeToken { get; private set; }
 
             public int ImageSetCount { get; private set; }
 
+            public int BackupRestoreCount { get; private set; }
+
             public bool SetTextSucceeds { get; set; } = true;
+
+            public string? BackupFailureReason { get; set; }
 
             public string? TryGetText()
             {
                 return Text;
+            }
+
+            public string? TryGetHtml()
+            {
+                return RichHtml;
+            }
+
+            public IReadOnlyList<ZetlClipboardFormatData>? TryGetReplayFormats()
+            {
+                return NativeReplayFormats;
             }
 
             public ZetlClipboardImage? Image { get; set; }
@@ -4688,6 +4956,7 @@ public class PortableSelfTests
 
                 Text = text;
                 RichHtml = null;
+                NativeReplayFormats = null;
                 Image = null;
                 ChangeToken++;
                 return true;
@@ -4702,6 +4971,7 @@ public class PortableSelfTests
 
                 Text = plainText;
                 RichHtml = html;
+                NativeReplayFormats = null;
                 Image = null;
                 ChangeToken++;
                 return true;
@@ -4717,7 +4987,68 @@ public class PortableSelfTests
                 Image = image;
                 Text = null;
                 RichHtml = null;
+                NativeReplayFormats = null;
                 ImageSetCount++;
+                ChangeToken++;
+                return true;
+            }
+
+            public ZetlClipboardBackup CaptureBackup()
+            {
+                if (BackupFailureReason is not null)
+                {
+                    return ZetlClipboardBackup.Incomplete(BackupFailureReason);
+                }
+
+                var image = Image is null
+                    ? null
+                    : new ZetlClipboardImage(
+                        Image.PngBytes.ToArray(),
+                        Image.Width,
+                        Image.Height);
+                return ZetlClipboardBackup.FromPortable(Text, RichHtml, image);
+            }
+
+            public bool RestoreBackup(ZetlClipboardBackup backup)
+            {
+                if (!SetTextSucceeds || !backup.IsComplete)
+                {
+                    return false;
+                }
+
+                if (backup.RawFormats is { } rawFormats)
+                {
+                    LastRestoredRawFormats = rawFormats;
+                    var unicode = rawFormats.FirstOrDefault(item => item.Format == 13);
+                    if (unicode is not null)
+                    {
+                        Text = System.Text.Encoding.Unicode.GetString(unicode.Data).TrimEnd('\0');
+                    }
+                    var html = rawFormats.FirstOrDefault(item =>
+                        item.RegisteredName == "HTML Format");
+                    RichHtml = html is null
+                        ? null
+                        : System.Text.Encoding.UTF8.GetString(html.Data);
+                    NativeReplayFormats = rawFormats;
+                    Image = null;
+                    BackupRestoreCount++;
+                    ChangeToken++;
+                    return true;
+                }
+
+                Text = backup.Text;
+                RichHtml = backup.Html;
+                Image = backup.Image is null
+                    ? null
+                    : new ZetlClipboardImage(
+                        backup.Image.PngBytes.ToArray(),
+                        backup.Image.Width,
+                        backup.Image.Height);
+                if (Image is not null)
+                {
+                    ImageSetCount++;
+                }
+                BackupRestoreCount++;
                 ChangeToken++;
                 return true;
             }
@@ -4731,7 +5062,21 @@ public class PortableSelfTests
             {
                 Text = text;
                 RichHtml = null;
+                NativeReplayFormats = null;
                 Image = null;
+                ChangeToken = changeToken;
+            }
+
+            public void SetMixedState(
+                string? text,
+                string? html,
+                ZetlClipboardImage? image,
+                uint changeToken)
+            {
+                Text = text;
+                RichHtml = html;
+                NativeReplayFormats = null;
+                Image = image;
                 ChangeToken = changeToken;
             }
         }

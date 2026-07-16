@@ -60,7 +60,9 @@ internal sealed record ZetlNoteCaptureRequest(
     string? ProjectNameDefault,
     ZetlCaptureOrigin? CaptureOrigin = null,
     ZetlClipboardImage? Image = null,
-    string? ImageSourceUrl = null) : ZetlShortcutRequest(Shifted);
+    string? ImageSourceUrl = null,
+    string? RichHtml = null,
+    IReadOnlyList<ZetlClipboardFormatData>? ReplayFormats = null) : ZetlShortcutRequest(Shifted);
 
 internal sealed record ZetlNoteCaptureResult(
     bool Committed,

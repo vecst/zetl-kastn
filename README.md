@@ -122,6 +122,7 @@ active, changed clipboard content is added to the active bucket.
 Zetl captures:
 
 - Unicode text
+- HTML-rich text with a Unicode fallback
 - clipboard pictures
 - direct HTTP(S) image URLs that resolve to an image
 
@@ -132,6 +133,14 @@ Some applications put text and a picture on the clipboard together — copying
 spreadsheet cells is the common case. Zetl captures both on one slip, which
 presents as text so compile, Replay, and views see the table, while the picture
 rides along. Kastn can flip the slip's preferred representation later.
+
+For text captures, Zetl privately retains the clipboard's HTML fragment when
+one is available. LibreOffice Calc captures additionally keep its allowlisted,
+self-contained native source formats so Replay can reproduce cell formatting
+without HTML import defaults such as added wrapping or alignment. Editing the
+slip text clears these source representations so Replay never pastes stale rich
+content. Clean/shareable project exports omit them; archival exports retain
+them.
 
 Resolving a copied image URL contacts that URL's server. Downloads time out
 after 10 seconds, are limited to 25 MB, and fall back to an ordinary text slip
@@ -178,7 +187,8 @@ than part of the authored slip text, and clean exports remove it.
 ### Replay Mode
 
 Replay pastes a bucket back in capture order. It is designed for ordered data
-entry:
+entry. Durable Replay queues resume with their remaining items after Zetl
+restarts:
 
 1. Activate Replay Mode with held `Ctrl+R`.
 2. Copy values into the bucket in the order needed.
@@ -186,7 +196,14 @@ entry:
 
 For each paste, Zetl temporarily places the next slip on the clipboard, sends
 the paste, archives the consumed slip into a review bucket, and restores the
-user's previous clipboard. Text and picture slips are both supported.
+user's previous clipboard. On Windows, restoration preserves the complete set
+of clipboard formats, including rich HTML/RTF, spreadsheet payloads, file lists,
+images, and their fallback representations. If a format cannot be backed up
+faithfully, Replay pauses before changing the clipboard and keeps the queued
+slip. A clipboard changed by the user during Replay's restore delay is never
+overwritten. Captured text slips prefer a stored native rich representation
+when supported, then HTML, with plain text available for applications that do
+not accept either. Text and picture slips are both supported.
 
 If Windows rejects the synthetic paste, the slip stays in the queue. When the
 queue becomes empty, the bucket returns to Standard mode. Rapid taps are

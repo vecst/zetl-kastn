@@ -16,7 +16,8 @@ internal static class ZetlWindowsSelfTests
         }
 
         var clipboard = new AvaloniaWindowsClipboard(message => Console.WriteLine($"  clipboard: {message}"));
-        var original = clipboard.TryGetText();
+        var original = clipboard.CaptureBackup();
+        var canRestoreCallerClipboard = original.IsComplete;
         var failures = 0;
         try
         {
@@ -51,6 +52,25 @@ internal static class ZetlWindowsSelfTests
                     outputDib.AsSpan(8, 4)) == -1
                 && System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(
                     outputDib.AsSpan(14, 2)) == 32);
+
+            failures += Check(
+                "clipboard enhanced metafile covers its synthesized legacy format",
+                AvaloniaWindowsClipboard.IsSynthesizedFormatCovered(
+                    3, // CF_METAFILEPICT
+                    [new ZetlClipboardFormatData(14, [1])])); // CF_ENHMETAFILE
+            failures += Check(
+                "clipboard DIB covers synthesized bitmap and palette handles",
+                AvaloniaWindowsClipboard.IsSynthesizedFormatCovered(
+                    2, // CF_BITMAP
+                    [new ZetlClipboardFormatData(8, [1])]) // CF_DIB
+                && AvaloniaWindowsClipboard.IsSynthesizedFormatCovered(
+                    9, // CF_PALETTE
+                    [new ZetlClipboardFormatData(17, [1])])); // CF_DIBV5
+            failures += Check(
+                "clipboard unsupported handles are not treated as synthesized",
+                !AvaloniaWindowsClipboard.IsSynthesizedFormatCovered(
+                    128, // CF_OWNERDISPLAY
+                    [new ZetlClipboardFormatData(14, [1])]));
 
             // The stub keys off the request path so one handler can exercise each
             // content-type classification branch in the resolver.
@@ -147,47 +167,98 @@ internal static class ZetlWindowsSelfTests
                 noCurlResolver.TryResolveAsync("https://example.test/blocked")
                     .GetAwaiter().GetResult() is null);
 
-            var sample = $"zetl-selftest-{Guid.NewGuid():N}";
-            failures += Check("clipboard write reports success", clipboard.SetText(sample));
-            failures += Check("clipboard round-trips written text", clipboard.TryGetText() == sample);
-
-            var tokenBefore = clipboard.GetChangeToken();
-            failures += Check("clipboard overwrite reports success", clipboard.SetText("second value"));
-            failures += Check("clipboard reflects the overwrite", clipboard.TryGetText() == "second value");
-            failures += Check("change token advances after a write", clipboard.GetChangeToken() != tokenBefore);
-
-            failures += Check(
-                "clipboard round-trips unicode and emoji",
-                clipboard.SetText("café — naïve — 日本語 🎉") && clipboard.TryGetText() == "café — naïve — 日本語 🎉");
-
-            // Simulate owner-window creation failing: the write must refuse and
-            // leave whatever is on the clipboard intact, never empty it.
-            var canary = $"zetl-owner-canary-{Guid.NewGuid():N}";
-            clipboard.SetText(canary);
-            var noOwner = new AvaloniaWindowsClipboard(_ => { }, ownerWindowFactory: () => IntPtr.Zero);
-            try
+            if (canRestoreCallerClipboard)
             {
-                failures += Check("no-owner clipboard write returns false", !noOwner.SetText("should not be written"));
-                failures += Check("no-owner write leaves the clipboard intact", clipboard.TryGetText() == canary);
+                var sample = $"zetl-selftest-{Guid.NewGuid():N}";
+                failures += Check("clipboard write reports success", clipboard.SetText(sample));
+                failures += Check("clipboard round-trips written text", clipboard.TryGetText() == sample);
+
+                var tokenBefore = clipboard.GetChangeToken();
+                failures += Check("clipboard overwrite reports success", clipboard.SetText("second value"));
+                failures += Check("clipboard reflects the overwrite", clipboard.TryGetText() == "second value");
+                failures += Check("change token advances after a write", clipboard.GetChangeToken() != tokenBefore);
+
+                failures += Check(
+                    "clipboard round-trips unicode and emoji",
+                    clipboard.SetText("café — naïve — 日本語 🎉") && clipboard.TryGetText() == "café — naïve — 日本語 🎉");
+
+                var richText = "formatted clipboard text";
+                var richHtml = "<p><strong>formatted</strong> clipboard text</p>";
+                failures += Check(
+                    "clipboard writes rich text with a plain fallback",
+                    clipboard.SetRichText(richText, richHtml));
+                failures += Check(
+                    "clipboard reads back the rich HTML fragment",
+                    clipboard.TryGetHtml() == richHtml);
+                var richBackup = clipboard.CaptureBackup();
+                failures += Check(
+                    "clipboard backup captures both Unicode and HTML formats",
+                    richBackup is { IsComplete: true, RawFormats: not null }
+                    && richBackup.RawFormats.Any(item =>
+                        item.Format == AvaloniaWindowsClipboard.UnicodeTextFormat)
+                    && richBackup.RawFormats.Any(item =>
+                        item.Format == AvaloniaWindowsClipboard.HtmlClipboardFormat));
+                failures += Check(
+                    "clipboard can be replaced before an exact restore",
+                    clipboard.SetText("temporary replacement"));
+                failures += Check(
+                    "clipboard restores every rich format",
+                    clipboard.RestoreBackup(richBackup));
+                failures += Check(
+                    "restored rich clipboard matches its exact backup",
+                    BackupsEqual(richBackup, clipboard.CaptureBackup()));
+
+                var calcFormats = richBackup.RawFormats!.ToList();
+                calcFormats.Add(new ZetlClipboardFormatData(
+                    0,
+                    [1, 2, 3, 4],
+                    "Star Embed Source (XML)"));
+                calcFormats.Add(new ZetlClipboardFormatData(
+                    0,
+                    [5, 6, 7, 8],
+                    "Star Object Descriptor (XML)"));
+                failures += Check(
+                    "clipboard stages named Calc-native formats",
+                    clipboard.RestoreBackup(ZetlClipboardBackup.FromRaw(calcFormats)));
+                var capturedCalcFormats = clipboard.TryGetReplayFormats();
+                failures += Check(
+                    "clipboard captures an allowlisted Calc-native Replay bundle",
+                    capturedCalcFormats is { Count: >= 3 }
+                    && capturedCalcFormats.Any(item =>
+                        item.RegisteredName == "Star Embed Source (XML)"
+                        && item.Data.SequenceEqual(new byte[] { 1, 2, 3, 4 }))
+                    && capturedCalcFormats.Any(item =>
+                        item.RegisteredName == "Star Object Descriptor (XML)"
+                        && item.Data.SequenceEqual(new byte[] { 5, 6, 7, 8 })));
+
+                // Simulate owner-window creation failing: the write must refuse and
+                // leave whatever is on the clipboard intact, never empty it.
+                var canary = $"zetl-owner-canary-{Guid.NewGuid():N}";
+                clipboard.SetText(canary);
+                var noOwner = new AvaloniaWindowsClipboard(_ => { }, ownerWindowFactory: () => IntPtr.Zero);
+                try
+                {
+                    failures += Check("no-owner clipboard write returns false", !noOwner.SetText("should not be written"));
+                    failures += Check("no-owner write leaves the clipboard intact", clipboard.TryGetText() == canary);
+                }
+                finally
+                {
+                    noOwner.Dispose();
+                }
             }
-            finally
+            else
             {
-                noOwner.Dispose();
+                Console.WriteLine(
+                    $"SKIP live clipboard mutation tests: caller clipboard could not be backed up safely ({original.FailureReason}).");
             }
         }
         finally
         {
-            if (!string.IsNullOrEmpty(original))
+            if (canRestoreCallerClipboard)
             {
-                clipboard.SetText(original);
-            }
-            else
-            {
-                // The clipboard started with no text (empty, or non-text data we
-                // can't capture here). Clear our test text instead of leaving it
-                // behind. Non-text formats are not preserved.
-                clipboard.Clear();
-                Console.WriteLine("  note: clipboard started with no text; cleared test text (non-text formats not preserved).");
+                failures += Check(
+                    "clipboard self-test restores the caller's exact clipboard",
+                    clipboard.RestoreBackup(original));
             }
 
             clipboard.Dispose();
@@ -203,6 +274,23 @@ internal static class ZetlWindowsSelfTests
     {
         Console.WriteLine($"{(passed ? "PASS" : "FAIL")} {name}");
         return passed ? 0 : 1;
+    }
+
+    private static bool BackupsEqual(ZetlClipboardBackup left, ZetlClipboardBackup right)
+    {
+        if (!left.IsComplete
+            || !right.IsComplete
+            || left.RawFormats is null
+            || right.RawFormats is null
+            || left.RawFormats.Count != right.RawFormats.Count)
+        {
+            return false;
+        }
+
+        var rightByFormat = right.RawFormats.ToDictionary(item => item.Format);
+        return left.RawFormats.All(item =>
+            rightByFormat.TryGetValue(item.Format, out var other)
+            && item.Data.SequenceEqual(other.Data));
     }
 
     private sealed class StubHttpHandler(

@@ -290,10 +290,15 @@ public class ZetlFaultInjectionTests
         public FaultyClipboard(bool failOnSet) => this.failOnSet = failOnSet;
 
         public string? TryGetText() => null;
+        public string? TryGetHtml() => null;
+        public IReadOnlyList<ZetlClipboardFormatData>? TryGetReplayFormats() => null;
         public ZetlClipboardImage? TryGetImage() => null;
         public bool SetText(string text) => !failOnSet;
         public bool SetRichText(string plainText, string html) => !failOnSet;
         public bool SetImage(ZetlClipboardImage image) => !failOnSet;
+        public ZetlClipboardBackup CaptureBackup() =>
+            ZetlClipboardBackup.FromPortable(null, null, null);
+        public bool RestoreBackup(ZetlClipboardBackup backup) => !failOnSet;
         public uint GetChangeToken() => 0;
     }
 

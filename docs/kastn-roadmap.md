@@ -31,6 +31,9 @@ The two-application foundation is in place:
 - [x] Text and picture slips, picture IPC, previews, and picture-aware exports
 - [x] Dual text+picture capture (spreadsheet copies keep both formats) with a
       Kastn preferred-representation toggle
+- [x] Persist captured rich text privately and stage native LibreOffice Calc
+      formats before HTML/plain fallbacks, including review, restart, and
+      clean-export safety
 - [x] Project landing cards and lifecycle actions
 - [x] Bucket/slip tree, search, filters, autosave, conflict resolution, batch
       actions, soft-delete, restore, and drag-and-drop
@@ -90,6 +93,13 @@ leverage.
       failures cannot cross the unmanaged boundary or suppress physical input.
 - [x] Serialize rapid Replay taps through durable consumption per lane while
       keeping Main and Alternate Replay independent.
+- [x] Resume visible durable Replay queue items across Zetl restarts instead of
+      treating prior-session slips as an empty queue and passing through paste.
+- [x] Preserve the complete multi-format Windows clipboard across Replay,
+      refuse replacement when any format cannot be restored faithfully, and
+      bind delayed restoration to the exact staged clipboard change token.
+- [x] Replay captured text slips with allowlisted native Calc formats so cell
+      styling survives without HTML import adding wrap or alignment rules.
 - [x] Preserve undo/redo entries until inverse commands are confirmed; retry
       outcome-unknown IPC mutations by command ID on the same server instance,
       and generate repair entries for reconciled partial compounds.

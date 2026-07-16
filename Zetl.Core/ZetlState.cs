@@ -205,6 +205,21 @@ internal sealed class ZetlSlip
         }
     }
     public string Source { get; set; } = "";
+
+    // The source application's HTML clipboard representation. Zetl keeps this
+    // private to the slip (it is not rendered by Kastn) so Replay can reproduce
+    // rich text such as spreadsheet emphasis and alignment.
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? RichHtml { get; set; }
+
+    // Allowlisted native source formats used only to reproduce a Replay paste.
+    // RegisteredName lets Windows resolve session-local registered format IDs
+    // again after a reboot.
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<ZetlClipboardFormatData>? ReplayFormats { get; set; }
+
     public string? SessionId { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public string? DeletedFromBucketId { get; set; }
@@ -1192,13 +1207,17 @@ internal sealed class ZetlStateStore
         ZetlCaptureOrigin? captureOrigin = null,
         string? title = null,
         string? blockKind = null,
-        bool? ignoreBucketRenderKind = null)
+        bool? ignoreBucketRenderKind = null,
+        string? richHtml = null,
+        IReadOnlyList<ZetlClipboardFormatData>? replayFormats = null)
     {
         var note = new ZetlSlip
         {
             Id = NewId(),
             Title = (title ?? "").Trim(),
             Text = text.Trim(),
+            RichHtml = string.IsNullOrWhiteSpace(richHtml) ? null : richHtml,
+            ReplayFormats = CloneReplayFormats(replayFormats),
             Source = source,
             SessionId = noteSessionId ?? sessionId,
             CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow,
@@ -1223,7 +1242,9 @@ internal sealed class ZetlStateStore
         ZetlCaptureOrigin? captureOrigin = null,
         string? caption = null,
         string? sourceUrl = null,
-        bool preferTextContent = false)
+        bool preferTextContent = false,
+        string? richHtml = null,
+        IReadOnlyList<ZetlClipboardFormatData>? replayFormats = null)
     {
         if (!project.Buckets.Any(item => item.Id == bucket.Id))
         {
@@ -1235,6 +1256,8 @@ internal sealed class ZetlStateStore
             Id = NewId(),
             Type = ZetlSlipType.Picture,
             Text = (caption ?? "").Trim(),
+            RichHtml = string.IsNullOrWhiteSpace(richHtml) ? null : richHtml,
+            ReplayFormats = CloneReplayFormats(replayFormats),
             Image = CreateImageAsset(project, image, sourceUrl),
             Source = source,
             SessionId = sessionId,
@@ -1452,7 +1475,15 @@ internal sealed class ZetlStateStore
         int? fontSize = null,
         string? textColor = null)
     {
-        note.Text = text.Trim();
+        var normalizedText = text.Trim();
+        if (!string.Equals(note.Text, normalizedText, StringComparison.Ordinal))
+        {
+            // Once the visible text is edited, the source application's HTML no
+            // longer describes it and must not be replayed as stale content.
+            note.RichHtml = null;
+            note.ReplayFormats = null;
+        }
+        note.Text = normalizedText;
         // The preferred representation of a dual slip. Picture requires an
         // attached picture (the caller validates); a text preference is
         // re-classified so a bare link presents as Url.
@@ -1989,8 +2020,7 @@ internal sealed class ZetlStateStore
         }
 
         note = bucket.Slips.FirstOrDefault(item =>
-            IsCurrentSessionNote(item)
-            && !IsStructuralNote(item)
+            !IsStructuralNote(item)
             && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
         return note is not null;
     }
@@ -2010,7 +2040,10 @@ internal sealed class ZetlStateStore
             return false;
         }
 
-        var note = bucket.Slips.FirstOrDefault(item => item.Id == noteId && IsCurrentSessionNote(item));
+        var note = bucket.Slips.FirstOrDefault(item =>
+            item.Id == noteId
+            && !IsStructuralNote(item)
+            && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
         if (note is null)
         {
             consumedNote = null;
@@ -2047,7 +2080,10 @@ internal sealed class ZetlStateStore
             return false;
         }
 
-        var note = bucket.Slips.FirstOrDefault(item => item.Id == noteId && IsCurrentSessionNote(item));
+        var note = bucket.Slips.FirstOrDefault(item =>
+            item.Id == noteId
+            && !IsStructuralNote(item)
+            && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
         if (note is null)
         {
             return false;
@@ -2064,6 +2100,8 @@ internal sealed class ZetlStateStore
                 Id = NewId(),
                 Type = note.Type,
                 Text = note.Text.Trim(),
+                RichHtml = note.RichHtml,
+                ReplayFormats = CloneReplayFormats(note.ReplayFormats),
                 Image = note.Image is null
                     ? null
                     : new ZetlImageAsset
@@ -3395,6 +3433,8 @@ internal sealed class ZetlStateStore
             Type = source.Type,
             Title = source.Title,
             Text = source.Text,
+            RichHtml = source.RichHtml,
+            ReplayFormats = CloneReplayFormats(source.ReplayFormats),
             Source = "temporary-replay",
             SessionId = sessionId,
             CreatedAtUtc = DateTimeOffset.UtcNow,
@@ -3426,6 +3466,15 @@ internal sealed class ZetlStateStore
 
         return clone;
     }
+
+    private static List<ZetlClipboardFormatData>? CloneReplayFormats(
+        IReadOnlyList<ZetlClipboardFormatData>? formats) =>
+        formats is not { Count: > 0 }
+            ? null
+            : formats.Select(item => new ZetlClipboardFormatData(
+                item.Format,
+                item.Data.ToArray(),
+                item.RegisteredName)).ToList();
 
     private ZetlImageAsset? CloneReplayImage(
         ZetlProject sourceProject,

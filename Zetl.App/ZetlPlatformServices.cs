@@ -385,18 +385,45 @@ internal static class AvaloniaWindowsInput
 
 internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 {
+    private const uint Bitmap = 2;
+    private const uint MetafilePicture = 3;
     private const uint UnicodeText = 13;
     private const uint Dib = 8;
+    private const uint Palette = 9;
+    private const uint EnhancedMetafile = 14;
     private const uint DibV5 = 17;
+    private const uint OwnerDisplay = 0x0080;
+    private const uint DisplayText = 0x0081;
+    private const uint DisplayBitmap = 0x0082;
+    private const uint DisplayMetafilePicture = 0x0083;
+    private const uint DisplayEnhancedMetafile = 0x008E;
+    private const uint PrivateFormatFirst = 0x0200;
+    private const uint PrivateFormatLast = 0x02FF;
+    private const uint GdiObjectFormatFirst = 0x0300;
+    private const uint GdiObjectFormatLast = 0x03FF;
     private const uint Moveable = 0x0002;
     private const int ClipboardAttempts = 5;
     private const int HwndMessage = -3;
+    private const int MaxBackupFormats = 128;
+    private const ulong MaxBackupBytes = 256UL * 1024 * 1024;
+    private const int MaxStoredRichHtmlBytes = 25 * 1024 * 1024;
 
     private readonly Action<string> log;
     private readonly Func<IntPtr> createOwnerWindow;
     private IntPtr ownerWindow;
     private static readonly uint Png = RegisterClipboardFormat("PNG");
     private static readonly uint Html = RegisterClipboardFormat("HTML Format");
+    private static readonly uint EnterpriseDataProtection =
+        RegisterClipboardFormat("EnterpriseDataProtectionId");
+    private static readonly HashSet<string> NativeReplayFormatNames = new(
+        StringComparer.Ordinal)
+    {
+        "Star Embed Source (XML)",
+        "Star Object Descriptor (XML)"
+    };
+
+    internal static uint UnicodeTextFormat => UnicodeText;
+    internal static uint HtmlClipboardFormat => Html;
 
     // ownerWindowFactory is a test seam: pass `() => IntPtr.Zero` to simulate a
     // failed owner-window creation and verify writes refuse without wiping the
@@ -442,6 +469,175 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         {
             CloseClipboard();
         }
+    }
+
+    public string? TryGetHtml()
+    {
+        if (!TryOpen())
+        {
+            return null;
+        }
+
+        try
+        {
+            var bytes = ReadClipboardBytes(Html);
+            return bytes is { Length: <= MaxStoredRichHtmlBytes }
+                && TryExtractHtmlFragment(bytes, out var fragment)
+                    ? fragment
+                    : null;
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
+    public IReadOnlyList<ZetlClipboardFormatData>? TryGetReplayFormats()
+    {
+        if (!TryOpen())
+        {
+            return null;
+        }
+
+        var formats = new List<ZetlClipboardFormatData>();
+        var hasNativeEmbed = false;
+        var hasUnicodeText = false;
+        var totalBytes = 0;
+        try
+        {
+            uint format = 0;
+            while ((format = EnumClipboardFormats(format)) != 0)
+            {
+                var registeredName = GetRegisteredFormatName(format);
+                var isNative = registeredName is not null
+                    && NativeReplayFormatNames.Contains(registeredName);
+                if (format != UnicodeText && format != Html && !isNative)
+                {
+                    continue;
+                }
+
+                var data = ReadClipboardBytes(format);
+                var required = format == UnicodeText
+                    || string.Equals(
+                        registeredName,
+                        "Star Embed Source (XML)",
+                        StringComparison.Ordinal);
+                if (data is null)
+                {
+                    if (required)
+                    {
+                        return null;
+                    }
+                    continue;
+                }
+
+                if (data.Length > MaxStoredRichHtmlBytes - totalBytes)
+                {
+                    return null;
+                }
+
+                formats.Add(new ZetlClipboardFormatData(
+                    format,
+                    data,
+                    registeredName));
+                totalBytes += data.Length;
+                hasUnicodeText |= format == UnicodeText;
+                hasNativeEmbed |= string.Equals(
+                    registeredName,
+                    "Star Embed Source (XML)",
+                    StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+
+        // HTML alone already has the lightweight RichHtml path. Persist a raw
+        // bundle only when Calc supplied its self-contained native source.
+        return hasNativeEmbed && hasUnicodeText ? formats : null;
+    }
+
+    internal static bool TryExtractHtmlFragment(
+        byte[] clipboardBytes,
+        out string? fragment)
+    {
+        fragment = null;
+        if (clipboardBytes.Length == 0)
+        {
+            return false;
+        }
+
+        // CF_HTML offsets are byte offsets into the UTF-8 payload, not string
+        // indexes. Read only the ASCII header to locate them, then decode the
+        // exact fragment slice so non-ASCII formatting content stays intact.
+        var headerLength = Math.Min(clipboardBytes.Length, 4096);
+        var header = Encoding.ASCII.GetString(clipboardBytes, 0, headerLength);
+        if (TryReadHtmlOffset(header, "StartFragment:", out var start)
+            && TryReadHtmlOffset(header, "EndFragment:", out var end)
+            && start >= 0
+            && end >= start
+            && end <= clipboardBytes.Length)
+        {
+            fragment = Encoding.UTF8.GetString(clipboardBytes, start, end - start);
+            return true;
+        }
+
+        // A few producers emit missing or unusable offsets but include the
+        // standard fragment markers. Keep this fallback byte-safe by finding
+        // the ASCII marker bytes before decoding the UTF-8 slice.
+        ReadOnlySpan<byte> bytes = clipboardBytes;
+        ReadOnlySpan<byte> startMarker = "<!--StartFragment-->"u8;
+        ReadOnlySpan<byte> endMarker = "<!--EndFragment-->"u8;
+        var markerStart = bytes.IndexOf(startMarker);
+        if (markerStart < 0)
+        {
+            return false;
+        }
+
+        markerStart += startMarker.Length;
+        var markerEnd = bytes[markerStart..].IndexOf(endMarker);
+        if (markerEnd < 0)
+        {
+            return false;
+        }
+
+        fragment = Encoding.UTF8.GetString(bytes.Slice(markerStart, markerEnd));
+        return true;
+    }
+
+    private static bool TryReadHtmlOffset(
+        string header,
+        string label,
+        out int offset)
+    {
+        offset = 0;
+        var labelIndex = header.IndexOf(label, StringComparison.OrdinalIgnoreCase);
+        if (labelIndex < 0)
+        {
+            return false;
+        }
+
+        var index = labelIndex + label.Length;
+        while (index < header.Length && char.IsWhiteSpace(header[index]))
+        {
+            index++;
+        }
+
+        var digitStart = index;
+        while (index < header.Length && char.IsAsciiDigit(header[index]))
+        {
+            var digit = header[index] - '0';
+            if (offset > (int.MaxValue - digit) / 10)
+            {
+                return false;
+            }
+
+            offset = offset * 10 + digit;
+            index++;
+        }
+
+        return index > digitStart;
     }
 
     public ZetlClipboardImage? TryGetImage()
@@ -581,6 +777,359 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         {
             image = null;
             return false;
+        }
+    }
+
+    public ZetlClipboardBackup CaptureBackup()
+    {
+        if (!TryOpen())
+        {
+            return ZetlClipboardBackup.Incomplete("the clipboard is temporarily unavailable");
+        }
+
+        var formats = new List<ZetlClipboardFormatData>();
+        var nonMemoryFormats = new List<uint>();
+        var hasEnterpriseProtectionMarker = false;
+        try
+        {
+            ulong totalBytes = 0;
+            uint format = 0;
+            while (true)
+            {
+                Marshal.SetLastPInvokeError(0);
+                format = EnumClipboardFormats(format);
+                if (format == 0)
+                {
+                    var error = Marshal.GetLastPInvokeError();
+                    if (error != 0)
+                    {
+                        return ZetlClipboardBackup.Incomplete(
+                            $"clipboard format enumeration failed (error {error})");
+                    }
+                    break;
+                }
+
+                // Windows Information Protection exposes this registered format
+                // as system-managed metadata, often with no data handle at all.
+                // Its value must be queried through EdpGetEnterpriseIdForClipboard
+                // rather than GetClipboardData/GlobalLock.
+                if (format == EnterpriseDataProtection)
+                {
+                    hasEnterpriseProtectionMarker = true;
+                    continue;
+                }
+
+                if (format == EnhancedMetafile)
+                {
+                    var metafileHandle = GetClipboardData(format);
+                    var data = metafileHandle == IntPtr.Zero
+                        ? null
+                        : ReadEnhancedMetafileBytes(metafileHandle);
+                    if (data is null
+                        || (ulong)data.Length > MaxBackupBytes - totalBytes)
+                    {
+                        return ZetlClipboardBackup.Incomplete(
+                            "CF_ENHMETAFILE could not be serialized safely or the clipboard is too large");
+                    }
+
+                    formats.Add(new ZetlClipboardFormatData(format, data));
+                    totalBytes += (ulong)data.Length;
+                    continue;
+                }
+
+                if (formats.Count >= MaxBackupFormats)
+                {
+                    return ZetlClipboardBackup.Incomplete(
+                        $"the clipboard contains more than {MaxBackupFormats} formats");
+                }
+
+                if (UsesNonMemoryHandle(format))
+                {
+                    // Some advertised handle formats are synthesized by Windows
+                    // from a canonical format. Defer the decision until all
+                    // formats are known so the canonical payload can cover them.
+                    nonMemoryFormats.Add(format);
+                    continue;
+                }
+
+                var handle = GetClipboardData(format);
+                if (handle == IntPtr.Zero)
+                {
+                    return ZetlClipboardBackup.Incomplete(
+                        $"{DescribeFormat(format)} could not be read");
+                }
+
+                var size = GlobalSize(handle).ToUInt64();
+                if (size == 0
+                    || size > int.MaxValue
+                    || size > MaxBackupBytes - totalBytes)
+                {
+                    return ZetlClipboardBackup.Incomplete(
+                        $"{DescribeFormat(format)} is not a restorable memory payload or the clipboard is too large");
+                }
+
+                var pointer = GlobalLock(handle);
+                if (pointer == IntPtr.Zero)
+                {
+                    return ZetlClipboardBackup.Incomplete(
+                        $"{DescribeFormat(format)} could not be locked for backup");
+                }
+
+                try
+                {
+                    var data = new byte[(int)size];
+                    Marshal.Copy(pointer, data, 0, data.Length);
+                    formats.Add(new ZetlClipboardFormatData(format, data));
+                    totalBytes += size;
+                }
+                finally
+                {
+                    GlobalUnlock(handle);
+                }
+            }
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+
+        if (hasEnterpriseProtectionMarker)
+        {
+            if (!TryGetClipboardEnterpriseId(out var enterpriseId, out var failureReason))
+            {
+                return ZetlClipboardBackup.Incomplete(failureReason);
+            }
+            if (!string.IsNullOrEmpty(enterpriseId))
+            {
+                return ZetlClipboardBackup.Incomplete(
+                    "the clipboard contains Windows-protected enterprise data");
+            }
+        }
+
+        var unsupportedFormat = nonMemoryFormats.FirstOrDefault(format =>
+            !IsSynthesizedFormatCovered(format, formats));
+        if (unsupportedFormat != 0)
+        {
+            return ZetlClipboardBackup.Incomplete(
+                $"{DescribeFormat(unsupportedFormat)} cannot be restored safely");
+        }
+
+        return ZetlClipboardBackup.FromRaw(formats);
+    }
+
+    public bool RestoreBackup(ZetlClipboardBackup backup)
+    {
+        if (!backup.IsComplete || backup.RawFormats is null)
+        {
+            log("Clipboard restore refused: the backup is incomplete or belongs to another backend.");
+            return false;
+        }
+
+        if (!EnsureOwnerWindow())
+        {
+            log("Clipboard restore skipped: no owner window available; clipboard left intact.");
+            return false;
+        }
+
+        var allocations = new List<(uint Format, IntPtr Handle, bool IsEnhancedMetafile)>();
+        var opened = false;
+        try
+        {
+            var seenFormats = new HashSet<uint>();
+            foreach (var item in backup.RawFormats)
+            {
+                var format = ResolveStoredFormat(item);
+                if (format == 0
+                    || !seenFormats.Add(format)
+                    || item.Data.Length == 0
+                    || UsesNonMemoryHandle(format))
+                {
+                    log($"Clipboard restore refused: invalid stored clipboard format backup payload.");
+                    return false;
+                }
+
+                var isEnhancedMetafile = format == EnhancedMetafile;
+                var handle = isEnhancedMetafile
+                    ? SetEnhMetaFileBits((uint)item.Data.Length, item.Data)
+                    : AllocateGlobal(item.Data);
+                if (handle == IntPtr.Zero)
+                {
+                    log($"Clipboard restore failed: could not allocate {DescribeFormat(format)}.");
+                    return false;
+                }
+                allocations.Add((format, handle, isEnhancedMetafile));
+            }
+
+            if (!TryOpen())
+            {
+                return false;
+            }
+            opened = true;
+
+            if (!EmptyClipboard())
+            {
+                log($"Clipboard restore failed: EmptyClipboard error {Marshal.GetLastWin32Error()}.");
+                return false;
+            }
+
+            for (var index = 0; index < allocations.Count; index++)
+            {
+                var item = allocations[index];
+                if (SetClipboardData(item.Format, item.Handle) == IntPtr.Zero)
+                {
+                    log($"Clipboard restore failed while writing {DescribeFormat(item.Format)} (error {Marshal.GetLastWin32Error()}).");
+                    return false;
+                }
+
+                // Windows owns a successfully transferred handle.
+                allocations[index] = (item.Format, IntPtr.Zero, item.IsEnhancedMetafile);
+            }
+
+            return true;
+        }
+        finally
+        {
+            foreach (var item in allocations)
+            {
+                if (item.Handle != IntPtr.Zero)
+                {
+                    if (item.IsEnhancedMetafile)
+                    {
+                        DeleteEnhMetaFile(item.Handle);
+                    }
+                    else
+                    {
+                        GlobalFree(item.Handle);
+                    }
+                }
+            }
+            if (opened)
+            {
+                CloseClipboard();
+            }
+        }
+    }
+
+    private static bool UsesNonMemoryHandle(uint format) =>
+        format is Bitmap or MetafilePicture or Palette
+            or OwnerDisplay or DisplayText or DisplayBitmap
+            or DisplayMetafilePicture or DisplayEnhancedMetafile
+        || format is >= PrivateFormatFirst and <= PrivateFormatLast
+        || format is >= GdiObjectFormatFirst and <= GdiObjectFormatLast;
+
+    private static uint ResolveStoredFormat(ZetlClipboardFormatData item)
+    {
+        if (item.RegisteredName is null)
+        {
+            return item.Format;
+        }
+
+        var name = item.RegisteredName.Trim();
+        return name.Length is > 0 and <= 255
+            ? RegisterClipboardFormat(name)
+            : 0;
+    }
+
+    internal static bool IsSynthesizedFormatCovered(
+        uint format,
+        IReadOnlyList<ZetlClipboardFormatData> capturedFormats)
+    {
+        var hasFormat = (uint candidate) =>
+            capturedFormats.Any(item => item.Format == candidate);
+        return format switch
+        {
+            // Windows converts between the enhanced and legacy metafile formats.
+            MetafilePicture => hasFormat(EnhancedMetafile),
+            // Windows creates bitmap and palette handles from either DIB format.
+            Bitmap or Palette => hasFormat(Dib) || hasFormat(DibV5),
+            _ => false,
+        };
+    }
+
+    private static string DescribeFormat(uint format)
+    {
+        var standardName = format switch
+        {
+            Bitmap => "CF_BITMAP",
+            MetafilePicture => "CF_METAFILEPICT",
+            Dib => "CF_DIB",
+            Palette => "CF_PALETTE",
+            UnicodeText => "CF_UNICODETEXT",
+            EnhancedMetafile => "CF_ENHMETAFILE",
+            DibV5 => "CF_DIBV5",
+            OwnerDisplay => "CF_OWNERDISPLAY",
+            DisplayText => "CF_DSPTEXT",
+            DisplayBitmap => "CF_DSPBITMAP",
+            DisplayMetafilePicture => "CF_DSPMETAFILEPICT",
+            DisplayEnhancedMetafile => "CF_DSPENHMETAFILE",
+            _ => null,
+        };
+        if (standardName is not null)
+        {
+            return standardName;
+        }
+
+        var registeredName = GetRegisteredFormatName(format);
+        return registeredName is not null
+            ? $"clipboard format {registeredName}"
+            : $"clipboard format {format}";
+    }
+
+    private static string? GetRegisteredFormatName(uint format)
+    {
+        var name = new StringBuilder(256);
+        return GetClipboardFormatName(format, name, name.Capacity) > 0
+            ? name.ToString()
+            : null;
+    }
+
+    private static byte[]? ReadEnhancedMetafileBytes(IntPtr handle)
+    {
+        var size = GetEnhMetaFileBits(handle, 0, IntPtr.Zero);
+        if (size == 0 || size > int.MaxValue)
+        {
+            return null;
+        }
+
+        var data = new byte[(int)size];
+        return GetEnhMetaFileBits(handle, size, data) == size
+            ? data
+            : null;
+    }
+
+    private static bool TryGetClipboardEnterpriseId(
+        out string? enterpriseId,
+        out string failureReason)
+    {
+        enterpriseId = null;
+        failureReason = "";
+        IntPtr value = IntPtr.Zero;
+        try
+        {
+            var result = EdpGetEnterpriseIdForClipboard(out value);
+            if (result < 0)
+            {
+                failureReason =
+                    $"Windows clipboard protection metadata could not be verified (HRESULT 0x{result:X8})";
+                return false;
+            }
+
+            enterpriseId = value == IntPtr.Zero
+                ? null
+                : Marshal.PtrToStringUni(value);
+            return true;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            failureReason = "Windows clipboard protection metadata APIs are unavailable";
+            return false;
+        }
+        finally
+        {
+            if (value != IntPtr.Zero)
+            {
+                HeapFree(GetProcessHeap(), 0, value);
+            }
         }
     }
 
@@ -1008,6 +1557,15 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     private static extern IntPtr GetClipboardData(uint format);
 
     [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint EnumClipboardFormats(uint format);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClipboardFormatNameW")]
+    private static extern int GetClipboardFormatName(
+        uint format,
+        StringBuilder formatName,
+        int maxCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetClipboardData(uint format, IntPtr memory);
 
     [DllImport("user32.dll")]
@@ -1046,6 +1604,33 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint RegisterClipboardFormat(string format);
 
+    [DllImport("edputil.dll")]
+    private static extern int EdpGetEnterpriseIdForClipboard(out IntPtr enterpriseId);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern uint GetEnhMetaFileBits(
+        IntPtr enhancedMetafile,
+        uint bufferSize,
+        IntPtr data);
+
+    [DllImport("gdi32.dll", SetLastError = true, EntryPoint = "GetEnhMetaFileBits")]
+    private static extern uint GetEnhMetaFileBits(
+        IntPtr enhancedMetafile,
+        uint bufferSize,
+        [Out] byte[] data);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr SetEnhMetaFileBits(uint bufferSize, byte[] data);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern bool DeleteEnhMetaFile(IntPtr enhancedMetafile);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetProcessHeap();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool HeapFree(IntPtr heap, uint flags, IntPtr memory);
+
     [DllImport("kernel32.dll")]
     private static extern IntPtr GlobalFree(IntPtr memory);
 }
@@ -1075,6 +1660,10 @@ internal sealed class UnsupportedClipboard(Action<string> log) : IClipboard
 {
     public string? TryGetText() => null;
 
+    public string? TryGetHtml() => null;
+
+    public IReadOnlyList<ZetlClipboardFormatData>? TryGetReplayFormats() => null;
+
     public ZetlClipboardImage? TryGetImage() => null;
 
     public bool SetImage(ZetlClipboardImage image)
@@ -1092,6 +1681,15 @@ internal sealed class UnsupportedClipboard(Action<string> log) : IClipboard
     public bool SetRichText(string plainText, string html)
     {
         log("Rich clipboard write ignored: no platform clipboard backend is installed.");
+        return false;
+    }
+
+    public ZetlClipboardBackup CaptureBackup() =>
+        ZetlClipboardBackup.Incomplete("no platform clipboard backend is installed");
+
+    public bool RestoreBackup(ZetlClipboardBackup backup)
+    {
+        log("Clipboard restore ignored: no platform clipboard backend is installed.");
         return false;
     }
 

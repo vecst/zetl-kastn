@@ -60,6 +60,16 @@ recursive shortcut handling.
 - [ ] Held `Ctrl+V` opens Compile; click-away cancels without changing state.
 - [ ] Replay pastes in order, archives consumed slips, restores the user's
       clipboard, and can be undone.
+- [ ] In LibreOffice Calc, copy cells containing bold, underline, and right
+      alignment into a Replay bucket; verify each Replay paste preserves those
+      styles without adding wrap/alignment rules, and the final clipboard
+      restore preserves the original rich cells.
+- [ ] Before Replay, copy rich text, RTF, spreadsheet cells, files, and mixed
+      text/image content; verify every advertised clipboard format returns
+      after each paste. If Zetl reports an unsupported format, verify Replay
+      leaves both the clipboard and queued slip untouched.
+- [ ] During Replay's restore delay, copy new rich content whose visible text
+      matches the queued slip; verify Zetl does not overwrite the newer copy.
 - [ ] Pop removes the matching pasted slip and can be undone.
 - [ ] Replay and Pop image slips; verify image-to-image and image-to-text
       clipboard restoration plus undo.
@@ -76,7 +86,7 @@ recursive shortcut handling.
 - [ ] Compile formatted, unformatted, and TSV output.
 - [ ] Save structured and flattened compile results to another bucket.
 - [ ] Export clean and archive project packages; confirm only the archive keeps
-      application and window-title provenance.
+      application/window-title provenance and captured native/HTML source data.
 - [ ] Open a project in Kastn; apply font family, font size, and text color to one
       slip and a multi-selection, then verify undo/redo and restart persistence.
 - [ ] Export the styled project as HTML and PDF and confirm typography matches the

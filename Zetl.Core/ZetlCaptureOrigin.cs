@@ -109,6 +109,11 @@ internal static class ZetlProjectExportSnapshot
             foreach (var slip in snapshot.Buckets.SelectMany(bucket => bucket.Slips))
             {
                 slip.CaptureOrigin = null;
+                // Rich clipboard HTML is a hidden source representation and may
+                // contain producer metadata. Clean/shareable exports keep only
+                // Zetl's visible text; archival exports retain Replay fidelity.
+                slip.RichHtml = null;
+                slip.ReplayFormats = null;
                 if (slip.Image is not null)
                 {
                     slip.Image.SourceUrl = null;
