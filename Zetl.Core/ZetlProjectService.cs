@@ -933,7 +933,7 @@ internal sealed class ZetlProjectService
             payload.Align, payload.BlockKind, payload.IgnoreBucketRenderKind,
             payload.Checked, payload.InlineStyles,
             payload.Bold, payload.Italic, payload.Strike,
-            payload.Type);
+            payload.Type, payload.FontFamily, payload.FontSize, payload.TextColor);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);

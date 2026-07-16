@@ -71,6 +71,9 @@ protocols. A transient transport failure may retry the same command ID.
   buckets, and slips.
 - A slip title is optional metadata. Clients display body text as the fallback
   title when it is absent; non-picture slips require either a title or body text.
+- A slip may carry optional whole-slip font family, point size, and `#RRGGBB`
+  text color. Empty family/color and size `0` mean inherit; `UpdateSlip` uses
+  null to preserve those fields and empty values/`0` to clear them.
 - Change events identify the changed entity and resulting project change
   sequence.
 - On reconnect, after a sequence gap, or after any uncertain local merge, Kastn

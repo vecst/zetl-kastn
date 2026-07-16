@@ -362,6 +362,139 @@ internal partial class MainWindow
         codeBlockButton.FontWeight = active == ZetlBlockKinds.Code ? FontWeight.Bold : FontWeight.Normal;
     }
 
+    private void UpdateSlipTypographyControls(IReadOnlyList<ZetlSlipSnapshot> selected)
+    {
+        slipTypographyUpdating = true;
+        try
+        {
+            var commonFamily = CommonValue(selected.Select(slip => slip.FontFamily), StringComparer.OrdinalIgnoreCase);
+            var commonSize = CommonValue(selected.Select(slip => slip.FontSize));
+            var commonColor = CommonValue(selected.Select(slip => slip.TextColor), StringComparer.OrdinalIgnoreCase);
+
+            fontFamilyBox.SelectedItem = commonFamily is null
+                ? null
+                : FontFamilyChoices.FirstOrDefault(choice =>
+                    string.Equals(choice.Value, commonFamily, StringComparison.OrdinalIgnoreCase));
+            fontSizeBox.SelectedItem = commonSize is null
+                ? null
+                : FontSizeChoices.FirstOrDefault(choice => choice.Value == commonSize.Value);
+            textColorBox.SelectedItem = commonColor is null
+                ? null
+                : TextColorChoices.FirstOrDefault(choice =>
+                    string.Equals(choice.Value, commonColor, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            slipTypographyUpdating = false;
+        }
+
+        ApplyEditorTypography(selected.Count == 1 ? selected[0] : null);
+    }
+
+    private static string? CommonValue(
+        IEnumerable<string> values,
+        IEqualityComparer<string> comparer)
+    {
+        using var enumerator = values.GetEnumerator();
+        if (!enumerator.MoveNext())
+        {
+            return null;
+        }
+
+        var first = enumerator.Current;
+        while (enumerator.MoveNext())
+        {
+            if (!comparer.Equals(first, enumerator.Current))
+            {
+                return null;
+            }
+        }
+
+        return first;
+    }
+
+    private static int? CommonValue(IEnumerable<int> values)
+    {
+        using var enumerator = values.GetEnumerator();
+        if (!enumerator.MoveNext())
+        {
+            return null;
+        }
+
+        var first = enumerator.Current;
+        while (enumerator.MoveNext())
+        {
+            if (first != enumerator.Current)
+            {
+                return null;
+            }
+        }
+
+        return first;
+    }
+
+    private void ApplyEditorTypography(ZetlSlipSnapshot? slip)
+    {
+        slipEditor.ClearValue(TextBox.FontFamilyProperty);
+        slipEditor.ClearValue(TextBox.FontSizeProperty);
+        slipEditor.ClearValue(TextBox.ForegroundProperty);
+        if (slip is null)
+        {
+            return;
+        }
+
+        if (AuthoredFontFamily(ZetlViewRenderer.SlipFontFamily(slip)) is { } fontFamily)
+        {
+            slipEditor.FontFamily = fontFamily;
+        }
+
+        var fontSize = ZetlViewRenderer.SlipFontSize(slip);
+        if (fontSize > 0)
+        {
+            slipEditor.FontSize = fontSize;
+        }
+
+        if (TryParseTextColor(ZetlViewRenderer.SlipTextColor(slip), out var color))
+        {
+            slipEditor.Foreground = new SolidColorBrush(color);
+        }
+    }
+
+    private static FontFamily? AuthoredFontFamily(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new FontFamily(value);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static bool TryParseTextColor(string? value, out Color color)
+    {
+        color = default;
+        if (value is not { Length: 7 } || value[0] != '#'
+            || !byte.TryParse(value.AsSpan(1, 2), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out var red)
+            || !byte.TryParse(value.AsSpan(3, 2), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out var green)
+            || !byte.TryParse(value.AsSpan(5, 2), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out var blue))
+        {
+            return false;
+        }
+
+        color = Color.FromRgb(red, green, blue);
+        return true;
+    }
+
     private void UpdateInlineFormatButtons()
     {
         if (!CanReadInlineStyleState(out var slip))
@@ -1164,20 +1297,29 @@ internal partial class MainWindow
             return;
         }
 
+        // A group is a labelled document section. Ask for that authored label now
+        // instead of persisting the implementation placeholder "Group", which every
+        // renderer would then correctly (but noisily) expose in Copy/Export output.
+        var name = await KastnDialogs.PromptAsync(this, "New Group", "Section label");
+        if (name is null)
+        {
+            return;
+        }
+
         var parentId = SelectedBucketId is not null && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
             ? SelectedBucketId
             : null;
         var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.AddBucket,
-            new AddBucketCommand { Name = "Group", ParentBucketId = parentId, RenderKind = ZetlBucketRenderKinds.Group },
+            new AddBucketCommand { Name = name, ParentBucketId = parentId, RenderKind = ZetlBucketRenderKinds.Group },
             currentProject.Id));
         if (response.Status == ZetlResponseStatus.Success)
         {
             pendingBucketSelectionId = response.Payload?.Deserialize<ZetlBucketSnapshot>(
                 ZetlProtocolJson.Options)?.Id;
             await connection.RefreshAsync();
-            statusText.Text = "Group added — drag slips or buckets into it.";
+            statusText.Text = $"Group '{name}' added — drag slips or buckets into it.";
         }
         else
         {
@@ -1873,6 +2015,7 @@ internal partial class MainWindow
     private void UpdateEditorFromState()
     {
         var selectedSlips = SelectedSlips();
+        UpdateSlipTypographyControls(selectedSlips);
         if (selectedSlips.Count > 1)
         {
             LoadEditorText("");
@@ -1975,6 +2118,9 @@ internal partial class MainWindow
         // Bold/italic/strike are whole-slip properties, so they batch like the
         // list buttons; bold on a bucket title toggles the heading's bold.
         boldButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
+        fontFamilyBox.IsEnabled = canFormatOrBatch;
+        fontSizeBox.IsEnabled = canFormatOrBatch;
+        textColorBox.IsEnabled = canFormatOrBatch;
         italicButton.IsEnabled = canFormatOrBatch;
         strikeButton.IsEnabled = canFormatOrBatch;
         codeButton.IsEnabled = canFormat;

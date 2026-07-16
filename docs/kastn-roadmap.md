@@ -36,6 +36,8 @@ The two-application foundation is in place:
       actions, soft-delete, restore, and drag-and-drop
 - [x] Optional titles, Markdown formatting, alignment, lists, and document
       structure
+- [x] Whole-slip font family, font size, and text color with multi-select,
+      undo/redo, rich-reader, HTML, and PDF support
 - [x] Per-note block kinds (paragraph / list / heading / quote / code) as a slip
       property, blessed in-body Markdown, and an export-fidelity advisory
 - [x] Whole-slip bold/italic/strike as slip properties (inline emphasis stays

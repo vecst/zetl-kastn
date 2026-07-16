@@ -291,7 +291,7 @@ Kastn provides:
 - wiki-style **Linked Slips** navigation (Ctrl+Click/F12 to follow double-bracket stable-ID links) and backlink details index
 - search and source, session, and date filters
 - autosaving slip editing with explicit conflict resolution
-- optional slip titles and Markdown formatting
+- optional slip titles, Markdown formatting, and whole-slip font, size, and color
 - picture previews, capture details, and attaching or removing a slip's picture
 - flipping a dual (text + picture) slip's preferred representation
 - soft-delete and restore

@@ -102,6 +102,9 @@ public class ZetlUITests
                     BucketId = "b-inbox",
                     Title = "First Note",
                     Text = "Hello from the test note",
+                    FontFamily = "Georgia",
+                    FontSize = 18,
+                    TextColor = "#2563EB",
                     Source = "copy",
                     CapturedAtUtc = DateTimeOffset.UtcNow
                 }
@@ -147,6 +150,13 @@ public class ZetlUITests
         // 5. Assert editor binds to the selected slip
         Assert.Equal("Hello from the test note", window.slipEditor.Text);
         Assert.False(window.editorState.IsDirty);
+        Assert.Equal("Georgia", Assert.IsType<KastnFontFamilyItem>(window.fontFamilyBox.SelectedItem).Value);
+        Assert.Equal(18, Assert.IsType<KastnFontSizeItem>(window.fontSizeBox.SelectedItem).Value);
+        Assert.Equal("#2563EB", Assert.IsType<KastnTextColorItem>(window.textColorBox.SelectedItem).Value);
+        Assert.Equal(18, window.slipEditor.FontSize);
+        Assert.Equal(
+            Avalonia.Media.Color.FromRgb(0x25, 0x63, 0xEB),
+            Assert.IsType<Avalonia.Media.SolidColorBrush>(window.slipEditor.Foreground).Color);
 
         // 6. Modify editor text and assert it marks the state as dirty
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>

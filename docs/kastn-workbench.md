@@ -84,6 +84,13 @@ bucket title toggles the heading's bold instead. Only inline code, web links,
 and stable-ID wiki-links remain selection-scoped style ranges (kept for a
 future inline editor). Alignment (left, center, right) is a per-note property.
 
+Font family, font size, and text color are optional whole-slip properties too.
+Their compact selectors apply uniformly to a multi-selection; choosing a
+default clears the authored override and returns the slip to the active theme.
+The rich reader, HTML, and PDF honor these values. Markdown and literal text
+formats do not, so the editor's fidelity note calls out that loss before Copy or
+Export.
+
 Typing Markdown by hand in the body is also supported: `**bold**`, `## heading`,
 `> quote`, fenced code, `---` dividers, and `- ` / `1. ` lists all render. The
 buttons are the decision-free whole-slip path; typed Markdown is how emphasis
@@ -210,7 +217,9 @@ constructs that Zetl ignores:
   structural slips in capture, compile, Replay, and Pop, and the content-format
   controls do not apply to one.
 - **Group** is a container *bucket* (a render kind) shown as a boxed, labelled
-  section. Slips and whole buckets are dragged into it through the ordinary
+  section. Inserting one asks for that section label before it is created, so a
+  generic placeholder never leaks into document output. Slips and whole buckets
+  are dragged into it through the ordinary
   move/reparent drag-and-drop. A container is an otherwise normal bucket — Zetl
   still captures and compiles its contents; only the render kind is Kastn-only.
   **Table** and **LaTeX** container kinds are reserved for later. See the **Column Styles and Formatting Inheritance** section above for details on list formatting kinds.

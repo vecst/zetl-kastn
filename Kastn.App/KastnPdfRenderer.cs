@@ -219,6 +219,58 @@ internal static class KastnPdfRenderer
         _ => ""
     };
 
+    private static void ApplySlipTypography(
+        Paragraph paragraph,
+        ZetlSlipSnapshot slip,
+        bool preserveFontFamily = false)
+    {
+        // Empty values inherit the document defaults. Canonicalizing a non-empty
+        // family here also keeps old or hand-edited project files from passing an
+        // arbitrary font identifier into MigraDoc.
+        var fontFamily = ZetlViewRenderer.SlipFontFamily(slip);
+        if (!preserveFontFamily && fontFamily.Length > 0)
+        {
+            paragraph.Format.Font.Name = KastnPdfFontResolver.NormalizeFamilyName(fontFamily);
+        }
+
+        var fontSize = ZetlViewRenderer.SlipFontSize(slip);
+        if (fontSize > 0)
+        {
+            paragraph.Format.Font.Size = fontSize;
+        }
+
+        if (TryParseTextColor(ZetlViewRenderer.SlipTextColor(slip), out var color))
+        {
+            paragraph.Format.Font.Color = color;
+        }
+    }
+
+    private static bool TryParseTextColor(string? value, out Color color)
+    {
+        color = default;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.Length != 7 || normalized[0] != '#'
+            || !uint.TryParse(
+                normalized.AsSpan(1),
+                System.Globalization.NumberStyles.AllowHexSpecifier,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var rgb))
+        {
+            return false;
+        }
+
+        color = new Color(
+            (byte)((rgb >> 16) & 0xFF),
+            (byte)((rgb >> 8) & 0xFF),
+            (byte)(rgb & 0xFF));
+        return true;
+    }
+
     // Render a slip's Markdown blocks into the section: paragraphs (the first line
     // carries the slip's "•" bucket bullet) and list items (their own marker, deeper
     // indent). Alignment from the slip's Align rides on every paragraph.
@@ -259,6 +311,7 @@ internal static class KastnPdfRenderer
                 paragraph.Format.LeftIndent = Unit.FromPoint((depth + 1) * 14);
                 paragraph.Format.SpaceAfter = Unit.FromPoint(4);
                 paragraph.Format.Alignment = alignment;
+                ApplySlipTypography(paragraph, slip);
                 for (var line = 0; line < paragraphBlock.Lines.Count; line++)
                 {
                     if (line > 0)
@@ -289,6 +342,7 @@ internal static class KastnPdfRenderer
                     paragraph.Format.LeftIndent = Unit.FromPoint((depth + 2) * 14);
                     paragraph.Format.SpaceAfter = Unit.FromPoint(2);
                     paragraph.Format.Alignment = alignment;
+                    ApplySlipTypography(paragraph, slip);
                     var marker = listBlock.Kind switch
                     {
                         "ordered" => $"{number++}. ",
@@ -310,6 +364,7 @@ internal static class KastnPdfRenderer
                 paragraph.Format.SpaceBefore = Unit.FromPoint(6);
                 paragraph.Format.SpaceAfter = Unit.FromPoint(2);
                 paragraph.Format.Alignment = alignment;
+                ApplySlipTypography(paragraph, slip);
                 if (!placedSlipMarker)
                 {
                     if (slipMarker.Length > 0)
@@ -322,7 +377,10 @@ internal static class KastnPdfRenderer
 
                 var headingText = paragraph.AddFormattedText();
                 headingText.Bold = true;
-                headingText.Font.Size = headingBlock.Level <= 1 ? 13 : headingBlock.Level == 2 ? 12 : 11.5;
+                var headingFontSize = ZetlViewRenderer.SlipFontSize(slip);
+                headingText.Font.Size = headingFontSize > 0
+                    ? headingFontSize
+                    : headingBlock.Level <= 1 ? 13 : headingBlock.Level == 2 ? 12 : 11.5;
                 AppendInlines(headingText, headingBlock.Inlines, isResolved);
             }
             else if (block is ZetlQuoteBlock quoteBlock)
@@ -336,6 +394,7 @@ internal static class KastnPdfRenderer
                 paragraph.Format.Borders.Left.Width = 2;
                 paragraph.Format.Borders.Left.Color = new Color(0xBB, 0xBB, 0xBB);
                 paragraph.Format.Borders.DistanceFromLeft = Unit.FromPoint(4);
+                ApplySlipTypography(paragraph, slip);
                 var quoteText = paragraph.AddFormattedText();
                 quoteText.Italic = true;
                 for (var line = 0; line < quoteBlock.Lines.Count; line++)
@@ -360,6 +419,9 @@ internal static class KastnPdfRenderer
                 paragraph.Format.Font.Name = KastnPdfFontResolver.MonoFamilyName;
                 paragraph.Format.Font.Size = 9.5;
                 paragraph.Format.Shading.Color = new Color(0xF2, 0xF2, 0xF2);
+                // Fenced code deliberately remains monospace, while an explicit
+                // whole-slip size or color still applies.
+                ApplySlipTypography(paragraph, slip, preserveFontFamily: true);
                 var codeLines = codeBlock.Text.ReplaceLineEndings("\n").Split('\n');
                 for (var line = 0; line < codeLines.Length; line++)
                 {
@@ -383,6 +445,7 @@ internal static class KastnPdfRenderer
                 paragraph.Format.SpaceAfter = Unit.FromPoint(4);
                 paragraph.Format.Borders.Bottom.Width = 0.75;
                 paragraph.Format.Borders.Bottom.Color = new Color(0xCC, 0xCC, 0xCC);
+                ApplySlipTypography(paragraph, slip);
                 placedSlipMarker = true;
             }
         }
@@ -445,55 +508,188 @@ internal static class KastnPdfRenderer
 }
 
 /// <summary>
-/// Supplies font bytes to MigraDoc without System.Drawing, by reading system TTFs
-/// (Windows). All requested families map to one sans family with bold/italic faces,
-/// which is plenty for the document layout. The Linux port would point these at its
-/// own font paths or a bundled font.
+/// Supplies font bytes to MigraDoc without System.Drawing, by reading a curated set
+/// of Windows system TTFs. Unsupported or unavailable families fall back to Arial;
+/// this keeps arbitrary values from older or hand-edited projects safe.
 /// </summary>
 internal sealed class KastnPdfFontResolver : IFontResolver
 {
     public const string FamilyName = "Zetl Sans";
-
-    // A monospace family for fenced code blocks. Backed by Consolas, falling back to
-    // Courier New and finally the sans face, so a missing font never aborts the render.
     public const string MonoFamilyName = "Zetl Mono";
+
+    private const string FacePrefix = "kastn:";
+
+    private enum FaceStyle
+    {
+        Regular,
+        Bold,
+        Italic,
+        BoldItalic
+    }
+
+    private sealed record FontFamilyFiles(
+        string Key,
+        string DisplayName,
+        string Regular,
+        string Bold,
+        string Italic,
+        string BoldItalic)
+    {
+        public string FileFor(FaceStyle style) => style switch
+        {
+            FaceStyle.Bold => Bold,
+            FaceStyle.Italic => Italic,
+            FaceStyle.BoldItalic => BoldItalic,
+            _ => Regular
+        };
+    }
+
+    private static readonly FontFamilyFiles ArialFamily = new(
+        "arial", "Arial", "arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf");
+    private static readonly FontFamilyFiles CalibriFamily = new(
+        "calibri", "Calibri", "calibri.ttf", "calibrib.ttf", "calibrii.ttf", "calibriz.ttf");
+    private static readonly FontFamilyFiles GeorgiaFamily = new(
+        "georgia", "Georgia", "georgia.ttf", "georgiab.ttf", "georgiai.ttf", "georgiaz.ttf");
+    private static readonly FontFamilyFiles SegoeUiFamily = new(
+        "segoeui", "Segoe UI", "segoeui.ttf", "segoeuib.ttf", "segoeuii.ttf", "segoeuiz.ttf");
+    private static readonly FontFamilyFiles TimesNewRomanFamily = new(
+        "times", "Times New Roman", "times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf");
+    private static readonly FontFamilyFiles VerdanaFamily = new(
+        "verdana", "Verdana", "verdana.ttf", "verdanab.ttf", "verdanai.ttf", "verdanaz.ttf");
+    private static readonly FontFamilyFiles ConsolasFamily = new(
+        "consolas", "Consolas", "consola.ttf", "consolab.ttf", "consolai.ttf", "consolaz.ttf");
+    private static readonly FontFamilyFiles CourierNewFamily = new(
+        "courier", "Courier New", "cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf");
+
+    private static readonly IReadOnlyDictionary<string, FontFamilyFiles> FamiliesByName =
+        new Dictionary<string, FontFamilyFiles>(StringComparer.OrdinalIgnoreCase)
+        {
+            [FamilyName] = ArialFamily,
+            [MonoFamilyName] = ConsolasFamily,
+            [ArialFamily.DisplayName] = ArialFamily,
+            [CalibriFamily.DisplayName] = CalibriFamily,
+            [GeorgiaFamily.DisplayName] = GeorgiaFamily,
+            [SegoeUiFamily.DisplayName] = SegoeUiFamily,
+            [TimesNewRomanFamily.DisplayName] = TimesNewRomanFamily,
+            [VerdanaFamily.DisplayName] = VerdanaFamily,
+            [ConsolasFamily.DisplayName] = ConsolasFamily,
+            [CourierNewFamily.DisplayName] = CourierNewFamily
+        };
+
+    private static readonly IReadOnlyDictionary<string, FontFamilyFiles> FamiliesByKey =
+        new[]
+        {
+            ArialFamily,
+            CalibriFamily,
+            GeorgiaFamily,
+            SegoeUiFamily,
+            TimesNewRomanFamily,
+            VerdanaFamily,
+            ConsolasFamily,
+            CourierNewFamily
+        }.ToDictionary(family => family.Key, StringComparer.Ordinal);
+
+    public static string NormalizeFamilyName(string? familyName) =>
+        FindFamily(familyName).DisplayName;
 
     public FontResolverInfo? ResolveTypeface(string familyName, bool bold, bool italic)
     {
-        var mono = familyName == MonoFamilyName;
-        var face = (mono, bold, italic) switch
+        var family = FindFamily(familyName);
+        var style = (bold, italic) switch
         {
-            (true, true, true) => "zm-bi",
-            (true, true, false) => "zm-b",
-            (true, false, true) => "zm-i",
-            (true, false, false) => "zm-r",
-            (false, true, true) => "z-bi",
-            (false, true, false) => "z-b",
-            (false, false, true) => "z-i",
-            _ => "z-r"
+            (true, true) => FaceStyle.BoldItalic,
+            (true, false) => FaceStyle.Bold,
+            (false, true) => FaceStyle.Italic,
+            _ => FaceStyle.Regular
         };
-        return new FontResolverInfo(face);
+        return new FontResolverInfo($"{FacePrefix}{family.Key}:{StyleKey(style)}");
     }
 
     public byte[]? GetFont(string faceName)
     {
-        return faceName switch
+        if (!TryParseFaceName(faceName, out var family, out var style))
         {
-            "z-b" => LoadSystemFont("arialbd.ttf") ?? LoadSystemFont("arial.ttf"),
-            "z-i" => LoadSystemFont("ariali.ttf") ?? LoadSystemFont("arial.ttf"),
-            "z-bi" => LoadSystemFont("arialbi.ttf") ?? LoadSystemFont("arial.ttf"),
-            "zm-b" => LoadMonoFont("consolab.ttf", "courbd.ttf"),
-            "zm-i" => LoadMonoFont("consolai.ttf", "couri.ttf"),
-            "zm-bi" => LoadMonoFont("consolaz.ttf", "courbi.ttf"),
-            "zm-r" => LoadMonoFont("consola.ttf", "cour.ttf"),
-            _ => LoadSystemFont("arial.ttf")
-        };
+            return null;
+        }
+
+        var exact = LoadSystemFont(family.FileFor(style));
+        if (exact is not null)
+        {
+            return exact;
+        }
+
+        // Keep a mono request mono when one of the two Windows mono families is
+        // absent, before using the general Arial fallback.
+        if (family == ConsolasFamily || family == CourierNewFamily)
+        {
+            var alternateMono = family == ConsolasFamily ? CourierNewFamily : ConsolasFamily;
+            var alternate = LoadSystemFont(alternateMono.FileFor(style));
+            if (alternate is not null)
+            {
+                return alternate;
+            }
+        }
+
+        // A regular face is preferable to failing outright when a particular style
+        // file is missing. Arial remains the final family fallback for every request.
+        if (style != FaceStyle.Regular && LoadSystemFont(family.Regular) is { } regular)
+        {
+            return regular;
+        }
+
+        return LoadSystemFont(ArialFamily.FileFor(style))
+            ?? LoadSystemFont(ArialFamily.Regular);
     }
 
-    // Prefer Consolas, then Courier New, then the sans fallback so code still renders
-    // (just not monospaced) on a machine missing both monospace faces.
-    private static byte[]? LoadMonoFont(string consolas, string courier) =>
-        LoadSystemFont(consolas) ?? LoadSystemFont(courier) ?? LoadSystemFont("arial.ttf");
+    private static FontFamilyFiles FindFamily(string? familyName)
+    {
+        if (!string.IsNullOrWhiteSpace(familyName)
+            && FamiliesByName.TryGetValue(familyName.Trim(), out var family))
+        {
+            return family;
+        }
+
+        return ArialFamily;
+    }
+
+    private static string StyleKey(FaceStyle style) => style switch
+    {
+        FaceStyle.Bold => "b",
+        FaceStyle.Italic => "i",
+        FaceStyle.BoldItalic => "bi",
+        _ => "r"
+    };
+
+    private static bool TryParseFaceName(
+        string faceName,
+        out FontFamilyFiles family,
+        out FaceStyle style)
+    {
+        family = ArialFamily;
+        style = FaceStyle.Regular;
+        if (!faceName.StartsWith(FacePrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var separator = faceName.IndexOf(':', FacePrefix.Length);
+        if (separator < 0
+            || !FamiliesByKey.TryGetValue(faceName[FacePrefix.Length..separator], out family!))
+        {
+            family = ArialFamily;
+            return false;
+        }
+
+        style = faceName[(separator + 1)..] switch
+        {
+            "b" => FaceStyle.Bold,
+            "i" => FaceStyle.Italic,
+            "bi" => FaceStyle.BoldItalic,
+            "r" => FaceStyle.Regular,
+            _ => (FaceStyle)(-1)
+        };
+        return style >= FaceStyle.Regular && style <= FaceStyle.BoldItalic;
+    }
 
     private static byte[]? LoadSystemFont(string file)
     {
@@ -503,7 +699,9 @@ internal sealed class KastnPdfFontResolver : IFontResolver
                 Environment.GetFolderPath(Environment.SpecialFolder.Fonts), file);
             return File.Exists(path) ? File.ReadAllBytes(path) : null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or System.Security.SecurityException)
         {
             return null;
         }

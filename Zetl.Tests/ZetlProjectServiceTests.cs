@@ -629,6 +629,80 @@ public class ZetlProjectServiceTests
             "Explicit false clears each whole-slip style.");
     }
 
+    [Fact] public void WholeSlipTypographyRoundTripsNormalizesAndClears()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var bucket);
+        var note = store.AddNote(bucket, "styled note", "copy");
+        var service = new ZetlProjectService(store);
+
+        ZetlSlipSnapshot Update(string id, UpdateSlipCommand command, long revision) =>
+            service.Execute(ZetlCommandEnvelope.Create(
+                id, ZetlCommandKind.UpdateSlip, command, project.Id, note.Id, revision))
+                .Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)
+                ?? throw new InvalidOperationException($"{id} did not return a slip.");
+
+        var styled = Update(
+            "typography-on",
+            new UpdateSlipCommand
+            {
+                Text = note.Text,
+                FontFamily = "  Segoe UI  ",
+                FontSize = 4,
+                TextColor = " #a1b2c3 "
+            },
+            note.Revision);
+        AssertEqual("Segoe UI", styled.FontFamily, "Font families should be trimmed.");
+        AssertEqual(8, styled.FontSize, "Positive font sizes should clamp to the supported range.");
+        AssertEqual("#A1B2C3", styled.TextColor, "Text colors should normalize to uppercase hex.");
+        AssertEqual("Segoe UI", note.FontFamily, "The normalized family should persist on the note.");
+        AssertEqual(8, note.FontSize, "The normalized size should persist on the note.");
+        AssertEqual("#A1B2C3", note.TextColor, "The normalized color should persist on the note.");
+
+        var edited = Update(
+            "typography-preserve",
+            new UpdateSlipCommand { Text = "edited note" },
+            styled.Revision);
+        AssertEqual("Segoe UI", edited.FontFamily, "Omitting a family should preserve it.");
+        AssertEqual(8, edited.FontSize, "Omitting a size should preserve it.");
+        AssertEqual("#A1B2C3", edited.TextColor, "Omitting a color should preserve it.");
+
+        var capped = Update(
+            "typography-cap",
+            new UpdateSlipCommand
+            {
+                Text = edited.Text,
+                FontFamily = new string('F', ZetlSlipTypography.MaximumFontFamilyLength + 20),
+                FontSize = 500
+            },
+            edited.Revision);
+        AssertEqual(
+            ZetlSlipTypography.MaximumFontFamilyLength,
+            capped.FontFamily.Length,
+            "Font family storage should be bounded.");
+        AssertEqual(96, capped.FontSize, "Large font sizes should clamp to the supported range.");
+
+        var invalidColor = Update(
+            "typography-invalid-color",
+            new UpdateSlipCommand { Text = capped.Text, TextColor = "red" },
+            capped.Revision);
+        AssertEqual("", invalidColor.TextColor, "Invalid CSS/color text must not persist.");
+
+        var cleared = Update(
+            "typography-clear",
+            new UpdateSlipCommand
+            {
+                Text = invalidColor.Text,
+                FontFamily = "",
+                FontSize = 0,
+                TextColor = ""
+            },
+            invalidColor.Revision);
+        AssertEqual("", cleared.FontFamily, "An empty family should restore theme inheritance.");
+        AssertEqual(0, cleared.FontSize, "Size zero should restore theme inheritance.");
+        AssertEqual("", cleared.TextColor, "An empty color should restore theme inheritance.");
+    }
+
     [Fact] public void DividerNoteAddsWithoutContent()
     {
         using var temp = new TempStateDirectory();

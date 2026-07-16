@@ -252,6 +252,20 @@ internal sealed class ZetlSlip
     public bool Italic { get; set; }
     public bool Strike { get; set; }
 
+    // Kastn-only: optional whole-slip typography. Empty strings / size 0 inherit
+    // the active theme and keep old project files behaviorally unchanged.
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public string FontFamily { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public int FontSize { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public string TextColor { get; set; } = "";
+
     // Kastn-only: property-backed inline styling over Text.
     public List<ZetlInlineStyleRange> InlineStyles { get; set; } = [];
 
@@ -1407,7 +1421,10 @@ internal sealed class ZetlStateStore
         bool? bold = null,
         bool? italic = null,
         bool? strike = null,
-        ZetlSlipType? type = null)
+        ZetlSlipType? type = null,
+        string? fontFamily = null,
+        int? fontSize = null,
+        string? textColor = null)
     {
         note.Text = text.Trim();
         // The preferred representation of a dual slip. Picture requires an
@@ -1477,6 +1494,21 @@ internal sealed class ZetlStateStore
         if (strike is { } isStrike)
         {
             note.Strike = isStrike;
+        }
+
+        if (fontFamily is not null)
+        {
+            note.FontFamily = ZetlSlipTypography.NormalizeFontFamily(fontFamily);
+        }
+
+        if (fontSize is { } authoredFontSize)
+        {
+            note.FontSize = ZetlSlipTypography.NormalizeFontSize(authoredFontSize);
+        }
+
+        if (textColor is not null)
+        {
+            note.TextColor = ZetlSlipTypography.NormalizeTextColor(textColor);
         }
 
         note.InlineStyles = ZetlInlineStyles.Normalize(
@@ -2647,6 +2679,9 @@ internal sealed class ZetlStateStore
                     note.Type = ZetlSlipType.Url;
                 }
                 note.Source ??= "";
+                note.FontFamily = ZetlSlipTypography.NormalizeFontFamily(note.FontFamily);
+                note.FontSize = ZetlSlipTypography.NormalizeFontSize(note.FontSize);
+                note.TextColor = ZetlSlipTypography.NormalizeTextColor(note.TextColor);
                 if (note.CreatedAtUtc == default)
                 {
                     note.CreatedAtUtc = DateTimeOffset.UtcNow;
@@ -3107,6 +3142,9 @@ internal sealed class ZetlStateStore
             Bold = source.Bold,
             Italic = source.Italic,
             Strike = source.Strike,
+            FontFamily = source.FontFamily,
+            FontSize = source.FontSize,
+            TextColor = source.TextColor,
             InlineStyles = source.InlineStyles.Select(style => style with { }).ToList(),
             CaptureOrigin = source.CaptureOrigin is null
                 ? null

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ZETL.Contracts;
 
 public sealed record ListProjectsCommand;
@@ -163,6 +165,17 @@ public sealed record UpdateSlipCommand
     public bool? Bold { get; init; }
     public bool? Italic { get; init; }
     public bool? Strike { get; init; }
+
+    // Null preserves the current whole-slip typography. Empty strings and size 0
+    // explicitly clear an override so the active theme is inherited again.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FontFamily { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? FontSize { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TextColor { get; init; }
 
     // Null preserves the current inline style ranges; an empty list explicitly clears
     // them. Ranges are normalized against Text before persisting.

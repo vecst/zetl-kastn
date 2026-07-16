@@ -116,6 +116,12 @@ internal static class ZetlViewRenderer
     public static bool ExportPreservesAlignment(string? kind) =>
         kind is ZetlViewKinds.Html or ZetlViewKinds.Pdf;
 
+    // Font family, point size, and text color are block styles. HTML and PDF can
+    // carry them; Markdown has no portable equivalents and the compile kinds are
+    // deliberately literal.
+    public static bool ExportPreservesTypography(string? kind) =>
+        kind is ZetlViewKinds.Html or ZetlViewKinds.Pdf;
+
     /// <summary>
     /// Group the given slips for rendering: one group per bucket (in project bucket
     /// order, including empty ancestors that contain visible descendant slips) by default, or one group per declared
@@ -673,9 +679,10 @@ internal static class ZetlViewRenderer
                 {
                     CloseList();
                     var caption = PictureCaption(slip);
+                    var typographyStyle = SlipStyleAttribute(slip, includeAlignment: false);
                     if (pictures?.TryGetValue(slip.Id, out var picture) == true)
                     {
-                        parts.Add($"<figure id=\"{slip.Id}\">");
+                        parts.Add($"<figure id=\"{slip.Id}\"{typographyStyle}>");
                         parts.Add($"<img src=\"{DataUri(picture)}\" alt=\"{EscapeAttribute(caption)}\" />");
                         if (!string.IsNullOrWhiteSpace(slip.Text))
                         {
@@ -685,7 +692,7 @@ internal static class ZetlViewRenderer
                     }
                     else
                     {
-                        parts.Add($"<p id=\"{slip.Id}\">[Picture: {Escape(caption)}]</p>");
+                        parts.Add($"<p id=\"{slip.Id}\"{typographyStyle}>[Picture: {Escape(caption)}]</p>");
                     }
 
                     continue;
@@ -707,7 +714,8 @@ internal static class ZetlViewRenderer
                     or ZetlBlockKinds.Code or ZetlBlockKinds.Divider)
                 {
                     CloseList();
-                    parts.Add($"<div id=\"{slip.Id}\">" + ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text, EffectiveInlineStyles(slip, text)), slipIds.Contains) + "</div>");
+                    var typographyStyle = SlipStyleAttribute(slip, includeAlignment: false);
+                    parts.Add($"<div id=\"{slip.Id}\"{typographyStyle}>" + ZetlMarkdown.BlocksToHtml(ZetlMarkdown.BlocksForNote(kind, text, EffectiveInlineStyles(slip, text)), slipIds.Contains) + "</div>");
                     continue;
                 }
 
@@ -718,8 +726,7 @@ internal static class ZetlViewRenderer
 
                 // Slip text is Markdown; render its paragraph/list blocks to inline
                 // HTML (the parser escapes literal runs). Literal views stay verbatim.
-                var align = SlipAlignment(slip);
-                var style = align == "left" ? "" : $" style=\"text-align:{align}\"";
+                var style = SlipStyleAttribute(slip, includeAlignment: true);
                 var styledText = ZetlMarkdown.ApplyInlineStyleMarkers(text, EffectiveInlineStyles(slip, text));
                 var inner = ZetlMarkdown.BlocksToHtml(styledText, slipIds.Contains);
                 if (FirstContentLineStartsWithMarkdownListMarker(text))
@@ -895,6 +902,65 @@ internal static class ZetlViewRenderer
     {
         var value = slip.Align?.Trim().ToLowerInvariant();
         return value is "center" or "right" ? value : "left";
+    }
+
+    // Render-safe typography values for one slip. Storage normalization remains in
+    // ZetlSlipTypography; these helpers give the UI/PDF/HTML paths one read contract.
+    // Font-family is additionally restricted to a single CSS-safe family name so a
+    // hand-edited snapshot cannot append another declaration to an HTML style.
+    public static string SlipFontFamily(ZetlSlipSnapshot slip)
+    {
+        var value = ZetlSlipTypography.NormalizeFontFamily(slip.FontFamily);
+        return value.Length > 0
+            && value.All(character =>
+                char.IsLetterOrDigit(character)
+                || character is ' ' or '-' or '_' or '.')
+            ? value
+            : "";
+    }
+
+    public static int SlipFontSize(ZetlSlipSnapshot slip) =>
+        ZetlSlipTypography.NormalizeFontSize(slip.FontSize);
+
+    public static string SlipTextColor(ZetlSlipSnapshot slip) =>
+        ZetlSlipTypography.NormalizeTextColor(slip.TextColor);
+
+    // Inline style for a slip's outer HTML block. Alignment is omitted for the
+    // picture and synthesized-block paths because those paths did not previously
+    // apply it; typography is still carried at the whole-slip boundary.
+    private static string SlipStyleAttribute(ZetlSlipSnapshot slip, bool includeAlignment)
+    {
+        var rules = new List<string>();
+        if (includeAlignment)
+        {
+            var align = SlipAlignment(slip);
+            if (align != "left")
+            {
+                rules.Add($"text-align:{align}");
+            }
+        }
+
+        var fontFamily = SlipFontFamily(slip);
+        if (fontFamily.Length > 0)
+        {
+            rules.Add($"font-family:{fontFamily}");
+        }
+
+        var fontSize = SlipFontSize(slip);
+        if (fontSize > 0)
+        {
+            rules.Add($"font-size:{fontSize}pt");
+        }
+
+        var textColor = SlipTextColor(slip);
+        if (textColor.Length > 0)
+        {
+            rules.Add($"color:{textColor}");
+        }
+
+        return rules.Count == 0
+            ? ""
+            : $" style=\"{EscapeAttribute(string.Join(';', rules))}\"";
     }
 
     // The note's own block kind in a rendered view, normalized — see ZetlBlockKinds.

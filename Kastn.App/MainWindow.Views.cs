@@ -111,19 +111,40 @@ internal partial class MainWindow
         var kind = SelectedView.Kind;
         var preservesFormatting = ZetlViewRenderer.ExportPreservesFormatting(kind);
         var preservesAlignment = ZetlViewRenderer.ExportPreservesAlignment(kind);
-        if (preservesFormatting && preservesAlignment)
+        var preservesTypography = ZetlViewRenderer.ExportPreservesTypography(kind);
+        if (preservesFormatting && preservesAlignment && preservesTypography)
         {
             formatFidelityNote.IsVisible = false;
             return;
         }
 
-        formatFidelityNote.Text = preservesFormatting
-            // Markdown carries inline formatting but has no alignment syntax.
-            ? "Markdown export keeps text formatting but not block alignment."
-            : $"The {kind} view copies and exports as literal text — formatting shows "
-                + "here in the reader but is dropped from Copy/Export.";
+        var losses = new List<string>();
+        if (!preservesFormatting)
+        {
+            losses.Add("emphasis and links");
+        }
+        if (!preservesAlignment)
+        {
+            losses.Add("block alignment");
+        }
+        if (!preservesTypography)
+        {
+            losses.Add("font family, size, and color");
+        }
+
+        formatFidelityNote.Text = $"The {kind} view does not preserve "
+            + NaturalList(losses)
+            + " in Copy/Export; the rich reader still shows them.";
         formatFidelityNote.IsVisible = true;
     }
+
+    private static string NaturalList(IReadOnlyList<string> items) => items.Count switch
+    {
+        0 => "formatting",
+        1 => items[0],
+        2 => $"{items[0]} or {items[1]}",
+        _ => $"{string.Join(", ", items.Take(items.Count - 1))}, or {items[^1]}"
+    };
 
     private string ViewSignature(IReadOnlyList<ZetlSlipSnapshot> visible)
     {
@@ -481,13 +502,15 @@ internal partial class MainWindow
             var caption = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
             if (!string.IsNullOrWhiteSpace(caption))
             {
-                content.Children.Add(new TextBlock
+                var captionBlock = new TextBlock
                 {
                     Text = caption.Trim(),
                     Classes = { "muted" },
                     FontStyle = FontStyle.Italic,
                     TextWrapping = TextWrapping.Wrap
-                });
+                };
+                ApplySlipTypography(captionBlock, slip);
+                content.Children.Add(captionBlock);
             }
 
             if (CachedDecodedPicture(slip, 1100) is { } cachedBitmap)
@@ -522,6 +545,7 @@ internal partial class MainWindow
                 MinWidth = 18,
                 VerticalAlignment = VerticalAlignment.Top
             };
+            ApplySlipTypography(markerBlock, slip);
             if (checkable)
             {
                 // The task checkbox toggles the note's checked property in place; mark
@@ -634,6 +658,29 @@ internal partial class MainWindow
     private IBrush? ThemeBrush(string key) =>
         this.TryFindResource(key, out var value) && value is IBrush brush ? brush : null;
 
+    private static void ApplySlipTypography(
+        TextBlock block,
+        ZetlSlipSnapshot slip,
+        bool applyFontFamily = true)
+    {
+        if (applyFontFamily
+            && AuthoredFontFamily(ZetlViewRenderer.SlipFontFamily(slip)) is { } fontFamily)
+        {
+            block.FontFamily = fontFamily;
+        }
+
+        var fontSize = ZetlViewRenderer.SlipFontSize(slip);
+        if (fontSize > 0)
+        {
+            block.FontSize = fontSize;
+        }
+
+        if (TryParseTextColor(ZetlViewRenderer.SlipTextColor(slip), out var color))
+        {
+            block.Foreground = new SolidColorBrush(color);
+        }
+    }
+
     private static TextAlignment SlipTextAlignment(ZetlSlipSnapshot slip) =>
         ZetlViewRenderer.SlipAlignment(slip) switch
         {
@@ -659,6 +706,7 @@ internal partial class MainWindow
                     TextWrapping = TextWrapping.Wrap,
                     TextAlignment = alignment
                 };
+                ApplySlipTypography(textBlock, slip);
                 for (var line = 0; line < paragraph.Lines.Count; line++)
                 {
                     if (line > 0)
@@ -693,8 +741,10 @@ internal partial class MainWindow
                         MinWidth = 16,
                         Margin = new Avalonia.Thickness(0, 0, 6, 0)
                     };
+                    ApplySlipTypography(markerBlock, slip);
                     Grid.SetColumn(markerBlock, 0);
                     var itemBlock = new TextBlock { TextWrapping = TextWrapping.Wrap };
+                    ApplySlipTypography(itemBlock, slip);
                     AppendInlines(itemBlock.Inlines!, item.Inlines);
                     Grid.SetColumn(itemBlock, 1);
                     row.Children.Add(markerBlock);
@@ -713,6 +763,9 @@ internal partial class MainWindow
                     FontSize = heading.Level <= 1 ? 17 : heading.Level == 2 ? 15.5 : 14,
                     Margin = new Avalonia.Thickness(0, 6, 0, 1)
                 };
+                // An authored size is an explicit override; without one, retain the
+                // heading kind's existing semantic size above.
+                ApplySlipTypography(headingBlock, slip);
                 AppendInlines(headingBlock.Inlines!, heading.Inlines);
                 content.Children.Add(headingBlock);
             }
@@ -724,6 +777,7 @@ internal partial class MainWindow
                     TextAlignment = alignment,
                     FontStyle = FontStyle.Italic
                 };
+                ApplySlipTypography(quoteText, slip);
                 for (var line = 0; line < quote.Lines.Count; line++)
                 {
                     if (line > 0)
@@ -750,6 +804,7 @@ internal partial class MainWindow
                     Text = code.Text,
                     TextWrapping = TextWrapping.Wrap
                 };
+                ApplySlipTypography(codeText, slip, applyFontFamily: false);
                 if (ThemeFont("ZetlMonoFontFamily") is { } mono)
                 {
                     codeText.FontFamily = mono;
@@ -2044,6 +2099,7 @@ internal partial class MainWindow
             FontSize = 13,
             Margin = new Thickness(0, 0, 0, 4)
         };
+        ApplySlipTypography(previewText, slip);
 
         var slipKind = ZetlViewRenderer.SlipBlockKind(slip);
         var bucket = currentProject?.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);

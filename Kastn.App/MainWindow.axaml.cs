@@ -91,6 +91,50 @@ internal partial class MainWindow : Window
         new KastnRenderKindItem("table", "Table"),
         new KastnRenderKindItem("latex", "LaTeX Block")
     ];
+    private static readonly IReadOnlyList<KastnFontFamilyItem> FontFamilyChoices =
+    [
+        new("", "Default font"),
+        new("Arial", "Arial"),
+        new("Calibri", "Calibri"),
+        new("Georgia", "Georgia"),
+        new("Segoe UI", "Segoe UI"),
+        new("Times New Roman", "Times New Roman"),
+        new("Verdana", "Verdana"),
+        new("Consolas", "Consolas"),
+        new("Courier New", "Courier New")
+    ];
+    private static readonly IReadOnlyList<KastnFontSizeItem> FontSizeChoices =
+    [
+        new(0, "Default size"),
+        new(9, "9 pt"),
+        new(10, "10 pt"),
+        new(11, "11 pt"),
+        new(12, "12 pt"),
+        new(14, "14 pt"),
+        new(16, "16 pt"),
+        new(18, "18 pt"),
+        new(20, "20 pt"),
+        new(24, "24 pt"),
+        new(28, "28 pt"),
+        new(32, "32 pt"),
+        new(36, "36 pt"),
+        new(48, "48 pt"),
+        new(64, "64 pt"),
+        new(72, "72 pt")
+    ];
+    private static readonly IReadOnlyList<KastnTextColorItem> TextColorChoices =
+    [
+        new("", "Default", Brushes.Transparent),
+        new("#000000", "Black", new SolidColorBrush(Color.FromRgb(0x00, 0x00, 0x00))),
+        new("#6B7280", "Gray", new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80))),
+        new("#DC2626", "Red", new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26))),
+        new("#EA580C", "Orange", new SolidColorBrush(Color.FromRgb(0xEA, 0x58, 0x0C))),
+        new("#CA8A04", "Gold", new SolidColorBrush(Color.FromRgb(0xCA, 0x8A, 0x04))),
+        new("#16A34A", "Green", new SolidColorBrush(Color.FromRgb(0x16, 0xA3, 0x4A))),
+        new("#2563EB", "Blue", new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB))),
+        new("#9333EA", "Purple", new SolidColorBrush(Color.FromRgb(0x93, 0x33, 0xEA))),
+        new("#FFFFFF", "White", new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)))
+    ];
     internal readonly KastnEditorState editorState = new();
     private readonly Dictionary<string, ZetlPictureContent> pictureCache = new(StringComparer.Ordinal);
     private readonly Queue<string> pictureCacheOrder = [];
@@ -164,6 +208,7 @@ internal partial class MainWindow : Window
     private bool pendingSlipFocus;
     private bool detailShowingMetadata;
     private bool slipRenderOptionUpdating;
+    private bool slipTypographyUpdating;
     // When true the project tree shows only the Deleted bucket's slips (browse +
     // restore), instead of the normal working tree.
     private bool showingDeleted;
@@ -216,6 +261,9 @@ internal partial class MainWindow : Window
         parentBucketBox.ItemsSource = parentBuckets;
         moveBucketBox.ItemsSource = moveBuckets;
         bucketRenderKindBox.ItemsSource = bucketRenderKinds;
+        fontFamilyBox.ItemsSource = FontFamilyChoices;
+        fontSizeBox.ItemsSource = FontSizeChoices;
+        textColorBox.ItemsSource = TextColorChoices;
 
         dates.Add(new DateFilterItem(KastnDateFilter.All, "All time"));
         dates.Add(new DateFilterItem(KastnDateFilter.Today, "Today"));
@@ -304,6 +352,9 @@ internal partial class MainWindow : Window
         alignLeftButton.Click += async (_, _) => await AlignSlipsAsync("left");
         alignCenterButton.Click += async (_, _) => await AlignSlipsAsync("center");
         alignRightButton.Click += async (_, _) => await AlignSlipsAsync("right");
+        fontFamilyBox.SelectionChanged += async (_, _) => await OnFontFamilyChangedAsync();
+        fontSizeBox.SelectionChanged += async (_, _) => await OnFontSizeChangedAsync();
+        textColorBox.SelectionChanged += async (_, _) => await OnTextColorChangedAsync();
         boldButton.Click += async (_, _) => await ToggleSlipStyleAsync(ZetlInlineStyleKinds.Bold);
         italicButton.Click += async (_, _) => await ToggleSlipStyleAsync(ZetlInlineStyleKinds.Italic);
         strikeButton.Click += async (_, _) => await ToggleSlipStyleAsync(ZetlInlineStyleKinds.Strike);
@@ -1970,6 +2021,21 @@ internal partial class MainWindow : Window
 }
 
 internal sealed record KastnRenderKindItem(string Value, string Label)
+{
+    public override string ToString() => Label;
+}
+
+internal sealed record KastnFontFamilyItem(string Value, string Label)
+{
+    public override string ToString() => Label;
+}
+
+internal sealed record KastnFontSizeItem(int Value, string Label)
+{
+    public override string ToString() => Label;
+}
+
+internal sealed record KastnTextColorItem(string Value, string Label, IBrush Swatch)
 {
     public override string ToString() => Label;
 }

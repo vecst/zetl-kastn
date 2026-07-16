@@ -582,13 +582,15 @@ internal partial class MainWindow
             var caption = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
             if (!string.IsNullOrWhiteSpace(caption))
             {
-                content.Children.Add(new TextBlock
+                var captionBlock = new TextBlock
                 {
                     Text = caption.Trim(),
                     Classes = { "muted" },
                     FontStyle = FontStyle.Italic,
                     TextWrapping = TextWrapping.Wrap
-                });
+                };
+                ApplySlipTypography(captionBlock, slip);
+                content.Children.Add(captionBlock);
             }
         }
         else
@@ -606,6 +608,7 @@ internal partial class MainWindow
                 ColumnSpacing = 5
             };
             var markerBlock = new TextBlock { Text = marker, MinWidth = 16 };
+            ApplySlipTypography(markerBlock, slip);
             Grid.SetColumn(content, 1);
             row.Children.Add(markerBlock);
             row.Children.Add(content);

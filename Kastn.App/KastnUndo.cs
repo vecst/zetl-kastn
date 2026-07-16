@@ -302,6 +302,9 @@ internal static class KastnUndoPlanner
         || a.Bold != b.Bold
         || a.Italic != b.Italic
         || a.Strike != b.Strike
+        || !string.Equals(a.FontFamily, b.FontFamily, StringComparison.Ordinal)
+        || a.FontSize != b.FontSize
+        || !string.Equals(a.TextColor, b.TextColor, StringComparison.Ordinal)
         || !InlineStylesEqual(a.InlineStyles, b.InlineStyles);
 
     private static string Align(ZetlSlipSnapshot slip) =>
@@ -342,6 +345,9 @@ internal static class KastnUndoPlanner
         Bold = slip.Bold,
         Italic = slip.Italic,
         Strike = slip.Strike,
+        FontFamily = slip.FontFamily,
+        FontSize = slip.FontSize,
+        TextColor = slip.TextColor,
         InlineStyles = slip.InlineStyles
     };
 

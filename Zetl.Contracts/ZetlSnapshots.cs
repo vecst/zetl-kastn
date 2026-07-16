@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ZETL.Contracts;
 
 public enum ZetlSlipType
@@ -169,6 +171,18 @@ public sealed record ZetlSlipSnapshot
     public bool Bold { get; init; }
     public bool Italic { get; init; }
     public bool Strike { get; init; }
+
+    // Kastn-only: optional whole-slip typography. Empty family/color and size 0
+    // inherit the active theme; authored values are normalized by Zetl before
+    // they reach a snapshot.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public string FontFamily { get; init; } = "";
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int FontSize { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public string TextColor { get; init; } = "";
 
     // Kastn-only: property-backed inline styling over Text. Typed Markdown remains
     // valid; these ranges are the toolbar/editor intent layer.

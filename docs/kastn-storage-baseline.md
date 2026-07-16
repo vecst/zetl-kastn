@@ -29,8 +29,8 @@ The current JSON file remains small enough to load quickly for a deliberate
 workbench, and atomic rewrites remain short enough to evaluate behind Zetl's
 single-writer queue.
 
-Future measurements should use this same scenario after revision fields, IPC,
-typed capture files, and live notifications land. SQLite should be reconsidered
+Future measurements should use this same scenario after material model, IPC,
+asset, or live-notification changes land. SQLite should be reconsidered
 only if measured user experience or storage requirements become materially
 worse after ordinary optimization.
 
@@ -50,4 +50,4 @@ Representative second-run results:
 
 The revision metadata adds about `0.49 MiB` at 20,000 slips. The rewrite remains
 off the keyboard-hook path and short enough for the current single-writer JSON
-design. Continue measuring as typed capture files split the project data.
+design. Continue measuring after material storage or model changes.

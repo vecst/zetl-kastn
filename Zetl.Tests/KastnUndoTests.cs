@@ -20,7 +20,10 @@ public class KastnUndoTests
         bool excluded = false,
         bool ignoreBucketRenderKind = false,
         bool isChecked = false,
-        IReadOnlyList<ZetlInlineStyleRange>? inlineStyles = null) => new()
+        IReadOnlyList<ZetlInlineStyleRange>? inlineStyles = null,
+        string fontFamily = "",
+        int fontSize = 0,
+        string textColor = "") => new()
     {
         Id = id,
         Revision = revision,
@@ -33,6 +36,9 @@ public class KastnUndoTests
         ExcludedFromViews = excluded,
         IgnoreBucketRenderKind = ignoreBucketRenderKind,
         Checked = isChecked,
+        FontFamily = fontFamily,
+        FontSize = fontSize,
+        TextColor = textColor,
         InlineStyles = inlineStyles ?? [],
         Source = "kastn",
         CapturedAtUtc = DateTimeOffset.UnixEpoch
@@ -100,7 +106,8 @@ public class KastnUndoTests
         var target = Slip(
             "s1", 4, "b1", text: "original", title: "T", align: "center",
             blockKind: "bullet", excluded: true, ignoreBucketRenderKind: true, isChecked: true,
-            inlineStyles: [new ZetlInlineStyleRange { Start = 0, Length = 1, Kind = "bold" }]);
+            inlineStyles: [new ZetlInlineStyleRange { Start = 0, Length = 1, Kind = "bold" }],
+            fontFamily: "Georgia", fontSize: 18, textColor: "#AABBCC");
 
         var steps = KastnUndoPlanner.BuildSteps(Op(from, KastnSlipMemento.To(target), "a", "a"));
 
@@ -113,7 +120,25 @@ public class KastnUndoTests
         AssertEqual(true, restore.ExcludedFromViews, "Visibility is restored.");
         AssertEqual(true, restore.IgnoreBucketRenderKind, "Render override is restored.");
         AssertEqual(true, restore.Checked, "Checked state is restored.");
+        AssertEqual("Georgia", restore.FontFamily, "Font family is restored.");
+        AssertEqual(18, restore.FontSize, "Font size is restored.");
+        AssertEqual("#AABBCC", restore.TextColor, "Text color is restored.");
         AssertEqual(1, restore.InlineStyles?.Count ?? 0, "Inline styles are restored.");
+    }
+
+    [Fact] public void TypographyOnlyDifferenceEmitsAnUpdate()
+    {
+        var from = Slip("s1", 9, "b1");
+        var target = Slip(
+            "s1", 4, "b1", fontFamily: "Georgia", fontSize: 18, textColor: "#AABBCC");
+
+        var steps = KastnUndoPlanner.BuildSteps(Op(from, KastnSlipMemento.To(target), "a", "a"));
+
+        AssertEqual(1, steps.Count, "A typography-only change must participate in undo.");
+        var restore = Payload<UpdateSlipCommand>(steps[0]);
+        AssertEqual("Georgia", restore.FontFamily, "Undo carries the prior font family.");
+        AssertEqual(18, restore.FontSize, "Undo carries the prior font size.");
+        AssertEqual("#AABBCC", restore.TextColor, "Undo carries the prior text color.");
     }
 
     [Fact] public void RepresentationFlipRecordsAndRestoresType()

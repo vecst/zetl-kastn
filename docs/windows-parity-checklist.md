@@ -72,6 +72,15 @@ recursive shortcut handling.
 - [ ] Save structured and flattened compile results to another bucket.
 - [ ] Export clean and archive project packages; confirm only the archive keeps
       application and window-title provenance.
+- [ ] Open a project in Kastn; apply font family, font size, and text color to one
+      slip and a multi-selection, then verify undo/redo and restart persistence.
+- [ ] Export the styled project as HTML and PDF and confirm typography matches the
+      reader. Confirm Markdown, Formatted, Plain, and TSV show the fidelity warning
+      and remain free of unsupported font/color markup.
+- [ ] Insert a Kastn Group named `Callouts`; confirm reader and document exports use
+      `Callouts` and never a generic `Group` placeholder.
+- [ ] At Kastn's minimum supported width, confirm the editor formatting toolbar
+      wraps without clipping its typography, style, list, or alignment controls.
 - [ ] Copy and Paste Now compile actions restore the original target.
 - [ ] Change settings and create a custom theme; restart and confirm both
       persisted.

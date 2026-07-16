@@ -179,6 +179,9 @@ internal static class ZetlProjectSnapshotMapper
             Bold = slip.Bold,
             Italic = slip.Italic,
             Strike = slip.Strike,
+            FontFamily = slip.FontFamily,
+            FontSize = slip.FontSize,
+            TextColor = slip.TextColor,
             InlineStyles = slip.InlineStyles.Select(style => style with { }).ToList()
         };
     }

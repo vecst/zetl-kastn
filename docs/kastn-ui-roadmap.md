@@ -65,30 +65,34 @@ decides how to express those properties.
       body text; task notes carry a checked flag toggled from the View
 - [x] Blessed in-body Markdown: typed `##` / `>` / fences / `---` / lists render
 - [x] Export-fidelity advisory when the selected view drops formatting on export
-- [ ] Move inline toolbar buttons away from inserting Markdown markers and toward
-      persisted inline style properties/ranges. Markdown can still be typed
-      directly; buttons should not mutate body text as their long-term model.
+- [x] Move toolbar buttons away from inserting Markdown markers and toward
+      persisted whole-slip properties or inline ranges. Markdown can still be
+      typed directly; buttons do not mutate body text.
 
-Shipping worklist for property-backed inline formatting:
+Shipping worklist for property-backed formatting:
 
 - [x] Add a persisted inline style range contract on slips, with command
       semantics where `null` preserves existing ranges and `[]` clears them.
 - [x] Reconcile style ranges during text edits. Start with clamping/dropping
       invalid ranges, then add selection-aware shifting so edits before a range
       keep the intended styled text attached.
-- [x] Convert bold, italic, strike, and inline-code toolbar actions to toggle
-      style ranges over the editor selection. Empty selections should create a
-      small editable placeholder range rather than inserting Markdown markers.
+- [x] Keep bold, italic, and strike as batchable whole-slip properties; inline
+      code remains a selection range and an empty selection arms the next text
+      without inserting a Markdown marker.
 - [x] Convert web-link and slip-link toolbar actions to structured link ranges
       (`href` or target slip id + cached title) while keeping typed Markdown and
       typed wiki-link tokens fully supported.
-- [x] Feed property ranges into the shared inline AST so the center View, HTML,
-      PDF, Markdown export, and rich clipboard all translate the same intent.
-- [ ] Keep `Plain` and `TSV` export/compile modes literal; they ignore inline
+- [x] Feed whole-slip emphasis and property ranges into the shared inline AST so
+      the center View, HTML, PDF, Markdown export, and rich clipboard translate
+      the same intent.
+- [x] Keep `Plain` and `TSV` export/compile modes literal; they ignore inline
       style ranges just like they ignore typed Markdown styling.
 - [x] Add editor affordances for range state: button active state over the
       current selection/caret, clearer link edit/remove, and overlap policy
       tests for bold+italic and link/code exclusion.
+- [x] Add batchable whole-slip font family, font size, and text color. Empty
+      values inherit the theme; the reader, HTML, and PDF preserve them while
+      the fidelity advisory identifies formats that cannot.
 
 ### Note Kinds And Structural Elements
 
@@ -96,8 +100,9 @@ Shipping worklist for property-backed inline formatting:
       `ZetlBlockKinds` / `ZetlBucketRenderKinds`
 - [x] **Divider** structural slip inserted from a tree-side bar; Zetl skips
       structural slips in capture/compile/Replay/Pop and content controls disable
-- [x] **Group** container bucket rendered as a boxed section; slips and buckets
-      drag in through ordinary move/reparent (Table / LaTeX kinds reserved)
+- [x] **Group** container bucket rendered as a boxed section; insertion asks for
+      its authored label before creation, and slips/buckets drag in through
+      ordinary move/reparent (Table / LaTeX kinds reserved)
 - [x] Multi-select drag with deferred selection, a drop-target marker, edge
       auto-scroll, and batched multi-slip moves
 
@@ -246,7 +251,8 @@ should be disposed by Zetl.
       oscillate. Minor; deferred.
 - [ ] Keep keyboard-accessible movement controls while reducing redundant
       always-visible Move/parent UI.
-- [ ] Improve reading width and font-size controls.
+- [ ] Add reader-wide width and zoom controls. Authored per-slip font size is
+      implemented; this item is the separate non-persisted reading preference.
 
 ## Dogfood Notes From Live Kastn/Zetl Use
 
@@ -267,9 +273,8 @@ directions.
 
 ### Detail Pane And Editor Layout
 
-- [ ] The style toolbar above the editor can overflow in the Detail pane. Give
-      the editor pane a little less horizontal ambition and more vertical room
-      so formatting controls wrap or compact cleanly.
+- [x] Let the style toolbar wrap in the Detail pane and keep typography selectors
+      compact so added controls consume vertical space instead of overflowing.
 - [x] Make inline formatting buttons property-backed. Typed Markdown remains
       supported, but toolbar actions should set style metadata/ranges that the
       on-screen View, Markdown, HTML, PDF, and rich clipboard exporters translate

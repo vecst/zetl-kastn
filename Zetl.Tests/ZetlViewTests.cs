@@ -148,6 +148,20 @@ public class ZetlViewTests
                 !ZetlViewRenderer.ExportPreservesAlignment(kind),
                 $"'{kind}' export should not carry alignment.");
         }
+
+        AssertTrue(
+            ZetlViewRenderer.ExportPreservesTypography(ZetlViewKinds.Html)
+                && ZetlViewRenderer.ExportPreservesTypography(ZetlViewKinds.Pdf),
+            "HTML and PDF exports should carry whole-slip typography.");
+        foreach (var kind in new[]
+        {
+            ZetlViewKinds.Markdown, ZetlViewKinds.Formatted, ZetlViewKinds.Plain, ZetlViewKinds.Tsv
+        })
+        {
+            AssertTrue(
+                !ZetlViewRenderer.ExportPreservesTypography(kind),
+                $"'{kind}' export should not carry whole-slip typography.");
+        }
     }
 
     [Fact] public void RendererBuildsTsvRowsUsingBucketHeaders()
@@ -262,6 +276,110 @@ public class ZetlViewTests
             project,
             ZetlViewKinds.Markdown,
             "# Demo\n\n## Ideas\n\n- left one\n- middle one\n- right one");
+    }
+
+    [Fact] public void RendererHonorsPortableSlipTypography()
+    {
+        var paragraph = Slip("b1", "styled paragraph") with
+        {
+            FontFamily = "  Times New Roman  ",
+            FontSize = 18,
+            TextColor = "#1a2b3c"
+        };
+        var listItem = Slip("b1", "styled item", ZetlBlockKinds.Bullet) with
+        {
+            Align = "right",
+            FontFamily = "Georgia",
+            FontSize = 7,
+            TextColor = "#ABCDEF"
+        };
+        var quote = Slip("b1", "styled quote", ZetlBlockKinds.Quote) with
+        {
+            FontFamily = "Segoe UI",
+            FontSize = 97,
+            TextColor = "#010203"
+        };
+        var picture = PictureSlip("b1", "styled picture", "styled-picture", "missing") with
+        {
+            FontFamily = "Arial",
+            FontSize = 12,
+            TextColor = "#445566"
+        };
+        var project = Project(
+            "Demo",
+            [Bucket("b1", "Ideas")],
+            [paragraph, listItem, quote, picture]);
+
+        var html = ZetlViewRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
+
+        AssertContains(
+            html,
+            $"<div id=\"{paragraph.Id}\" style=\"font-family:Times New Roman;font-size:18pt;color:#1A2B3C\">styled paragraph</div>");
+        AssertContains(
+            html,
+            $"<li id=\"{listItem.Id}\" style=\"text-align:right;font-family:Georgia;font-size:8pt;color:#ABCDEF\">styled item</li>");
+        AssertContains(
+            html,
+            $"<div id=\"{quote.Id}\" style=\"font-family:Segoe UI;font-size:96pt;color:#010203\"><blockquote>");
+        AssertContains(
+            html,
+            "<p id=\"styled-picture\" style=\"font-family:Arial;font-size:12pt;color:#445566\">[Picture: styled picture]</p>");
+
+        AssertEqual("Times New Roman", ZetlViewRenderer.SlipFontFamily(paragraph), "Family is trimmed.");
+        AssertEqual(18, ZetlViewRenderer.SlipFontSize(paragraph), "Point size is retained.");
+        AssertEqual("#1A2B3C", ZetlViewRenderer.SlipTextColor(paragraph), "Color is canonicalized.");
+    }
+
+    [Fact] public void RendererRejectsCssInjectionAndEmptyTypographyIsByteStable()
+    {
+        var plain = Slip("b1", "plain");
+        var project = Project("Demo", [Bucket("b1", "Ideas")], [plain]);
+        var emptyProject = Project(
+            "Demo",
+            [Bucket("b1", "Ideas")],
+            [plain with { FontFamily = "", FontSize = 0, TextColor = "" }]);
+        var view = new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html };
+
+        AssertEqual(
+            ZetlViewRenderer.Render(project, project.Slips, view),
+            ZetlViewRenderer.Render(emptyProject, emptyProject.Slips, view),
+            "Empty typography must preserve the existing HTML byte-for-byte.");
+
+        var hostile = plain with
+        {
+            FontFamily = "Arial; color:red",
+            FontSize = 0,
+            TextColor = "#000000\";background:url(javascript:alert(1))"
+        };
+        var hostileProject = Project("Demo", [Bucket("b1", "Ideas")], [hostile]);
+        var hostileHtml = ZetlViewRenderer.Render(hostileProject, hostileProject.Slips, view);
+        AssertContains(hostileHtml, $"<div id=\"{hostile.Id}\">plain</div>");
+        AssertTrue(
+            !hostileHtml.Contains("javascript:", StringComparison.Ordinal)
+                && !hostileHtml.Contains("background:url", StringComparison.Ordinal)
+                && !hostileHtml.Contains("color:red", StringComparison.Ordinal),
+            "Invalid typography must not append CSS declarations.");
+        AssertEqual("", ZetlViewRenderer.SlipFontFamily(hostile), "Unsafe family is inherited.");
+        AssertEqual("", ZetlViewRenderer.SlipTextColor(hostile), "Unsafe color is inherited.");
+    }
+
+    [Fact] public void PortableSlipTypographyDoesNotChangeNonHtmlViews()
+    {
+        var styled = Slip("b1", "literal **text**") with
+        {
+            FontFamily = "Georgia",
+            FontSize = 24,
+            TextColor = "#DC2626"
+        };
+        var project = Project("Demo", [Bucket("b1", "Ideas")], [styled]);
+
+        AssertRender(project, ZetlViewKinds.Formatted, "Demo\n\nIdeas\n\tliteral **text**");
+        AssertRender(project, ZetlViewKinds.Plain, "literal **text**");
+        AssertRender(project, ZetlViewKinds.Tsv, "Demo\nIdeas\nliteral **text**");
+        AssertRender(project, ZetlViewKinds.Markdown, "# Demo\n\n## Ideas\n\nliteral **text**");
     }
 
     [Fact] public void MarkdownInlineFormattingRendersToHtml()
@@ -1205,7 +1323,21 @@ public class ZetlViewTests
         var project = Project(
             "Demo",
             [Bucket("b1", "Ideas")],
-            [Slip("b1", "first idea"), Slip("b1", "second idea")]);
+            [
+                Slip("b1", "first idea") with
+                {
+                    FontFamily = "Georgia",
+                    FontSize = 18,
+                    TextColor = "#2563EB"
+                },
+                // Unknown/hand-edited values must fall back without aborting the PDF.
+                Slip("b1", "second idea") with
+                {
+                    FontFamily = "Not An Installed Family",
+                    FontSize = 500,
+                    TextColor = "not-a-color"
+                }
+            ]);
 
         var pdf = KASTN.KastnPdfRenderer.Render(
             project,

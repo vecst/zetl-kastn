@@ -32,6 +32,81 @@ internal partial class MainWindow
             (slip, _) => new UpdateSlipCommand { Text = slip.Text, Align = align });
     }
 
+    private async Task OnFontFamilyChangedAsync()
+    {
+        if (slipTypographyUpdating || fontFamilyBox.SelectedItem is not KastnFontFamilyItem choice)
+        {
+            return;
+        }
+
+        var singleStatus = choice.Value.Length == 0
+            ? "Font reset to the view default."
+            : $"Font set to {choice.Label}.";
+        var batchStatus = choice.Value.Length == 0
+            ? "reset to the default font"
+            : $"set in {choice.Label}";
+        await ApplySlipTypographyPropertyAsync(
+            singleStatus,
+            batchStatus,
+            text => new UpdateSlipCommand { Text = text, FontFamily = choice.Value });
+    }
+
+    private async Task OnFontSizeChangedAsync()
+    {
+        if (slipTypographyUpdating || fontSizeBox.SelectedItem is not KastnFontSizeItem choice)
+        {
+            return;
+        }
+
+        var singleStatus = choice.Value == 0
+            ? "Font size reset to the view default."
+            : $"Font size set to {choice.Value} pt.";
+        var batchStatus = choice.Value == 0
+            ? "reset to the default font size"
+            : $"set to {choice.Value} pt";
+        await ApplySlipTypographyPropertyAsync(
+            singleStatus,
+            batchStatus,
+            text => new UpdateSlipCommand { Text = text, FontSize = choice.Value });
+    }
+
+    private async Task OnTextColorChangedAsync()
+    {
+        if (slipTypographyUpdating || textColorBox.SelectedItem is not KastnTextColorItem choice)
+        {
+            return;
+        }
+
+        var singleStatus = choice.Value.Length == 0
+            ? "Text color reset to the view default."
+            : $"Text color set to {choice.Label}.";
+        var batchStatus = choice.Value.Length == 0
+            ? "reset to the default text color"
+            : $"colored {choice.Label.ToLowerInvariant()}";
+        await ApplySlipTypographyPropertyAsync(
+            singleStatus,
+            batchStatus,
+            text => new UpdateSlipCommand { Text = text, TextColor = choice.Value });
+    }
+
+    private async Task ApplySlipTypographyPropertyAsync(
+        string singleStatus,
+        string batchStatus,
+        Func<string, UpdateSlipCommand> build)
+    {
+        if (!HasBatchSelection())
+        {
+            if (SelectedSlips() is [var slip])
+            {
+                await UpdateSlipPropertyAsync(slip, build, singleStatus);
+            }
+
+            return;
+        }
+
+        await ApplyBatchAsync(batchStatus, (slip, _) => build(slip.Text));
+    }
+
     // Bold/italic/strike are whole-slip render properties (like alignment and the
     // note kind) — nothing is written into the body text, and inline emphasis
     // stays typed Markdown. A single selection toggles the flag; a multi-selection
