@@ -617,6 +617,7 @@ internal static class ZetlViewRenderer
             "<html lang=\"en\">",
             "<head>",
             "<meta charset=\"utf-8\" />",
+            "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data:; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'\" />",
             $"<title>{headTitle}</title>",
             "<style>",
             "body { font-family: system-ui, -apple-system, sans-serif; max-width: 48rem; "
@@ -626,6 +627,7 @@ internal static class ZetlViewRenderer
             "figcaption { margin-top: .4rem; color: #666; font-size: .9rem; }",
             "section.kastn-group { border: 1px solid #ccc; border-radius: 6px; "
                 + "padding: .1rem 1rem 1rem; margin: 1rem 0; }",
+            ".kastn-blocked-link { color: #666; text-decoration: underline dotted; cursor: not-allowed; }",
             "</style>",
             "</head>",
             "<body>"

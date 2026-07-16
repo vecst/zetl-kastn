@@ -146,4 +146,58 @@ public class ZetlMarkdownInlineTests
             ZetlMarkdown.InlinesToHtml("******"),
             "A bare marker run with no content stays literal.");
     }
+
+    [Theory]
+    [InlineData("http://example.com")]
+    [InlineData("https://example.com/path?q=1")]
+    [InlineData("mailto:reader@example.com")]
+    [InlineData("#slip-123")]
+    public void SafeAuthoredLinkTargetsRemainActive(string target)
+    {
+        AssertTrue(
+            ZetlLinkSafety.TryNormalizeTarget($"  {target}  ", out var normalized),
+            "The shared policy should accept supported navigation targets.");
+        AssertEqual(target, normalized, "Accepted targets should be trimmed without being rewritten.");
+        AssertEqual(
+            $"<a href=\"{target.Replace("&", "&amp;")}\">open</a>",
+            ZetlMarkdown.InlinesToHtml($"[open]({target})"),
+            "Safe targets should remain active in HTML output.");
+    }
+
+    [Theory]
+    [InlineData("javascript:alert")]
+    [InlineData("data:text/html,alert")]
+    [InlineData("file:///C:/secret.txt")]
+    [InlineData("ftp://example.com/file")]
+    [InlineData("relative/page.html")]
+    [InlineData("#fragment with spaces")]
+    public void UnsafeAuthoredLinkTargetsRenderInert(string target)
+    {
+        AssertFalse(
+            ZetlLinkSafety.TryNormalizeTarget(target, out _),
+            "Unsupported targets must fail the shared navigation policy.");
+
+        var html = ZetlMarkdown.InlinesToHtml($"[open]({target})");
+        AssertEqual(
+            "<span class=\"kastn-blocked-link\" title=\"Link target omitted: unsupported scheme\">open</span>",
+            html,
+            "HTML should preserve the label but omit the active target.");
+        AssertFalse(html.Contains(target, StringComparison.Ordinal), "Blocked output must not retain the target.");
+
+        var markdown = ZetlMarkdown.ResolveWikiLinksInNote($"[open]({target})", _ => false);
+        AssertEqual("open", markdown, "Translated Markdown should retain only the inert label.");
+
+        var styled = ZetlMarkdown.ApplyInlineStyleMarkers(
+            "open",
+            [
+                new ZetlInlineStyleRange
+                {
+                    Kind = ZetlInlineStyleKinds.Link,
+                    Start = 0,
+                    Length = 4,
+                    Href = target
+                }
+            ]);
+        AssertEqual("open", styled, "Structured unsafe links should not become Markdown links.");
+    }
 }

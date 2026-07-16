@@ -415,6 +415,9 @@ public class ZetlViewTests
             project.Slips,
             new ZetlViewDocument { Id = "h", Name = "H", Kind = ZetlViewKinds.Html });
         AssertContains(html, $"<li id=\"{slip.Id}\">see <strong>this</strong> and <a href=\"http://h\">x</a></li>");
+        AssertTrue(
+            html.Contains("Content-Security-Policy", StringComparison.Ordinal),
+            "Self-contained HTML should include a restrictive defense-in-depth policy.");
 
         var propertySlip = Slip("b1", "see this link", "bullet") with
         {
@@ -1347,6 +1350,28 @@ public class ZetlViewTests
         AssertTrue(pdf.Length > 0, "PDF render should produce bytes.");
         var header = System.Text.Encoding.ASCII.GetString(pdf, 0, 5);
         AssertEqual("%PDF-", header, "Output should be a PDF document.");
+    }
+
+    [Fact] public void PdfRendererKeepsSafeLinksAndMakesUnsupportedLinksInert()
+    {
+        var destination = Slip("b1", "destination");
+        var links = Slip("b1", "") with
+        {
+            Text = $"[web](https://example.com) [email](mailto:reader@example.com) "
+                + $"[jump](#{destination.Id}) [blocked](javascript:alert)"
+        };
+        var project = Project("Links", [Bucket("b1", "Ideas")], [destination, links]);
+
+        var pdf = KASTN.KastnPdfRenderer.Render(
+            project,
+            project.Slips,
+            new ZetlViewDocument { Id = "v", Name = "V", Kind = ZetlViewKinds.Pdf });
+
+        AssertTrue(pdf.Length > 0, "Safe, internal, and blocked links should not abort PDF rendering.");
+        AssertEqual(
+            "%PDF-",
+            System.Text.Encoding.ASCII.GetString(pdf, 0, 5),
+            "Link-filtered output should remain a PDF document.");
     }
 
     [Fact] public void PdfRendererEmbedsPictures()

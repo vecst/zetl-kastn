@@ -117,7 +117,15 @@ internal static class KastnDialogs
                 return;
             }
 
-            dialog.Close(new LinkEditResult(value, Remove: false));
+            if (!ZetlLinkSafety.TryNormalizeTarget(value, out var safeTarget))
+            {
+                validation.Text = "Use an http, https, mailto, or #fragment link.";
+                validation.IsVisible = true;
+                input.Focus();
+                return;
+            }
+
+            dialog.Close(new LinkEditResult(safeTarget, Remove: false));
         };
         remove.Click += (_, _) => dialog.Close(new LinkEditResult(null, Remove: true));
         cancel.Click += (_, _) => dialog.Close(null);
@@ -127,7 +135,7 @@ internal static class KastnDialogs
             Spacing = 8,
             Children =
             {
-                new TextBlock { Text = "URL" },
+                new TextBlock { Text = "Link target" },
                 input,
                 validation,
                 Buttons(allowRemove ? [remove, ok, cancel] : [ok, cancel])

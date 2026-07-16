@@ -134,6 +134,14 @@ Kastn supports wiki-style inter-slip linking using stable IDs.
 - **Backlinks Details Inspector**: The Details pane compiles and displays a "Linked from" section containing clickable button shortcuts for all slips linking to the currently active slip.
 - **Fidelity in Exports**: Resolving links translates correctly to HTML (`<a href="#id">`) and PDF bookmarks, allowing clickable cross-references in exports.
 
+Authored web links use one shared navigation policy in the reader and exporters.
+`http`, `https`, `mailto`, and internal `#fragment` targets stay active. Other
+schemes, relative targets, malformed fragments, and control-character targets
+retain their visible label but render inert. The link editor rejects unsupported
+targets, while the render-time check also protects imported and hand-edited data.
+Self-contained HTML exports include a restrictive Content Security Policy as a
+second layer of defense.
+
 ## Column Styles and Formatting Inheritance
 
 Buckets can have an assigned formatting style (Column Style) configured in the bucket editor.

@@ -93,6 +93,9 @@ leverage.
 - [x] Preserve undo/redo entries until inverse commands are confirmed; retry
       outcome-unknown IPC mutations by command ID on the same server instance,
       and generate repair entries for reconciled partial compounds.
+- [x] Allowlist active authored links across the reader, HTML, Markdown,
+      clipboard, and PDF paths; unsupported schemes render inert, new links are
+      validated, and self-contained HTML carries a restrictive CSP.
 - [ ] Test disk-full behavior and recovery from interruption between related
       project/workspace operations.
 - [ ] Re-run large-project measurements and investigate material regressions.

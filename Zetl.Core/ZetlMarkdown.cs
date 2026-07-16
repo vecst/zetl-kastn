@@ -530,9 +530,10 @@ internal static class ZetlMarkdown
         priority = 0;
         switch (ZetlInlineStyleKinds.Normalize(range.Kind))
         {
-            case ZetlInlineStyleKinds.Link when !string.IsNullOrWhiteSpace(range.Href):
+            case ZetlInlineStyleKinds.Link
+                when ZetlLinkSafety.TryNormalizeTarget(range.Href, out var safeTarget):
                 open = "[";
-                close = $"]({range.Href!.Trim()})";
+                close = $"]({safeTarget})";
                 priority = 0;
                 return true;
             case ZetlInlineStyleKinds.WikiLink when !string.IsNullOrWhiteSpace(range.TargetSlipId):
@@ -835,12 +836,24 @@ internal static class ZetlMarkdown
                 builder.Append("</").Append(tag).Append('>');
                 break;
             case ZetlLink link:
-                builder.Append("<a href=\"").Append(EscapeAttribute(link.Url)).Append("\">");
-                foreach (var child in link.Children)
+                if (ZetlLinkSafety.TryNormalizeTarget(link.Url, out var safeTarget))
                 {
-                    AppendHtml(builder, child, isResolved);
+                    builder.Append("<a href=\"").Append(EscapeAttribute(safeTarget)).Append("\">");
+                    foreach (var child in link.Children)
+                    {
+                        AppendHtml(builder, child, isResolved);
+                    }
+                    builder.Append("</a>");
                 }
-                builder.Append("</a>");
+                else
+                {
+                    builder.Append("<span class=\"kastn-blocked-link\" title=\"Link target omitted: unsupported scheme\">");
+                    foreach (var child in link.Children)
+                    {
+                        AppendHtml(builder, child, isResolved);
+                    }
+                    builder.Append("</span>");
+                }
                 break;
             case ZetlWikiLink wiki:
                 var resolved = isResolved?.Invoke(wiki.TargetId) ?? false;
@@ -956,9 +969,16 @@ internal static class ZetlMarkdown
                     builder.Append(marker);
                     break;
                 case ZetlLink link:
-                    builder.Append('[');
-                    AppendMarkdown(builder, link.Children, isResolved);
-                    builder.Append("](").Append(link.Url).Append(')');
+                    if (ZetlLinkSafety.TryNormalizeTarget(link.Url, out var safeTarget))
+                    {
+                        builder.Append('[');
+                        AppendMarkdown(builder, link.Children, isResolved);
+                        builder.Append("](").Append(safeTarget).Append(')');
+                    }
+                    else
+                    {
+                        AppendMarkdown(builder, link.Children, isResolved);
+                    }
                     break;
                 case ZetlWikiLink wiki:
                     if (isResolved(wiki.TargetId))

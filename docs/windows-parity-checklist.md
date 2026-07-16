@@ -77,6 +77,8 @@ recursive shortcut handling.
 - [ ] Export the styled project as HTML and PDF and confirm typography matches the
       reader. Confirm Markdown, Formatted, Plain, and TSV show the fidelity warning
       and remain free of unsupported font/color markup.
+- [ ] Render and export `https`, `mailto`, and internal-fragment links; confirm
+      `javascript:`, `data:`, `file:`, and relative targets stay visibly inert.
 - [ ] Insert a Kastn Group named `Callouts`; confirm reader and document exports use
       `Callouts` and never a generic `Group` placeholder.
 - [ ] At Kastn's minimum supported width, confirm the editor formatting toolbar

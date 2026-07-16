@@ -479,11 +479,20 @@ internal static class KastnPdfRenderer
                     AppendInlines(formatted, emphasis.Children, isResolved);
                     break;
                 case ZetlLink link:
-                    var hyperlink = target.AddHyperlink(link.Url, HyperlinkType.Web);
-                    var linkText = hyperlink.AddFormattedText();
-                    linkText.Font.Underline = Underline.Single;
-                    linkText.Font.Color = Colors.Blue;
-                    AppendInlines(linkText, link.Children, isResolved);
+                    if (ZetlLinkSafety.TryNormalizeTarget(link.Url, out var safeTarget))
+                    {
+                        var hyperlink = safeTarget[0] == '#'
+                            ? target.AddHyperlink(safeTarget[1..], HyperlinkType.Bookmark)
+                            : target.AddHyperlink(safeTarget, HyperlinkType.Web);
+                        var linkText = hyperlink.AddFormattedText();
+                        linkText.Font.Underline = Underline.Single;
+                        linkText.Font.Color = Colors.Blue;
+                        AppendInlines(linkText, link.Children, isResolved);
+                    }
+                    else
+                    {
+                        AppendInlines(target, link.Children, isResolved);
+                    }
                     break;
                 case ZetlWikiLink wiki:
                     var resolved = isResolved(wiki.TargetId);

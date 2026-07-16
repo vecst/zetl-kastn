@@ -867,10 +867,14 @@ internal partial class MainWindow
                     target.Add(span);
                     break;
                 case ZetlLink link:
-                    var linkSpan = new Span { TextDecorations = TextDecorations.Underline };
-                    if (ThemeBrush("ZetlAccentBrush") is { } accent)
+                    var linkSpan = new Span();
+                    if (ZetlLinkSafety.TryNormalizeTarget(link.Url, out _))
                     {
-                        linkSpan.Foreground = accent;
+                        linkSpan.TextDecorations = TextDecorations.Underline;
+                        if (ThemeBrush("ZetlAccentBrush") is { } accent)
+                        {
+                            linkSpan.Foreground = accent;
+                        }
                     }
                     AppendInlines(linkSpan.Inlines, link.Children);
                     target.Add(linkSpan);
