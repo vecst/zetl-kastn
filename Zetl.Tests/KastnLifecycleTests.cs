@@ -281,6 +281,60 @@ public class KastnLifecycleTests
         });
     }
 
+    [Fact] public void NavigationDisconnectStaysAliveAndPublishesAccurateState()
+    {
+        RunAsync(async () =>
+        {
+            var getProjectAttempts = 0;
+            using var fixture = new LifecycleFixture(
+                dropResponseForTesting: command =>
+                    command.Kind == ZetlCommandKind.GetProject
+                    && Interlocked.Increment(ref getProjectAttempts) == 1);
+            await using var controller = new KastnConnectionController(
+                _ => throw new InvalidOperationException("Zetl was already running."),
+                fixture.PipeName,
+                TimeSpan.FromMilliseconds(250),
+                TimeSpan.FromMilliseconds(25));
+            var snapshots = new ConcurrentQueue<KastnSessionSnapshot>();
+            controller.SnapshotChanged += (_, snapshot) => snapshots.Enqueue(snapshot);
+            controller.Start();
+            await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Online
+                    && snapshot.Project is null);
+
+            Exception? reported = null;
+            await App.ObserveActivationAsync(
+                () => controller.NavigateToProjectAsync(fixture.Project.Id),
+                exception => reported = exception);
+
+            var recovered = await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Online
+                    && snapshot.Project?.Id == fixture.Project.Id);
+            var outage = snapshots.FirstOrDefault(snapshot =>
+                snapshot.ConnectionState == KastnConnectionState.Offline);
+
+            AssertTrue(
+                reported is IOException or InvalidOperationException,
+                "The activation boundary should observe the navigation disconnect without letting it escape.");
+            AssertTrue(outage is not null, "The controller should publish an Offline snapshot for the dropped connection.");
+            AssertTrue(
+                outage!.Status.Contains("disconnect", StringComparison.OrdinalIgnoreCase)
+                || outage.Status.Contains("connection failed", StringComparison.OrdinalIgnoreCase),
+                "The Offline snapshot should accurately explain the connection outage.");
+            AssertEqual(
+                fixture.Project.Id,
+                recovered.Project?.Id,
+                "Kastn should remain running, reconnect, and finish the requested navigation.");
+            AssertTrue(controller.HasLiveConnection, "Recovered navigation should leave Kastn connected.");
+            AssertEqual(
+                2,
+                Volatile.Read(ref getProjectAttempts),
+                "The requested project should be retried exactly once after reconnecting.");
+        });
+    }
+
     [Fact] public void ControllerRefreshesAfterProjectChange()
     {
         RunAsync(async () =>

@@ -393,13 +393,10 @@ internal sealed class ZetlShortcutCoordinator
         var elapsed = TimeSpan.Zero;
         do
         {
-            if (clipboard.GetChangeToken() != beforeSequence)
+            var content = TryCaptureChangedClipboardContent(beforeSequence);
+            if (!string.IsNullOrWhiteSpace(content?.Text))
             {
-                var text = clipboard.TryGetText();
-                if (!string.IsNullOrWhiteSpace(text))
-                {
-                    return text.Trim();
-                }
+                return content.Text;
             }
 
             await delay.WaitAsync(ClipboardPollInterval);
@@ -462,10 +459,8 @@ internal sealed class ZetlShortcutCoordinator
         // which (per Option 1) is itself the active project when nothing else is.
         var hadActiveProject = store.HasDeliberateActiveProject(context.ShiftLane);
         var project = store.GetOrCreateDefaultProject(context.ShiftLane);
-        var pendingImage = pending?.ObservedClipboardImage
-            ?? TryGetChangedClipboardImage(
-                pending?.ClipboardSequenceNumber
-                    ?? context.ClipboardSequenceNumber);
+        var clipboardContent = ResolveHoldClipboardContent(context, pending);
+        var pendingImage = clipboardContent?.Image;
         if (pendingImage is { } image)
         {
             // A dual clipboard (spreadsheet cells) carries its text into the
@@ -477,7 +472,7 @@ internal sealed class ZetlShortcutCoordinator
                 context.ShiftLane,
                 project,
                 imageBucket,
-                ResolveHoldClipboardText(context, pending),
+                clipboardContent?.Text ?? "",
                 "copy",
                 ShowStartProjectToggle: !hadActiveProject,
                 StartProjectDefault: true,
@@ -487,11 +482,11 @@ internal sealed class ZetlShortcutCoordinator
                 ProjectNameDefault: null,
                 CaptureOrigin: pending?.CaptureOrigin,
                 Image: image,
-                RichHtml: ResolveHoldClipboardHtml(context, pending),
-                ReplayFormats: ResolveHoldClipboardReplayFormats(context, pending));
+                RichHtml: clipboardContent?.Html,
+                ReplayFormats: clipboardContent?.ReplayFormats);
         }
 
-        var text = ResolveHoldClipboardText(context, pending);
+        var text = clipboardContent?.Text ?? "";
         if (string.IsNullOrWhiteSpace(text))
         {
             return new ZetlBoardRequest(context.ShiftLane);
@@ -537,8 +532,8 @@ internal sealed class ZetlShortcutCoordinator
             ProjectToggleText: null,
             ProjectNameDefault: null,
             CaptureOrigin: pending?.CaptureOrigin,
-            RichHtml: ResolveHoldClipboardHtml(context, pending),
-            ReplayFormats: ResolveHoldClipboardReplayFormats(context, pending));
+            RichHtml: clipboardContent?.Html,
+            ReplayFormats: clipboardContent?.ReplayFormats);
     }
 
     private ZetlShortcutRequest CreateCutHoldRequest(
@@ -551,7 +546,8 @@ internal sealed class ZetlShortcutCoordinator
         var project = store.GetOrCreateDefaultProject(context.ShiftLane);
         var scratch = store.GetScratchBucket(project);
         var preferredBucket = hadActiveProject ? store.GetQuickNoteBucket(project) : scratch;
-        var text = ResolveHoldClipboardText(context, pending);
+        var clipboardContent = ResolveHoldClipboardContent(context, pending);
+        var text = clipboardContent?.Text ?? "";
         return new ZetlNoteCaptureRequest(
             context.ShiftLane,
             project,
@@ -565,67 +561,20 @@ internal sealed class ZetlShortcutCoordinator
             ProjectToggleText: null,
             ProjectNameDefault: null,
             CaptureOrigin: pending?.CaptureOrigin,
-            RichHtml: ResolveHoldClipboardHtml(context, pending),
-            ReplayFormats: ResolveHoldClipboardReplayFormats(context, pending));
+            RichHtml: clipboardContent?.Html,
+            ReplayFormats: clipboardContent?.ReplayFormats);
     }
 
-    // The text a held copy/cut should capture: the clipboard value already
-    // observed for this pending shortcut, falling back to a fresh changed-text
-    // read, then to empty.
-    private string ResolveHoldClipboardText(
+    // Held copy/cut uses one already-observed generation or one fresh coherent
+    // fallback capture. It must not independently re-read companion formats.
+    private ZetlClipboardCaptureSnapshot? ResolveHoldClipboardContent(
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
-        return pending?.ObservedClipboardText
-            ?? TryGetChangedClipboardText(
+        return pending?.GetObservedClipboardContent()
+            ?? TryCaptureChangedClipboardContent(
                 pending?.ClipboardSequenceNumber
-                    ?? context.ClipboardSequenceNumber)
-            ?? "";
-    }
-
-    private string? ResolveHoldClipboardHtml(
-        ChordlEventContext context,
-        ZetlPendingShortcut? pending)
-    {
-        if (pending?.ObservedClipboardHtml is { } observed)
-        {
-            return observed;
-        }
-
-        var beforeSequence = pending?.ClipboardSequenceNumber
-            ?? context.ClipboardSequenceNumber;
-        return clipboard.GetChangeToken() == beforeSequence
-            ? null
-            : clipboard.TryGetHtml();
-    }
-
-    private IReadOnlyList<ZetlClipboardFormatData>? ResolveHoldClipboardReplayFormats(
-        ChordlEventContext context,
-        ZetlPendingShortcut? pending)
-    {
-        if (pending?.ObservedReplayFormats is { } observed)
-        {
-            return observed;
-        }
-
-        var beforeSequence = pending?.ClipboardSequenceNumber
-            ?? context.ClipboardSequenceNumber;
-        return clipboard.GetChangeToken() == beforeSequence
-            ? null
-            : clipboard.TryGetReplayFormats();
-    }
-
-    private string? TryGetChangedClipboardText(uint beforeSequence)
-    {
-        if (clipboard.GetChangeToken() == beforeSequence)
-        {
-            return null;
-        }
-
-        var text = clipboard.TryGetText();
-        return string.IsNullOrWhiteSpace(text)
-            ? null
-            : text.Trim();
+                    ?? context.ClipboardSequenceNumber);
     }
 
     private ZetlShortcutRequest? CreateCompileRequest(bool shifted)
@@ -749,17 +698,33 @@ internal sealed class ZetlShortcutCoordinator
         await ObserveClipboardContentAsync(pending, ClipboardObservationTimeout);
     }
 
-    private ZetlClipboardImage? TryGetChangedClipboardImage(uint beforeSequence)
+    private ZetlClipboardCaptureSnapshot? TryCaptureChangedClipboardContent(
+        uint beforeSequence)
     {
         try
         {
-            return clipboard.GetChangeToken() != beforeSequence
-                ? clipboard.TryGetImage()
-                : null;
+            var content = clipboard.TryCaptureContent();
+            if (content is null || content.ChangeToken == beforeSequence)
+            {
+                return null;
+            }
+
+            var text = string.IsNullOrWhiteSpace(content.Text)
+                ? null
+                : content.Text.Trim();
+            var html = string.IsNullOrWhiteSpace(content.Html)
+                ? null
+                : content.Html;
+            return content with
+            {
+                Text = text,
+                Html = html,
+                ReplayFormats = text is null ? null : content.ReplayFormats
+            };
         }
         catch (Exception ex)
         {
-            log($"Clipboard image read failed: {ex.Message}");
+            log($"Clipboard content read failed: {ex.Message}");
             return null;
         }
     }
@@ -771,29 +736,16 @@ internal sealed class ZetlShortcutCoordinator
         var elapsed = TimeSpan.Zero;
         do
         {
-            if (clipboard.GetChangeToken() != pending.ClipboardSequenceNumber)
+            var content = TryCaptureChangedClipboardContent(
+                pending.ClipboardSequenceNumber);
+            if (content is not null)
             {
-                // Read both formats: spreadsheets put a bitmap rendering *and*
-                // the cell text on the clipboard, and capture keeps both.
-                var image = clipboard.TryGetImage();
-                var text = clipboard.TryGetText()?.Trim();
-                var html = clipboard.TryGetHtml();
-                var replayFormats = text is null
-                    ? null
-                    : clipboard.TryGetReplayFormats();
-                if (string.IsNullOrWhiteSpace(text))
+                // Spreadsheets can carry text, HTML, a native Replay bundle,
+                // and a bitmap rendering. The backend returns all of them from
+                // the same generation or no snapshot at all.
+                if (content.Image is not null || content.Text is not null)
                 {
-                    text = null;
-                }
-
-                if (string.IsNullOrWhiteSpace(html))
-                {
-                    html = null;
-                }
-
-                if (image is not null || text is not null)
-                {
-                    pending.SetObservedClipboardContent(text, image, html, replayFormats);
+                    pending.SetObservedClipboardContent(content);
                     return;
                 }
             }
@@ -812,16 +764,17 @@ internal sealed class ZetlShortcutCoordinator
             return;
         }
 
-        if (pending.ObservedClipboardText is null
-            && pending.ObservedClipboardImage is null)
+        var observed = pending.GetObservedClipboardContent();
+        if (observed is null)
         {
             await ObserveClipboardContentAsync(pending, AutoCaptureClipboardTimeout);
+            observed = pending.GetObservedClipboardContent();
         }
 
-        var text = pending.ObservedClipboardText;
-        var image = pending.ObservedClipboardImage;
-        var richHtml = pending.ObservedClipboardHtml;
-        var replayFormats = pending.ObservedReplayFormats;
+        var text = observed?.Text;
+        var image = observed?.Image;
+        var richHtml = observed?.Html;
+        var replayFormats = observed?.ReplayFormats;
         if ((text is null && image is null) || pending.Cancelled)
         {
             return;
@@ -1219,9 +1172,8 @@ internal sealed class ZetlShortcutCoordinator
     private async Task HandlePopTapAsync(bool shifted)
     {
         await delay.WaitAsync(PopClipboardDelay);
-        var image = clipboard.TryGetImage();
-        var text = clipboard.TryGetText();
-        if (text is null && image is null)
+        var content = clipboard.TryCaptureContent();
+        if (content is null || (content.Text is null && content.Image is null))
         {
             return;
         }
@@ -1233,32 +1185,40 @@ internal sealed class ZetlShortcutCoordinator
             // still pop a text-only slip.
             ZetlBucket? bucket = null;
             ZetlSlip? note = null;
-            var popped = image is not null
+            ZetlBucket? reviewBucket = null;
+            ZetlSlip? reviewNote = null;
+            var popped = content.Image is not null
                 && store.TryPopLastMatchingActiveImage(
                     Convert.ToHexString(
-                        System.Security.Cryptography.SHA256.HashData(image.PngBytes))
+                        System.Security.Cryptography.SHA256.HashData(content.Image.PngBytes))
                         .ToLowerInvariant(),
                     shifted,
                     out bucket,
-                    out note);
-            if (!popped && text is not null)
+                    out note,
+                    out reviewBucket,
+                    out reviewNote);
+            if (!popped && content.Text is not null)
             {
                 popped = store.TryPopLastMatchingActiveNote(
-                    text,
+                    content.Text,
                     shifted,
                     out bucket,
-                    out note);
+                    out note,
+                    out reviewBucket,
+                    out reviewNote);
             }
 
             if (popped
                 && bucket is not null
-                && note is not null)
+                && note is not null
+                && reviewBucket is not null
+                && reviewNote is not null)
             {
                 undoStack.Push(
                     shifted,
-                    $"Restored popped note to {bucket.Name}.",
-                    () => store.RestoreNote(bucket, note));
-                notifications.Show("Popped the pasted item from the active bucket.");
+                    $"Restored popped item to {bucket.Name} from {reviewBucket.Name}.",
+                    () => store.RestorePoppedNote(bucket, note, reviewBucket, reviewNote.Id));
+                notifications.Show($"Popped item from {bucket.Name} to {reviewBucket.Name}.");
             }
         });
     }

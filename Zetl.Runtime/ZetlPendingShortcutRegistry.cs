@@ -46,10 +46,7 @@ internal sealed class ZetlPendingShortcutRegistry
 internal sealed class ZetlPendingShortcut
 {
     private readonly object gate = new();
-    private string? observedClipboardText;
-    private string? observedClipboardHtml;
-    private IReadOnlyList<ZetlClipboardFormatData>? observedReplayFormats;
-    private ZetlClipboardImage? observedClipboardImage;
+    private ZetlClipboardCaptureSnapshot? observedClipboardContent;
     private bool cancelled;
 
     public ZetlPendingShortcut(
@@ -78,7 +75,7 @@ internal sealed class ZetlPendingShortcut
         {
             lock (gate)
             {
-                return observedClipboardText;
+                return observedClipboardContent?.Text;
             }
         }
     }
@@ -89,7 +86,7 @@ internal sealed class ZetlPendingShortcut
         {
             lock (gate)
             {
-                return observedClipboardImage;
+                return observedClipboardContent?.Image;
             }
         }
     }
@@ -100,7 +97,7 @@ internal sealed class ZetlPendingShortcut
         {
             lock (gate)
             {
-                return observedClipboardHtml;
+                return observedClipboardContent?.Html;
             }
         }
     }
@@ -111,7 +108,7 @@ internal sealed class ZetlPendingShortcut
         {
             lock (gate)
             {
-                return observedReplayFormats;
+                return observedClipboardContent?.ReplayFormats;
             }
         }
     }
@@ -139,7 +136,28 @@ internal sealed class ZetlPendingShortcut
     {
         lock (gate)
         {
-            observedClipboardText = text;
+            observedClipboardContent = new ZetlClipboardCaptureSnapshot(
+                ClipboardSequenceNumber,
+                text,
+                null,
+                null,
+                null);
+        }
+    }
+
+    public ZetlClipboardCaptureSnapshot? GetObservedClipboardContent()
+    {
+        lock (gate)
+        {
+            return observedClipboardContent;
+        }
+    }
+
+    public void SetObservedClipboardContent(ZetlClipboardCaptureSnapshot content)
+    {
+        lock (gate)
+        {
+            observedClipboardContent = content;
         }
     }
 
@@ -151,10 +169,12 @@ internal sealed class ZetlPendingShortcut
     {
         lock (gate)
         {
-            observedClipboardText = text;
-            observedClipboardImage = image;
-            observedClipboardHtml = html;
-            observedReplayFormats = replayFormats;
+            observedClipboardContent = new ZetlClipboardCaptureSnapshot(
+                ClipboardSequenceNumber,
+                text,
+                html,
+                replayFormats,
+                image);
         }
     }
 }

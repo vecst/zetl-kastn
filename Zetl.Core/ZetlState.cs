@@ -81,6 +81,7 @@ internal sealed class ZetlBucketSettings
     public bool PopMode { get; set; }
     [System.Text.Json.Serialization.JsonPropertyName("fifoReviewBucketId")]
     public string? ReplayReviewBucketId { get; set; }
+    public string? PopReviewBucketId { get; set; }
 }
 
 internal sealed class ZetlBucket
@@ -1998,8 +1999,28 @@ internal sealed class ZetlStateStore
     [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryPopLastMatchingActiveNote(string text, bool shifted, out ZetlBucket? bucket, out ZetlSlip? note)
     {
+        return TryPopLastMatchingActiveNote(
+            text,
+            shifted,
+            out bucket,
+            out note,
+            out _,
+            out _);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryPopLastMatchingActiveNote(
+        string text,
+        bool shifted,
+        out ZetlBucket? bucket,
+        out ZetlSlip? note,
+        out ZetlBucket? reviewBucket,
+        out ZetlSlip? reviewNote)
+    {
         bucket = GetActiveBucket(shifted);
         note = null;
+        reviewBucket = null;
+        reviewNote = null;
         if (bucket is null || IsReplayBucket(bucket) || !bucket.Settings.PopMode || bucket.Slips.Count == 0)
         {
             return false;
@@ -2017,21 +2038,38 @@ internal sealed class ZetlStateStore
             return false;
         }
 
-        last.Revision++;
-        bucket.Slips.Remove(last);
-        note = last;
-        PersistBucket(bucket);
-        return true;
+        return TryArchivePoppedSlip(bucket, last, out note, out reviewBucket, out reviewNote);
     }
 
+    [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryPopLastMatchingActiveImage(
         string sha256,
         bool shifted,
         out ZetlBucket? bucket,
         out ZetlSlip? note)
     {
+        return TryPopLastMatchingActiveImage(
+            sha256,
+            shifted,
+            out bucket,
+            out note,
+            out _,
+            out _);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryPopLastMatchingActiveImage(
+        string sha256,
+        bool shifted,
+        out ZetlBucket? bucket,
+        out ZetlSlip? note,
+        out ZetlBucket? reviewBucket,
+        out ZetlSlip? reviewNote)
+    {
         bucket = GetActiveBucket(shifted);
         note = null;
+        reviewBucket = null;
+        reviewNote = null;
         if (bucket is null || IsReplayBucket(bucket) || !bucket.Settings.PopMode)
         {
             return false;
@@ -2047,10 +2085,7 @@ internal sealed class ZetlStateStore
             return false;
         }
 
-        bucket.Slips.Remove(last);
-        note = last;
-        PersistBucket(bucket);
-        return true;
+        return TryArchivePoppedSlip(bucket, last, out note, out reviewBucket, out reviewNote);
     }
 
     public bool TryPeekNextReplayNote(ZetlBucket? bucket, out ZetlSlip? note)
@@ -2137,30 +2172,7 @@ internal sealed class ZetlStateStore
         if (note.IsImage || !string.IsNullOrWhiteSpace(note.Text))
         {
             reviewBucket = GetOrCreateReplayReviewBucket(project, bucket);
-            reviewNote = new ZetlSlip
-            {
-                Id = NewId(),
-                Type = note.Type,
-                Text = note.Text.Trim(),
-                RichHtml = note.RichHtml,
-                ReplayFormats = CloneReplayFormats(note.ReplayFormats),
-                Image = note.Image is null
-                    ? null
-                    : new ZetlImageAsset
-                    {
-                        RelativePath = note.Image.RelativePath,
-                        SourceUrl = note.Image.SourceUrl,
-                        MimeType = note.Image.MimeType,
-                        Width = note.Image.Width,
-                        Height = note.Image.Height,
-                        ByteLength = note.Image.ByteLength,
-                        Sha256 = note.Image.Sha256
-                    },
-                Source = "replay",
-                SessionId = sessionId,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-                CaptureOrigin = note.CaptureOrigin
-            };
+            reviewNote = CloneSlipForReview(note, "replay", trimText: true);
             reviewBucket.Slips.Add(reviewNote);
         }
 
@@ -2202,6 +2214,22 @@ internal sealed class ZetlStateStore
         if (bucket.Slips.All(item => item.Id != note.Id))
         {
             bucket.Slips.Insert(0, note);
+        }
+
+        PersistBucket(bucket);
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void RestorePoppedNote(ZetlBucket bucket, ZetlSlip note, ZetlBucket? reviewBucket, string? reviewNoteId)
+    {
+        if (reviewBucket is not null && reviewNoteId is not null)
+        {
+            reviewBucket.Slips.RemoveAll(item => item.Id == reviewNoteId);
+        }
+
+        if (bucket.Slips.All(item => item.Id != note.Id))
+        {
+            bucket.Slips.Add(note);
         }
 
         PersistBucket(bucket);
@@ -2787,6 +2815,12 @@ internal sealed class ZetlStateStore
                 bucket.Settings.ReplayReviewBucketId = null;
             }
 
+            if (bucket.Settings.PopReviewBucketId == bucket.Id
+                || project.Buckets.All(candidate => candidate.Id != bucket.Settings.PopReviewBucketId || IsDeletedBucket(candidate)))
+            {
+                bucket.Settings.PopReviewBucketId = null;
+            }
+
             bucket.Settings.Kind = NormalizeBucketKind(bucket.Settings.Kind);
             bucket.Settings.DefaultKind = NormalizeBucketKind(string.IsNullOrWhiteSpace(bucket.Settings.DefaultKind) ? bucket.Settings.Kind : bucket.Settings.DefaultKind);
             bucket.Settings.DefaultCompileMode = NormalizeCompileMode(bucket.Settings.DefaultCompileMode);
@@ -2993,6 +3027,7 @@ internal sealed class ZetlStateStore
         bucket.Settings.DefaultKind = DeletedBucketKind;
         bucket.Settings.PopMode = false;
         bucket.Settings.ReplayReviewBucketId = null;
+        bucket.Settings.PopReviewBucketId = null;
     }
 
     // Stamp a freshly created bucket with the user's default compile mode and
@@ -3132,6 +3167,14 @@ internal sealed class ZetlStateStore
                 && targetBucket.Id != targetReviewBucket.Id)
             {
                 targetBucket.Settings.ReplayReviewBucketId = targetReviewBucket.Id;
+            }
+
+            if (sourceBucket.Settings.PopReviewBucketId is not null
+                && bucketMap.TryGetValue(sourceBucket.Id, out targetBucket)
+                && bucketMap.TryGetValue(sourceBucket.Settings.PopReviewBucketId, out targetReviewBucket)
+                && targetBucket.Id != targetReviewBucket.Id)
+            {
+                targetBucket.Settings.PopReviewBucketId = targetReviewBucket.Id;
             }
         }
 
@@ -3388,6 +3431,57 @@ internal sealed class ZetlStateStore
                 item.Data.ToArray(),
                 item.RegisteredName)).ToList();
 
+    private ZetlSlip CloneSlipForReview(ZetlSlip source, string reviewSource, bool trimText = false)
+    {
+        return new ZetlSlip
+        {
+            Id = NewId(),
+            Type = source.Type,
+            Title = source.Title,
+            Text = trimText ? source.Text.Trim() : source.Text,
+            RichHtml = source.RichHtml,
+            ReplayFormats = CloneReplayFormats(source.ReplayFormats),
+            Image = source.Image is null ? null : CloneImageAssetReference(source.Image),
+            Source = reviewSource,
+            SessionId = sessionId,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            ExcludedFromViews = source.ExcludedFromViews,
+            Align = source.Align,
+            BlockKind = source.BlockKind,
+            IgnoreBucketRenderKind = source.IgnoreBucketRenderKind,
+            Checked = source.Checked,
+            Bold = source.Bold,
+            Italic = source.Italic,
+            Strike = source.Strike,
+            FontFamily = source.FontFamily,
+            FontSize = source.FontSize,
+            TextColor = source.TextColor,
+            InlineStyles = source.InlineStyles.Select(style => style with { }).ToList(),
+            CaptureOrigin = source.CaptureOrigin is null
+                ? null
+                : new ZetlCaptureOrigin
+                {
+                    ApplicationName = source.CaptureOrigin.ApplicationName,
+                    ProcessName = source.CaptureOrigin.ProcessName,
+                    WindowTitle = source.CaptureOrigin.WindowTitle
+                }
+        };
+    }
+
+    private static ZetlImageAsset CloneImageAssetReference(ZetlImageAsset source)
+    {
+        return new ZetlImageAsset
+        {
+            RelativePath = source.RelativePath,
+            SourceUrl = source.SourceUrl,
+            MimeType = source.MimeType,
+            Width = source.Width,
+            Height = source.Height,
+            ByteLength = source.ByteLength,
+            Sha256 = source.Sha256
+        };
+    }
+
     private ZetlImageAsset? CloneReplayImage(
         ZetlProject sourceProject,
         ZetlProject targetProject,
@@ -3536,30 +3630,82 @@ internal sealed class ZetlStateStore
 
     private ZetlBucket GetOrCreateReplayReviewBucket(ZetlProject project, ZetlBucket replayBucket)
     {
-        if (replayBucket.Settings.ReplayReviewBucketId is not null)
+        var reviewBucket = GetOrCreateReviewBucket(
+            project,
+            replayBucket,
+            replayBucket.Settings.ReplayReviewBucketId,
+            $"{replayBucket.Name} Review",
+            "Replay Review");
+        replayBucket.Settings.ReplayReviewBucketId = reviewBucket.Id;
+        replayBucket.Revision++;
+        return reviewBucket;
+    }
+
+    private bool TryArchivePoppedSlip(
+        ZetlBucket sourceBucket,
+        ZetlSlip sourceSlip,
+        out ZetlSlip? poppedSlip,
+        out ZetlBucket? reviewBucket,
+        out ZetlSlip? reviewSlip)
+    {
+        var project = OwnerProject(sourceBucket);
+        if (project is null)
         {
-            var existingReviewBucket = project.Buckets.FirstOrDefault(bucket =>
-                bucket.Id == replayBucket.Settings.ReplayReviewBucketId && bucket.Id != replayBucket.Id);
-            if (existingReviewBucket is not null)
-            {
-                return existingReviewBucket;
-            }
+            poppedSlip = null;
+            reviewBucket = null;
+            reviewSlip = null;
+            return false;
         }
 
-        var reviewBucketName = NormalizeName($"{replayBucket.Name} Review", "Replay Review");
-        var reviewBucket = project.Buckets.FirstOrDefault(bucket =>
-            bucket.Id != replayBucket.Id
-            && string.Equals(bucket.Name, reviewBucketName, StringComparison.OrdinalIgnoreCase));
+        reviewBucket = GetOrCreatePopReviewBucket(project, sourceBucket);
+        sourceSlip.Revision++;
+        sourceBucket.Slips.Remove(sourceSlip);
+        poppedSlip = sourceSlip;
+        reviewSlip = CloneSlipForReview(sourceSlip, "pop-recovery");
+        reviewBucket.Slips.Add(reviewSlip);
+        PersistProject(project);
+        return true;
+    }
+
+    private ZetlBucket GetOrCreatePopReviewBucket(ZetlProject project, ZetlBucket sourceBucket)
+    {
+        var reviewBucket = GetOrCreateReviewBucket(
+            project,
+            sourceBucket,
+            sourceBucket.Settings.PopReviewBucketId,
+            $"{sourceBucket.Name} Pop Review",
+            "Pop Review");
+        sourceBucket.Settings.PopReviewBucketId = reviewBucket.Id;
+        sourceBucket.Revision++;
+        return reviewBucket;
+    }
+
+    private static ZetlBucket GetOrCreateReviewBucket(
+        ZetlProject project,
+        ZetlBucket sourceBucket,
+        string? linkedReviewBucketId,
+        string preferredName,
+        string fallbackName)
+    {
+        var reviewBucket = linkedReviewBucketId is null
+            ? null
+            : project.Buckets.FirstOrDefault(bucket =>
+                bucket.Id == linkedReviewBucketId
+                && bucket.Id != sourceBucket.Id
+                && !IsDeletedBucket(bucket));
+        var normalizedName = NormalizeName(preferredName, fallbackName);
+        reviewBucket ??= project.Buckets.FirstOrDefault(bucket =>
+            bucket.Id != sourceBucket.Id
+            && !IsDeletedBucket(bucket)
+            && string.Equals(bucket.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
         if (reviewBucket is null)
         {
-            reviewBucket = CreateBucket(reviewBucketName);
+            reviewBucket = CreateBucket(normalizedName);
             project.Buckets.Add(reviewBucket);
         }
 
         reviewBucket.Settings.Kind = "Standard";
         reviewBucket.Settings.PopMode = false;
-        replayBucket.Settings.ReplayReviewBucketId = reviewBucket.Id;
-        replayBucket.Revision++;
         return reviewBucket;
     }
 

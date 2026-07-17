@@ -446,30 +446,35 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
         try
         {
-            var handle = GetClipboardData(UnicodeText);
-            if (handle == IntPtr.Zero)
-            {
-                return null;
-            }
-
-            var pointer = GlobalLock(handle);
-            if (pointer == IntPtr.Zero)
-            {
-                return null;
-            }
-
-            try
-            {
-                return Marshal.PtrToStringUni(pointer);
-            }
-            finally
-            {
-                GlobalUnlock(handle);
-            }
+            return ReadTextFromOpenClipboard();
         }
         finally
         {
             CloseClipboard();
+        }
+    }
+
+    private static string? ReadTextFromOpenClipboard()
+    {
+        var handle = GetClipboardData(UnicodeText);
+        if (handle == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        var pointer = GlobalLock(handle);
+        if (pointer == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return Marshal.PtrToStringUni(pointer);
+        }
+        finally
+        {
+            GlobalUnlock(handle);
         }
     }
 
@@ -482,16 +487,21 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
         try
         {
-            var bytes = ReadClipboardBytes(Html);
-            return bytes is { Length: <= MaxStoredRichHtmlBytes }
-                && TryExtractHtmlFragment(bytes, out var fragment)
-                    ? fragment
-                    : null;
+            return ReadHtmlFromOpenClipboard();
         }
         finally
         {
             CloseClipboard();
         }
+    }
+
+    private static string? ReadHtmlFromOpenClipboard()
+    {
+        var bytes = ReadClipboardBytes(Html);
+        return bytes is { Length: <= MaxStoredRichHtmlBytes }
+            && TryExtractHtmlFragment(bytes, out var fragment)
+                ? fragment
+                : null;
     }
 
     public IReadOnlyList<ZetlClipboardFormatData>? TryGetReplayFormats()
@@ -501,58 +511,64 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             return null;
         }
 
-        var formats = new List<ZetlClipboardFormatData>();
-        var hasNativeEmbed = false;
-        var hasUnicodeText = false;
-        var totalBytes = 0;
         try
         {
-            uint format = 0;
-            while ((format = EnumClipboardFormats(format)) != 0)
-            {
-                var registeredName = GetRegisteredFormatName(format);
-                var isNative = registeredName is not null
-                    && NativeReplayFormatNames.Contains(registeredName);
-                if (format != UnicodeText && format != Html && !isNative)
-                {
-                    continue;
-                }
-
-                var data = ReadClipboardBytes(format);
-                var required = format == UnicodeText
-                    || string.Equals(
-                        registeredName,
-                        "Star Embed Source (XML)",
-                        StringComparison.Ordinal);
-                if (data is null)
-                {
-                    if (required)
-                    {
-                        return null;
-                    }
-                    continue;
-                }
-
-                if (data.Length > MaxStoredRichHtmlBytes - totalBytes)
-                {
-                    return null;
-                }
-
-                formats.Add(new ZetlClipboardFormatData(
-                    format,
-                    data,
-                    registeredName));
-                totalBytes += data.Length;
-                hasUnicodeText |= format == UnicodeText;
-                hasNativeEmbed |= string.Equals(
-                    registeredName,
-                    "Star Embed Source (XML)",
-                    StringComparison.Ordinal);
-            }
+            return ReadReplayFormatsFromOpenClipboard();
         }
         finally
         {
             CloseClipboard();
+        }
+
+    }
+
+    private static IReadOnlyList<ZetlClipboardFormatData>? ReadReplayFormatsFromOpenClipboard()
+    {
+        var formats = new List<ZetlClipboardFormatData>();
+        var hasNativeEmbed = false;
+        var hasUnicodeText = false;
+        var totalBytes = 0;
+        uint format = 0;
+        while ((format = EnumClipboardFormats(format)) != 0)
+        {
+            var registeredName = GetRegisteredFormatName(format);
+            var isNative = registeredName is not null
+                && NativeReplayFormatNames.Contains(registeredName);
+            if (format != UnicodeText && format != Html && !isNative)
+            {
+                continue;
+            }
+
+            var data = ReadClipboardBytes(format);
+            var required = format == UnicodeText
+                || string.Equals(
+                    registeredName,
+                    "Star Embed Source (XML)",
+                    StringComparison.Ordinal);
+            if (data is null)
+            {
+                if (required)
+                {
+                    return null;
+                }
+                continue;
+            }
+
+            if (data.Length > MaxStoredRichHtmlBytes - totalBytes)
+            {
+                return null;
+            }
+
+            formats.Add(new ZetlClipboardFormatData(
+                format,
+                data,
+                registeredName));
+            totalBytes += data.Length;
+            hasUnicodeText |= format == UnicodeText;
+            hasNativeEmbed |= string.Equals(
+                registeredName,
+                "Star Embed Source (XML)",
+                StringComparison.Ordinal);
         }
 
         // HTML alone already has the lightweight RichHtml path. Persist a raw
@@ -651,28 +667,7 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
         try
         {
-            var pngBytes = ReadClipboardBytes(Png);
-            if (pngBytes is not null && TryNormalizeImage(pngBytes, out var pngImage))
-            {
-                return pngImage;
-            }
-
-            foreach (var format in new[] { DibV5, Dib })
-            {
-                var dibBytes = ReadClipboardBytes(format);
-                if (dibBytes is null)
-                {
-                    continue;
-                }
-
-                var bitmapBytes = AddBitmapFileHeader(dibBytes);
-                if (bitmapBytes is not null && TryNormalizeImage(bitmapBytes, out var image))
-                {
-                    return image;
-                }
-            }
-
-            return null;
+            return ReadImageFromOpenClipboard();
         }
         finally
         {
@@ -1012,6 +1007,120 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             {
                 CloseClipboard();
             }
+        }
+    }
+
+    private static ZetlClipboardImage? ReadImageFromOpenClipboard()
+    {
+        var pngBytes = ReadClipboardBytes(Png);
+        if (pngBytes is not null && TryCreatePngSnapshot(pngBytes, out var pngImage))
+        {
+            return pngImage;
+        }
+
+        foreach (var format in new[] { DibV5, Dib })
+        {
+            var dibBytes = ReadClipboardBytes(format);
+            if (dibBytes is null)
+            {
+                continue;
+            }
+
+            var bitmapBytes = AddBitmapFileHeader(dibBytes);
+            if (bitmapBytes is not null && TryNormalizeImage(bitmapBytes, out var image))
+            {
+                return image;
+            }
+        }
+
+        return null;
+    }
+
+    internal static bool TryCreatePngSnapshot(
+        byte[] pngBytes,
+        out ZetlClipboardImage? image)
+    {
+        ReadOnlySpan<byte> png = pngBytes;
+        ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
+        ReadOnlySpan<byte> ihdr = "IHDR"u8;
+        ReadOnlySpan<byte> iend = "IEND"u8;
+        if (png.Length < 33
+            || !png[..8].SequenceEqual(signature)
+            || BinaryPrimitives.ReadUInt32BigEndian(png.Slice(8, 4)) != 13
+            || !png.Slice(12, 4).SequenceEqual(ihdr))
+        {
+            image = null;
+            return false;
+        }
+
+        var width = BinaryPrimitives.ReadUInt32BigEndian(png.Slice(16, 4));
+        var height = BinaryPrimitives.ReadUInt32BigEndian(png.Slice(20, 4));
+        if (width == 0 || height == 0 || width > int.MaxValue || height > int.MaxValue)
+        {
+            image = null;
+            return false;
+        }
+
+        var offset = 8;
+        var foundEnd = false;
+        while (offset <= png.Length - 12)
+        {
+            var chunkLength = BinaryPrimitives.ReadUInt32BigEndian(
+                png.Slice(offset, 4));
+            var chunkEnd = (ulong)offset + 12UL + chunkLength;
+            if (chunkEnd > (ulong)png.Length)
+            {
+                image = null;
+                return false;
+            }
+
+            var chunkType = png.Slice(offset + 4, 4);
+            if (chunkType.SequenceEqual(iend))
+            {
+                foundEnd = chunkLength == 0 && chunkEnd == (ulong)png.Length;
+                break;
+            }
+
+            offset = (int)chunkEnd;
+        }
+
+        if (!foundEnd)
+        {
+            image = null;
+            return false;
+        }
+
+        image = new ZetlClipboardImage(pngBytes, (int)width, (int)height);
+        return true;
+    }
+
+    public ZetlClipboardCaptureSnapshot? TryCaptureContent()
+    {
+        if (!TryOpen())
+        {
+            return null;
+        }
+
+        try
+        {
+            // Holding OpenClipboard prevents another process from replacing the
+            // clipboard between these reads. The recorded sequence therefore
+            // identifies the generation shared by every returned format.
+            var changeToken = GetClipboardSequenceNumber();
+            var text = ReadTextFromOpenClipboard();
+            var html = ReadHtmlFromOpenClipboard();
+            var replayFormats = ReadReplayFormatsFromOpenClipboard();
+            var image = ReadImageFromOpenClipboard();
+            return new ZetlClipboardCaptureSnapshot(
+                changeToken,
+                text,
+                html,
+                replayFormats,
+                image);
+        }
+        finally
+        {
+            CloseClipboard();
         }
     }
 

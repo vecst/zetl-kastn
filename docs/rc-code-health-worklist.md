@@ -5,8 +5,9 @@ July 2026 code-health audit. It is deliberately separate from the product
 roadmap: these items protect data, clipboard integrity, process reliability,
 and maintainability of the paths needed to fix them safely.
 
-The current automated baseline is 375 passing tests, 2 skipped, and 0 failed at
-commit `adb634d`.
+The current automated baseline is 411 passing tests, 2 skipped, and 0 failed
+after the P2-1 coherent clipboard-capture, P2-5 navigation-lifecycle, and P2-6
+durable Pop-recovery passes.
 
 ## Working Order
 
@@ -175,9 +176,17 @@ announce completion.
 
 ### P2-1. Clipboard capture can combine different clipboard generations
 
-- [ ] Capture text, HTML, image, native formats, and the observed sequence as one
+**Implementation status:** `IClipboard` now returns one immutable capture
+snapshot containing text, HTML, image, native Replay formats, and its observed
+change token. Windows reads that snapshot while holding one `OpenClipboard`
+transaction. Compatibility backends compare the sequence before and after all
+format reads, retry up to three times, and return no snapshot when the clipboard
+remains unstable. Auto-capture and held copy/cut carry that same snapshot through
+the pending-shortcut boundary instead of independently re-reading companions.
+
+- [x] Capture text, HTML, image, native formats, and the observed sequence as one
       backend operation, or retry when the sequence changes during capture.
-- [ ] Add a fake that changes generation between format reads and verify no torn
+- [x] Add a fake that changes generation between format reads and verify no torn
       slip is committed.
 
 ### P2-2. IPC reads have no progress deadline
@@ -203,23 +212,35 @@ announce completion.
 
 ### P2-5. Kastn activation can surface an unhandled async-void exception
 
+**Implementation status:** activation remains Task-returning through the window
+and is observed at the control-pipe/UI fire-and-forget boundary. The lifecycle
+integration test now drops the first `GetProject` response during navigation,
+verifies the exception is reported without escaping, observes an accurate
+Offline snapshot, and proves Kastn reconnects and opens the requested project.
+
 - [x] Make activation Task-returning and catch/report failure at the dispatcher
       or control-pipe boundary.
-- [ ] Test a disconnect during project navigation and verify Kastn remains
+- [x] Test a disconnect during project navigation and verify Kastn remains
       running with an accurate connection status.
 
 ### P2-6. Pop recovery is session-only
 
-- [ ] Choose a durable recovery design: move popped slips to a review bucket or
+**Implementation status:** Pop now archives each consumed slip in a durable
+`<Source> Pop Review` bucket in the same project. The source-to-review link and
+the complete recovery slip are committed in one project write; text, image
+assets, rich/native clipboard formats, and Kastn styling all survive restart.
+Undo removes the recovery copy while restoring the original source slip.
+
+- [x] Choose a durable recovery design: move popped slips to a review bucket or
       persist a bounded Pop history.
-- [ ] Include the source bucket/recovery destination in the notification.
-- [ ] Verify restart recovery for text, image, and mixed slips.
+- [x] Include the source bucket/recovery destination in the notification.
+- [x] Verify restart recovery for text, image, and mixed slips.
 
 ## Final RC Gates
 
-- [ ] Full automated suite passes with no new skips.
-- [ ] Focused fault-injection tests cover every P1 failure point.
-- [ ] Windows clipboard self-tests pass outside the sandbox.
+- [x] Full automated suite passes with no new skips.
+- [x] Focused fault-injection tests cover every P1 failure point.
+- [x] Windows clipboard self-tests pass outside the sandbox.
 - [ ] `windows-parity-checklist.md` passes on the published artifact.
-- [ ] No P1 item remains open; any deferred P2 has an explicit release decision
+- [x] No P1 item remains open; any deferred P2 has an explicit release decision
       and documented user impact.

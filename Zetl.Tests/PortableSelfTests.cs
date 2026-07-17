@@ -70,6 +70,9 @@ public class PortableSelfTests
                 ("Zetl state detects compilable notes", StateDetectsCompilableNotes),
                 ("Zetl state finds inactive scratch notes for compile", StateFindsInactiveScratchCompileTarget),
                 ("Zetl state pop mode removes matching last note", StatePopModeRemovesLastMatchingNote),
+                ("Zetl state Pop recovers text across restart", StatePopRecoversTextAcrossRestart),
+                ("Zetl state Pop recovers images across restart", StatePopRecoversImageAcrossRestart),
+                ("Zetl state Pop recovers mixed slips across restart", StatePopRecoversMixedSlipAcrossRestart),
                 ("Zetl state finds the most recently written project", StateFindsMostRecentlyWrittenProject),
                 ("Zetl capture origin respects privacy detail", CaptureOriginRespectsPrivacyDetail),
                 ("Zetl capture origin round-trips with notes", CaptureOriginRoundTripsWithNotes),
@@ -116,6 +119,8 @@ public class PortableSelfTests
                 ("Runtime auto-captures and replays rich text", RuntimeAutoCapturesAndReplaysRichText),
                 ("Runtime auto-captures copied images", RuntimeAutoCapturesCopiedImages),
                 ("Runtime auto-captures dual text+image clipboards as text", RuntimeAutoCapturesDualClipboardAsText),
+                ("Runtime clipboard capture retries a changed generation atomically", RuntimeClipboardCaptureRetriesChangedGeneration),
+                ("Runtime clipboard capture refuses persistently unstable generations", RuntimeClipboardCaptureRefusesUnstableGenerations),
                 ("Dual slips survive persistence text-preferred", DualSlipSurvivesPersistence),
                 ("Runtime Pop removes a dual slip by image hash", RuntimePopRemovesDualSlipByImageHash),
                 ("Runtime Replay pastes a dual slip as text", RuntimeReplayPastesDualSlipAsText),
@@ -657,11 +662,121 @@ public class PortableSelfTests
 
             store.RestoreNote(bucket, bucket.Notes[0]);
             AssertEqual(1, bucket.Notes.Count, "Restoring an existing note should not duplicate it.");
-            AssertTrue(store.TryPopLastMatchingActiveNote("alpha", shifted: false, out var poppedBucket, out var poppedNote), "Pop should return undo details.");
+            AssertTrue(
+                store.TryPopLastMatchingActiveNote(
+                    "alpha",
+                    shifted: false,
+                    out var poppedBucket,
+                    out var poppedNote,
+                    out var reviewBucket,
+                    out var reviewNote),
+                "Pop should return durable undo details.");
             AssertEqual(bucket.Id, poppedBucket?.Id, "Pop should report the source bucket.");
             AssertEqual("alpha", poppedNote?.Text, "Pop should report the removed note.");
-            store.RestoreNote(poppedBucket!, poppedNote!);
+            AssertEqual("Inbox Pop Review", reviewBucket?.Name, "Pop should report its recovery bucket.");
+            store.RestorePoppedNote(poppedBucket!, poppedNote!, reviewBucket, reviewNote?.Id);
             AssertEqual("alpha", bucket.Notes.Single().Text, "Restore should put popped note back.");
+        }
+
+        private static void StatePopRecoversTextAcrossRestart()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var source = store.ActiveBucket!;
+            store.SetBucketPopMode(source, true);
+            store.AddNote(source, "durable text", "copy");
+
+            AssertTrue(
+                store.TryPopLastMatchingActiveNote("durable text", false, out _, out _, out var review, out _),
+                "Text Pop should move the slip to review.");
+            AssertEqual("Inbox Pop Review", review?.Name, "Pop review should name its source bucket.");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            var loadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
+            var loadedSource = loadedProject.Buckets.Single(item => item.Id == source.Id);
+            var loadedReview = loadedProject.Buckets.Single(item => item.Id == loadedSource.Settings.PopReviewBucketId);
+            AssertEqual(0, loadedSource.Notes.Count, "The source should remain consumed after restart.");
+            AssertEqual("durable text", loadedReview.Notes.Single().Text, "Popped text should remain recoverable after restart.");
+            AssertEqual("pop-recovery", loadedReview.Notes.Single().Source, "Recovered slips should identify their Pop origin.");
+        }
+
+        private static void StatePopRecoversImageAcrossRestart()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var source = store.ActiveBucket!;
+            store.SetBucketPopMode(source, true);
+            var bytes = new byte[] { 8, 6, 7, 5, 3, 0, 9 };
+            var image = store.AddImageNote(
+                project,
+                source,
+                new ZetlClipboardImage(bytes, 7, 1),
+                "copy");
+
+            AssertTrue(
+                store.TryPopLastMatchingActiveImage(image.Image!.Sha256, false, out _, out _, out _, out _),
+                "Image Pop should move the slip to review.");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            var loadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
+            var loadedSource = loadedProject.Buckets.Single(item => item.Id == source.Id);
+            var recovered = loadedProject.Buckets
+                .Single(item => item.Id == loadedSource.Settings.PopReviewBucketId)
+                .Notes.Single();
+            AssertTrue(recovered.IsImage, "Popped image type should survive restart.");
+            AssertEqual(7, recovered.Image?.Width, "Popped image metadata should survive restart.");
+            AssertEqual(bytes.Length, reloaded.ReadImageAsset(loadedProject, recovered)?.Length, "Popped image bytes should remain readable after restart.");
+        }
+
+        private static void StatePopRecoversMixedSlipAcrossRestart()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var source = store.ActiveBucket!;
+            store.SetBucketPopMode(source, true);
+            var bytes = new byte[] { 1, 3, 3, 7 };
+            var html = "<p><strong>mixed</strong></p>";
+            var mixed = store.AddImageNote(
+                project,
+                source,
+                new ZetlClipboardImage(bytes, 2, 2),
+                "copy",
+                caption: "mixed",
+                preferTextContent: true,
+                richHtml: html,
+                replayFormats: [new ZetlClipboardFormatData(42, [4, 2], "Native Test")]);
+            store.UpdateNote(
+                mixed,
+                mixed.Text,
+                align: "right",
+                bold: true,
+                fontFamily: "Aptos",
+                fontSize: 18,
+                textColor: "#cc0000");
+
+            AssertTrue(
+                store.TryPopLastMatchingActiveImage(mixed.Image!.Sha256, false, out _, out _, out _, out _),
+                "Mixed Pop should move the complete slip to review.");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            var loadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
+            var loadedSource = loadedProject.Buckets.Single(item => item.Id == source.Id);
+            var recovered = loadedProject.Buckets
+                .Single(item => item.Id == loadedSource.Settings.PopReviewBucketId)
+                .Notes.Single();
+            AssertEqual("mixed", recovered.Text, "Mixed Pop should retain text after restart.");
+            AssertTrue(recovered.Image is not null, "Mixed Pop should retain its attached image after restart.");
+            AssertEqual(html, recovered.RichHtml, "Mixed Pop should retain rich clipboard content after restart.");
+            AssertEqual("Native Test", recovered.ReplayFormats?.Single().RegisteredName, "Mixed Pop should retain native replay formats after restart.");
+            AssertEqual("right", recovered.Align, "Mixed Pop should retain block alignment after restart.");
+            AssertTrue(recovered.Bold, "Mixed Pop should retain emphasis after restart.");
+            AssertEqual("Aptos", recovered.FontFamily, "Mixed Pop should retain its font after restart.");
+            AssertEqual(18, recovered.FontSize, "Mixed Pop should retain its font size after restart.");
+            AssertEqual("#CC0000", recovered.TextColor, "Mixed Pop should retain its normalized color after restart.");
+            AssertEqual(bytes.Length, reloaded.ReadImageAsset(loadedProject, recovered)?.Length, "Mixed Pop should retain readable image bytes after restart.");
         }
 
         private static void StateFindsMostRecentlyWrittenProject()
@@ -2777,6 +2892,68 @@ public class PortableSelfTests
                 "A dual capture should report as an ordinary text capture.");
         }
 
+        private static void RuntimeClipboardCaptureRetriesChangedGeneration()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var clipboard = new GenerationChangingClipboard();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                captureOrigin: null)
+                .GetAwaiter().GetResult();
+
+            var note = store.GetActiveBucket()!.Notes.Single();
+            AssertTrue(
+                clipboard.TextReadCount >= 2,
+                "Capture should retry after the token changes between format reads.");
+            AssertEqual("generation two", note.Text, "Capture must discard text from the superseded generation.");
+            AssertEqual(
+                "<p><strong>generation two</strong></p>",
+                note.RichHtml,
+                "HTML must come from the same generation as the committed text.");
+            AssertTrue(note.Image is not null, "The coherent generation should retain its companion image.");
+            AssertEqual(
+                (byte)2,
+                store.ReadImageAsset(project, note)?.Single(),
+                "Image bytes must come from the same generation as the committed text.");
+            AssertEqual(
+                (byte)2,
+                note.ReplayFormats?.Single().Data.Single(),
+                "Native Replay data must come from the same generation as the committed text.");
+        }
+
+        private static void RuntimeClipboardCaptureRefusesUnstableGenerations()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var clipboard = new GenerationChangingClipboard(changeEveryTextRead: true);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                captureOrigin: null)
+                .GetAwaiter().GetResult();
+
+            AssertEqual(
+                0,
+                store.GetActiveBucket()!.Notes.Count,
+                "Auto-capture must commit nothing when no retry observes one complete generation.");
+        }
+
         private static void DualSlipSurvivesPersistence()
         {
             using var temp = new TempStateFile();
@@ -4070,10 +4247,11 @@ public class PortableSelfTests
             store.SetBucketPopMode(bucket, true);
             store.AddNote(bucket, "paste once", "copy");
             var clipboard = new FakeClipboard("paste once", changeToken: 1);
+            var notifications = new FakeNotificationSink();
             var coordinator = CreateShortcutCoordinator(
                 store,
                 clipboard,
-                new FakeNotificationSink(),
+                notifications,
                 out _,
                 out var undo);
 
@@ -4081,7 +4259,15 @@ public class PortableSelfTests
 
             AssertFalse(handled, "Pop tap should allow the physical paste through.");
             AssertEqual(0, bucket.Notes.Count, "Pop tap should remove the matching note.");
-            AssertTrue(undo.TryPop(false, out _), "Popped note should be undoable.");
+            AssertEqual(
+                "Popped item from Inbox to Inbox Pop Review.",
+                notifications.Messages.Single(),
+                "Pop should name both its source and durable recovery destination.");
+            AssertTrue(undo.TryPop(false, out var action), "Popped note should be undoable.");
+            AssertEqual(
+                "Restored popped item to Inbox from Inbox Pop Review.",
+                action?.Message,
+                "Pop undo should name both recovery endpoints.");
         }
 
         private static void RuntimePopRemovesMatchingImageSlip()
@@ -4938,7 +5124,7 @@ public class PortableSelfTests
 
         private static ZetlShortcutCoordinator CreateShortcutCoordinator(
             ZetlStateStore store,
-            FakeClipboard clipboard,
+            IClipboard clipboard,
             FakeNotificationSink notifications,
             out FakeKeyboardBackend keyboard,
             out ZetlUndoStack undo,
@@ -5485,6 +5671,56 @@ public class PortableSelfTests
             {
                 first.TrySetResult();
             }
+        }
+
+        private sealed class GenerationChangingClipboard(bool changeEveryTextRead = false) : IClipboard
+        {
+            private int generation = 1;
+            private int changeOnFirstTextRead = 1;
+            private uint changeToken = 2;
+
+            public int TextReadCount { get; private set; }
+
+            public string? TryGetText()
+            {
+                TextReadCount++;
+                var value = generation == 1 ? "generation one" : "generation two";
+                if (changeEveryTextRead
+                    || Interlocked.Exchange(ref changeOnFirstTextRead, 0) == 1)
+                {
+                    generation++;
+                    changeToken++;
+                }
+                return value;
+            }
+
+            public string? TryGetHtml() => generation == 1
+                ? "<p><em>generation one</em></p>"
+                : "<p><strong>generation two</strong></p>";
+
+            public IReadOnlyList<ZetlClipboardFormatData>? TryGetReplayFormats() =>
+                [new ZetlClipboardFormatData(
+                    0xC001,
+                    [(byte)generation],
+                    "Star Embed Source (XML)")];
+
+            public ZetlClipboardImage? TryGetImage() => new(
+                [(byte)generation],
+                generation,
+                generation);
+
+            public bool SetText(string text) => false;
+
+            public bool SetRichText(string plainText, string html) => false;
+
+            public bool SetImage(ZetlClipboardImage image) => false;
+
+            public ZetlClipboardBackup CaptureBackup() =>
+                ZetlClipboardBackup.Incomplete("test clipboard is read-only");
+
+            public bool RestoreBackup(ZetlClipboardBackup backup) => false;
+
+            public uint GetChangeToken() => changeToken;
         }
 
         private sealed class FakeImageUrlResolver(ZetlResolvedImageUrl? result) : IImageUrlResolver

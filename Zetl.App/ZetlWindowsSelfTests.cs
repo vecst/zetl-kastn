@@ -52,6 +52,16 @@ internal static class ZetlWindowsSelfTests
                     outputDib.AsSpan(8, 4)) == -1
                 && System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(
                     outputDib.AsSpan(14, 2)) == 32);
+            failures += Check(
+                "clipboard validates PNG snapshots without recompressing",
+                AvaloniaWindowsClipboard.TryCreatePngSnapshot(
+                    png,
+                    out var pngSnapshot)
+                && pngSnapshot is { Width: 1, Height: 1 }
+                && pngSnapshot.PngBytes.SequenceEqual(png)
+                && !AvaloniaWindowsClipboard.TryCreatePngSnapshot(
+                    png[..24],
+                    out _));
 
             failures += Check(
                 "clipboard enhanced metafile covers its synthesized legacy format",
@@ -208,7 +218,9 @@ internal static class ZetlWindowsSelfTests
                     "restored rich clipboard matches its exact backup",
                     BackupsEqual(richBackup, clipboard.CaptureBackup()));
 
-                var liveImage = resolvedImage!.Image;
+                // Use the known-decodable source fixture for clipboard
+                // round-trips. Resolver normalization has its own checks above.
+                var liveImage = new ZetlClipboardImage(png, 1, 1);
                 failures += Check(
                     "clipboard writes every requested image format",
                     clipboard.ReplaceImage(liveImage).Succeeded);
@@ -239,6 +251,7 @@ internal static class ZetlWindowsSelfTests
                     clipboard.ReplaceWithBackup(
                         ZetlClipboardBackup.FromRaw(mixedFormats)).Succeeded);
                 var mixedBackup = clipboard.CaptureBackup();
+                var mixedCapture = clipboard.TryCaptureContent();
                 failures += Check(
                     "clipboard preserves every mixed format",
                     clipboard.TryGetText() == richText
@@ -249,6 +262,24 @@ internal static class ZetlWindowsSelfTests
                         && item.Data.SequenceEqual(liveImage.PngBytes))
                     && mixedBackup.RawFormats.Any(item =>
                         item.Format == AvaloniaWindowsClipboard.DibClipboardFormat));
+                failures += Check(
+                    "clipboard captures a mixed-content generation",
+                    mixedCapture is not null);
+                failures += Check(
+                    "clipboard mixed capture records its observed sequence",
+                    mixedCapture?.ChangeToken == clipboard.GetChangeToken());
+                failures += Check(
+                    "clipboard mixed capture includes text",
+                    mixedCapture?.Text == richText);
+                failures += Check(
+                    "clipboard mixed capture includes rich HTML",
+                    mixedCapture?.Html == richHtml);
+                failures += Check(
+                    "clipboard mixed capture includes an image",
+                    mixedCapture?.Image is not null);
+                failures += Check(
+                    "clipboard reads the mixed image independently",
+                    clipboard.TryGetImage() is not null);
 
                 failures += Check(
                     "clipboard transaction can write an exactly empty clipboard",

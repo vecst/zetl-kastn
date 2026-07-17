@@ -27,6 +27,37 @@ internal interface IClipboard
     ZetlClipboardImage? TryGetImage();
 
     /// <summary>
+    /// Capture every format used by Zetl from one clipboard generation. Native
+    /// backends should override this with one platform read transaction. The
+    /// compatibility implementation retries when the change token advances
+    /// between individual format reads and never returns a torn snapshot.
+    /// </summary>
+    ZetlClipboardCaptureSnapshot? TryCaptureContent()
+    {
+        const int maxAttempts = 3;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            var before = GetChangeToken();
+            var text = TryGetText();
+            var html = TryGetHtml();
+            var replayFormats = TryGetReplayFormats();
+            var image = TryGetImage();
+            var after = GetChangeToken();
+            if (before == after)
+            {
+                return new ZetlClipboardCaptureSnapshot(
+                    after,
+                    text,
+                    html,
+                    replayFormats,
+                    image);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Replace the clipboard text. Returns true when the write succeeded, false
     /// when it could not be completed (so callers that must not act on a stale
     /// clipboard — e.g. replay paste — can bail).
@@ -77,6 +108,16 @@ internal interface IClipboard
 }
 
 internal sealed record ZetlClipboardImage(byte[] PngBytes, int Width, int Height);
+
+/// <summary>
+/// The capture-relevant clipboard formats observed at one change token.
+/// </summary>
+internal sealed record ZetlClipboardCaptureSnapshot(
+    uint ChangeToken,
+    string? Text,
+    string? Html,
+    IReadOnlyList<ZetlClipboardFormatData>? ReplayFormats,
+    ZetlClipboardImage? Image);
 
 /// <summary>An opaque clipboard format payload. Contents must never be logged.</summary>
 internal sealed record ZetlClipboardFormatData(
