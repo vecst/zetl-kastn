@@ -970,8 +970,7 @@ public class ZetlUITests : IDisposable
             window.Show();
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-            window.ActivateRequest(null);
-            await Task.Delay(250);
+            await window.ActivateRequestAsync(null);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
             Assert.Equal(project.Id, controller.Current.Project?.Id);

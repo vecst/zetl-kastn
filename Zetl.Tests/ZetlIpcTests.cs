@@ -306,6 +306,158 @@ public class ZetlIpcTests
         });
     }
 
+    [Fact] public void PartialFrameTimesOutWhenProgressStops()
+    {
+        RunAsync(async () =>
+        {
+            await using var stream = new StallingReadStream([1, 0]);
+            await Assert.ThrowsAsync<TimeoutException>(() =>
+                ZetlIpcFraming.ReadAsync(
+                    stream,
+                    CancellationToken.None,
+                    TimeSpan.FromMilliseconds(50)));
+        });
+    }
+
+    [Fact] public void PartialPayloadTimesOutWhenProgressStops()
+    {
+        RunAsync(async () =>
+        {
+            var frameStart = new byte[sizeof(int) + 2];
+            BinaryPrimitives.WriteInt32LittleEndian(frameStart, 4);
+            frameStart[4] = (byte)'{';
+            frameStart[5] = (byte)'"';
+            await using var stream = new StallingReadStream(frameStart);
+
+            await Assert.ThrowsAsync<TimeoutException>(() =>
+                ZetlIpcFraming.ReadAsync(
+                    stream,
+                    CancellationToken.None,
+                    TimeSpan.FromMilliseconds(50)));
+        });
+    }
+
+    [Fact] public void IdleFrameWaitUsesCallerCancellationInsteadOfProgressTimeout()
+    {
+        RunAsync(async () =>
+        {
+            await using var stream = new StallingReadStream([]);
+            using var cancellation = new CancellationTokenSource(
+                TimeSpan.FromMilliseconds(75));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                ZetlIpcFraming.ReadAsync(
+                    stream,
+                    cancellation.Token,
+                    TimeSpan.FromMilliseconds(20)));
+        });
+    }
+
+    [Fact] public void ServerHandshakeHasAnInjectableTotalDeadline()
+    {
+        RunAsync(async () =>
+        {
+            await using var stream = new StallingReadStream([]);
+            var handshake = new ZetlIpcServerHandshake(
+                "deadline-server",
+                new ZetlIpcServerOptions
+                {
+                    HandshakeTimeout = TimeSpan.FromMilliseconds(50),
+                    FrameProgressTimeout = TimeSpan.FromMilliseconds(20)
+                });
+
+            await Assert.ThrowsAsync<TimeoutException>(() =>
+                handshake.AcceptAsync(stream, CancellationToken.None));
+        });
+    }
+
+    [Fact] public void OutboundResponsesHavePriorityOverCoalescedProjectChanges()
+    {
+        RunAsync(async () =>
+        {
+            var outbound = new ZetlIpcOutboundDispatcher(responseCapacity: 1);
+            AssertTrue(
+                outbound.QueueProjectChange(Change("project-a", sequence: 1)),
+                "The first project invalidation should be accepted.");
+            AssertTrue(
+                outbound.QueueProjectChange(Change("project-a", sequence: 2)),
+                "A newer project invalidation should replace the pending one.");
+            AssertTrue(
+                outbound.TryQueueReply(ZetlIpcMessage.Create(
+                    ZetlIpcMessageKind.Response,
+                    new { Marker = "response" },
+                    "response-1")),
+                "Pending events must not consume response capacity.");
+            outbound.Complete();
+
+            await using var stream = new MemoryStream();
+            await outbound.WriteToAsync(stream, CancellationToken.None);
+            stream.Position = 0;
+            var first = await ZetlIpcFraming.ReadAsync(stream, CancellationToken.None);
+            var second = await ZetlIpcFraming.ReadAsync(stream, CancellationToken.None);
+            var end = await ZetlIpcFraming.ReadAsync(stream, CancellationToken.None);
+            var change = second?.Payload?.Deserialize<ZetlProjectChangedEvent>(
+                ZetlProtocolJson.Options);
+
+            AssertEqual(
+                ZetlIpcMessageKind.Response,
+                first?.Kind,
+                "Responses should be written before pending invalidation events.");
+            AssertEqual(
+                ZetlIpcMessageKind.ProjectChanged,
+                second?.Kind,
+                "The coalesced invalidation should follow the response.");
+            AssertEqual(
+                2L,
+                change?.ProjectChangeSequence,
+                "Only the newest pending sequence for a project should be delivered.");
+            AssertEqual<ZetlIpcMessage?>(null, end, "The dispatcher should emit exactly two messages.");
+        });
+    }
+
+    [Fact] public void ProjectEventSaturationCannotCrowdOutCompletedMutationResponse()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new IpcFixture();
+            var service = new ZetlProjectService(fixture.Store);
+            var outbound = new ZetlIpcOutboundDispatcher(responseCapacity: 1);
+            service.ProjectChanged += (_, change) =>
+                outbound.QueueProjectChange(change);
+            for (var sequence = 1; sequence <= 100; sequence++)
+            {
+                AssertTrue(
+                    outbound.QueueProjectChange(Change(fixture.Project.Id, sequence)),
+                    "The event side should coalesce without consuming response capacity.");
+            }
+
+            var handler = new ZetlIpcInboundCommandHandler(
+                service,
+                log: null,
+                dropResponseForTesting: null);
+            var handled = handler.Handle(ZetlIpcMessage.Create(
+                ZetlIpcMessageKind.Command,
+                AddSlip("saturated-response", fixture, "committed under saturation"),
+                "saturated-response"));
+
+            AssertTrue(
+                fixture.Bucket.Notes.Any(note => note.Text == "committed under saturation"),
+                "The mutation should be durably applied before its response is queued.");
+            AssertTrue(
+                handled.Reply is not null && outbound.TryQueueReply(handled.Reply),
+                "A completed mutation response must retain its dedicated capacity.");
+            outbound.Complete();
+
+            await using var stream = new MemoryStream();
+            await outbound.WriteToAsync(stream, CancellationToken.None);
+            stream.Position = 0;
+            var first = await ZetlIpcFraming.ReadAsync(stream, CancellationToken.None);
+            AssertEqual(
+                ZetlIpcMessageKind.Response,
+                first?.Kind,
+                "The completed mutation response should be delivered before saturated events.");
+        });
+    }
+
     [Fact] public void DisconnectedClientDoesNotAffectCaptureOrPeers()
     {
         RunAsync(async () =>
@@ -463,6 +615,18 @@ public class ZetlIpcTests
             fixture.Project.Id);
     }
 
+    private static ZetlProjectChangedEvent Change(string projectId, long sequence) =>
+        new()
+        {
+            EventId = $"event-{sequence}",
+            ProjectId = projectId,
+            ProjectChangeSequence = sequence,
+            ChangeKind = ZetlChangeKind.Updated,
+            EntityKind = ZetlEntityKind.Project,
+            EntityId = projectId,
+            EntityRevision = sequence
+        };
+
     private static void RunAsync(Func<Task> action)
     {
         action().GetAwaiter().GetResult();
@@ -493,6 +657,53 @@ public class ZetlIpcTests
     }
 
 
+
+    private sealed class StallingReadStream(byte[] initialBytes) : Stream
+    {
+        private int position;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => position;
+            set => throw new NotSupportedException();
+        }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            if (position < initialBytes.Length)
+            {
+                var count = Math.Min(buffer.Length, initialBytes.Length - position);
+                initialBytes.AsMemory(position, count).CopyTo(buffer);
+                position += count;
+                return count;
+            }
+
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) =>
+            throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+    }
 
     private sealed class IpcFixture : IDisposable
     {

@@ -6,6 +6,9 @@ implementation context.
 
 ## Current Roadmaps
 
+- [`rc-code-health-worklist.md`](rc-code-health-worklist.md) — P1/P2 release
+  risks, cleanup sequencing, and acceptance gates
+
 - [`kastn-roadmap.md`](kastn-roadmap.md) — current Kastn/Zetl product work
 - [`linux-roadmap.md`](linux-roadmap.md) — current Linux platform work
 - [`windows-parity-checklist.md`](windows-parity-checklist.md) — manual Windows

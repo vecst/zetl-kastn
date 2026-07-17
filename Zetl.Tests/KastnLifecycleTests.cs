@@ -9,6 +9,69 @@ namespace ZETL.Tests;
 
 public class KastnLifecycleTests
 {
+    [Fact] public void RefreshPumpCollapsesBurstIntoOneDirtyRerun()
+    {
+        RunAsync(async () =>
+        {
+            using var cancellation = new CancellationTokenSource();
+            var firstStarted = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseFirst = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var refreshCount = 0;
+            await using var pump = new KastnRefreshPump(
+                async token =>
+                {
+                    var count = Interlocked.Increment(ref refreshCount);
+                    if (count == 1)
+                    {
+                        firstStarted.TrySetResult();
+                        await releaseFirst.Task.WaitAsync(token);
+                    }
+                },
+                exception => throw new InvalidOperationException(
+                    "The refresh pump should not report a failure.", exception),
+                cancellation.Token);
+
+            pump.Request();
+            await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            for (var request = 0; request < 100; request++)
+            {
+                pump.Request();
+            }
+
+            releaseFirst.TrySetResult();
+            await pump.WaitForIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            AssertEqual(
+                2,
+                Volatile.Read(ref refreshCount),
+                "A burst during one refresh should produce exactly one dirty rerun.");
+        });
+    }
+
+    [Fact] public void RefreshPumpReportsFailureAndReturnsToIdle()
+    {
+        RunAsync(async () =>
+        {
+            using var cancellation = new CancellationTokenSource();
+            var reported = new TaskCompletionSource<Exception>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            await using var pump = new KastnRefreshPump(
+                _ => Task.FromException(new IOException("refresh disconnected")),
+                exception => reported.TrySetResult(exception),
+                cancellation.Token);
+
+            pump.Request();
+            var failure = await reported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await pump.WaitForIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+            AssertEqual(
+                "refresh disconnected",
+                failure.Message,
+                "The owned pump should surface background refresh failures.");
+        });
+    }
+
     [Fact] public void ActivationHandoffCarriesProjectId()
     {
         RunAsync(async () =>
@@ -30,6 +93,26 @@ public class KastnLifecycleTests
                 "project-to-focus",
                 request.ProjectId,
                 "Activation should preserve the requested project ID.");
+        });
+    }
+
+    [Fact] public void ActivationBoundaryReportsNavigationDisconnectWithoutEscaping()
+    {
+        RunAsync(async () =>
+        {
+            Exception? reported = null;
+
+            await App.ObserveActivationAsync(
+                () => Task.FromException(new IOException("navigation disconnected")),
+                exception => reported = exception);
+
+            AssertTrue(
+                reported is IOException,
+                "The UI activation boundary should observe a navigation disconnect.");
+            AssertEqual(
+                "navigation disconnected",
+                reported!.Message,
+                "The activation failure should remain available for visible status reporting.");
         });
     }
 
@@ -222,6 +305,48 @@ public class KastnLifecycleTests
                 refreshed.Project!.Slips.Any(
                     slip => slip.Text == "captured while Kastn is open"),
                 "Kastn should refresh its snapshot after a durable Zetl change.");
+        });
+    }
+
+    [Fact] public void ControllerConvergesAfterChangeBurstWithBoundedRefreshes()
+    {
+        RunAsync(async () =>
+        {
+            var listRequests = 0;
+            using var fixture = new LifecycleFixture(
+                dropResponseForTesting: command =>
+                {
+                    if (command.Kind == ZetlCommandKind.ListProjects)
+                    {
+                        Interlocked.Increment(ref listRequests);
+                    }
+
+                    return false;
+                });
+            await using var controller = CreateConnectedController(fixture);
+            await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Online);
+            var baselineRequests = Volatile.Read(ref listRequests);
+
+            for (var index = 0; index < 40; index++)
+            {
+                fixture.AddSlip($"burst-{index}");
+            }
+
+            var refreshed = await WaitForSnapshotAsync(
+                controller,
+                snapshot => snapshot.Project?.Slips.Any(
+                    slip => slip.Text == "burst-39") == true);
+            await Task.Delay(150);
+            var burstRequests = Volatile.Read(ref listRequests) - baselineRequests;
+
+            AssertTrue(
+                refreshed.Project!.Slips.Any(slip => slip.Text == "burst-39"),
+                "The refresh pump should converge on the newest durable snapshot.");
+            AssertTrue(
+                burstRequests < 10,
+                $"Forty invalidations should require a bounded refresh count, not one task each (actual {burstRequests}).");
         });
     }
 

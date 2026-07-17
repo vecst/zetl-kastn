@@ -33,10 +33,16 @@ internal static class ZetlIpcFraming
 
     public static async Task<ZetlIpcMessage?> ReadAsync(
         Stream stream,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? progressTimeout = null)
     {
         var header = new byte[sizeof(int)];
-        if (!await ReadExactlyOrEofAsync(stream, header, cancellationToken).ConfigureAwait(false))
+        if (!await ReadExactlyOrEofAsync(
+                stream,
+                header,
+                progressTimeout,
+                waitIndefinitelyForFirstByte: true,
+                cancellationToken).ConfigureAwait(false))
         {
             return null;
         }
@@ -49,7 +55,12 @@ internal static class ZetlIpcFraming
         }
 
         var payload = new byte[length];
-        await stream.ReadExactlyAsync(payload, cancellationToken).ConfigureAwait(false);
+        _ = await ReadExactlyOrEofAsync(
+            stream,
+            payload,
+            progressTimeout,
+            waitIndefinitelyForFirstByte: false,
+            cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Deserialize<ZetlIpcMessage>(
             payload,
             ZetlProtocolJson.Options)
@@ -59,27 +70,58 @@ internal static class ZetlIpcFraming
     private static async Task<bool> ReadExactlyOrEofAsync(
         Stream stream,
         byte[] buffer,
+        TimeSpan? progressTimeout,
+        bool waitIndefinitelyForFirstByte,
         CancellationToken cancellationToken)
     {
         var read = 0;
         while (read < buffer.Length)
         {
-            var count = await stream.ReadAsync(
-                buffer.AsMemory(read),
-                cancellationToken).ConfigureAwait(false);
+            var applyProgressTimeout = progressTimeout is { } timeout
+                && timeout != Timeout.InfiniteTimeSpan
+                && (!waitIndefinitelyForFirstByte || read > 0);
+            var count = applyProgressTimeout
+                ? await ReadWithProgressTimeoutAsync(
+                    stream,
+                    buffer.AsMemory(read),
+                    progressTimeout!.Value,
+                    cancellationToken).ConfigureAwait(false)
+                : await stream.ReadAsync(
+                    buffer.AsMemory(read),
+                    cancellationToken).ConfigureAwait(false);
             if (count == 0)
             {
-                if (read == 0)
+                if (read == 0 && waitIndefinitelyForFirstByte)
                 {
                     return false;
                 }
 
-                throw new EndOfStreamException("IPC frame ended inside its header.");
+                throw new EndOfStreamException("IPC frame ended before its declared length.");
             }
 
             read += count;
         }
 
         return true;
+    }
+
+    private static async ValueTask<int> ReadWithProgressTimeoutAsync(
+        Stream stream,
+        Memory<byte> buffer,
+        TimeSpan progressTimeout,
+        CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        timeout.CancelAfter(progressTimeout);
+        try
+        {
+            return await stream.ReadAsync(buffer, timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"IPC frame made no progress for {progressTimeout.TotalMilliseconds:0} ms.");
+        }
     }
 }

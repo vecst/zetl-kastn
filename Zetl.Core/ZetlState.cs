@@ -368,10 +368,11 @@ internal sealed class ZetlStateStore
     public const string NormalLane = "Normal";
     public const string ShiftLane = "Shift";
 
-    private readonly IZetlStateStorage storage;
+    private readonly IZetlProjectStorage projectStorage;
+    private readonly IZetlProjectDirectoryLifecycle projectDirectories;
+    private readonly ZetlStatePersistenceCoordinator persistence;
     private readonly string sessionId;
     private readonly Action<string>? log;
-    private ZetlState? durableState;
 
     // Current UI/runtime mutations and the Kastn command service share this
     // instance monitor. Synchronized public mutators therefore cannot interleave
@@ -387,13 +388,35 @@ internal sealed class ZetlStateStore
         IZetlStateStorage storage,
         string? sessionId = null,
         Action<string>? log = null)
+        : this(storage, storage, storage, storage, sessionId, log)
     {
-        this.storage = storage;
+    }
+
+    internal ZetlStateStore(
+        IZetlStateLoader stateLoader,
+        IZetlProjectStorage projectStorage,
+        IZetlWorkspaceStorage workspaceStorage,
+        IZetlProjectDirectoryLifecycle projectDirectories,
+        string? sessionId = null,
+        Action<string>? log = null)
+    {
+        this.projectStorage = projectStorage;
+        this.projectDirectories = projectDirectories;
         this.log = log;
         this.sessionId = string.IsNullOrWhiteSpace(sessionId) ? NewId() : sessionId;
-        State = storage.Load();
+        State = stateLoader.Load();
+        persistence = new ZetlStatePersistenceCoordinator(
+            projectStorage,
+            workspaceStorage,
+            projectDirectories,
+            State,
+            log);
         NormalizeLoadedState();
-        durableState = JsonFile.Clone(State);
+        // Loaded-state normalization may discard abandoned temporary projects.
+        // Once that startup repair succeeds, its normalized shape becomes the
+        // baseline for later compensating writes, matching the pre-extraction
+        // constructor contract.
+        persistence.ResetBaseline(State);
     }
 
     private static IZetlStateStorage CreateStorage(string? statePath, Action<string>? log)
@@ -994,9 +1017,10 @@ internal sealed class ZetlStateStore
         }
 
         State.Projects.Remove(project);
+        IZetlProjectRemoval? removal = null;
         try
         {
-            storage.RemoveProject(projectId);
+            removal = projectDirectories.PrepareProjectRemoval(projectId);
             if (State.ActiveProjectId == projectId)
             {
                 State.ActiveProjectId = State.Projects.FirstOrDefault()?.Id;
@@ -1008,15 +1032,33 @@ internal sealed class ZetlStateStore
             }
 
             PersistWorkspace();
+            removal.Commit();
         }
         catch
         {
-            RollBackProjectFile(projectId);
+            if (removal is not null)
+            {
+                try
+                {
+                    removal.RollBack();
+                }
+                catch (Exception rollbackError)
+                {
+                    log?.Invoke(
+                        $"Could not restore project directory '{projectId}' after a failed delete: {rollbackError.Message}");
+                }
+            }
+
+            persistence.RollBackProjectFile(projectId);
             RestoreDurableState();
             throw;
         }
+        finally
+        {
+            removal?.Dispose();
+        }
 
-        CommitDurableProjectRemoval(projectId);
+        persistence.CommitProjectRemoval(projectId);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -1310,7 +1352,7 @@ internal sealed class ZetlStateStore
         var hash = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(image.PngBytes))
             .ToLowerInvariant();
-        var relativePath = storage.WriteAsset(project, hash, ".png", image.PngBytes);
+        var relativePath = projectStorage.WriteAsset(project, hash, ".png", image.PngBytes);
         return new ZetlImageAsset
         {
             RelativePath = relativePath,
@@ -1325,19 +1367,19 @@ internal sealed class ZetlStateStore
     public byte[]? ReadImageAsset(ZetlProject project, ZetlSlip note)
     {
         return note.Image is not null
-            ? storage.ReadAsset(project, note.Image.RelativePath)
+            ? projectStorage.ReadAsset(project, note.Image.RelativePath)
             : null;
     }
 
     public string? GetImageAssetPath(ZetlProject project, ZetlSlip note)
     {
         return note.Image is not null
-            ? storage.GetAssetPath(project, note.Image.RelativePath)
+            ? projectStorage.GetAssetPath(project, note.Image.RelativePath)
             : null;
     }
 
     public IReadOnlyList<ZetlProjectAssetFile> GetProjectAssets(ZetlProject project) =>
-        storage.GetAssets(project);
+        projectStorage.GetAssets(project);
 
     // Adds one note per non-blank text, preserving order, with a single save.
     // Used by a structured compile-to-bucket that keeps notes separate instead
@@ -2433,45 +2475,22 @@ internal sealed class ZetlStateStore
     // that changed instead of rewriting every project on disk.
     private void PersistProject(ZetlProject project, bool workspace = false)
     {
-        var previousSequence = project.ChangeSequence;
-        var projectWriteAttempted = false;
-        var workspaceWriteAttempted = false;
         try
         {
-            NormalizeProject(project);
-            project.ChangeSequence = Math.Max(previousSequence, 0) + 1;
-            projectWriteAttempted = true;
-            storage.WriteProject(project);
-
-            if (workspace)
-            {
-                NormalizeWorkspacePointers();
-                workspaceWriteAttempted = true;
-                storage.WriteWorkspace(BuildWorkspaceFile());
-            }
+            persistence.PersistProject(
+                State,
+                project,
+                workspace,
+                NormalizeProject,
+                NormalizeWorkspacePointers,
+                BuildWorkspaceFile);
         }
         catch
         {
-            project.ChangeSequence = previousSequence;
-            if (projectWriteAttempted)
-            {
-                RollBackProjectFile(project.Id);
-            }
-
-            if (workspaceWriteAttempted)
-            {
-                RollBackWorkspaceFile();
-            }
-
             RestoreDurableState();
             throw;
         }
 
-        CommitDurableProject(project);
-        if (workspace)
-        {
-            CommitDurableWorkspace();
-        }
         RaiseProjectPersisted(
             new ZetlProjectPersistedEventArgs(project.Id, project.ChangeSequence));
         RaiseChanged();
@@ -2556,7 +2575,7 @@ internal sealed class ZetlStateStore
                 PersistWorkspace();
                 foreach (var projectId in removedProjectIds)
                 {
-                    CommitDurableProjectRemoval(projectId);
+                    persistence.CommitProjectRemoval(projectId);
                 }
             }
         }
@@ -2564,7 +2583,7 @@ internal sealed class ZetlStateStore
         {
             foreach (var projectId in removedProjectIds)
             {
-                RollBackProjectFile(projectId);
+                persistence.RollBackProjectFile(projectId);
             }
             RestoreDurableState();
             throw;
@@ -2577,7 +2596,7 @@ internal sealed class ZetlStateStore
     {
         var projectId = project.Id;
         State.Projects.Remove(project);
-        storage.RemoveProject(projectId);
+        projectDirectories.RemoveProject(projectId);
         if (State.ActiveProjectId == projectId)
         {
             State.ActiveProjectId = null;
@@ -2615,17 +2634,17 @@ internal sealed class ZetlStateStore
     {
         try
         {
-            NormalizeWorkspacePointers();
-            storage.WriteWorkspace(BuildWorkspaceFile());
+            persistence.PersistWorkspace(
+                State,
+                NormalizeWorkspacePointers,
+                BuildWorkspaceFile);
         }
         catch
         {
-            RollBackWorkspaceFile();
             RestoreDurableState();
             throw;
         }
 
-        CommitDurableWorkspace();
         RaiseChanged();
     }
 
@@ -2633,132 +2652,27 @@ internal sealed class ZetlStateStore
     // net when a mutation can't resolve which project it touched.
     private void SaveAll()
     {
-        var attemptedProjectIds = new List<string>();
-        var workspaceWriteAttempted = false;
         try
         {
-            foreach (var project in State.Projects)
-            {
-                NormalizeProject(project);
-                attemptedProjectIds.Add(project.Id);
-                storage.WriteProject(project);
-            }
-
-            NormalizeWorkspacePointers();
-            workspaceWriteAttempted = true;
-            storage.WriteWorkspace(BuildWorkspaceFile());
+            persistence.SaveAll(
+                State,
+                NormalizeProject,
+                NormalizeWorkspacePointers,
+                BuildWorkspaceFile);
         }
         catch
         {
-            foreach (var projectId in attemptedProjectIds)
-            {
-                RollBackProjectFile(projectId);
-            }
-
-            if (workspaceWriteAttempted)
-            {
-                RollBackWorkspaceFile();
-            }
-
             RestoreDurableState();
             throw;
         }
 
-        durableState = JsonFile.Clone(State);
         RaiseChanged();
-    }
-
-    private void CommitDurableProject(ZetlProject project)
-    {
-        if (durableState is null)
-        {
-            return;
-        }
-
-        var snapshot = JsonFile.Clone(project);
-        var index = durableState.Projects.FindIndex(candidate => candidate.Id == project.Id);
-        if (index >= 0)
-        {
-            durableState.Projects[index] = snapshot;
-        }
-        else
-        {
-            durableState.Projects.Add(snapshot);
-        }
-    }
-
-    private void CommitDurableProjectRemoval(string projectId)
-    {
-        durableState?.Projects.RemoveAll(project => project.Id == projectId);
-    }
-
-    private void CommitDurableWorkspace()
-    {
-        if (durableState is null)
-        {
-            return;
-        }
-
-        durableState.Version = State.Version;
-        durableState.ActiveProjectId = State.ActiveProjectId;
-        durableState.ShiftActiveProjectId = State.ShiftActiveProjectId;
-        durableState.DefaultJournalProjectId = State.DefaultJournalProjectId;
-        durableState.ShiftDefaultJournalProjectId = State.ShiftDefaultJournalProjectId;
-        durableState.LastDeliberateProjectId = State.LastDeliberateProjectId;
-        durableState.ShiftLastDeliberateProjectId = State.ShiftLastDeliberateProjectId;
     }
 
     private void RestoreDurableState()
     {
-        if (durableState is null)
-        {
-            return;
-        }
-
-        State = JsonFile.Clone(durableState);
+        State = persistence.RestoreState();
         RaiseChanged();
-    }
-
-    private void RollBackProjectFile(string projectId)
-    {
-        if (durableState?.Projects.FirstOrDefault(project => project.Id == projectId) is { } durableProject)
-        {
-            try
-            {
-                storage.WriteProject(durableProject);
-            }
-            catch (Exception rollbackError)
-            {
-                log?.Invoke($"Could not roll back project '{projectId}' after a failed write: {rollbackError.Message}");
-            }
-            return;
-        }
-
-        try
-        {
-            storage.RemoveProject(projectId);
-        }
-        catch (Exception rollbackError)
-        {
-            log?.Invoke($"Could not remove partially written project '{projectId}': {rollbackError.Message}");
-        }
-    }
-
-    private void RollBackWorkspaceFile()
-    {
-        if (durableState is null)
-        {
-            return;
-        }
-
-        try
-        {
-            storage.WriteWorkspace(BuildWorkspaceFile(durableState));
-        }
-        catch (Exception rollbackError)
-        {
-            log?.Invoke($"Could not roll back workspace pointers after a failed write: {rollbackError.Message}");
-        }
     }
 
     private void RaiseProjectPersisted(ZetlProjectPersistedEventArgs args)
@@ -2789,8 +2703,6 @@ internal sealed class ZetlStateStore
         return State.Projects.FirstOrDefault(project =>
             project.Buckets.Any(bucket => bucket.Slips.Any(item => item.Id == note.Id)));
     }
-
-    private ZetlWorkspaceFile BuildWorkspaceFile() => BuildWorkspaceFile(State);
 
     private static ZetlWorkspaceFile BuildWorkspaceFile(ZetlState state)
     {
@@ -3112,7 +3024,7 @@ internal sealed class ZetlStateStore
             CopyImageAssets(primary, duplicate);
             MergeProjectInto(primary, duplicate);
             State.Projects.Remove(duplicate);
-            storage.RemoveProject(duplicate.Id);
+            projectDirectories.RemoveProject(duplicate.Id);
             merged = true;
         }
 
@@ -3133,14 +3045,14 @@ internal sealed class ZetlStateStore
             .SelectMany(bucket => bucket.Slips)
             .Where(note => note.Image is not null))
         {
-            var bytes = storage.ReadAsset(sourceProject, note.Image!.RelativePath);
+            var bytes = projectStorage.ReadAsset(sourceProject, note.Image!.RelativePath);
             if (bytes is null)
             {
                 continue;
             }
 
             var extension = Path.GetExtension(note.Image.RelativePath);
-            note.Image.RelativePath = storage.WriteAsset(
+            note.Image.RelativePath = projectStorage.WriteAsset(
                 targetProject,
                 note.Image.Sha256,
                 string.IsNullOrWhiteSpace(extension) ? ".png" : extension,
@@ -3481,14 +3393,14 @@ internal sealed class ZetlStateStore
         ZetlProject targetProject,
         ZetlImageAsset source)
     {
-        var bytes = storage.ReadAsset(sourceProject, source.RelativePath);
+        var bytes = projectStorage.ReadAsset(sourceProject, source.RelativePath);
         if (bytes is null)
         {
             return null;
         }
 
         var extension = Path.GetExtension(source.RelativePath);
-        var relativePath = storage.WriteAsset(
+        var relativePath = projectStorage.WriteAsset(
             targetProject,
             source.Sha256,
             string.IsNullOrWhiteSpace(extension) ? ".png" : extension,

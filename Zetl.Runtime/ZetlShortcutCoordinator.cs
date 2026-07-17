@@ -5,16 +5,13 @@ namespace ZETL;
 
 internal sealed class ZetlShortcutCoordinator
 {
-    private readonly object pendingGate = new();
-    private readonly Dictionary<(int KeyCode, bool Shifted), ZetlPendingShortcut> pendingShortcuts = new();
-    private readonly ZetlClipboardBackup?[] replayUserClipboard = new ZetlClipboardBackup?[2];
-    private readonly ZetlClipboardSnapshot?[] replayInjectedClipboard = new ZetlClipboardSnapshot?[2];
-    private readonly uint?[] replayInjectedClipboardToken = new uint?[2];
+    private readonly ZetlPendingShortcutRegistry pendingShortcuts = new();
     private readonly SemaphoreSlim[] replayLaneGates = [new(1, 1), new(1, 1)];
     private readonly SemaphoreSlim replayClipboardGate = new(1, 1);
     private readonly ZetlStateStore store;
     private readonly IKeyboardBackend keyboard;
     private readonly IClipboard clipboard;
+    private readonly ZetlReplayClipboardSession replayClipboard;
     private readonly IZetlDispatcher dispatcher;
     private readonly IZetlDelay delay;
     private readonly IZetlNotificationSink notifications;
@@ -49,6 +46,7 @@ internal sealed class ZetlShortcutCoordinator
         this.store = store;
         this.keyboard = keyboard;
         this.clipboard = clipboard;
+        replayClipboard = new ZetlReplayClipboardSession(clipboard);
         this.dispatcher = dispatcher;
         this.delay = delay;
         this.notifications = notifications;
@@ -67,15 +65,11 @@ internal sealed class ZetlShortcutCoordinator
             return;
         }
 
-        var pending = new ZetlPendingShortcut(
+        var pending = pendingShortcuts.Register(
             context.KeyCode,
             context.ShiftLane,
             context.ClipboardSequenceNumber,
             captureOrigin);
-        lock (pendingGate)
-        {
-            pendingShortcuts[PendingKey(context.KeyCode, context.ShiftLane)] = pending;
-        }
 
         var observeTask = ObserveClipboardChangeAsync(pending);
         var autoCaptureTask = context.KeyCode == VK_C && autoCaptureOnCopy()
@@ -86,17 +80,7 @@ internal sealed class ZetlShortcutCoordinator
 
     public ZetlPendingShortcut? CancelPending(int keyCode, bool shifted)
     {
-        lock (pendingGate)
-        {
-            var key = PendingKey(keyCode, shifted);
-            if (!pendingShortcuts.Remove(key, out var pending))
-            {
-                return null;
-            }
-
-            pending.Cancel();
-            return pending;
-        }
+        return pendingShortcuts.Claim(keyCode, shifted);
     }
 
     public ZetlPendingShortcut? ClaimPendingForHold(
@@ -244,7 +228,11 @@ internal sealed class ZetlShortcutCoordinator
         var savedReplayFormats = ReplayFormatsForSavedText(request, result.NoteText);
         if (request.Image is null
             && (!isCut || quickNoteToClipboard())
-            && !WriteTextClipboard(result.NoteText, savedRichHtml, savedReplayFormats))
+            && !ZetlClipboardContentWriter.TryWrite(
+                clipboard,
+                result.NoteText,
+                savedRichHtml,
+                savedReplayFormats))
         {
             // The note is already saved; don't roll it back, just record that the
             // clipboard didn't pick up the saved text.
@@ -342,9 +330,11 @@ internal sealed class ZetlShortcutCoordinator
             return ZetlCompileOutcome.RestoreTarget;
         }
 
-        var copied = string.IsNullOrWhiteSpace(result.CompiledHtml)
-            ? clipboard.SetText(result.CompiledText)
-            : clipboard.SetRichText(result.CompiledText, result.CompiledHtml);
+        var copied = ZetlClipboardContentWriter.TryWrite(
+            clipboard,
+            result.CompiledText,
+            string.IsNullOrWhiteSpace(result.CompiledHtml) ? null : result.CompiledHtml,
+            replayFormats: null);
         if (!copied)
         {
             // Staging failed, so don't paste stale clipboard content or claim a
@@ -407,30 +397,12 @@ internal sealed class ZetlShortcutCoordinator
 
     public void ResetReplayClipboardTracking(bool shifted)
     {
-        var index = shifted ? 1 : 0;
-        replayUserClipboard[index] = null;
-        replayInjectedClipboard[index] = null;
-        replayInjectedClipboardToken[index] = null;
+        replayClipboard.Reset(shifted);
     }
 
     private void RestoreOriginalClipboard(bool shifted)
     {
-        var index = shifted ? 1 : 0;
-        var restoreTo = replayUserClipboard[index];
-        if (restoreTo is null)
-        {
-            return;
-        }
-        var injected = replayInjectedClipboard[index];
-        if (injected is not null
-            && MatchesTrackedReplayClipboard(index, ReadClipboardSnapshot()))
-        {
-            if (clipboard.RestoreBackup(restoreTo))
-            {
-                replayInjectedClipboard[index] = ReadClipboardSnapshot();
-                replayInjectedClipboardToken[index] = clipboard.GetChangeToken();
-            }
-        }
+        _ = replayClipboard.RestoreOriginalIfOwned(shifted);
     }
 
     // Held Ctrl+A: the physical select-all already passed through (dispatch None), so
@@ -1014,13 +986,13 @@ internal sealed class ZetlShortcutCoordinator
             await RunOnDispatcherAsync(() =>
             {
                 if (resumeClipboard
-                    && !TryRememberUserClipboardBeforeReplay(shifted, out var backupFailure))
+                    && !replayClipboard.TryPreserveUserClipboard(shifted, out var backupFailure))
                 {
                     notifications.Show(
                         $"Replay paused; Zetl could not safely preserve every clipboard format ({backupFailure}). {bucketName} item kept.");
                     return;
                 }
-                clipboardStaged = SetReplayClipboard(shifted, replayItem, out injectedToken);
+                clipboardStaged = replayClipboard.TryStage(shifted, replayItem, out injectedToken);
                 if (!clipboardStaged)
                 {
                     notifications.Show($"Paste failed; {bucketName} item kept.");
@@ -1175,292 +1147,23 @@ internal sealed class ZetlShortcutCoordinator
         });
     }
 
-    private bool TryRememberUserClipboardBeforeReplay(bool shifted, out string failureReason)
-    {
-        var index = shifted ? 1 : 0;
-        var current = ReadClipboardSnapshot();
-        if (replayUserClipboard[index] is not null
-            && MatchesTrackedReplayClipboard(index, current))
-        {
-            failureReason = "";
-            return true;
-        }
-
-        var otherIndex = index == 0 ? 1 : 0;
-        if (replayUserClipboard[otherIndex] is { } otherBackup
-            && MatchesTrackedReplayClipboard(otherIndex, current))
-        {
-            // The other Replay lane owns the current clipboard. Carry its
-            // original user snapshot forward instead of mistaking its staged
-            // slip for user content.
-            replayUserClipboard[index] = otherBackup;
-            failureReason = "";
-            return true;
-        }
-
-        var backup = clipboard.CaptureBackup();
-        if (!backup.IsComplete)
-        {
-            failureReason = backup.FailureReason ?? "the clipboard could not be backed up completely";
-            return false;
-        }
-
-        replayUserClipboard[index] = backup;
-        failureReason = "";
-        return true;
-    }
-
-    private bool SetReplayClipboard(
-        bool shifted,
-        ZetlClipboardSnapshot item,
-        out uint injectedToken)
-    {
-        injectedToken = 0;
-        // Always write the queued representation. A clipboard whose visible
-        // text matches the queue item may still carry unrelated rich formats.
-        if (!WriteClipboardSnapshot(item))
-        {
-            return false;
-        }
-
-        var index = shifted ? 1 : 0;
-        injectedToken = clipboard.GetChangeToken();
-        replayInjectedClipboard[index] = item;
-        replayInjectedClipboardToken[index] = injectedToken;
-        return true;
-    }
-
     private async Task RestoreUserClipboardAfterReplayAsync(
         bool shifted,
         ZetlClipboardSnapshot injected,
         uint injectedToken)
     {
-        var index = shifted ? 1 : 0;
-        var restoreTo = replayUserClipboard[index];
-        if (restoreTo is null)
-        {
-            return;
-        }
-
         await delay.WaitAsync(ReplayClipboardRestoreDelay);
         dispatcher.Post(() =>
         {
-            if (clipboard.GetChangeToken() == injectedToken
-                && ZetlClipboardSnapshot.ContentEquals(
-                    ReadClipboardSnapshot(),
-                    injected)
-                && clipboard.GetChangeToken() == injectedToken)
+            var outcome = replayClipboard.RestoreIfOwned(
+                shifted,
+                injected,
+                injectedToken);
+            if (outcome == ZetlClipboardRestoreOutcome.Failed)
             {
-                // Only mark the clipboard as restored if the write actually took;
-                // otherwise the tracking would lie about what's on the clipboard.
-                if (clipboard.RestoreBackup(restoreTo))
-                {
-                    replayInjectedClipboard[index] = ReadClipboardSnapshot();
-                    replayInjectedClipboardToken[index] = clipboard.GetChangeToken();
-                }
-                else
-                {
-                    log("Replay finished but restoring your previous clipboard failed.");
-                }
+                log("Replay finished but restoring your previous clipboard failed.");
             }
         });
     }
 
-    private bool MatchesTrackedReplayClipboard(
-        int index,
-        ZetlClipboardSnapshot? current)
-    {
-        var token = replayInjectedClipboardToken[index];
-        return token is not null
-            && clipboard.GetChangeToken() == token.Value
-            && ZetlClipboardSnapshot.ContentEquals(current, replayInjectedClipboard[index])
-            && clipboard.GetChangeToken() == token.Value;
-    }
-
-    private ZetlClipboardSnapshot? ReadClipboardSnapshot()
-    {
-        var image = clipboard.TryGetImage();
-        if (image is not null)
-        {
-            return ZetlClipboardSnapshot.FromImage(image);
-        }
-
-        var text = clipboard.TryGetText();
-        return string.IsNullOrEmpty(text) ? null : ZetlClipboardSnapshot.FromText(text);
-    }
-
-    private bool WriteClipboardSnapshot(ZetlClipboardSnapshot snapshot)
-    {
-        return snapshot.Image is not null
-            ? clipboard.SetImage(snapshot.Image)
-            : WriteTextClipboard(snapshot.Text ?? "", snapshot.Html, snapshot.ReplayFormats);
-    }
-
-    private bool WriteTextClipboard(
-        string text,
-        string? html,
-        IReadOnlyList<ZetlClipboardFormatData>? replayFormats)
-    {
-        if (replayFormats is { Count: > 0 })
-        {
-            return clipboard.RestoreBackup(ZetlClipboardBackup.FromRaw(replayFormats));
-        }
-
-        return html is not null
-            ? clipboard.SetRichText(text, html)
-            : clipboard.SetText(text);
-    }
-
-    private static (int KeyCode, bool Shifted) PendingKey(int keyCode, bool shifted)
-    {
-        return (keyCode, shifted);
-    }
-}
-
-internal sealed class ZetlPendingShortcut
-{
-    private readonly object gate = new();
-    private string? observedClipboardText;
-    private string? observedClipboardHtml;
-    private IReadOnlyList<ZetlClipboardFormatData>? observedReplayFormats;
-    private ZetlClipboardImage? observedClipboardImage;
-    private bool cancelled;
-
-    public ZetlPendingShortcut(
-        int keyCode,
-        bool shiftLane,
-        uint clipboardSequenceNumber,
-        ZetlCaptureOrigin? captureOrigin = null)
-    {
-        KeyCode = keyCode;
-        ShiftLane = shiftLane;
-        ClipboardSequenceNumber = clipboardSequenceNumber;
-        CaptureOrigin = captureOrigin;
-    }
-
-    public int KeyCode { get; }
-
-    public bool ShiftLane { get; }
-
-    public uint ClipboardSequenceNumber { get; }
-
-    public ZetlCaptureOrigin? CaptureOrigin { get; }
-
-    public string? ObservedClipboardText
-    {
-        get
-        {
-            lock (gate)
-            {
-                return observedClipboardText;
-            }
-        }
-    }
-
-    public ZetlClipboardImage? ObservedClipboardImage
-    {
-        get
-        {
-            lock (gate)
-            {
-                return observedClipboardImage;
-            }
-        }
-    }
-
-    public string? ObservedClipboardHtml
-    {
-        get
-        {
-            lock (gate)
-            {
-                return observedClipboardHtml;
-            }
-        }
-    }
-
-    public IReadOnlyList<ZetlClipboardFormatData>? ObservedReplayFormats
-    {
-        get
-        {
-            lock (gate)
-            {
-                return observedReplayFormats;
-            }
-        }
-    }
-
-    public bool Cancelled
-    {
-        get
-        {
-            lock (gate)
-            {
-                return cancelled;
-            }
-        }
-    }
-
-    public void Cancel()
-    {
-        lock (gate)
-        {
-            cancelled = true;
-        }
-    }
-
-    public void SetObservedClipboardText(string? text)
-    {
-        lock (gate)
-        {
-            observedClipboardText = text;
-        }
-    }
-
-    public void SetObservedClipboardContent(
-        string? text,
-        ZetlClipboardImage? image,
-        string? html = null,
-        IReadOnlyList<ZetlClipboardFormatData>? replayFormats = null)
-    {
-        lock (gate)
-        {
-            observedClipboardText = text;
-            observedClipboardImage = image;
-            observedClipboardHtml = html;
-            observedReplayFormats = replayFormats;
-        }
-    }
-}
-
-internal sealed record ZetlClipboardSnapshot(
-    string? Text,
-    string? Html,
-    IReadOnlyList<ZetlClipboardFormatData>? ReplayFormats,
-    ZetlClipboardImage? Image,
-    string Fingerprint)
-{
-    public static ZetlClipboardSnapshot FromText(
-        string text,
-        string? html = null,
-        IReadOnlyList<ZetlClipboardFormatData>? replayFormats = null) =>
-        // Identity deliberately follows the visible text. Clipboard change
-        // tokens provide the exact overwrite guard; including HTML here would
-        // make a rich staged item unequal to the plain text read-back.
-        new(text, html, replayFormats, null, $"text:{text.Trim()}");
-
-    public static ZetlClipboardSnapshot FromImage(ZetlClipboardImage image) =>
-        new(
-            null,
-            null,
-            null,
-            image,
-            "image:" + Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(image.PngBytes)));
-
-    public static bool ContentEquals(
-        ZetlClipboardSnapshot? left,
-        ZetlClipboardSnapshot? right) =>
-        left is null ? right is null : right is not null
-            && string.Equals(left.Fingerprint, right.Fingerprint, StringComparison.Ordinal);
 }

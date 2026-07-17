@@ -34,6 +34,31 @@ public class ZetlFaultInjectionTests
         AssertEqual(IntPtr.Zero, result, "Recovery failures must not cross the unmanaged callback boundary.");
     }
 
+    [Fact] public void StateStoreRoutesDurableIoThroughNarrowStorageContracts()
+    {
+        var loader = new StateLoaderProbe(StateWithTwoProjects());
+        var projects = new ProjectStorageProbe();
+        var workspace = new WorkspaceStorageProbe();
+        var directories = new ProjectDirectoryLifecycleProbe();
+        var store = new ZetlStateStore(
+            loader,
+            projects,
+            workspace,
+            directories,
+            "split-storage-session");
+
+        var project = store.State.Projects.Single(item => item.Id == "project-a");
+        var bucket = project.Buckets.Single(item => item.Id == "bucket-a");
+        store.AddNote(bucket, "routed write", "test");
+        store.SetActiveProject("project-b");
+        store.DeleteProject("project-b");
+
+        AssertEqual(1, loader.LoadCount, "State loading should use only the loader seam.");
+        AssertEqual(1, projects.ProjectWriteCount, "A slip mutation should use project content storage.");
+        AssertEqual(2, workspace.WorkspaceWriteCount, "Lane activation and deletion should use workspace storage.");
+        AssertEqual(1, directories.RemovalCount, "Deletion should use only the directory lifecycle seam.");
+    }
+
     [Fact] public void FailedProjectWriteRestoresLastDurableState()
     {
         var initial = StateWithTwoProjects();
@@ -60,6 +85,56 @@ public class ZetlFaultInjectionTests
                 .Buckets.Single(item => item.Id == "bucket-a").Slips.Single().Text,
             "A later successful write should persist from the restored baseline.");
     }
+
+    [Fact] public void PersistenceCoordinatorAdvancesBaselineOnlyAfterSuccessfulWrite()
+    {
+        var initial = StateWithTwoProjects();
+        var storage = new FaultingStateStorage(initial);
+        var persistence = new ZetlStatePersistenceCoordinator(
+            storage,
+            storage,
+            storage,
+            initial);
+        var live = JsonFile.Clone(initial);
+        var project = live.Projects.Single(item => item.Id == "project-a");
+        var slip = project.Buckets.Single(item => item.Id == "bucket-a").Slips.Single();
+
+        slip.Text = "confirmed baseline";
+        persistence.PersistProject(
+            live,
+            project,
+            includeWorkspace: false,
+            _ => { },
+            () => { },
+            WorkspaceFromState);
+
+        slip.Text = "failed replacement";
+        storage.FailNextProjectWrite = true;
+        Assert.Throws<IOException>(() => persistence.PersistProject(
+            live,
+            project,
+            includeWorkspace: false,
+            _ => { },
+            () => { },
+            WorkspaceFromState));
+
+        var restored = persistence.RestoreState();
+        AssertEqual(
+            "confirmed baseline",
+            restored.Projects.Single(item => item.Id == "project-a")
+                .Buckets.Single(item => item.Id == "bucket-a").Slips.Single().Text,
+            "A failed write must not advance the coordinator's durable baseline.");
+    }
+
+    private static ZetlWorkspaceFile WorkspaceFromState(ZetlState state) => new()
+    {
+        ActiveProjectId = state.ActiveProjectId,
+        ShiftActiveProjectId = state.ShiftActiveProjectId,
+        DefaultJournalProjectId = state.DefaultJournalProjectId,
+        ShiftDefaultJournalProjectId = state.ShiftDefaultJournalProjectId,
+        LastDeliberateProjectId = state.LastDeliberateProjectId,
+        ShiftLastDeliberateProjectId = state.ShiftLastDeliberateProjectId
+    };
 
     [Fact] public void FailedWorkspaceWriteRestoresLanePointers()
     {
@@ -114,6 +189,56 @@ public class ZetlFaultInjectionTests
             "project-a",
             storage.DurableWorkspace.ActiveProjectId,
             "A failed delete transaction must keep its durable active pointer.");
+    }
+
+    [Fact] public void FailedDeleteWorkspaceWriteRestoresRealProjectAssets()
+    {
+        var root = NewDirectory();
+        try
+        {
+            var project = JsonFile.Clone(StateWithTwoProjects().Projects[0]);
+            var storage = new ZetlStateStorage(root, legacyStatePath: null);
+            storage.WriteProject(project);
+            var assetBytes = new byte[] { 9, 8, 7, 6, 5 };
+            var assetPath = storage.WriteAsset(
+                project,
+                new string('a', 64),
+                ".png",
+                assetBytes);
+            storage.WriteWorkspace(new ZetlWorkspaceFile
+            {
+                ActiveProjectId = project.Id,
+                LastDeliberateProjectId = project.Id
+            });
+
+            var workspace = new FailOnceWorkspaceStorage(storage);
+            var store = new ZetlStateStore(
+                storage,
+                storage,
+                workspace,
+                storage,
+                "real-delete-rollback");
+            workspace.FailNextWrite = true;
+
+            Assert.Throws<IOException>(() => store.DeleteProject(project.Id));
+
+            var restored = store.State.Projects.Single(item => item.Id == project.Id);
+            AssertTrue(
+                storage.ReadAsset(restored, assetPath)?.SequenceEqual(assetBytes) == true,
+                "A failed delete transaction must restore project assets byte-for-byte.");
+            AssertTrue(
+                storage.GetAssets(restored).Any(asset => asset.RelativePath == assetPath),
+                "The restored project directory should expose its original asset inventory.");
+            var pendingRoot = Path.Combine(root, "pending-project-removals");
+            AssertTrue(
+                !Directory.Exists(pendingRoot)
+                || !Directory.EnumerateDirectories(pendingRoot).Any(),
+                "Rollback should move the prepared project directory out of pending removal.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact] public void WorkspaceRoundTripPreservesAllLaneRecoveryPointers()
@@ -354,6 +479,70 @@ public class ZetlFaultInjectionTests
         };
     }
 
+    private sealed class StateLoaderProbe(ZetlState initial) : IZetlStateLoader
+    {
+        public int LoadCount { get; private set; }
+
+        public ZetlState Load()
+        {
+            LoadCount++;
+            return JsonFile.Clone(initial);
+        }
+    }
+
+    private sealed class ProjectStorageProbe : IZetlProjectStorage
+    {
+        public int ProjectWriteCount { get; private set; }
+
+        public void WriteProject(ZetlProject project) => ProjectWriteCount++;
+
+        public string WriteAsset(
+            ZetlProject project,
+            string contentHash,
+            string extension,
+            byte[] bytes) => $"assets/{contentHash}{extension}";
+
+        public byte[]? ReadAsset(ZetlProject project, string relativePath) => null;
+
+        public string? GetAssetPath(ZetlProject project, string relativePath) => null;
+
+        public IReadOnlyList<ZetlProjectAssetFile> GetAssets(ZetlProject project) => [];
+    }
+
+    private sealed class WorkspaceStorageProbe : IZetlWorkspaceStorage
+    {
+        public int WorkspaceWriteCount { get; private set; }
+
+        public void WriteWorkspace(ZetlWorkspaceFile workspace) => WorkspaceWriteCount++;
+    }
+
+    private sealed class FailOnceWorkspaceStorage(IZetlWorkspaceStorage inner) : IZetlWorkspaceStorage
+    {
+        public bool FailNextWrite { get; set; }
+
+        public void WriteWorkspace(ZetlWorkspaceFile workspace)
+        {
+            if (FailNextWrite)
+            {
+                FailNextWrite = false;
+                throw new IOException("Injected late workspace write failure.");
+            }
+
+            inner.WriteWorkspace(workspace);
+        }
+    }
+
+    private sealed class ProjectDirectoryLifecycleProbe : IZetlProjectDirectoryLifecycle
+    {
+        public int RemovalCount { get; private set; }
+
+        public IZetlProjectRemoval PrepareProjectRemoval(string projectId)
+        {
+            RemovalCount++;
+            return new ProjectRemovalProbe();
+        }
+    }
+
     private sealed class FaultingStateStorage : IZetlStateStorage
     {
         public FaultingStateStorage(ZetlState initial)
@@ -424,7 +613,7 @@ public class ZetlFaultInjectionTests
             DurableState.ShiftLastDeliberateProjectId = workspace.ShiftLastDeliberateProjectId;
         }
 
-        public void RemoveProject(string projectId)
+        public IZetlProjectRemoval PrepareProjectRemoval(string projectId)
         {
             if (FailNextProjectRemoval)
             {
@@ -432,7 +621,18 @@ public class ZetlFaultInjectionTests
                 throw new IOException("Injected project removal failure.");
             }
 
+            var removed = DurableState.Projects.FirstOrDefault(
+                project => project.Id == projectId);
             DurableState.Projects.RemoveAll(project => project.Id == projectId);
+            return new ProjectRemovalProbe(
+                rollBack: () =>
+                {
+                    if (removed is not null
+                        && DurableState.Projects.All(project => project.Id != projectId))
+                    {
+                        DurableState.Projects.Add(JsonFile.Clone(removed));
+                    }
+                });
         }
 
         private static ZetlWorkspaceFile WorkspaceFrom(ZetlState state) => new()
@@ -445,5 +645,31 @@ public class ZetlFaultInjectionTests
             LastDeliberateProjectId = state.LastDeliberateProjectId,
             ShiftLastDeliberateProjectId = state.ShiftLastDeliberateProjectId
         };
+    }
+
+    private sealed class ProjectRemovalProbe(Action? rollBack = null) : IZetlProjectRemoval
+    {
+        private bool completed;
+
+        public void Commit() => completed = true;
+
+        public void RollBack()
+        {
+            if (completed)
+            {
+                return;
+            }
+
+            rollBack?.Invoke();
+            completed = true;
+        }
+
+        public void Dispose()
+        {
+            if (!completed)
+            {
+                RollBack();
+            }
+        }
     }
 }

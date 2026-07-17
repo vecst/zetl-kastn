@@ -19,6 +19,7 @@ internal sealed class ZetlStateStorage : IZetlStateStorage
     private readonly string rootDirectory;
     private readonly string workspacePath;
     private readonly string projectsDirectory;
+    private readonly string pendingRemovalsDirectory;
     private readonly string? legacyStatePath;
     private readonly Action<string>? log;
 
@@ -31,6 +32,7 @@ internal sealed class ZetlStateStorage : IZetlStateStorage
         this.rootDirectory = rootDirectory;
         workspacePath = Path.Combine(rootDirectory, "workspace.json");
         projectsDirectory = Path.Combine(rootDirectory, "projects");
+        pendingRemovalsDirectory = Path.Combine(rootDirectory, "pending-project-removals");
         this.legacyStatePath = legacyStatePath;
         this.log = log;
     }
@@ -147,19 +149,133 @@ internal sealed class ZetlStateStorage : IZetlStateStorage
         JsonFile.WriteAtomic(workspacePath, workspace);
     }
 
-    public void RemoveProject(string projectId)
+    public IZetlProjectRemoval PrepareProjectRemoval(string projectId)
     {
         if (!projectFolders.TryGetValue(projectId, out var folder))
         {
-            return;
+            return NoProjectRemoval.Instance;
+        }
+
+        var projectDirectory = Path.Combine(projectsDirectory, folder);
+        string? pendingDirectory = null;
+        if (Directory.Exists(projectDirectory))
+        {
+            Directory.CreateDirectory(pendingRemovalsDirectory);
+            pendingDirectory = Path.Combine(
+                pendingRemovalsDirectory,
+                $"{folder}.{Guid.NewGuid():N}");
+            Directory.Move(projectDirectory, pendingDirectory);
         }
 
         projectFolders.Remove(projectId);
-        var directory = Path.Combine(projectsDirectory, folder);
-        if (Directory.Exists(directory))
+        return new ProjectRemoval(
+            this,
+            projectId,
+            folder,
+            projectDirectory,
+            pendingDirectory);
+    }
+
+    private sealed class ProjectRemoval(
+        ZetlStateStorage owner,
+        string projectId,
+        string folder,
+        string projectDirectory,
+        string? pendingDirectory) : IZetlProjectRemoval
+    {
+        private RemovalState state;
+
+        public void Commit()
         {
-            Directory.Delete(directory, recursive: true);
+            if (state != RemovalState.Prepared)
+            {
+                return;
+            }
+
+            state = RemovalState.Committed;
+            if (pendingDirectory is null || !Directory.Exists(pendingDirectory))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.Delete(pendingDirectory, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The live project is already durably removed. Keep the pending
+                // directory for a later cleanup pass rather than turning trash
+                // cleanup into a failed domain transaction.
+                owner.log?.Invoke(
+                    $"Could not finalize removal of project '{projectId}': {ex.Message}");
+            }
         }
+
+        public void RollBack()
+        {
+            if (state != RemovalState.Prepared)
+            {
+                return;
+            }
+
+            if (pendingDirectory is not null && Directory.Exists(pendingDirectory))
+            {
+                if (Directory.Exists(projectDirectory))
+                {
+                    throw new IOException(
+                        $"Could not restore project '{projectId}': its directory already exists.");
+                }
+
+                Directory.Move(pendingDirectory, projectDirectory);
+            }
+
+            owner.projectFolders[projectId] = folder;
+            state = RemovalState.RolledBack;
+        }
+
+        public void Dispose()
+        {
+            if (state == RemovalState.Prepared)
+            {
+                try
+                {
+                    RollBack();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Disposal must not hide the transaction failure that led
+                    // here. The explicit rollback caller already reports its
+                    // own failure; this is the final best-effort safety net.
+                    owner.log?.Invoke(
+                        $"Could not dispose prepared removal for project '{projectId}': {ex.Message}");
+                }
+            }
+        }
+    }
+
+    private sealed class NoProjectRemoval : IZetlProjectRemoval
+    {
+        public static NoProjectRemoval Instance { get; } = new();
+
+        public void Commit()
+        {
+        }
+
+        public void RollBack()
+        {
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private enum RemovalState
+    {
+        Prepared,
+        Committed,
+        RolledBack
     }
 
     private List<ZetlProject> ReadProjects()

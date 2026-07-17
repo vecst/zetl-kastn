@@ -80,7 +80,10 @@ The main window presents three states:
 
 Kastn requests fresh project summaries and a fresh selected-project snapshot
 after every connection. It also refreshes when Zetl publishes a project change.
-This includes direct keyboard captures made inside Zetl, not only IPC commands.
+These invalidations feed one owned refresh pump: one request may be running and
+one rerun may be pending, with adjacent notifications coalesced before that
+rerun. This includes direct keyboard captures made inside Zetl, not only IPC
+commands.
 
 If Zetl restarts, Kastn detects the abandoned pipe, enters the offline state,
 reconnects, and reloads snapshots. The user does not need to restart Kastn.
@@ -104,6 +107,10 @@ Kastn provides:
 The Zetl Board has an `Open in Kastn` action for its selected project. Zetl
 starts Kastn with that project ID. If Kastn is already running, its second
 process forwards the ID over the activation pipe and exits.
+
+Activation is an awaited UI operation behind one control-pipe boundary. A
+navigation failure is observed, logged, and shown in the Kastn status area
+instead of escaping as an unhandled UI exception.
 
 When close-to-tray is enabled, closing the Kastn window hides it into Zetl's
 tray and keeps its IPC client connected. When disabled, closing Kastn disposes

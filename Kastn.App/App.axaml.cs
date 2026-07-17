@@ -73,7 +73,7 @@ public partial class App : Application
                 });
                 if (activation.PendingRequest is { } pending)
                 {
-                    mainWindow.ActivateRequest(pending.ProjectId);
+                    RequestActivation(pending.ProjectId);
                 }
             }
 
@@ -99,6 +99,46 @@ public partial class App : Application
 
     private void OnActivationRequested(object? sender, KastnControlRequest request)
     {
-        Dispatcher.UIThread.Post(() => mainWindow?.ActivateRequest(request.ProjectId));
+        Dispatcher.UIThread.Post(() => RequestActivation(request.ProjectId));
+    }
+
+    private void RequestActivation(string? projectId)
+    {
+        _ = ActivateMainWindowAsync(projectId);
+    }
+
+    // Fire-and-forget boundary for control-pipe and pending startup activation.
+    // The Task-returning window operation remains awaitable and testable; every
+    // exception is observed here before it can reach Avalonia's UI context.
+    private async Task ActivateMainWindowAsync(string? projectId)
+    {
+        var window = mainWindow;
+        if (window is null)
+        {
+            return;
+        }
+
+        await ObserveActivationAsync(
+            () => window.ActivateRequestAsync(projectId),
+            ex =>
+            {
+                Console.Error.WriteLine(
+                    $"Kastn activation failed ({ex.GetType().Name}): {ex.Message}");
+                window.ReportActivationFailure(ex);
+            });
+    }
+
+    internal static async Task ObserveActivationAsync(
+        Func<Task> activate,
+        Action<Exception> reportFailure)
+    {
+        try
+        {
+            await activate();
+        }
+        catch (Exception ex)
+        {
+            reportFailure(ex);
+        }
     }
 }

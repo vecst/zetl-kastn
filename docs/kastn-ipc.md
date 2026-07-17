@@ -40,6 +40,10 @@ An unsupported version receives a protocol error and the connection closes.
 The server instance ID changes whenever Zetl restarts, allowing Kastn to know
 that cached state must be refreshed.
 
+The server requires the hello to complete within five seconds. Once a frame has
+started, every header or payload read must continue making progress within five
+seconds. Established clients may otherwise remain idle indefinitely.
+
 ## Commands And Events
 
 Commands and responses use the contracts in `Zetl.Contracts`. The correlation
@@ -53,10 +57,11 @@ dimensions, MIME type, and content hash without exposing an asset path,
 advancing revisions, or publishing a `projectChanged` event. Kastn uses it for
 onscreen previews and picture-aware exports.
 
-Subscribed clients receive `projectChanged` events after a durable write. Each
-project has a monotonically increasing change sequence. Events are queued and
-written in that sequence for each connected client. A client should request a
-fresh snapshot when:
+Subscribed clients receive `projectChanged` invalidations after a durable
+write. Each project has a monotonically increasing change sequence. Delivery is
+monotonic per project, but a slow client may receive only the newest pending
+event for that project because intermediate invalidations are coalesced. A
+client should request a fresh snapshot when:
 
 - it first connects;
 - the server instance ID changes;
@@ -73,9 +78,12 @@ ordering.
 Malformed messages receive an error when framing still permits a response.
 Bad framing, abandoned pipes, and I/O failures close only the affected client.
 
-Each client has a bounded outbound queue of 256 messages. If a client cannot
-keep up, Zetl disconnects it instead of dropping change events silently. The
-client then reconnects and requests fresh snapshots.
+Each client has a dedicated bounded response queue of 256 messages. Project
+changes do not consume response capacity: while a client is slow, pending
+changes are coalesced by project and retain that project's newest sequence.
+Responses are written before pending invalidations. If a client cannot keep up
+with command responses, Zetl disconnects it; the client then reconnects and
+recovers confirmed results by command ID or refreshes authoritative snapshots.
 
 Host logs may include connection IDs, client names, command kinds, command IDs,
 response statuses, and exception types. They must not include command payloads

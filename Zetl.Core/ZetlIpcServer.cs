@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Linq;
-using System.Text.Json;
-using System.Threading.Channels;
 using ZETL.Contracts;
 
 namespace ZETL;
@@ -13,6 +11,7 @@ internal sealed class ZetlIpcServer : IDisposable
     private readonly ZetlProjectService service;
     private readonly Action<string>? log;
     private readonly Func<ZetlCommandEnvelope, bool>? dropResponseForTesting;
+    private readonly ZetlIpcServerOptions options;
     private readonly CancellationTokenSource cancellation = new();
     private readonly ConcurrentDictionary<int, ClientConnection> clients = new();
     private readonly string serverInstanceId = Guid.NewGuid().ToString("N");
@@ -23,7 +22,7 @@ internal sealed class ZetlIpcServer : IDisposable
         ZetlProjectService service,
         string? pipeName = null,
         Action<string>? log = null)
-        : this(service, pipeName, log, dropResponseForTesting: null)
+        : this(service, pipeName, log, dropResponseForTesting: null, options: null)
     {
     }
 
@@ -31,7 +30,8 @@ internal sealed class ZetlIpcServer : IDisposable
         ZetlProjectService service,
         string? pipeName,
         Action<string>? log,
-        Func<ZetlCommandEnvelope, bool>? dropResponseForTesting)
+        Func<ZetlCommandEnvelope, bool>? dropResponseForTesting,
+        ZetlIpcServerOptions? options = null)
     {
         this.service = service;
         this.pipeName = string.IsNullOrWhiteSpace(pipeName)
@@ -39,6 +39,7 @@ internal sealed class ZetlIpcServer : IDisposable
             : pipeName;
         this.log = log;
         this.dropResponseForTesting = dropResponseForTesting;
+        this.options = options ?? ZetlIpcServerOptions.Default;
     }
 
     public string PipeName => pipeName;
@@ -103,6 +104,7 @@ internal sealed class ZetlIpcServer : IDisposable
                     service,
                     log,
                     dropResponseForTesting,
+                    options,
                     () => clients.TryRemove(clientId, out _));
                 clients[clientId] = connection;
                 pipe = null;
@@ -131,23 +133,16 @@ internal sealed class ZetlIpcServer : IDisposable
 
     private sealed class ClientConnection : IDisposable
     {
-        private const int OutboundCapacity = 256;
-
         private readonly int clientId;
         private readonly NamedPipeServerStream pipe;
-        private readonly string serverInstanceId;
         private readonly ZetlProjectService service;
         private readonly Action<string>? log;
-        private readonly Func<ZetlCommandEnvelope, bool>? dropResponseForTesting;
+        private readonly ZetlIpcServerOptions options;
         private readonly Action onClosed;
         private readonly CancellationTokenSource cancellation = new();
-        private readonly Channel<ZetlIpcMessage> outbound = Channel.CreateBounded<ZetlIpcMessage>(
-            new BoundedChannelOptions(OutboundCapacity)
-            {
-                SingleReader = true,
-                SingleWriter = false,
-                FullMode = BoundedChannelFullMode.Wait
-            });
+        private readonly ZetlIpcServerHandshake handshake;
+        private readonly ZetlIpcInboundCommandHandler commandHandler;
+        private readonly ZetlIpcOutboundDispatcher outbound;
         private EventHandler<ZetlProjectChangedEvent>? changeHandler;
         private Task? runTask;
 
@@ -158,15 +153,21 @@ internal sealed class ZetlIpcServer : IDisposable
             ZetlProjectService service,
             Action<string>? log,
             Func<ZetlCommandEnvelope, bool>? dropResponseForTesting,
+            ZetlIpcServerOptions options,
             Action onClosed)
         {
             this.clientId = clientId;
             this.pipe = pipe;
-            this.serverInstanceId = serverInstanceId;
             this.service = service;
             this.log = log;
-            this.dropResponseForTesting = dropResponseForTesting;
+            this.options = options;
             this.onClosed = onClosed;
+            handshake = new ZetlIpcServerHandshake(serverInstanceId, options);
+            commandHandler = new ZetlIpcInboundCommandHandler(
+                service,
+                log,
+                dropResponseForTesting);
+            outbound = new ZetlIpcOutboundDispatcher(options.ResponseCapacity);
         }
 
         // The client name from its hello, available once the handshake completes.
@@ -180,7 +181,7 @@ internal sealed class ZetlIpcServer : IDisposable
         public void Dispose()
         {
             cancellation.Cancel();
-            outbound.Writer.TryComplete();
+            outbound.Complete();
             pipe.Dispose();
             cancellation.Dispose();
         }
@@ -193,46 +194,24 @@ internal sealed class ZetlIpcServer : IDisposable
             var token = linked.Token;
             try
             {
-                var helloMessage = await ZetlIpcFraming.ReadAsync(pipe, token)
+                var hello = await handshake.AcceptAsync(pipe, token)
                     .ConfigureAwait(false);
-                if (helloMessage?.Kind != ZetlIpcMessageKind.Hello
-                    || helloMessage.ProtocolVersion != ZetlProtocol.CurrentVersion)
+                if (hello is null)
                 {
                     log?.Invoke(
-                        $"IPC client {clientId} rejected during handshake "
-                        + $"(protocol {helloMessage?.ProtocolVersion.ToString() ?? "missing"}).");
-                    await ZetlIpcFraming.WriteAsync(
-                        pipe,
-                        Error(
-                            "handshake_required",
-                            $"Protocol {ZetlProtocol.CurrentVersion} hello required."),
-                        token).ConfigureAwait(false);
+                        $"IPC client {clientId} rejected during handshake.");
                     return;
                 }
 
-                var hello = Deserialize<ZetlIpcHello>(helloMessage);
                 ClientName = hello.ClientName;
                 log?.Invoke(
                     $"IPC client {clientId} connected as '{hello.ClientName}' "
                     + $"(subscribe={hello.SubscribeToProjectChanges}).");
-                await ZetlIpcFraming.WriteAsync(
-                    pipe,
-                    ZetlIpcMessage.Create(
-                        ZetlIpcMessageKind.Welcome,
-                        new ZetlIpcWelcome
-                        {
-                            ServerInstanceId = serverInstanceId,
-                            ProtocolVersion = ZetlProtocol.CurrentVersion
-                        }),
-                    token).ConfigureAwait(false);
-
                 if (hello.SubscribeToProjectChanges)
                 {
                     changeHandler = (_, change) =>
                     {
-                        if (!TryQueue(ZetlIpcMessage.Create(
-                                ZetlIpcMessageKind.ProjectChanged,
-                                change)))
+                        if (!outbound.QueueProjectChange(change))
                         {
                             cancellation.Cancel();
                         }
@@ -240,10 +219,10 @@ internal sealed class ZetlIpcServer : IDisposable
                     service.ProjectChanged += changeHandler;
                 }
 
-                var writer = WriteLoopAsync(token);
+                var writer = outbound.WriteToAsync(pipe, token);
                 await ReadLoopAsync(token).ConfigureAwait(false);
                 cancellation.Cancel();
-                outbound.Writer.TryComplete();
+                outbound.Complete();
                 await writer.ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -279,7 +258,10 @@ internal sealed class ZetlIpcServer : IDisposable
                 ZetlIpcMessage? message;
                 try
                 {
-                    message = await ZetlIpcFraming.ReadAsync(pipe, cancellationToken)
+                    message = await ZetlIpcFraming.ReadAsync(
+                            pipe,
+                            cancellationToken,
+                            options.FrameProgressTimeout)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is InvalidDataException or System.Text.Json.JsonException)
@@ -287,7 +269,8 @@ internal sealed class ZetlIpcServer : IDisposable
                     log?.Invoke(
                         $"IPC client {clientId} sent an invalid message "
                         + $"({ex.GetType().Name}).");
-                    if (!TryQueue(Error("message_invalid", ex.Message)))
+                    if (!outbound.TryQueueReply(
+                            ZetlIpcProtocolMessages.Error("message_invalid", ex.Message)))
                     {
                         return;
                     }
@@ -299,47 +282,8 @@ internal sealed class ZetlIpcServer : IDisposable
                     return;
                 }
 
-                if (message.Kind != ZetlIpcMessageKind.Command)
-                {
-                    if (!TryQueue(Error(
-                            "command_required",
-                            "Only command messages are accepted after handshake.",
-                            message.CorrelationId)))
-                    {
-                        return;
-                    }
-                    continue;
-                }
-
-                ZetlCommandEnvelope command;
-                try
-                {
-                    command = Deserialize<ZetlCommandEnvelope>(message);
-                }
-                catch (Exception ex) when (ex is InvalidDataException or System.Text.Json.JsonException)
-                {
-                    log?.Invoke(
-                        $"IPC client {clientId} sent an invalid command "
-                        + $"({ex.GetType().Name}).");
-                    if (!TryQueue(Error(
-                            "command_invalid",
-                            ex.Message,
-                            message.CorrelationId)))
-                    {
-                        return;
-                    }
-                    continue;
-                }
-
-                var response = service.Execute(command);
-                if (response.Status != ZetlResponseStatus.Success)
-                {
-                    log?.Invoke(
-                        $"IPC command {command.Kind} ({command.CommandId}) returned "
-                        + $"{response.Status}.");
-                }
-
-                if (dropResponseForTesting?.Invoke(command) == true)
+                var result = commandHandler.Handle(message);
+                if (result.CloseConnection)
                 {
                     // Fault injection: the service has completed (and cached) the
                     // result, but this connection loses the response. A reconnect
@@ -348,55 +292,12 @@ internal sealed class ZetlIpcServer : IDisposable
                     return;
                 }
 
-                if (!TryQueue(ZetlIpcMessage.Create(
-                        ZetlIpcMessageKind.Response,
-                        response,
-                        message.CorrelationId ?? command.CommandId)))
+                if (result.Reply is not null
+                    && !outbound.TryQueueReply(result.Reply))
                 {
                     return;
                 }
             }
-        }
-
-        private async Task WriteLoopAsync(CancellationToken cancellationToken)
-        {
-            await foreach (var message in outbound.Reader.ReadAllAsync(cancellationToken)
-                .ConfigureAwait(false))
-            {
-                await ZetlIpcFraming.WriteAsync(pipe, message, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-
-        private bool TryQueue(ZetlIpcMessage message)
-        {
-            return outbound.Writer.TryWrite(message);
-        }
-
-        private static T Deserialize<T>(ZetlIpcMessage message)
-        {
-            if (message.Payload is null)
-            {
-                throw new InvalidDataException($"{message.Kind} message has no payload.");
-            }
-
-            return message.Payload.Value.Deserialize<T>(ZetlProtocolJson.Options)
-                ?? throw new InvalidDataException($"{message.Kind} payload is invalid.");
-        }
-
-        private static ZetlIpcMessage Error(
-            string code,
-            string message,
-            string? correlationId = null)
-        {
-            return ZetlIpcMessage.Create(
-                ZetlIpcMessageKind.Error,
-                new ZetlProtocolError
-                {
-                    Code = code,
-                    Message = message
-                },
-                correlationId);
         }
     }
 }

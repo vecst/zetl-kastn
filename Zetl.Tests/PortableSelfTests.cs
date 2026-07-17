@@ -129,6 +129,8 @@ public class PortableSelfTests
                 ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
                 ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
                 ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
+                ("Runtime Replay clipboard session reports restore outcomes", RuntimeReplayClipboardSessionReportsRestoreOutcomes),
+                ("Runtime clipboard content writer chooses the richest representation", RuntimeClipboardContentWriterChoosesRichestRepresentation),
                 ("Runtime Replay resumes visible items after restart", RuntimeReplayResumesVisibleItemsAfterRestart),
                 ("Runtime rapid Replay taps consume distinct slips", RuntimeRapidReplayTapsConsumeDistinctSlips),
                 ("Runtime Replay lanes progress independently", RuntimeReplayLanesProgressIndependently),
@@ -3249,6 +3251,103 @@ public class PortableSelfTests
             AssertEqual("queued value", review.Notes.Single().Text, "Replay should archive the consumed note.");
             AssertEqual("Standard", queue.Settings.Kind, "An empty Replay bucket should return to Standard.");
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
+        }
+
+        private static void RuntimeReplayClipboardSessionReportsRestoreOutcomes()
+        {
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var session = new ZetlReplayClipboardSession(clipboard);
+            var item = ZetlClipboardSnapshot.FromText("replay item");
+
+            AssertEqual(
+                ZetlClipboardRestoreOutcome.NoBackup,
+                session.RestoreOriginalIfOwned(shifted: false),
+                "A fresh Replay lane should report that it has no user backup.");
+            AssertTrue(
+                session.TryPreserveUserClipboard(shifted: false, out var failureReason),
+                $"Replay should preserve the initial clipboard: {failureReason}");
+            AssertTrue(
+                session.TryStage(shifted: false, item, out var injectedToken),
+                "Replay should stage its item through the content policy.");
+            AssertEqual(
+                ZetlClipboardRestoreOutcome.Restored,
+                session.RestoreIfOwned(shifted: false, item, injectedToken),
+                "An unchanged staged clipboard should restore successfully.");
+            AssertEqual(
+                "user clipboard",
+                clipboard.Text,
+                "A successful restore should put back the preserved content.");
+
+            AssertTrue(
+                session.TryStage(shifted: false, item, out injectedToken),
+                "Replay should stage another item after a successful restore.");
+            AssertTrue(
+                clipboard.SetRichText("new user copy", "<strong>new user copy</strong>"),
+                "The test should replace the staged clipboard with newer content.");
+            AssertEqual(
+                ZetlClipboardRestoreOutcome.OwnershipLost,
+                session.RestoreIfOwned(shifted: false, item, injectedToken),
+                "A newer clipboard generation should cancel restoration.");
+            AssertEqual(
+                "<strong>new user copy</strong>",
+                clipboard.RichHtml,
+                "Ownership loss must leave the newer rich clipboard intact.");
+
+            session.Reset(shifted: false);
+            AssertTrue(
+                session.TryPreserveUserClipboard(shifted: false, out failureReason),
+                $"Replay should preserve the newer user clipboard: {failureReason}");
+            AssertTrue(
+                session.TryStage(shifted: false, item, out injectedToken),
+                "Replay should stage before the injected restore failure.");
+            clipboard.SetTextSucceeds = false;
+            AssertEqual(
+                ZetlClipboardRestoreOutcome.Failed,
+                session.RestoreIfOwned(shifted: false, item, injectedToken),
+                "A backend restore rejection should have an explicit failed outcome.");
+        }
+
+        private static void RuntimeClipboardContentWriterChoosesRichestRepresentation()
+        {
+            var clipboard = new FakeClipboard("before", changeToken: 1);
+            var nativeFormats = new[]
+            {
+                new ZetlClipboardFormatData(
+                    13,
+                    System.Text.Encoding.Unicode.GetBytes("native text\0"))
+            };
+
+            AssertTrue(
+                ZetlClipboardContentWriter.TryWrite(
+                    clipboard,
+                    "plain fallback",
+                    "<strong>HTML fallback</strong>",
+                    nativeFormats),
+                "Native Replay formats should be writable through the content policy.");
+            AssertTrue(
+                ReferenceEquals(nativeFormats, clipboard.LastRestoredRawFormats),
+                "Native formats should take priority over HTML and plain text.");
+
+            AssertTrue(
+                ZetlClipboardContentWriter.TryWrite(
+                    clipboard,
+                    "rich fallback",
+                    "<em>rich fallback</em>",
+                    replayFormats: null),
+                "HTML should be used when no native representation exists.");
+            AssertEqual(
+                "<em>rich fallback</em>",
+                clipboard.RichHtml,
+                "The rich representation should reach the backend.");
+
+            AssertTrue(
+                ZetlClipboardContentWriter.TryWrite(
+                    clipboard,
+                    "plain only",
+                    html: null,
+                    replayFormats: null),
+                "Plain text should remain the final fallback.");
+            AssertEqual("plain only", clipboard.Text, "The plain fallback should reach the backend.");
         }
 
         private static void RuntimeReplayResumesVisibleItemsAfterRestart()

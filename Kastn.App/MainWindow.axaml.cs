@@ -455,7 +455,7 @@ internal partial class MainWindow : Window
         ApplySnapshot(connection.Current);
     }
 
-    public async void ActivateRequest(string? projectId)
+    public async Task ActivateRequestAsync(string? projectId)
     {
         if (WindowState == WindowState.Minimized)
         {
@@ -470,6 +470,11 @@ internal partial class MainWindow : Window
         {
             await connection.NavigateToProjectAsync(projectId);
         }
+    }
+
+    internal void ReportActivationFailure(Exception exception)
+    {
+        statusText.Text = $"Kastn could not open the requested project. {exception.Message}";
     }
 
     // Minimize remains normal window-manager behavior. Closing either hides

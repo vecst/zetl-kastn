@@ -13,6 +13,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     private readonly TimeSpan uncertainRetryTimeout;
     private readonly CancellationTokenSource cancellation = new();
     private readonly SemaphoreSlim refreshGate = new(1, 1);
+    private readonly KastnRefreshPump refreshPump;
     private readonly object stateGate = new();
     private ZetlIpcClient? client;
     private TaskCompletionSource connectionChanged = NewConnectionSignal();
@@ -40,6 +41,10 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             "Connecting to Zetl...",
             [],
             null);
+        refreshPump = new KastnRefreshPump(
+            RefreshAsync,
+            PublishRefreshFailure,
+            cancellation.Token);
     }
 
     public event EventHandler<KastnSessionSnapshot>? SnapshotChanged;
@@ -150,6 +155,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         cancellation.Cancel();
+        await refreshPump.DisposeAsync().ConfigureAwait(false);
         if (runTask is not null)
         {
             try
@@ -251,19 +257,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
 
     private void OnProjectChanged(object? _sender, ZetlProjectChangedEvent _change)
     {
-        _ = RefreshAfterChangeAsync();
-    }
-
-    private async Task RefreshAfterChangeAsync()
-    {
-        try
-        {
-            await RefreshAsync(cancellation.Token).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or OperationCanceledException)
-        {
-        }
+        refreshPump.Request();
     }
 
     private async Task RefreshAsync(
@@ -465,7 +459,21 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             // The mutation response is already confirmed. A projection refresh
             // failure must not turn that confirmed result back into an apparent
             // command failure; reconnect/change delivery will refresh it later.
+            PublishRefreshFailure(ex);
         }
+    }
+
+    private void PublishRefreshFailure(Exception exception)
+    {
+        if (cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        Publish(Current with
+        {
+            Status = $"Kastn could not refresh from Zetl. {exception.Message}"
+        });
     }
 
     private void SetClient(ZetlIpcClient value)
