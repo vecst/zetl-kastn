@@ -424,6 +424,8 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
     internal static uint UnicodeTextFormat => UnicodeText;
     internal static uint HtmlClipboardFormat => Html;
+    internal static uint PngClipboardFormat => Png;
+    internal static uint DibClipboardFormat => Dib;
 
     // ownerWindowFactory is a test seam: pass `() => IntPtr.Zero` to simulate a
     // failed owner-window creation and verify writes refuse without wiping the
@@ -919,96 +921,160 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
     public bool RestoreBackup(ZetlClipboardBackup backup)
     {
+        return ReplaceWithBackup(backup).Succeeded;
+    }
+
+    public ZetlClipboardWriteResult ReplaceWithBackup(ZetlClipboardBackup backup)
+    {
         if (!backup.IsComplete || backup.RawFormats is null)
         {
             log("Clipboard restore refused: the backup is incomplete or belongs to another backend.");
-            return false;
+            return new(
+                ZetlClipboardWriteStatus.BackupIncomplete,
+                FailureReason: "the requested backup is incomplete or belongs to another backend");
         }
 
+        return ReplaceFormats(backup.RawFormats, "Clipboard restore");
+    }
+
+    private ZetlClipboardWriteResult ReplaceFormats(
+        IReadOnlyList<ZetlClipboardFormatData> targetFormats,
+        string operation)
+    {
         if (!EnsureOwnerWindow())
         {
-            log("Clipboard restore skipped: no owner window available; clipboard left intact.");
-            return false;
+            log($"{operation} skipped: no owner window available; clipboard left intact.");
+            return new(
+                ZetlClipboardWriteStatus.ClipboardUnavailable,
+                FailureReason: "no clipboard owner window is available");
         }
 
-        var allocations = new List<(uint Format, IntPtr Handle, bool IsEnhancedMetafile)>();
+        var original = CaptureBackup();
+        if (!original.IsComplete || original.RawFormats is null)
+        {
+            var reason = original.FailureReason
+                ?? "the current clipboard could not be backed up completely";
+            log($"{operation} refused: {reason}; clipboard left intact.");
+            return new(ZetlClipboardWriteStatus.BackupIncomplete, FailureReason: reason);
+        }
+
+        var target = new List<ZetlStagedClipboardFormat<NativeClipboardPayload>>();
+        var rollback = new List<ZetlStagedClipboardFormat<NativeClipboardPayload>>();
         var opened = false;
         try
         {
-            var seenFormats = new HashSet<uint>();
-            foreach (var item in backup.RawFormats)
+            if (!TryStageFormats(targetFormats, target, out var failedFormat, out var failureReason)
+                || !TryStageFormats(original.RawFormats, rollback, out failedFormat, out failureReason))
             {
-                var format = ResolveStoredFormat(item);
-                if (format == 0
-                    || !seenFormats.Add(format)
-                    || item.Data.Length == 0
-                    || UsesNonMemoryHandle(format))
-                {
-                    log($"Clipboard restore refused: invalid stored clipboard format backup payload.");
-                    return false;
-                }
-
-                var isEnhancedMetafile = format == EnhancedMetafile;
-                var handle = isEnhancedMetafile
-                    ? SetEnhMetaFileBits((uint)item.Data.Length, item.Data)
-                    : AllocateGlobal(item.Data);
-                if (handle == IntPtr.Zero)
-                {
-                    log($"Clipboard restore failed: could not allocate {DescribeFormat(format)}.");
-                    return false;
-                }
-                allocations.Add((format, handle, isEnhancedMetafile));
+                log($"{operation} staging failed: {failureReason}; clipboard left intact.");
+                return new(
+                    ZetlClipboardWriteStatus.StagingFailed,
+                    failedFormat,
+                    failureReason);
             }
 
             if (!TryOpen())
             {
-                return false;
+                return new(
+                    ZetlClipboardWriteStatus.ClipboardUnavailable,
+                    FailureReason: "the clipboard is temporarily unavailable");
             }
             opened = true;
 
-            if (!EmptyClipboard())
+            var result = ZetlNativeClipboardTransaction.Execute(
+                target,
+                rollback,
+                EmptyClipboard,
+                (format, payload) =>
+                    SetClipboardData(format, payload.Handle) != IntPtr.Zero);
+            if (result.Status == ZetlClipboardWriteStatus.WriteFailedRolledBack)
             {
-                log($"Clipboard restore failed: EmptyClipboard error {Marshal.GetLastWin32Error()}.");
-                return false;
+                log(
+                    $"{operation} failed while writing {DescribeFormat(result.FailedFormat ?? 0)}; the original clipboard was restored.");
+            }
+            else if (result.Status == ZetlClipboardWriteStatus.WriteFailedRestoreFailed)
+            {
+                log(
+                    $"{operation} failed and the original clipboard could not be restored completely ({result.FailureReason}).");
+            }
+            else if (result.Status == ZetlClipboardWriteStatus.EmptyFailed)
+            {
+                log($"{operation} failed: EmptyClipboard error {Marshal.GetLastWin32Error()}.");
             }
 
-            for (var index = 0; index < allocations.Count; index++)
-            {
-                var item = allocations[index];
-                if (SetClipboardData(item.Format, item.Handle) == IntPtr.Zero)
-                {
-                    log($"Clipboard restore failed while writing {DescribeFormat(item.Format)} (error {Marshal.GetLastWin32Error()}).");
-                    return false;
-                }
-
-                // Windows owns a successfully transferred handle.
-                allocations[index] = (item.Format, IntPtr.Zero, item.IsEnhancedMetafile);
-            }
-
-            return true;
+            return result;
         }
         finally
         {
-            foreach (var item in allocations)
-            {
-                if (item.Handle != IntPtr.Zero)
-                {
-                    if (item.IsEnhancedMetafile)
-                    {
-                        DeleteEnhMetaFile(item.Handle);
-                    }
-                    else
-                    {
-                        GlobalFree(item.Handle);
-                    }
-                }
-            }
+            ReleaseOwnedPayloads(target);
+            ReleaseOwnedPayloads(rollback);
             if (opened)
             {
                 CloseClipboard();
             }
         }
     }
+
+    private bool TryStageFormats(
+        IReadOnlyList<ZetlClipboardFormatData> formats,
+        List<ZetlStagedClipboardFormat<NativeClipboardPayload>> staged,
+        out uint? failedFormat,
+        out string failureReason)
+    {
+        failedFormat = null;
+        failureReason = "";
+        var seenFormats = new HashSet<uint>();
+        foreach (var item in formats)
+        {
+            var format = ResolveStoredFormat(item);
+            if (format == 0
+                || !seenFormats.Add(format)
+                || item.Data.Length == 0
+                || UsesNonMemoryHandle(format))
+            {
+                failedFormat = format == 0 ? item.Format : format;
+                failureReason = "a stored clipboard format payload is invalid or cannot be transferred";
+                return false;
+            }
+
+            var isEnhancedMetafile = format == EnhancedMetafile;
+            var handle = isEnhancedMetafile
+                ? SetEnhMetaFileBits((uint)item.Data.Length, item.Data)
+                : AllocateGlobal(item.Data);
+            if (handle == IntPtr.Zero)
+            {
+                failedFormat = format;
+                failureReason = $"could not allocate {DescribeFormat(format)}";
+                return false;
+            }
+
+            staged.Add(new(
+                format,
+                new NativeClipboardPayload(handle, isEnhancedMetafile)));
+        }
+
+        return true;
+    }
+
+    private static void ReleaseOwnedPayloads(
+        IEnumerable<ZetlStagedClipboardFormat<NativeClipboardPayload>> staged)
+    {
+        foreach (var item in staged.Where(item => !item.Transferred))
+        {
+            if (item.Payload.IsEnhancedMetafile)
+            {
+                DeleteEnhMetaFile(item.Payload.Handle);
+            }
+            else
+            {
+                GlobalFree(item.Payload.Handle);
+            }
+        }
+    }
+
+    private sealed record NativeClipboardPayload(
+        IntPtr Handle,
+        bool IsEnhancedMetafile);
 
     private static bool UsesNonMemoryHandle(uint format) =>
         format is Bitmap or MetafilePicture or Palette
@@ -1135,132 +1201,45 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
     public bool SetText(string text)
     {
-        // Never open+empty the clipboard with a NULL owner -- that is the
-        // documented destructive failure mode (EmptyClipboard sets the owner to
-        // NULL and SetClipboardData then fails, leaving the clipboard cleared).
-        // Refuse the write instead, so a missing owner can't wipe the clipboard.
-        if (!EnsureOwnerWindow())
-        {
-            log("Clipboard write skipped: no owner window available; clipboard left intact.");
-            return false;
-        }
+        return ReplaceText(text).Succeeded;
+    }
 
-        if (!TryOpen())
-        {
-            return false;
-        }
-
-        var handle = IntPtr.Zero;
-        var ownsHandle = false;
-        try
-        {
-            // Allocate and populate the global memory BEFORE emptying the
-            // clipboard. The previous order emptied first, so a later allocation
-            // failure left the clipboard cleared with nothing put back.
-            handle = AllocateUnicodeText(text);
-            if (handle == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            ownsHandle = true;
-            if (!EmptyClipboard())
-            {
-                log($"Clipboard write failed: EmptyClipboard error {Marshal.GetLastWin32Error()}.");
-                return false;
-            }
-
-            if (SetClipboardData(UnicodeText, handle) == IntPtr.Zero)
-            {
-                log($"Clipboard write failed: SetClipboardData error {Marshal.GetLastWin32Error()}.");
-                return false;
-            }
-
-            // Ownership of the memory transferred to the clipboard; don't free it.
-            ownsHandle = false;
-            return true;
-        }
-        finally
-        {
-            if (ownsHandle && handle != IntPtr.Zero)
-            {
-                GlobalFree(handle);
-            }
-
-            CloseClipboard();
-        }
+    public ZetlClipboardWriteResult ReplaceText(string text)
+    {
+        return ReplaceFormats(
+            [new ZetlClipboardFormatData(UnicodeText, Encoding.Unicode.GetBytes(text + '\0'))],
+            "Clipboard text write");
     }
 
     public bool SetRichText(string plainText, string html)
     {
+        return ReplaceRichText(plainText, html).Succeeded;
+    }
+
+    public ZetlClipboardWriteResult ReplaceRichText(string plainText, string html)
+    {
         if (string.IsNullOrWhiteSpace(html))
         {
-            return SetText(plainText);
+            return ReplaceText(plainText);
         }
 
-        if (!EnsureOwnerWindow())
-        {
-            log("Rich clipboard write skipped: no owner window available; clipboard left intact.");
-            return false;
-        }
-
-        var textHandle = AllocateUnicodeText(plainText);
-        var htmlHandle = AllocateGlobal(BuildHtmlClipboardBytes(html));
-        if (textHandle == IntPtr.Zero || htmlHandle == IntPtr.Zero)
-        {
-            if (textHandle != IntPtr.Zero) GlobalFree(textHandle);
-            if (htmlHandle != IntPtr.Zero) GlobalFree(htmlHandle);
-            return false;
-        }
-
-        if (!TryOpen())
-        {
-            GlobalFree(textHandle);
-            GlobalFree(htmlHandle);
-            return false;
-        }
-
-        var ownsText = true;
-        var ownsHtml = true;
-        try
-        {
-            if (!EmptyClipboard())
-            {
-                log($"Rich clipboard write failed: EmptyClipboard error {Marshal.GetLastWin32Error()}.");
-                return false;
-            }
-
-            var textWritten = SetClipboardData(UnicodeText, textHandle) != IntPtr.Zero;
-            ownsText = !textWritten;
-            var htmlWritten = SetClipboardData(Html, htmlHandle) != IntPtr.Zero;
-            ownsHtml = !htmlWritten;
-            if (!textWritten)
-            {
-                log($"Rich clipboard write failed: SetClipboardData text error {Marshal.GetLastWin32Error()}.");
-            }
-            if (!htmlWritten)
-            {
-                log($"Rich clipboard write degraded: SetClipboardData HTML error {Marshal.GetLastWin32Error()}.");
-            }
-
-            return textWritten;
-        }
-        finally
-        {
-            if (ownsText) GlobalFree(textHandle);
-            if (ownsHtml) GlobalFree(htmlHandle);
-            CloseClipboard();
-        }
+        return ReplaceFormats(
+            [
+                new ZetlClipboardFormatData(
+                    UnicodeText,
+                    Encoding.Unicode.GetBytes(plainText + '\0')),
+                new ZetlClipboardFormatData(Html, BuildHtmlClipboardBytes(html))
+            ],
+            "Rich clipboard write");
     }
 
     public bool SetImage(ZetlClipboardImage image)
     {
-        if (!EnsureOwnerWindow())
-        {
-            log("Clipboard image write skipped: no owner window available; clipboard left intact.");
-            return false;
-        }
+        return ReplaceImage(image).Succeeded;
+    }
 
+    public ZetlClipboardWriteResult ReplaceImage(ZetlClipboardImage image)
+    {
         byte[] dib;
         try
         {
@@ -1269,91 +1248,17 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         catch (Exception ex) when (ex is ArgumentException or InvalidDataException)
         {
             log($"Clipboard image write failed: {ex.Message}");
-            return false;
+            return new(
+                ZetlClipboardWriteStatus.StagingFailed,
+                FailureReason: ex.Message);
         }
 
-        var pngHandle = AllocateGlobal(image.PngBytes);
-        var dibHandle = AllocateGlobal(dib);
-        if (pngHandle == IntPtr.Zero || dibHandle == IntPtr.Zero)
-        {
-            if (pngHandle != IntPtr.Zero) GlobalFree(pngHandle);
-            if (dibHandle != IntPtr.Zero) GlobalFree(dibHandle);
-            return false;
-        }
-
-        if (!TryOpen())
-        {
-            GlobalFree(pngHandle);
-            GlobalFree(dibHandle);
-            return false;
-        }
-
-        var ownsPng = true;
-        var ownsDib = true;
-        try
-        {
-            if (!EmptyClipboard())
-            {
-                return false;
-            }
-
-            var pngWritten = SetClipboardData(Png, pngHandle) != IntPtr.Zero;
-            ownsPng = !pngWritten;
-            var dibWritten = SetClipboardData(Dib, dibHandle) != IntPtr.Zero;
-            ownsDib = !dibWritten;
-            if (!pngWritten && !dibWritten)
-            {
-                log($"Clipboard image write failed: SetClipboardData error {Marshal.GetLastWin32Error()}.");
-            }
-
-            return pngWritten || dibWritten;
-        }
-        finally
-        {
-            if (ownsPng) GlobalFree(pngHandle);
-            if (ownsDib) GlobalFree(dibHandle);
-            CloseClipboard();
-        }
-    }
-
-    private IntPtr AllocateUnicodeText(string text)
-    {
-        int bytes;
-        try
-        {
-            bytes = checked((text.Length + 1) * sizeof(char));
-        }
-        catch (OverflowException)
-        {
-            log("Clipboard write failed: text is too large.");
-            return IntPtr.Zero;
-        }
-
-        var handle = GlobalAlloc(Moveable, (UIntPtr)bytes);
-        if (handle == IntPtr.Zero)
-        {
-            log($"Clipboard write failed: could not allocate {bytes} bytes.");
-            return IntPtr.Zero;
-        }
-
-        var pointer = GlobalLock(handle);
-        if (pointer == IntPtr.Zero)
-        {
-            log("Clipboard write failed: could not lock global memory.");
-            GlobalFree(handle);
-            return IntPtr.Zero;
-        }
-
-        try
-        {
-            Marshal.Copy(text.ToCharArray(), 0, pointer, text.Length);
-            Marshal.WriteInt16(pointer, text.Length * sizeof(char), 0);
-            return handle;
-        }
-        finally
-        {
-            GlobalUnlock(handle);
-        }
+        return ReplaceFormats(
+            [
+                new ZetlClipboardFormatData(Png, image.PngBytes),
+                new ZetlClipboardFormatData(Dib, dib)
+            ],
+            "Clipboard image write");
     }
 
     private static byte[] BuildHtmlClipboardBytes(string fragment)

@@ -55,19 +55,28 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
         ZetlClipboardSnapshot item,
         out uint injectedToken)
     {
+        return Stage(shifted, item, out injectedToken).Succeeded;
+    }
+
+    public ZetlClipboardWriteResult Stage(
+        bool shifted,
+        ZetlClipboardSnapshot item,
+        out uint injectedToken)
+    {
         injectedToken = 0;
         // Always write the queued representation. A clipboard whose visible
         // text matches the item may still carry unrelated rich formats.
-        if (!WriteSnapshot(item))
+        var result = WriteSnapshot(item);
+        if (!result.Succeeded)
         {
-            return false;
+            return result;
         }
 
         var lane = lanes[LaneIndex(shifted)];
         injectedToken = clipboard.GetChangeToken();
         lane.Injected = item;
         lane.InjectedToken = injectedToken;
-        return true;
+        return result;
     }
 
     public ZetlClipboardRestoreOutcome RestoreOriginalIfOwned(bool shifted)
@@ -109,9 +118,12 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
 
     private ZetlClipboardRestoreOutcome Restore(ReplayLaneState lane)
     {
-        if (!clipboard.RestoreBackup(lane.UserBackup!))
+        var result = clipboard.ReplaceWithBackup(lane.UserBackup!);
+        if (!result.Succeeded)
         {
-            return ZetlClipboardRestoreOutcome.Failed;
+            return result.ClipboardPreserved
+                ? ZetlClipboardRestoreOutcome.Failed
+                : ZetlClipboardRestoreOutcome.FailedClipboardUncertain;
         }
 
         // Track what is actually present after a successful restore. This
@@ -144,9 +156,9 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
         return string.IsNullOrEmpty(text) ? null : ZetlClipboardSnapshot.FromText(text);
     }
 
-    private bool WriteSnapshot(ZetlClipboardSnapshot snapshot)
+    private ZetlClipboardWriteResult WriteSnapshot(ZetlClipboardSnapshot snapshot)
     {
-        return ZetlClipboardContentWriter.TryWrite(clipboard, snapshot);
+        return ZetlClipboardContentWriter.Write(clipboard, snapshot);
     }
 
     private static int LaneIndex(bool shifted) => shifted ? 1 : 0;
@@ -166,7 +178,8 @@ internal enum ZetlClipboardRestoreOutcome
     NoBackup,
     OwnershipLost,
     Restored,
-    Failed
+    Failed,
+    FailedClipboardUncertain
 }
 
 /// <summary>
@@ -176,13 +189,13 @@ internal enum ZetlClipboardRestoreOutcome
 /// </summary>
 internal static class ZetlClipboardContentWriter
 {
-    public static bool TryWrite(
+    public static ZetlClipboardWriteResult Write(
         IClipboard clipboard,
         ZetlClipboardSnapshot snapshot)
     {
         return snapshot.Image is not null
-            ? clipboard.SetImage(snapshot.Image)
-            : TryWrite(
+            ? clipboard.ReplaceImage(snapshot.Image)
+            : Write(
                 clipboard,
                 snapshot.Text ?? "",
                 snapshot.Html,
@@ -191,18 +204,34 @@ internal static class ZetlClipboardContentWriter
 
     public static bool TryWrite(
         IClipboard clipboard,
+        ZetlClipboardSnapshot snapshot)
+    {
+        return Write(clipboard, snapshot).Succeeded;
+    }
+
+    public static ZetlClipboardWriteResult Write(
+        IClipboard clipboard,
         string text,
         string? html,
         IReadOnlyList<ZetlClipboardFormatData>? replayFormats)
     {
         if (replayFormats is { Count: > 0 })
         {
-            return clipboard.RestoreBackup(ZetlClipboardBackup.FromRaw(replayFormats));
+            return clipboard.ReplaceWithBackup(ZetlClipboardBackup.FromRaw(replayFormats));
         }
 
         return html is not null
-            ? clipboard.SetRichText(text, html)
-            : clipboard.SetText(text);
+            ? clipboard.ReplaceRichText(text, html)
+            : clipboard.ReplaceText(text);
+    }
+
+    public static bool TryWrite(
+        IClipboard clipboard,
+        string text,
+        string? html,
+        IReadOnlyList<ZetlClipboardFormatData>? replayFormats)
+    {
+        return Write(clipboard, text, html, replayFormats).Succeeded;
     }
 }
 

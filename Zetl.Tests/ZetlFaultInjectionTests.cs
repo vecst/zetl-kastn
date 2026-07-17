@@ -241,6 +241,138 @@ public class ZetlFaultInjectionTests
         }
     }
 
+    [Fact] public void SuccessfulProjectDeletionLeavesNoLiveOrPendingDirectory()
+    {
+        var root = NewDirectory();
+        try
+        {
+            var project = JsonFile.Clone(StateWithTwoProjects().Projects[0]);
+            var storage = new ZetlStateStorage(root, legacyStatePath: null);
+            storage.WriteProject(project);
+            storage.WriteWorkspace(new ZetlWorkspaceFile
+            {
+                ActiveProjectId = project.Id,
+                LastDeliberateProjectId = project.Id
+            });
+            var store = new ZetlStateStore(storage, "successful-delete");
+
+            store.DeleteProject(project.Id);
+
+            AssertTrue(
+                !store.State.Projects.Any(item => item.Id == project.Id),
+                "A successful deletion should remove the project from live state.");
+            AssertTrue(
+                !DirectoriesUnder(Path.Combine(root, "projects")).Any(),
+                "A successful deletion should leave no live project directory.");
+            AssertTrue(
+                !DirectoriesUnder(Path.Combine(root, "pending-project-removals")).Any(),
+                "A successful deletion should finalize its pending directory.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact] public void StartupRestoresPreparedProjectRemovalWithAssets()
+    {
+        var root = NewDirectory();
+        try
+        {
+            var project = JsonFile.Clone(StateWithTwoProjects().Projects[0]);
+            var storage = new ZetlStateStorage(root, legacyStatePath: null);
+            storage.WriteProject(project);
+            var assetBytes = new byte[] { 4, 3, 2, 1 };
+            var assetPath = storage.WriteAsset(
+                project,
+                new string('b', 64),
+                ".png",
+                assetBytes);
+            storage.WriteWorkspace(new ZetlWorkspaceFile
+            {
+                ActiveProjectId = project.Id,
+                LastDeliberateProjectId = project.Id
+            });
+
+            _ = storage.PrepareProjectRemoval(project.Id);
+
+            var restoredStorage = new ZetlStateStorage(root, legacyStatePath: null);
+            var restoredState = restoredStorage.Load();
+            var restoredProject = restoredState.Projects.Single(item => item.Id == project.Id);
+
+            AssertTrue(
+                restoredStorage.ReadAsset(restoredProject, assetPath)?.SequenceEqual(assetBytes) == true,
+                "Startup should restore a prepared project's complete directory, including assets.");
+            AssertTrue(
+                !DirectoriesUnder(Path.Combine(root, "pending-project-removals")).Any(),
+                "A restored prepared removal should no longer remain pending.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact] public void StartupRestoresMarkerlessPendingRemovalConservatively()
+    {
+        var root = NewDirectory();
+        try
+        {
+            var project = JsonFile.Clone(StateWithTwoProjects().Projects[0]);
+            var storage = new ZetlStateStorage(root, legacyStatePath: null);
+            storage.WriteProject(project);
+            _ = storage.PrepareProjectRemoval(project.Id);
+            var pendingDirectory = DirectoriesUnder(
+                Path.Combine(root, "pending-project-removals")).Single();
+            File.Delete(Path.Combine(
+                pendingDirectory,
+                ZetlStateStorage.PendingRemovalMarkerFileName));
+
+            var restored = new ZetlStateStorage(root, legacyStatePath: null).Load();
+
+            AssertTrue(
+                restored.Projects.Any(item => item.Id == project.Id),
+                "A crash between directory move and marker write must restore rather than delete data.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact] public void StartupPurgesCommittedPendingRemoval()
+    {
+        var root = NewDirectory();
+        try
+        {
+            var project = JsonFile.Clone(StateWithTwoProjects().Projects[0]);
+            var storage = new ZetlStateStorage(root, legacyStatePath: null);
+            storage.WriteProject(project);
+            _ = storage.PrepareProjectRemoval(project.Id);
+            var pendingDirectory = DirectoriesUnder(
+                Path.Combine(root, "pending-project-removals")).Single();
+            var markerPath = Path.Combine(
+                pendingDirectory,
+                ZetlStateStorage.PendingRemovalMarkerFileName);
+            var marker = JsonFile.Read<ZetlPendingProjectRemovalFile>(markerPath)!;
+            marker.Status = ZetlStateStorage.CommittedRemovalStatus;
+            JsonFile.WriteAtomic(markerPath, marker);
+
+            var restored = new ZetlStateStorage(root, legacyStatePath: null).Load();
+
+            AssertTrue(
+                restored.Projects.All(item => item.Id != project.Id),
+                "A committed pending removal must not resurrect its project.");
+            AssertTrue(
+                !DirectoriesUnder(Path.Combine(root, "pending-project-removals")).Any(),
+                "Startup should finish cleanup for a committed pending removal.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact] public void WorkspaceRoundTripPreservesAllLaneRecoveryPointers()
     {
         var root = NewDirectory();
@@ -433,6 +565,9 @@ public class ZetlFaultInjectionTests
         Directory.CreateDirectory(root);
         return root;
     }
+
+    private static IEnumerable<string> DirectoriesUnder(string path) =>
+        Directory.Exists(path) ? Directory.EnumerateDirectories(path) : [];
 
     private static ZetlState StateWithTwoProjects()
     {

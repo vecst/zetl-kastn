@@ -208,6 +208,58 @@ internal static class ZetlWindowsSelfTests
                     "restored rich clipboard matches its exact backup",
                     BackupsEqual(richBackup, clipboard.CaptureBackup()));
 
+                var liveImage = resolvedImage!.Image;
+                failures += Check(
+                    "clipboard writes every requested image format",
+                    clipboard.ReplaceImage(liveImage).Succeeded);
+                var imageBackup = clipboard.CaptureBackup();
+                failures += Check(
+                    "clipboard round-trips exact native image payloads",
+                    imageBackup is { IsComplete: true, RawFormats: not null }
+                    && imageBackup.RawFormats.Any(item =>
+                        item.Format == AvaloniaWindowsClipboard.PngClipboardFormat
+                        && item.Data.SequenceEqual(liveImage.PngBytes))
+                    && imageBackup.RawFormats.Any(item =>
+                        item.Format == AvaloniaWindowsClipboard.DibClipboardFormat));
+                failures += Check(
+                    "clipboard image backup contains PNG and DIB",
+                    imageBackup is { IsComplete: true, RawFormats: not null }
+                    && imageBackup.RawFormats.Any(item =>
+                        item.Format == AvaloniaWindowsClipboard.PngClipboardFormat)
+                    && imageBackup.RawFormats.Any(item =>
+                        item.Format == AvaloniaWindowsClipboard.DibClipboardFormat));
+
+                var mixedFormats = richBackup.RawFormats!
+                    .Concat(imageBackup.RawFormats ?? [])
+                    .GroupBy(item => item.Format)
+                    .Select(group => group.First())
+                    .ToList();
+                failures += Check(
+                    "clipboard restores mixed text, rich, and image formats",
+                    clipboard.ReplaceWithBackup(
+                        ZetlClipboardBackup.FromRaw(mixedFormats)).Succeeded);
+                var mixedBackup = clipboard.CaptureBackup();
+                failures += Check(
+                    "clipboard preserves every mixed format",
+                    clipboard.TryGetText() == richText
+                    && clipboard.TryGetHtml() == richHtml
+                    && mixedBackup is { IsComplete: true, RawFormats: not null }
+                    && mixedBackup.RawFormats.Any(item =>
+                        item.Format == AvaloniaWindowsClipboard.PngClipboardFormat
+                        && item.Data.SequenceEqual(liveImage.PngBytes))
+                    && mixedBackup.RawFormats.Any(item =>
+                        item.Format == AvaloniaWindowsClipboard.DibClipboardFormat));
+
+                failures += Check(
+                    "clipboard transaction can write an exactly empty clipboard",
+                    clipboard.ReplaceWithBackup(
+                        ZetlClipboardBackup.FromRaw([])).Succeeded
+                    && clipboard.CaptureBackup() is
+                    {
+                        IsComplete: true,
+                        RawFormats.Count: 0
+                    });
+
                 var calcFormats = richBackup.RawFormats!.ToList();
                 calcFormats.Add(new ZetlClipboardFormatData(
                     0,

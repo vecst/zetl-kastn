@@ -8,6 +8,7 @@ internal sealed class ZetlShortcutCoordinator
     private readonly ZetlPendingShortcutRegistry pendingShortcuts = new();
     private readonly SemaphoreSlim[] replayLaneGates = [new(1, 1), new(1, 1)];
     private readonly SemaphoreSlim replayClipboardGate = new(1, 1);
+    private readonly ZetlReplayLaneLifecycle replayLanes = new();
     private readonly ZetlStateStore store;
     private readonly IKeyboardBackend keyboard;
     private readonly IClipboard clipboard;
@@ -98,7 +99,16 @@ internal sealed class ZetlShortcutCoordinator
             return false;
         }
 
-        var activeBucket = store.GetActiveBucket(context.ShiftLane);
+        var shiftLane = context.ShiftLane;
+        if (replayLanes.IsRestoring(shiftLane))
+        {
+            // The final Replay item is still on the clipboard. Suppress this
+            // physical paste until conditional restoration and finalization
+            // settle instead of passing the staged item through a second time.
+            return true;
+        }
+
+        var activeBucket = store.GetActiveBucket(shiftLane);
         if (activeBucket is not null && ZetlStateStore.IsReplayBucket(activeBucket))
         {
             // The hook callback needs the handled decision synchronously, but the
@@ -106,7 +116,6 @@ internal sealed class ZetlShortcutCoordinator
             // low-level keyboard hook thread: blocking it stalls system-wide input
             // and can make Windows silently remove the hook. Enqueue that work
             // onto the dispatcher and return the decision immediately.
-            var shiftLane = context.ShiftLane;
             dispatcher.Post(() => ZetlAsync.RunLogged(
                 () => HandleReplayTapAsync(shiftLane, activeBucket), "replay tap", log));
             return true;
@@ -226,17 +235,21 @@ internal sealed class ZetlShortcutCoordinator
             () => store.DeleteNote(bucket, note.Id));
         var savedRichHtml = RichHtmlForSavedText(request, result.NoteText);
         var savedReplayFormats = ReplayFormatsForSavedText(request, result.NoteText);
-        if (request.Image is null
+        var clipboardWrite = request.Image is null
             && (!isCut || quickNoteToClipboard())
-            && !ZetlClipboardContentWriter.TryWrite(
-                clipboard,
-                result.NoteText,
-                savedRichHtml,
-                savedReplayFormats))
+                ? ZetlClipboardContentWriter.Write(
+                    clipboard,
+                    result.NoteText,
+                    savedRichHtml,
+                    savedReplayFormats)
+                : null;
+        if (clipboardWrite is { Succeeded: false })
         {
             // The note is already saved; don't roll it back, just record that the
             // clipboard didn't pick up the saved text.
-            log($"Saved note to {bucket.Name}, but copying it to the clipboard failed.");
+            log(clipboardWrite.ClipboardPreserved
+                ? $"Saved note to {bucket.Name}, but copying it to the clipboard failed without changing the clipboard."
+                : $"Saved note to {bucket.Name}, but copying it failed and the original clipboard could not be restored completely.");
         }
 
         // The Activate toggle decides the lane's active project. When off, undo
@@ -330,17 +343,19 @@ internal sealed class ZetlShortcutCoordinator
             return ZetlCompileOutcome.RestoreTarget;
         }
 
-        var copied = ZetlClipboardContentWriter.TryWrite(
+        var clipboardWrite = ZetlClipboardContentWriter.Write(
             clipboard,
             result.CompiledText,
             string.IsNullOrWhiteSpace(result.CompiledHtml) ? null : result.CompiledHtml,
             replayFormats: null);
-        if (!copied)
+        if (!clipboardWrite.Succeeded)
         {
             // Staging failed, so don't paste stale clipboard content or claim a
             // copy succeeded. The compiled text can be re-produced by compiling
             // again.
-            notifications.Show("Couldn't copy the compiled text to the clipboard.");
+            notifications.Show(clipboardWrite.ClipboardPreserved
+                ? "Couldn't copy the compiled text; your clipboard was left unchanged."
+                : "Couldn't copy the compiled text, and Zetl could not fully restore your previous clipboard.");
             return ZetlCompileOutcome.RestoreTarget;
         }
 
@@ -402,7 +417,15 @@ internal sealed class ZetlShortcutCoordinator
 
     private void RestoreOriginalClipboard(bool shifted)
     {
-        _ = replayClipboard.RestoreOriginalIfOwned(shifted);
+        var outcome = replayClipboard.RestoreOriginalIfOwned(shifted);
+        if (outcome is ZetlClipboardRestoreOutcome.Failed
+            or ZetlClipboardRestoreOutcome.FailedClipboardUncertain)
+        {
+            log("Replay stopped, but restoring your previous clipboard failed.");
+            notifications.Show(outcome == ZetlClipboardRestoreOutcome.FailedClipboardUncertain
+                ? "Replay stopped, but Zetl could not fully restore your previous clipboard."
+                : "Replay stopped without replacing your current clipboard.");
+        }
     }
 
     // Held Ctrl+A: the physical select-all already passed through (dispatch None), so
@@ -911,6 +934,16 @@ internal sealed class ZetlShortcutCoordinator
         await laneGate.WaitAsync();
         try
         {
+            // A second tap can be queued while the first still owns this lane.
+            // Revalidate after entering the gate so it cannot replay an item or
+            // run the empty-queue pass-through after the first tap finalized.
+            if (replayLanes.IsRestoring(shifted)
+                || !ReferenceEquals(store.GetActiveBucket(shifted), activeBucket)
+                || !ZetlStateStore.IsReplayBucket(activeBucket))
+            {
+                return;
+            }
+
             await HandleReplayTapCoreAsync(shifted, activeBucket);
         }
         finally
@@ -992,10 +1025,16 @@ internal sealed class ZetlShortcutCoordinator
                         $"Replay paused; Zetl could not safely preserve every clipboard format ({backupFailure}). {bucketName} item kept.");
                     return;
                 }
-                clipboardStaged = replayClipboard.TryStage(shifted, replayItem, out injectedToken);
+                var stageResult = replayClipboard.Stage(
+                    shifted,
+                    replayItem,
+                    out injectedToken);
+                clipboardStaged = stageResult.Succeeded;
                 if (!clipboardStaged)
                 {
-                    notifications.Show($"Paste failed; {bucketName} item kept.");
+                    notifications.Show(stageResult.ClipboardPreserved
+                        ? $"Paste paused; {bucketName} item kept and your clipboard was preserved."
+                        : $"Paste paused; {bucketName} item kept, but Zetl could not fully restore your previous clipboard.");
                 }
             });
             if (clipboardStaged)
@@ -1019,12 +1058,12 @@ internal sealed class ZetlShortcutCoordinator
         // mutations back through the dispatcher. Await that posted mutation too:
         // the per-lane gate must remain held until this exact item is consumed,
         // otherwise a rapid second tap can peek and paste the same slip again.
-        await RunOnDispatcherAsync(() =>
+        var pasteResult = await RunOnDispatcherAsync(() =>
         {
             if (!pasted)
             {
                 notifications.Show($"Paste failed; {bucketName} item kept.");
-                return;
+                return new ReplayPasteResult(Pasted: false, ReplayComplete: false);
             }
 
             ZetlBucket? reviewBucket = null;
@@ -1042,6 +1081,12 @@ internal sealed class ZetlShortcutCoordinator
             if (consumed && reviewBucket is not null)
             {
                 log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
+            }
+
+            if (!consumed)
+            {
+                notifications.Show($"Paste landed, but {bucketName} changed before Zetl could consume its item.");
+                return new ReplayPasteResult(Pasted: true, ReplayComplete: false);
             }
 
             var replayComplete = !store.TryPeekNextReplayNote(activeBucket, out _);
@@ -1062,24 +1107,77 @@ internal sealed class ZetlShortcutCoordinator
                         undoReviewSlipId));
             }
 
-            if (replayComplete)
+            if (replayComplete && !replayLanes.TryBeginRestoring(shifted))
+            {
+                throw new InvalidOperationException("Replay lane entered final restoration twice.");
+            }
+
+            if (!replayComplete)
+            {
+                notifications.Show($"Pasted next item from {bucketName}.");
+            }
+
+            return new ReplayPasteResult(Pasted: true, replayComplete);
+        });
+
+        if (!pasteResult.Pasted)
+        {
+            return;
+        }
+
+        if (!pasteResult.ReplayComplete)
+        {
+            if (resumeClipboard)
+            {
+                ZetlAsync.RunLogged(
+                    () => RestoreUserClipboardAfterReplayAndReportAsync(
+                        shifted,
+                        replayItem,
+                        injectedToken),
+                    "replay clipboard restore",
+                    log);
+            }
+            return;
+        }
+
+        ZetlClipboardRestoreOutcome? restoreOutcome = null;
+        try
+        {
+            if (resumeClipboard)
+            {
+                restoreOutcome = await RestoreUserClipboardAfterReplayAsync(
+                    shifted,
+                    replayItem,
+                    injectedToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            log($"Replay finished but clipboard restoration threw: {ex.Message}");
+            restoreOutcome = ZetlClipboardRestoreOutcome.FailedClipboardUncertain;
+        }
+
+        await RunOnDispatcherAsync(() =>
+        {
+            try
             {
                 if (!store.TryDisposeTemporaryReplayProject(activeBucket, shifted, out _))
                 {
                     store.SetBucketKind(activeBucket, "Standard");
                 }
-            }
 
-            if (resumeClipboard)
-            {
-                ZetlAsync.RunLogged(
-                    () => RestoreUserClipboardAfterReplayAsync(shifted, replayItem, injectedToken), "replay clipboard restore", log);
+                ShowReplayCompletion(bucketName, restoreOutcome);
             }
-            notifications.Show(replayComplete
-                ? $"{bucketName} replay complete."
-                : $"Pasted next item from {bucketName}.");
+            finally
+            {
+                replayLanes.CompleteRestoring(shifted);
+            }
         });
     }
+
+    private readonly record struct ReplayPasteResult(
+        bool Pasted,
+        bool ReplayComplete);
 
     private Task RunOnDispatcherAsync(Action action)
     {
@@ -1091,6 +1189,24 @@ internal sealed class ZetlShortcutCoordinator
             {
                 action();
                 completion.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        });
+        return completion.Task;
+    }
+
+    private Task<T> RunOnDispatcherAsync<T>(Func<T> action)
+    {
+        var completion = new TaskCompletionSource<T>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        dispatcher.Post(() =>
+        {
+            try
+            {
+                completion.TrySetResult(action());
             }
             catch (Exception ex)
             {
@@ -1147,23 +1263,73 @@ internal sealed class ZetlShortcutCoordinator
         });
     }
 
-    private async Task RestoreUserClipboardAfterReplayAsync(
+    private async Task<ZetlClipboardRestoreOutcome> RestoreUserClipboardAfterReplayAsync(
         bool shifted,
         ZetlClipboardSnapshot injected,
         uint injectedToken)
     {
         await delay.WaitAsync(ReplayClipboardRestoreDelay);
-        dispatcher.Post(() =>
+        await replayClipboardGate.WaitAsync();
+        try
         {
-            var outcome = replayClipboard.RestoreIfOwned(
+            return await RunOnDispatcherAsync(() => replayClipboard.RestoreIfOwned(
                 shifted,
                 injected,
-                injectedToken);
-            if (outcome == ZetlClipboardRestoreOutcome.Failed)
-            {
-                log("Replay finished but restoring your previous clipboard failed.");
-            }
-        });
+                injectedToken));
+        }
+        finally
+        {
+            replayClipboardGate.Release();
+        }
+    }
+
+    private async Task RestoreUserClipboardAfterReplayAndReportAsync(
+        bool shifted,
+        ZetlClipboardSnapshot injected,
+        uint injectedToken)
+    {
+        var outcome = await RestoreUserClipboardAfterReplayAsync(
+            shifted,
+            injected,
+            injectedToken);
+        if (outcome is ZetlClipboardRestoreOutcome.Failed
+            or ZetlClipboardRestoreOutcome.FailedClipboardUncertain)
+        {
+            await RunOnDispatcherAsync(() => ShowReplayRestoreFailure(outcome));
+        }
+    }
+
+    private void ShowReplayCompletion(
+        string bucketName,
+        ZetlClipboardRestoreOutcome? restoreOutcome)
+    {
+        switch (restoreOutcome)
+        {
+            case ZetlClipboardRestoreOutcome.OwnershipLost:
+                notifications.Show($"{bucketName} replay complete; your newer clipboard was left unchanged.");
+                break;
+            case ZetlClipboardRestoreOutcome.Failed:
+                log("Replay completed but restoring the previous clipboard failed without changing the current clipboard.");
+                notifications.Show(
+                    $"{bucketName} replay complete, but Zetl could not restore your previous clipboard; the current clipboard was left unchanged.");
+                break;
+            case ZetlClipboardRestoreOutcome.FailedClipboardUncertain:
+                log("Replay completed but restoring the previous clipboard failed and clipboard integrity is uncertain.");
+                notifications.Show(
+                    $"{bucketName} replay complete, but Zetl could not fully restore your previous clipboard; the clipboard may have changed.");
+                break;
+            default:
+                notifications.Show($"{bucketName} replay complete.");
+                break;
+        }
+    }
+
+    private void ShowReplayRestoreFailure(ZetlClipboardRestoreOutcome outcome)
+    {
+        log("Replay finished but restoring your previous clipboard failed.");
+        notifications.Show(outcome == ZetlClipboardRestoreOutcome.FailedClipboardUncertain
+            ? "Replay finished, but Zetl could not fully restore your previous clipboard."
+            : "Replay finished without replacing your current clipboard.");
     }
 
 }

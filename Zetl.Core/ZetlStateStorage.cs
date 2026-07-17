@@ -15,6 +15,9 @@ namespace ZETL;
 internal sealed class ZetlStateStorage : IZetlStateStorage
 {
     private static readonly TimeSpan StaleTempAge = TimeSpan.FromDays(1);
+    internal const string PendingRemovalMarkerFileName = "removal.json";
+    internal const string PreparedRemovalStatus = "Prepared";
+    internal const string CommittedRemovalStatus = "Committed";
 
     private readonly string rootDirectory;
     private readonly string workspacePath;
@@ -40,6 +43,7 @@ internal sealed class ZetlStateStorage : IZetlStateStorage
     public ZetlState Load()
     {
         JsonFile.SweepStaleTempFiles(rootDirectory, StaleTempAge, log);
+        RecoverPendingProjectRemovals();
         MigrateLegacyStateIfNeeded();
 
         var workspace = JsonFile.ReadOrQuarantine<ZetlWorkspaceFile>(workspacePath, log) ?? new ZetlWorkspaceFile();
@@ -164,7 +168,40 @@ internal sealed class ZetlStateStorage : IZetlStateStorage
             pendingDirectory = Path.Combine(
                 pendingRemovalsDirectory,
                 $"{folder}.{Guid.NewGuid():N}");
-            Directory.Move(projectDirectory, pendingDirectory);
+            try
+            {
+                Directory.Move(projectDirectory, pendingDirectory);
+                JsonFile.WriteAtomic(
+                    Path.Combine(pendingDirectory, PendingRemovalMarkerFileName),
+                    new ZetlPendingProjectRemovalFile
+                    {
+                        ProjectId = projectId,
+                        OriginalFolder = folder,
+                        Status = PreparedRemovalStatus
+                    });
+            }
+            catch
+            {
+                // Preparation is not complete until its recovery marker is
+                // durable. Put the whole directory back before reporting failure.
+                try
+                {
+                    if (Directory.Exists(pendingDirectory)
+                        && !Directory.Exists(projectDirectory))
+                    {
+                        Directory.Move(pendingDirectory, projectDirectory);
+                        DeleteRemovalMarker(projectDirectory);
+                    }
+                }
+                catch (Exception rollbackError) when (
+                    rollbackError is IOException or UnauthorizedAccessException)
+                {
+                    log?.Invoke(
+                        $"Could not restore project '{projectId}' after removal preparation failed: {rollbackError.Message}");
+                }
+
+                throw;
+            }
         }
 
         projectFolders.Remove(projectId);
@@ -200,6 +237,27 @@ internal sealed class ZetlStateStorage : IZetlStateStorage
 
             try
             {
+                // Mark the directory before cleanup. A crash or locked-directory
+                // failure after this point is completed by the next startup.
+                JsonFile.WriteAtomic(
+                    Path.Combine(pendingDirectory, PendingRemovalMarkerFileName),
+                    new ZetlPendingProjectRemovalFile
+                    {
+                        ProjectId = projectId,
+                        OriginalFolder = folder,
+                        Status = CommittedRemovalStatus
+                    });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Continue with cleanup. If cleanup also fails, startup restores
+                // the unmarked/prepared directory rather than risking data loss.
+                owner.log?.Invoke(
+                    $"Could not mark removal of project '{projectId}' as committed: {ex.Message}");
+            }
+
+            try
+            {
                 Directory.Delete(pendingDirectory, recursive: true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -228,6 +286,7 @@ internal sealed class ZetlStateStorage : IZetlStateStorage
                 }
 
                 Directory.Move(pendingDirectory, projectDirectory);
+                DeleteRemovalMarker(projectDirectory);
             }
 
             owner.projectFolders[projectId] = folder;
@@ -276,6 +335,117 @@ internal sealed class ZetlStateStorage : IZetlStateStorage
         Prepared,
         Committed,
         RolledBack
+    }
+
+    private void RecoverPendingProjectRemovals()
+    {
+        if (!Directory.Exists(pendingRemovalsDirectory))
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var pendingDirectory in Directory
+                .EnumerateDirectories(pendingRemovalsDirectory)
+                .ToList())
+            {
+                RecoverPendingProjectRemoval(pendingDirectory);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log?.Invoke(
+                $"Could not scan pending project removals in '{pendingRemovalsDirectory}': {ex.Message}");
+        }
+    }
+
+    private void RecoverPendingProjectRemoval(string pendingDirectory)
+    {
+        var markerPath = Path.Combine(pendingDirectory, PendingRemovalMarkerFileName);
+        var marker = JsonFile.ReadOrQuarantine<ZetlPendingProjectRemovalFile>(markerPath, log);
+        if (marker is { } committedMarker
+            && string.Equals(
+                committedMarker.Status,
+                CommittedRemovalStatus,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                Directory.Delete(pendingDirectory, recursive: true);
+                log?.Invoke(
+                    $"Completed interrupted removal of project '{committedMarker.ProjectId}'.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                log?.Invoke(
+                    $"Could not clean committed project removal '{pendingDirectory}': {ex.Message}");
+            }
+
+            return;
+        }
+
+        // Prepared, missing, unreadable, and unknown markers all restore. The
+        // workspace is not a complete project index, so it cannot safely prove
+        // that an uncommitted directory should be destroyed.
+        var pendingName = Path.GetFileName(pendingDirectory);
+        var originalFolder = ValidProjectFolder(marker?.OriginalFolder)
+            ?? ValidProjectFolder(InferOriginalFolder(pendingName));
+        if (originalFolder is null)
+        {
+            log?.Invoke(
+                $"Could not recover pending project removal '{pendingDirectory}': its original folder is unknown.");
+            return;
+        }
+
+        var projectDirectory = Path.Combine(projectsDirectory, originalFolder);
+        if (Directory.Exists(projectDirectory))
+        {
+            log?.Invoke(
+                $"Could not recover pending project removal '{pendingDirectory}': '{projectDirectory}' already exists.");
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(projectsDirectory);
+            Directory.Move(pendingDirectory, projectDirectory);
+            DeleteRemovalMarker(projectDirectory);
+            log?.Invoke(
+                $"Restored interrupted removal of project '{marker?.ProjectId ?? originalFolder}'.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log?.Invoke(
+                $"Could not restore pending project removal '{pendingDirectory}': {ex.Message}");
+        }
+    }
+
+    private static string? InferOriginalFolder(string pendingName)
+    {
+        var separator = pendingName.LastIndexOf('.');
+        return separator > 0
+            && Guid.TryParseExact(pendingName[(separator + 1)..], "N", out _)
+                ? pendingName[..separator]
+                : null;
+    }
+
+    private static string? ValidProjectFolder(string? folder)
+    {
+        return !string.IsNullOrWhiteSpace(folder)
+            && string.Equals(folder, Path.GetFileName(folder), StringComparison.Ordinal)
+            && folder is not "." and not ".."
+                ? folder
+                : null;
+    }
+
+    private static void DeleteRemovalMarker(string projectDirectory)
+    {
+        var markerPath = Path.Combine(projectDirectory, PendingRemovalMarkerFileName);
+        if (File.Exists(markerPath))
+        {
+            File.Delete(markerPath);
+        }
     }
 
     private List<ZetlProject> ReadProjects()
@@ -435,4 +605,15 @@ internal sealed class ZetlWorkspaceFile
     public string? ShiftDefaultJournalProjectId { get; set; }
     public string? LastDeliberateProjectId { get; set; }
     public string? ShiftLastDeliberateProjectId { get; set; }
+}
+
+internal sealed class ZetlPendingProjectRemovalFile
+{
+    public int Version { get; set; } = 1;
+
+    public string ProjectId { get; set; } = "";
+
+    public string OriginalFolder { get; set; } = "";
+
+    public string Status { get; set; } = ZetlStateStorage.PreparedRemovalStatus;
 }

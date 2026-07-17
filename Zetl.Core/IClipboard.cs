@@ -34,13 +34,27 @@ internal interface IClipboard
     bool SetText(string text);
 
     /// <summary>
+    /// Structured replacement result. Portable test/platform implementations
+    /// may rely on this compatibility default; native backends should override
+    /// it with transactional staging and rollback details.
+    /// </summary>
+    ZetlClipboardWriteResult ReplaceText(string text) =>
+        ZetlClipboardWriteResult.FromLegacy(SetText(text));
+
+    /// <summary>
     /// Replace the clipboard with rich text plus a plain-text fallback. Backends
     /// that cannot carry rich formats should write the fallback text.
     /// </summary>
     bool SetRichText(string plainText, string html);
 
+    ZetlClipboardWriteResult ReplaceRichText(string plainText, string html) =>
+        ZetlClipboardWriteResult.FromLegacy(SetRichText(plainText, html));
+
     /// <summary>Replace the clipboard with a normalized PNG image.</summary>
     bool SetImage(ZetlClipboardImage image);
+
+    ZetlClipboardWriteResult ReplaceImage(ZetlClipboardImage image) =>
+        ZetlClipboardWriteResult.FromLegacy(SetImage(image));
 
     /// <summary>
     /// Capture the complete clipboard for a later non-lossy restore. Callers
@@ -50,6 +64,9 @@ internal interface IClipboard
 
     /// <summary>Restore a complete backup captured by this backend.</summary>
     bool RestoreBackup(ZetlClipboardBackup backup);
+
+    ZetlClipboardWriteResult ReplaceWithBackup(ZetlClipboardBackup backup) =>
+        ZetlClipboardWriteResult.FromLegacy(RestoreBackup(backup));
 
     /// <summary>
     /// A token that changes whenever the clipboard content changes, used to
@@ -90,6 +107,43 @@ internal sealed record ZetlClipboardBackup(
 
     public static ZetlClipboardBackup Incomplete(string reason) =>
         new(null, null, null, null, false, reason);
+}
+
+internal enum ZetlClipboardWriteStatus
+{
+    Success,
+    BackupIncomplete,
+    StagingFailed,
+    ClipboardUnavailable,
+    EmptyFailed,
+    WriteFailedRolledBack,
+    WriteFailedRestoreFailed
+}
+
+internal sealed record ZetlClipboardWriteResult(
+    ZetlClipboardWriteStatus Status,
+    uint? FailedFormat = null,
+    string? FailureReason = null)
+{
+    public bool Succeeded => Status == ZetlClipboardWriteStatus.Success;
+
+    public bool ClipboardPreserved => Status is
+        ZetlClipboardWriteStatus.Success
+        or ZetlClipboardWriteStatus.BackupIncomplete
+        or ZetlClipboardWriteStatus.StagingFailed
+        or ZetlClipboardWriteStatus.ClipboardUnavailable
+        or ZetlClipboardWriteStatus.EmptyFailed
+        or ZetlClipboardWriteStatus.WriteFailedRolledBack;
+
+    public static ZetlClipboardWriteResult Success { get; } = new(
+        ZetlClipboardWriteStatus.Success);
+
+    public static ZetlClipboardWriteResult FromLegacy(bool succeeded) =>
+        succeeded
+            ? Success
+            : new(
+                ZetlClipboardWriteStatus.StagingFailed,
+                FailureReason: "the clipboard backend did not complete the write");
 }
 
 /// <summary>

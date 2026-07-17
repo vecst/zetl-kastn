@@ -91,10 +91,15 @@ transaction and undo boundary.
 workspace commit. A late workspace failure restores live state and rewrites
 `project.json`, but deleted assets cannot be reconstructed.
 
-**Implementation status:** C2 now moves the complete project directory behind a
+**Implementation status:** C2 moves the complete project directory behind a
 reversible pending-removal handle, writes the workspace, then finalizes deletion.
-Rollback moves the same directory back. Interrupted pending-removal recovery and
-cleanup policy remains part of this P1 before it can be closed.
+Rollback moves the same directory back. P1 recovery now writes a durable removal
+marker: prepared, missing, unreadable, or unknown markers restore the directory
+on startup; committed markers are cleanup work and are deleted on startup. This
+is deliberately conservative because `workspace.json` is not a complete project
+index and cannot prove that an uncommitted directory is disposable. If the live
+folder already exists or the original folder cannot be determined, Zetl leaves
+the pending directory untouched and logs the conflict for manual recovery.
 
 **Acceptance:**
 
@@ -102,8 +107,8 @@ cleanup policy remains part of this P1 before it can be closed.
       project directory byte-for-byte, including image assets and view data.
 - [x] A project-removal preparation failure leaves live and durable state
       unchanged.
-- [ ] Successful deletion leaves no live project directory.
-- [ ] Interrupted pending-trash entries have a documented startup recovery or
+- [x] Successful deletion leaves no live project directory.
+- [x] Interrupted pending-trash entries have a documented startup recovery or
       cleanup policy.
 
 ### P1-2. Clipboard replacement can leave partial content
@@ -117,15 +122,23 @@ original, prepares every native allocation before mutation, writes the complete
 target, and attempts rollback after any post-empty failure. Return a structured
 outcome that distinguishes staging failure, ownership loss, and restore failure.
 
+**Implementation status:** every Windows replacement now captures the complete
+current clipboard and stages both target and rollback native handles before
+EmptyClipboard. Plain text, rich text, PNG+DIB images, raw Replay bundles, and
+exact backup restore share the same all-formats-required transaction. A partial
+target is cleared and rolled back; an incomplete rollback has a distinct
+WriteFailedRestoreFailed result that runtime notifications surface. Replay and
+compile inject no paste unless the complete target transaction succeeds.
+
 **Acceptance:**
 
-- [ ] Fault injection can fail each individual native format write.
-- [ ] A failed permanent write either preserves or restores the original
+- [x] Fault injection can fail each individual native format write.
+- [x] A failed permanent write either preserves or restores the original
       clipboard and never reports success for a partial target.
-- [ ] A failed temporary Replay/compile stage does not inject a paste.
-- [ ] Restoration failure is logged and surfaced without lying about clipboard
+- [x] A failed temporary Replay/compile stage does not inject a paste.
+- [x] Restoration failure is logged and surfaced without lying about clipboard
       ownership.
-- [ ] Windows self-tests cover plain, rich, native spreadsheet, image, mixed,
+- [x] Windows self-tests cover plain, rich, native spreadsheet, image, mixed,
       and exactly empty clipboards.
 
 ### P1-3. Replay completes before final clipboard restoration
@@ -138,16 +151,25 @@ Ctrl+V can pass through and paste it again.
 conditional restoration settles. While restoring, suppress or serialize another
 paste instead of allowing ordinary pass-through.
 
+**Implementation status:** each Replay lane now enters an explicit restoring
+phase after its final item is durably consumed. The bucket remains Replay, taps
+for that lane are suppressed, and already queued taps revalidate their bucket
+after acquiring the lane gate. Conditional restore is serialized with clipboard
+staging, but the restoring phase remains lane-local so the other lane can still
+progress. Only after restore succeeds, detects newer clipboard ownership, or
+reports a visible/logged failure does Zetl return the bucket to Standard and
+announce completion.
+
 **Acceptance:**
 
-- [ ] A Ctrl+V during the final restore delay cannot paste the last Replay item
+- [x] A Ctrl+V during the final restore delay cannot paste the last Replay item
       again.
-- [ ] Replay reports completion only after restoration succeeds, is skipped
+- [x] Replay reports completion only after restoration succeeds, is skipped
       because the user changed the clipboard, or fails with a visible/logged
       outcome.
-- [ ] Main and Alternate lanes retain independent queue semantics while sharing
+- [x] Main and Alternate lanes retain independent queue semantics while sharing
       safe clipboard ownership.
-- [ ] Existing rapid-tap and newer-matching-clipboard tests remain green.
+- [x] Existing rapid-tap and newer-matching-clipboard tests remain green.
 
 ## P2 — Hardening Before Public Release
 

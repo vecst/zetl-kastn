@@ -134,10 +134,14 @@ public class PortableSelfTests
                 ("Runtime Replay resumes visible items after restart", RuntimeReplayResumesVisibleItemsAfterRestart),
                 ("Runtime rapid Replay taps consume distinct slips", RuntimeRapidReplayTapsConsumeDistinctSlips),
                 ("Runtime Replay lanes progress independently", RuntimeReplayLanesProgressIndependently),
+                ("Runtime Replay suppresses taps during final clipboard restoration", RuntimeReplaySuppressesTapDuringFinalRestore),
+                ("Runtime Replay final restoration remains lane-local", RuntimeReplayFinalRestoreRemainsLaneLocal),
+                ("Runtime Replay final restore failures complete visibly", RuntimeReplayFinalRestoreFailureCompletesVisibly),
                 ("Runtime Shift-lane Replay tap consumes a shifted paste chord", RuntimeShiftLaneReplayTapConsumesShiftedPaste),
                 ("Runtime Replay handles images and restores image clipboard", RuntimeReplayHandlesImagesAndRestoresImageClipboard),
                 ("Runtime Replay restores rich and mixed clipboard formats", RuntimeReplayRestoresRichAndMixedClipboardFormats),
                 ("Runtime Replay refuses a lossy clipboard replacement", RuntimeReplayRefusesLossyClipboardReplacement),
+                ("Runtime Replay does not paste after transactional staging fails", RuntimeReplayDoesNotPasteAfterTransactionalStageFailure),
                 ("Runtime Replay does not overwrite a newer matching clipboard", RuntimeReplayDoesNotOverwriteNewerMatchingClipboard),
                 ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
                 ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
@@ -169,6 +173,7 @@ public class PortableSelfTests
                 ("Runtime returns copy and paste compile outcomes", RuntimeReturnsCopyAndPasteCompileOutcomes),
                 ("Runtime formatted compile stages rich clipboard", RuntimeFormattedCompileStagesRichClipboard),
                 ("Runtime compile does not paste when the clipboard write fails", RuntimeCompileDoesNotPasteWhenClipboardWriteFails),
+                ("Runtime compile surfaces an uncertain clipboard rollback", RuntimeCompileSurfacesUncertainClipboardRollback),
                 ("Runtime reports rejected compiled paste", RuntimeReportsRejectedCompiledPaste),
                 ("Runtime parity scenario writes a reloadable snapshot", RuntimeParityScenarioWritesSnapshot)
         };
@@ -3305,6 +3310,23 @@ public class PortableSelfTests
                 ZetlClipboardRestoreOutcome.Failed,
                 session.RestoreIfOwned(shifted: false, item, injectedToken),
                 "A backend restore rejection should have an explicit failed outcome.");
+
+            clipboard.SetTextSucceeds = true;
+            clipboard.WriteResultOverride = null;
+            session.Reset(shifted: false);
+            AssertTrue(
+                session.TryPreserveUserClipboard(shifted: false, out failureReason),
+                $"Replay should preserve before testing an uncertain rollback: {failureReason}");
+            AssertTrue(
+                session.TryStage(shifted: false, item, out injectedToken),
+                "Replay should stage before an uncertain restore failure.");
+            clipboard.WriteResultOverride = new(
+                ZetlClipboardWriteStatus.WriteFailedRestoreFailed,
+                FailureReason: "injected partial rollback");
+            AssertEqual(
+                ZetlClipboardRestoreOutcome.FailedClipboardUncertain,
+                session.RestoreIfOwned(shifted: false, item, injectedToken),
+                "Replay must distinguish a failed restore whose rollback was also partial.");
         }
 
         private static void RuntimeClipboardContentWriterChoosesRichestRepresentation()
@@ -3463,6 +3485,167 @@ public class PortableSelfTests
             AssertEqual(0, shiftQueue.Notes.Count, "Alternate Replay should consume its slip.");
         }
 
+        private static void RuntimeReplaySuppressesTapDuringFinalRestore()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "final queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var dispatcher = new QueuingDispatcher();
+            var restoreDelay = new ManualDelay();
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out var keyboard,
+                out _,
+                delay: restoreDelay,
+                dispatcher: dispatcher);
+
+            AssertTrue(
+                coordinator.OnTapDispatched(ShortcutContext(VK_V)),
+                "The final Replay tap should be handled.");
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => keyboard.PasteCount == 1 && queue.Notes.Count == 0,
+                    TimeSpan.FromSeconds(5)),
+                "Replay should consume its final item before the restore delay settles.");
+
+            AssertEqual("Replay", queue.Settings.Kind, "The bucket must remain Replay while its clipboard is restoring.");
+            AssertFalse(
+                notifications.Messages.Exists(message => message.Contains("complete", StringComparison.OrdinalIgnoreCase)),
+                "Replay must not announce completion before clipboard restoration settles.");
+            AssertTrue(
+                coordinator.OnTapDispatched(ShortcutContext(VK_V)),
+                "A tap during final restoration should remain suppressed.");
+            dispatcher.RunAll();
+            AssertEqual(1, keyboard.PasteCount, "A suppressed tap must not paste the staged final item again.");
+
+            restoreDelay.Release();
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => queue.Settings.Kind == "Standard"
+                        && notifications.Messages.Exists(message =>
+                            message.Contains("replay complete", StringComparison.OrdinalIgnoreCase)),
+                    TimeSpan.FromSeconds(5)),
+                "Replay should finalize only after the delayed clipboard restoration settles.");
+            AssertEqual("user clipboard", clipboard.Text, "Finalization should restore the original clipboard.");
+            AssertEqual(1, keyboard.PasteCount, "Finalization must not inject another paste.");
+        }
+
+        private static void RuntimeReplayFinalRestoreRemainsLaneLocal()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Main", ["Queue"], "Queue");
+            var mainQueue = store.GetActiveBucket()!;
+            store.SetBucketKind(mainQueue, "Replay");
+            store.AddNote(mainQueue, "main final value", "copy");
+            store.CreateProject("Alternate", ["Queue"], "Queue", shifted: true);
+            var alternateQueue = store.GetActiveBucket(true)!;
+            store.SetBucketKind(alternateQueue, "Replay");
+            store.AddNote(alternateQueue, "alternate final value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var dispatcher = new QueuingDispatcher();
+            var restoreDelay = new FirstWaitManualDelay();
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out var keyboard,
+                out _,
+                delay: restoreDelay,
+                dispatcher: dispatcher);
+
+            AssertTrue(
+                coordinator.OnTapDispatched(ShortcutContext(VK_V)),
+                "Main Replay should handle its final tap.");
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => mainQueue.Notes.Count == 0 && keyboard.PasteCount == 1,
+                    TimeSpan.FromSeconds(5)),
+                "Main Replay should enter its delayed final restoration.");
+            AssertEqual("Replay", mainQueue.Settings.Kind, "Main should remain in its restoring state.");
+
+            AssertTrue(
+                coordinator.OnTapDispatched(ShortcutContext(VK_V, shifted: true)),
+                "Alternate Replay should still handle a tap while Main restores.");
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => alternateQueue.Settings.Kind == "Standard"
+                        && keyboard.PasteCount == 2,
+                    TimeSpan.FromSeconds(5)),
+                "Alternate should safely paste and finalize without waiting for Main's restore delay.");
+            AssertEqual("Replay", mainQueue.Settings.Kind, "Alternate completion must not finalize Main early.");
+            AssertTrue(
+                coordinator.OnTapDispatched(ShortcutContext(VK_V)),
+                "Main taps should remain suppressed while only Main is restoring.");
+            dispatcher.RunAll();
+            AssertEqual(2, keyboard.PasteCount, "The suppressed Main tap must not duplicate either lane's final item.");
+
+            restoreDelay.ReleaseFirst();
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => mainQueue.Settings.Kind == "Standard",
+                    TimeSpan.FromSeconds(5)),
+                "Main should finalize once its own restore delay settles.");
+            AssertEqual("user clipboard", clipboard.Text, "The lanes should converge on the original user clipboard.");
+        }
+
+        private static void RuntimeReplayFinalRestoreFailureCompletesVisibly()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "final queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var dispatcher = new QueuingDispatcher();
+            var restoreDelay = new ManualDelay();
+            var notifications = new FakeNotificationSink();
+            var logMessages = new List<string>();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out var keyboard,
+                out _,
+                delay: restoreDelay,
+                dispatcher: dispatcher,
+                log: logMessages.Add);
+
+            AssertTrue(
+                coordinator.OnTapDispatched(ShortcutContext(VK_V)),
+                "Replay should handle the final item before the injected restore failure.");
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => keyboard.PasteCount == 1 && queue.Notes.Count == 0,
+                    TimeSpan.FromSeconds(5)),
+                "Replay should reach final restoration before failure injection.");
+            clipboard.WriteResultOverride = new(
+                ZetlClipboardWriteStatus.WriteFailedRestoreFailed,
+                FailureReason: "injected final restore failure");
+
+            restoreDelay.Release();
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => queue.Settings.Kind == "Standard"
+                        && notifications.Messages.Exists(message =>
+                            message.Contains("clipboard may have changed", StringComparison.OrdinalIgnoreCase)),
+                    TimeSpan.FromSeconds(5)),
+                "A failed restore should still settle Replay with a visible integrity warning.");
+            AssertTrue(
+                logMessages.Exists(message =>
+                    message.Contains("clipboard integrity is uncertain", StringComparison.OrdinalIgnoreCase)),
+                "A failed final restore should also leave a diagnostic log entry.");
+        }
+
         private static void RuntimeShiftLaneReplayTapConsumesShiftedPaste()
         {
             using var temp = new TempStateFile();
@@ -3607,6 +3790,40 @@ public class PortableSelfTests
                 "Replay should explain that it paused to avoid a lossy clipboard replacement.");
         }
 
+        private static void RuntimeReplayDoesNotPasteAfterTransactionalStageFailure()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddNote(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1)
+            {
+                WriteResultOverride = new(
+                    ZetlClipboardWriteStatus.WriteFailedRolledBack,
+                    FailureReason: "injected target format failure")
+            };
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out var keyboard,
+                out var undo);
+
+            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertTrue(handled, "Replay should still suppress the physical paste.");
+            AssertEqual(0, keyboard.PasteCount, "Replay must not inject paste after target staging fails.");
+            AssertEqual(1, queue.Notes.Count, "The queued item must remain after staging rollback.");
+            AssertFalse(undo.TryPop(false, out _), "A failed stage must not create an undo entry.");
+            AssertTrue(
+                notifications.Messages.Exists(message =>
+                    message.Contains("clipboard was preserved", StringComparison.OrdinalIgnoreCase)),
+                "Replay should report that transactional rollback preserved the clipboard.");
+        }
+
         private static void RuntimeReplayDoesNotOverwriteNewerMatchingClipboard()
         {
             using var temp = new TempStateFile();
@@ -3618,10 +3835,11 @@ public class PortableSelfTests
             var clipboard = new FakeClipboard("original clipboard", changeToken: 1);
             var dispatcher = new QueuingDispatcher();
             var restoreDelay = new ManualDelay();
+            var notifications = new FakeNotificationSink();
             var coordinator = CreateShortcutCoordinator(
                 store,
                 clipboard,
-                new FakeNotificationSink(),
+                notifications,
                 out var keyboard,
                 out _,
                 delay: restoreDelay,
@@ -3645,7 +3863,13 @@ public class PortableSelfTests
             AssertTrue(
                 SpinWait.SpinUntil(() => dispatcher.PendingCount > 0, TimeSpan.FromSeconds(5)),
                 "The delayed restore should return to the dispatcher.");
-            dispatcher.RunAll();
+            AssertTrue(
+                dispatcher.RunUntil(
+                    () => queue.Settings.Kind == "Standard"
+                        && notifications.Messages.Exists(message =>
+                            message.Contains("newer clipboard", StringComparison.OrdinalIgnoreCase)),
+                    TimeSpan.FromSeconds(5)),
+                "Replay should settle as complete after detecting newer clipboard ownership.");
 
             AssertEqual("queued value", clipboard.Text, "Replay should leave the newer clipboard text intact.");
             AssertEqual(
@@ -3807,10 +4031,11 @@ public class PortableSelfTests
             store.AddNote(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var dispatcher = new QueuingDispatcher();
+            var notifications = new FakeNotificationSink();
             var coordinator = CreateShortcutCoordinator(
                 store,
                 clipboard,
-                new FakeNotificationSink(),
+                notifications,
                 out var keyboard,
                 out _,
                 dispatcher: dispatcher);
@@ -3827,9 +4052,13 @@ public class PortableSelfTests
 
             AssertTrue(
                 dispatcher.RunUntil(
-                    () => keyboard.PasteCount == 1 && queue.Notes.Count == 0,
+                    () => keyboard.PasteCount == 1
+                        && queue.Notes.Count == 0
+                        && queue.Settings.Kind == "Standard"
+                        && notifications.Messages.Exists(message =>
+                            message.Contains("replay complete", StringComparison.OrdinalIgnoreCase)),
                     TimeSpan.FromSeconds(5)),
-                "Running the queued work should send the replay paste and durably consume its note.");
+                "Running queued work should paste, consume, restore, and finalize Replay off the hook thread.");
         }
 
         private static void RuntimePopTapRemovesMatchingNote()
@@ -4622,6 +4851,48 @@ public class PortableSelfTests
             AssertEqual("before", clipboard.Text, "A failed clipboard write should leave the clipboard untouched.");
         }
 
+        private static void RuntimeCompileSurfacesUncertainClipboardRollback()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var source = store.CreateProject("Source", ["Inbox"], "Inbox");
+            var clipboard = new FakeClipboard("before", changeToken: 1)
+            {
+                WriteResultOverride = new(
+                    ZetlClipboardWriteStatus.WriteFailedRestoreFailed,
+                    FailureReason: "injected partial rollback")
+            };
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out _,
+                out _);
+
+            var outcome = coordinator.CompleteCompile(
+                new ZetlCompileRequest(false, source, null),
+                new ZetlCompileResult(
+                    Committed: true,
+                    CompiledText: "uncertain compile",
+                    SaveToBucket: false,
+                    DestinationProject: source,
+                    DestinationBucketName: "Inbox",
+                    Flatten: false,
+                    SelectedNoteTexts: ["uncertain compile"],
+                    PasteNow: true));
+
+            AssertEqual(
+                ZetlCompileOutcome.RestoreTarget,
+                outcome,
+                "An uncertain clipboard must never request paste injection.");
+            AssertTrue(
+                notifications.Messages.Single().Contains(
+                    "could not fully restore",
+                    StringComparison.OrdinalIgnoreCase),
+                "The user should be told that clipboard rollback was incomplete.");
+        }
+
         private static void RuntimeReportsRejectedCompiledPaste()
         {
             using var temp = new TempStateFile();
@@ -4675,7 +4946,8 @@ public class PortableSelfTests
             bool quickNoteToClipboard = false,
             bool replayResumeClipboard = true,
             IZetlDispatcher? dispatcher = null,
-            IImageUrlResolver? imageUrlResolver = null)
+            IImageUrlResolver? imageUrlResolver = null,
+            Action<string>? log = null)
         {
             keyboard = new FakeKeyboardBackend();
             undo = new ZetlUndoStack(100);
@@ -4695,7 +4967,7 @@ public class PortableSelfTests
                 notifications,
                 undo,
                 () => settings,
-                _ => { },
+                log ?? (_ => { }),
                 imageUrlResolver);
         }
 
@@ -5022,6 +5294,8 @@ public class PortableSelfTests
 
             public bool SetTextSucceeds { get; set; } = true;
 
+            public ZetlClipboardWriteResult? WriteResultOverride { get; set; }
+
             public string? BackupFailureReason { get; set; }
 
             public string? TryGetText()
@@ -5061,6 +5335,9 @@ public class PortableSelfTests
                 return true;
             }
 
+            public ZetlClipboardWriteResult ReplaceText(string text) =>
+                WriteResultOverride ?? ZetlClipboardWriteResult.FromLegacy(SetText(text));
+
             public bool SetRichText(string plainText, string html)
             {
                 if (!SetTextSucceeds)
@@ -5075,6 +5352,10 @@ public class PortableSelfTests
                 ChangeToken++;
                 return true;
             }
+
+            public ZetlClipboardWriteResult ReplaceRichText(string plainText, string html) =>
+                WriteResultOverride
+                ?? ZetlClipboardWriteResult.FromLegacy(SetRichText(plainText, html));
 
             public bool SetImage(ZetlClipboardImage image)
             {
@@ -5091,6 +5372,9 @@ public class PortableSelfTests
                 ChangeToken++;
                 return true;
             }
+
+            public ZetlClipboardWriteResult ReplaceImage(ZetlClipboardImage image) =>
+                WriteResultOverride ?? ZetlClipboardWriteResult.FromLegacy(SetImage(image));
 
             public ZetlClipboardBackup CaptureBackup()
             {
@@ -5152,6 +5436,10 @@ public class PortableSelfTests
                 return true;
             }
 
+            public ZetlClipboardWriteResult ReplaceWithBackup(ZetlClipboardBackup backup) =>
+                WriteResultOverride
+                ?? ZetlClipboardWriteResult.FromLegacy(RestoreBackup(backup));
+
             public uint GetChangeToken()
             {
                 return ChangeToken;
@@ -5177,6 +5465,25 @@ public class PortableSelfTests
                 NativeReplayFormats = null;
                 Image = image;
                 ChangeToken = changeToken;
+            }
+        }
+
+        private sealed class FirstWaitManualDelay : IZetlDelay
+        {
+            private readonly TaskCompletionSource first = new(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            private int waitCount;
+
+            public Task WaitAsync(TimeSpan delay)
+            {
+                return Interlocked.Increment(ref waitCount) == 1
+                    ? first.Task
+                    : Task.CompletedTask;
+            }
+
+            public void ReleaseFirst()
+            {
+                first.TrySetResult();
             }
         }
 
