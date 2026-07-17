@@ -6,12 +6,16 @@ canonical app is `Zetl.exe`.
 ## Prepare
 
 1. Quit any running Zetl instance.
-2. Build and publish:
+2. Build and publish both applications from a clean worktree:
 
    ```powershell
    dotnet build Zetl.slnx
-   dotnet publish Zetl.App\Zetl.App.csproj -p:PublishProfile=win-x64
+   .\scripts\publish-win-x64.ps1 -RunArtifactChecks
    ```
+
+   The publish script stages a fresh bundle, requires `Zetl.exe` and
+   `Kastn.exe` to identify the same Git commit, and leaves the previous bundle
+   untouched if either publish or artifact check fails.
 
 3. Start `artifacts\publish\win-x64\Zetl.exe`.
 4. Keep `%AppData%\Zetl` backed up while testing state-changing workflows.

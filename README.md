@@ -28,13 +28,17 @@ Run the Avalonia tray application with the .NET SDK:
 dotnet run --project Zetl.App
 ```
 
-Publish the self-contained Windows artifact with:
+Publish the self-contained Windows bundle with:
 
 ```powershell
-dotnet publish Zetl.App\Zetl.App.csproj -p:PublishProfile=win-x64
+.\scripts\publish-win-x64.ps1
 ```
 
-The published app is `artifacts\publish\win-x64\Zetl.exe`.
+The script stages both Zetl and Kastn, verifies that both executables identify
+the current clean Git commit, and then replaces the previous bundle. The
+published apps are `artifacts\publish\win-x64\Zetl.exe` and `Kastn.exe`.
+Use `-RunArtifactChecks` for the RC publish to run the live Windows clipboard
+self-tests and disposable persistence scenario before the bundle is installed.
 
 Zetl lives in the Windows notification area. Its tray menu provides:
 
@@ -481,3 +485,9 @@ Linux architecture and remaining platform work are documented in
 [`docs/linux-roadmap.md`](docs/linux-roadmap.md).
 
 The complete documentation map is [`docs/README.md`](docs/README.md).
+
+## License
+
+Zetl is free software licensed under the
+[GNU General Public License version 3](LICENSE), version 3 only
+(`GPL-3.0-only`).
