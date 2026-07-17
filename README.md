@@ -489,5 +489,5 @@ The complete documentation map is [`docs/README.md`](docs/README.md).
 ## License
 
 Zetl is free software licensed under the
-[GNU General Public License version 3](LICENSE), version 3 only
-(`GPL-3.0-only`).
+[GNU General Public License version 3](LICENSE), version 3 or any later version
+(`GPL-3.0-or-later`).
