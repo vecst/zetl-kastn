@@ -96,7 +96,9 @@ recursive shortcut handling.
 - [ ] Before Replay, copy rich text, RTF, spreadsheet cells, files, and mixed
       text/image content; verify every advertised clipboard format returns
       after each paste. If Zetl reports an unsupported format, verify Replay
-      leaves both the clipboard and queued slip untouched.
+      leaves both the clipboard and queued slip untouched. Use the controlled
+      [Explorer file-list restoration](rc-testing-workflow.md#explorer-file-list-restoration)
+      procedure for the file-list case.
 - For a manual Replay clipboard baseline, prefer the application's context-menu
   **Copy** command. It updates the clipboard without routing the copy gesture
   through Zetl's keyboard auto-capture path.

@@ -139,6 +139,58 @@ Run the restoration matrix:
 | File Explorer | The same file-list clipboard can still be pasted |
 | Mixed text/image source | Every advertised representation remains usable |
 
+#### Explorer File-List Restoration
+
+This test proves that Replay restores a multi-item Windows shell clipboard, not
+just its visible text fallback.
+
+Prepare an isolated source and two verification destinations in PowerShell:
+
+```powershell
+$root = Join-Path $env:TEMP ("zetl-rc-file-list-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+$source = New-Item -ItemType Directory -Path (Join-Path $root "source")
+$afterOne = New-Item -ItemType Directory -Path (Join-Path $root "after-replay-01")
+$afterTwo = New-Item -ItemType Directory -Path (Join-Path $root "after-replay-02")
+Set-Content -LiteralPath (Join-Path $source "alpha.txt") -Value "FILELIST-ALPHA"
+Set-Content -LiteralPath (Join-Path $source "beta.txt") -Value "FILELIST-BETA"
+New-Item -ItemType Directory -Path (Join-Path $source "empty-folder")
+Invoke-Item $root
+```
+
+Then run the test:
+
+1. In a dedicated active project and bucket, create two plain-text slips named
+   `FILELIST-REPLAY-01` and `FILELIST-REPLAY-02`. Create them directly through
+   Zetl Board or Kastn so setup does not depend on clipboard capture.
+2. Set that bucket to Replay and confirm both slips are queued in that order.
+3. In Explorer's `source` folder, select `alpha.txt`, `beta.txt`, and
+   `empty-folder`. Right-click and choose **Copy**. Do not press `Ctrl+C`; the
+   context-menu command avoids Zetl's auto-capture path.
+4. Without copying anything else, switch to a plain editor and tap `Ctrl+V`.
+   Confirm the first Replay item appears as `FILELIST-REPLAY-01`.
+5. Open `after-replay-01` in Explorer, right-click its empty background, and
+   choose **Paste**. Confirm all three selected entries appear, both text files
+   retain their exact sentinel contents, and the source entries still exist.
+6. Return to the editor without copying anything and tap `Ctrl+V` again.
+   Confirm the second item appears as `FILELIST-REPLAY-02` and the Replay bucket
+   completes normally.
+7. Open `after-replay-02`, use Explorer's context-menu **Paste**, and verify the
+   same three entries and file contents again.
+8. Confirm the Replay review bucket contains exactly the two consumed slips and
+   the user clipboard remains the Explorer file list rather than the second
+   Replay item's text.
+
+Pass means the file list can be pasted after **both** Replay operations, the
+copy operation remains a copy rather than becoming a move, and there are no
+missing, renamed, or damaged entries.
+
+If Replay reports an unsupported clipboard format and keeps the queued slip,
+verify the original file list still pastes and record the exact format name.
+That confirms the fail-safe behavior, but the restoration capability remains
+unpassed and needs a checklist TODO. If Replay proceeds but either verification
+paste fails, stop and preserve the disposable profile and notification/log
+evidence.
+
 For Calc fidelity, distinguish the two values deliberately:
 
 - the Replay slip is the content Zetl will stage;
