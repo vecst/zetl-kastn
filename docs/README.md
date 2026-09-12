@@ -34,6 +34,10 @@ These are the authoritative places to answer “what remains?”
 
 ## Focused Design Records
 
+- [`coldkey-ideas-discussion.md`](coldkey-ideas-discussion.md) — post-RC
+  Coldkey and portable text-interaction ideas; discussion only
+- [`kastn-compile-split.md`](kastn-compile-split.md) — historical product
+  rationale for the Zetl, Compile, and Kastn boundary
 - [`kastn-ui-roadmap.md`](kastn-ui-roadmap.md) — Kastn UI work already landed
   and the remaining linked-slip/board designs
 - [`kastn-templates-roadmap.md`](kastn-templates-roadmap.md) — template and
