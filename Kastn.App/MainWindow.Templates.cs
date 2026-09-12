@@ -533,29 +533,32 @@ internal partial class MainWindow
             return;
         }
 
-        var temporaryLane = await ResolveTemporaryTemplateLaneAsync(template);
-        if (template.Temporary && template.IsConsumable && temporaryLane is null)
-        {
-            return;
-        }
-
-        var name = await KastnDialogs.PromptAsync(
+        var prompt = await KastnDialogs.PromptTemplateProjectAsync(
             this,
             $"New {template.Name} Project",
-            "Project name",
             template.Name,
+            allowTemporary: template.IsConsumable,
+            initialTemporary: template.Temporary,
             candidate => projects.Any(project =>
                 string.Equals(project.Name, candidate, StringComparison.OrdinalIgnoreCase))
                 ? "A project with that name already exists."
                 : null);
-        if (string.IsNullOrWhiteSpace(name))
+        if (prompt is null)
+        {
+            return;
+        }
+
+        var useTemporary = template.IsConsumable && prompt.Temporary;
+        var temporaryLane = await ResolveTemporaryTemplateLaneAsync(template, useTemporary);
+        if (useTemporary && temporaryLane is null)
         {
             return;
         }
 
         var create = template.ToCreateProjectCommand(
-            name.Trim(),
-            temporaryLane);
+            prompt.Name,
+            temporaryLane,
+            temporary: useTemporary);
         create = create with
         {
             ActivateShifted = string.Equals(temporaryLane, ZetlStateStore.ShiftLane, StringComparison.Ordinal)
@@ -601,9 +604,11 @@ internal partial class MainWindow
         HandleSimpleResponse(response, $"Created a project from the {template.Name} template.");
     }
 
-    private async Task<string?> ResolveTemporaryTemplateLaneAsync(ZetlTemplateDocument template)
+    private async Task<string?> ResolveTemporaryTemplateLaneAsync(
+        ZetlTemplateDocument template,
+        bool useTemporary)
     {
-        if (!template.Temporary || !template.IsConsumable)
+        if (!useTemporary || !template.IsConsumable)
         {
             return null;
         }

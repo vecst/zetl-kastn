@@ -154,6 +154,8 @@ Kastn owns:
 - [x] Ensure startup recovery removes abandoned temporary instances safely.
 - [x] Add explicit Kastn lane choice and an optional remembered default for
       temporary template use.
+- [x] Let each Kastn consumable-template use override the template's durable or
+      temporary default before project creation.
 - [x] Show temporary projects in Kastn's landing project list through role
       groups (Pinned, Main, Alternate, Projects), rather than hiding them.
 

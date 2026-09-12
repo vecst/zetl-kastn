@@ -263,6 +263,10 @@ optional starter cards.
 - **Capture templates** create projects to collect material into.
 - **Consumable templates** create ordered Replay queues.
 
+When Kastn starts a consumable template, its saved Temporary setting becomes a
+per-use default: the new project can be kept normally or deleted automatically
+when it leaves the selected lane.
+
 Hold `Ctrl+T` to open the template picker. Held `Ctrl+V` also opens it,
 defaulting to Consumable templates, when there is no active project or compile
 content.

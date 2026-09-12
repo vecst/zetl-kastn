@@ -185,6 +185,31 @@ public class ZetlTemplateDocumentTests
         AssertEqual(ZetlStateStore.TemporaryConsumableProjectKind, command.Kind, "Temporary flag should project to the create command.");
         AssertEqual(template.Id, command.SourceTemplateId, "Temporary projects should remember their source template.");
         AssertEqual(ZetlStateStore.NormalLane, command.TemporaryLane, "Temporary projects should carry their owning lane.");
+
+        template.Temporary = false;
+        var useTimeTemporary = template.ToCreateProjectCommand(
+            "One Shot",
+            ZetlStateStore.ShiftLane,
+            temporary: true);
+        AssertEqual(
+            ZetlStateStore.TemporaryConsumableProjectKind,
+            useTimeTemporary.Kind,
+            "Use-time temporary choice should override a durable template default.");
+        AssertEqual(
+            ZetlStateStore.ShiftLane,
+            useTimeTemporary.TemporaryLane,
+            "Use-time temporary choice should keep the selected lane.");
+
+        template.Temporary = true;
+        var useTimeDurable = template.ToCreateProjectCommand(
+            "Keep This",
+            ZetlStateStore.NormalLane,
+            temporary: false);
+        AssertEqual(
+            ZetlStateStore.StandardProjectKind,
+            useTimeDurable.Kind,
+            "Use-time durable choice should override a temporary template default.");
+        AssertEqual(null, useTimeDurable.TemporaryLane, "Durable projects should not retain a temporary lane.");
     }
 
     private static ZetlTemplateDocument Valid() => new()

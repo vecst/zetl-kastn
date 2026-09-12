@@ -10,6 +10,7 @@ namespace KASTN;
 
 internal static class KastnDialogs
 {
+    public sealed record TemplateProjectPromptResult(string Name, bool Temporary);
     public sealed record TemporaryTemplateLaneResult(string Lane, bool Remember);
     public sealed record LinkEditResult(string? Href, bool Remove);
 
@@ -90,6 +91,85 @@ internal static class KastnDialogs
             input.SelectAll();
         };
         return await dialog.ShowDialog<string?>(owner);
+    }
+
+    public static async Task<TemplateProjectPromptResult?> PromptTemplateProjectAsync(
+        Window owner,
+        string title,
+        string initialName,
+        bool allowTemporary,
+        bool initialTemporary,
+        Func<string, string?>? validate = null)
+    {
+        var input = new TextBox { Text = initialName };
+        var temporary = new CheckBox
+        {
+            Content = "Temporary project",
+            IsChecked = allowTemporary && initialTemporary,
+            IsVisible = allowTemporary
+        };
+        var temporaryHelp = new TextBlock
+        {
+            Text = "Delete this project when it leaves the selected lane.",
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            Opacity = 0.72,
+            IsVisible = allowTemporary
+        };
+        var validation = new TextBlock
+        {
+            Foreground = Avalonia.Media.Brushes.OrangeRed,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            IsVisible = false
+        };
+        var dialog = Dialog(title, 430, allowTemporary ? 260 : 190);
+        var ok = new Button { Content = "OK", Width = 84, IsDefault = true };
+        var cancel = new Button { Content = "Cancel", Width = 84, IsCancel = true };
+        ok.Click += (_, _) =>
+        {
+            var value = input.Text?.Trim() ?? "";
+            if (value.Length == 0)
+            {
+                validation.Text = "Enter a value first.";
+                validation.IsVisible = true;
+                input.Focus();
+                return;
+            }
+
+            var error = validate?.Invoke(value);
+            if (error is not null)
+            {
+                validation.Text = error;
+                validation.IsVisible = true;
+                input.Focus();
+                input.SelectAll();
+                return;
+            }
+
+            dialog.Close(new TemplateProjectPromptResult(
+                value,
+                allowTemporary && temporary.IsChecked == true));
+        };
+        cancel.Click += (_, _) => dialog.Close(null);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(18),
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "Project name" },
+                input,
+                temporary,
+                temporaryHelp,
+                validation,
+                Buttons(ok, cancel)
+            }
+        };
+        dialog.Opened += (_, _) =>
+        {
+            input.Focus();
+            input.SelectAll();
+        };
+        return await dialog.ShowDialog<TemplateProjectPromptResult?>(owner);
     }
 
     public static async Task<LinkEditResult?> EditWebLinkAsync(

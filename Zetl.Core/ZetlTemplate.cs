@@ -60,10 +60,13 @@ internal sealed class ZetlTemplateDocument
     /// afterwards through <c>AddSlip</c> by the caller, because the create
     /// contract carries bucket structure, not slip content.
     /// </summary>
-    public CreateProjectCommand ToCreateProjectCommand(string projectName, string? temporaryLane = null)
+    public CreateProjectCommand ToCreateProjectCommand(
+        string projectName,
+        string? temporaryLane = null,
+        bool? temporary = null)
     {
         var lane = ZetlStateStore.CanonicalTemporaryLane(temporaryLane);
-        var shouldCreateTemporary = Temporary && IsConsumable && lane is not null;
+        var shouldCreateTemporary = (temporary ?? Temporary) && IsConsumable && lane is not null;
         return new CreateProjectCommand
         {
             Name = projectName,
