@@ -5,7 +5,8 @@ canonical app is `Zetl.exe`.
 
 ## Current RC Pass
 
-- Build: `927abe4` (`origin/master` at the start of the pass)
+- Baseline build: `927abe4` (`origin/master` at the start of the pass)
+- Template recovery follow-up: `58e0510`
 - Platform: Windows, tested through the published disposable-profile bundle
 - Status: in progress; checked items passed manually and inline TODO entries
   record issues observed during the pass
@@ -117,6 +118,10 @@ recursive shortcut handling.
       updates and the caption survives restart.
 - [ ] Compile formatted, unformatted, and TSV output.
 - [ ] Save structured and flattened compile results to another bucket.
+- [x] Use a Consumable template once as durable and once as Temporary. The
+      durable project remains active with its Replay bucket after completion;
+      the temporary project uses the selected lane and removes itself when its
+      Replay queue is exhausted.
 - [ ] Export clean and archive project packages; confirm only the archive keeps
       application/window-title provenance and captured native/HTML source data.
 - [ ] Open a project in Kastn; apply font family, font size, and text color to one
