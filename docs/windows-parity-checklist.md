@@ -1,7 +1,9 @@
 # Windows Smoke Checklist
 
 Use this checklist for Windows dogfood and release-candidate smoke passes. The
-canonical app is `Zetl.exe`.
+canonical app is `Zetl.exe`. Follow
+[rc-testing-workflow.md](rc-testing-workflow.md) for the test order, disposable
+profile setup, evidence record, and rerun rules.
 
 ## Current RC Pass
 
