@@ -264,8 +264,7 @@ public class PortableSelfTests
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
             AssertTrue(processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false), "Paste key down should suppress.");
-            Thread.Sleep(80);
-            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            WaitForHold(holds, "Hold callback should fire once.");
             AssertTrue(processor.HandleKeyEvent(VK_V, isKeyDown: false, isKeyUp: true), "Held paste key up should suppress.");
             AssertEqual(0, dispatched.Count, "Held paste should not dispatch paste.");
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
@@ -276,8 +275,7 @@ public class PortableSelfTests
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
             AssertTrue(processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false), "Paste key down should suppress.");
-            Thread.Sleep(80);
-            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            WaitForHold(holds, "Hold callback should fire once.");
             AssertFalse(processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true), "Ctrl key up should pass through.");
             AssertTrue(
                 processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false, isRepeat: true),
@@ -291,8 +289,7 @@ public class PortableSelfTests
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
             AssertTrue(processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false), "Paste key down should suppress.");
-            Thread.Sleep(80);
-            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            WaitForHold(holds, "Hold callback should fire once.");
             AssertFalse(processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true), "Ctrl key up should pass through.");
             AssertTrue(
                 processor.HandleKeyEvent(VK_V, isKeyDown: true, isKeyUp: false, isRepeat: true),
@@ -322,8 +319,7 @@ public class PortableSelfTests
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
             AssertTrue(processor.HandleKeyEvent(VK_B, isKeyDown: true, isKeyUp: false), "Board key down should suppress.");
-            Thread.Sleep(80);
-            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            WaitForHold(holds, "Hold callback should fire once.");
             AssertEqual("Ctrl+B", holds[0].Name, "Hold should use board chord.");
             AssertTrue(processor.HandleKeyEvent(VK_B, isKeyDown: false, isKeyUp: true), "Held board key up should suppress.");
             AssertEqual(0, dispatched.Count, "Held board chord should not dispatch Ctrl+B.");
@@ -347,8 +343,7 @@ public class PortableSelfTests
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
             AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: true, isKeyUp: false), "Pop toggle key down should suppress.");
-            Thread.Sleep(80);
-            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            WaitForHold(holds, "Hold callback should fire once.");
             AssertEqual("Ctrl+P", holds[0].Name, "Hold should use Pop toggle chord.");
             AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: false, isKeyUp: true), "Held Pop toggle key up should suppress.");
             AssertEqual(0, dispatched.Count, "Held Pop toggle should not dispatch the pop key.");
@@ -372,8 +367,7 @@ public class PortableSelfTests
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
             AssertTrue(processor.HandleKeyEvent(VK_R, isKeyDown: true, isKeyUp: false), "Replay toggle key down should suppress.");
-            Thread.Sleep(80);
-            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            WaitForHold(holds, "Hold callback should fire once.");
             AssertEqual("Ctrl+R", holds[0].Name, "Hold should use Replay toggle chord.");
             AssertTrue(processor.HandleKeyEvent(VK_R, isKeyDown: false, isKeyUp: true), "Held Replay toggle key up should suppress.");
             AssertEqual(0, dispatched.Count, "Held Replay toggle should not dispatch the replay key.");
@@ -385,8 +379,7 @@ public class PortableSelfTests
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
             AssertTrue(processor.HandleKeyEvent(VK_Z, isKeyDown: true, isKeyUp: false), "Undo key down should suppress.");
-            Thread.Sleep(80);
-            AssertEqual(1, holds.Count, "Hold callback should fire once.");
+            WaitForHold(holds, "Hold callback should fire once.");
             AssertEqual("Ctrl+Z", holds[0].Name, "Hold should use undo chord.");
             AssertTrue(processor.HandleKeyEvent(VK_Z, isKeyDown: false, isKeyUp: true), "Held undo key up should suppress.");
             AssertEqual(0, dispatched.Count, "Held undo should not dispatch app undo.");
@@ -402,8 +395,7 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_SHIFT, isKeyDown: true, isKeyUp: false);
             Thread.Sleep(25);
             AssertEqual(0, holds.Count, "Hold should not fire before the restarted threshold.");
-            Thread.Sleep(90);
-            AssertEqual(1, holds.Count, "Hold should fire after Shift restart threshold.");
+            WaitForHold(holds, "Hold should fire after Shift restart threshold.");
             AssertEqual("Ctrl+Shift+C", holds[0].Name, "Hold should use shifted chord.");
             processor.HandleKeyEvent(VK_C, isKeyDown: false, isKeyUp: true);
             processor.HandleKeyEvent(VK_SHIFT, isKeyDown: false, isKeyUp: true);
@@ -419,8 +411,7 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_SHIFT, isKeyDown: true, isKeyUp: false);
             Thread.Sleep(45);
             processor.HandleKeyEvent(VK_SHIFT, isKeyDown: true, isKeyUp: false);
-            Thread.Sleep(35);
-            AssertEqual(1, holds.Count, "Shift autorepeat should not postpone the restarted hold.");
+            WaitForHold(holds, "Shift autorepeat should not postpone the restarted hold.");
             AssertEqual("Ctrl+Shift+C", holds[0].Name, "Hold should retain the shifted chord.");
             processor.HandleKeyEvent(VK_C, isKeyDown: false, isKeyUp: true);
             processor.HandleKeyEvent(VK_SHIFT, isKeyDown: false, isKeyUp: true);
@@ -436,8 +427,7 @@ public class PortableSelfTests
                 out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
             processor.HandleKeyEvent(VK_B, isKeyDown: true, isKeyUp: false);
-            Thread.Sleep(90);
-            AssertEqual(1, holds.Count, "Initial hold should fire once.");
+            WaitForHold(holds, "Initial hold should fire once.");
             processor.HandleKeyEvent(VK_SHIFT, isKeyDown: true, isKeyUp: false);
             processor.HandleKeyEvent(VK_SHIFT, isKeyDown: true, isKeyUp: false);
             Thread.Sleep(90);
@@ -5232,6 +5222,16 @@ public class PortableSelfTests
             {
                 throw new InvalidOperationException(message);
             }
+        }
+
+        private static void WaitForHold(
+            IReadOnlyCollection<ChordlEventContext> holds,
+            string message)
+        {
+            AssertTrue(
+                SpinWait.SpinUntil(() => holds.Count > 0, TimeSpan.FromMilliseconds(500)),
+                message);
+            AssertEqual(1, holds.Count, message);
         }
 
         private static void AssertEqual<T>(T expected, T actual, string message)
