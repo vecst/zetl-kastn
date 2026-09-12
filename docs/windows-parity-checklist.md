@@ -3,6 +3,13 @@
 Use this checklist for Windows dogfood and release-candidate smoke passes. The
 canonical app is `Zetl.exe`.
 
+## Current RC Pass
+
+- Build: `927abe4` (`origin/master` at the start of the pass)
+- Platform: Windows, tested through the published disposable-profile bundle
+- Status: in progress; checked items passed manually and inline TODO entries
+  record issues observed during the pass
+
 ## Prepare
 
 1. Quit any running Zetl instance.
@@ -33,38 +40,53 @@ recursive shortcut handling.
 
 ## Startup And Tray
 
-- [ ] First launch shows `How Zetl Works`; closing it leaves Zetl in the tray.
-- [ ] A tray-icon click opens the normal Board.
-- [ ] Every tray menu action opens the expected flow.
-- [ ] A second launch reports that Zetl is already running and exits.
-- [ ] `Quit` removes the tray icon and a later launch starts normally.
-- [ ] Ending Zetl from Task Manager does not corrupt state and a later launch
+- [x] First launch shows `How Zetl Works`; closing it leaves Zetl in the tray.
+- [x] A tray-icon double-click opens the normal Board; a single click is inert.
+- [ ] **TODO:** Fresh-profile startup should initialize and activate the normal
+      and Shift Journal projects. Even after a Shift Journal exists and is saved
+      as `shiftDefaultJournalProjectId`, `shiftActiveProjectId` remains blank;
+      the tray action and held `Ctrl+Shift+B` then fall back to the normal active
+      project instead of opening the Shift Journal. Merely selecting the Shift
+      project is not remembered; it must be explicitly activated. With no active
+      Shift project, reopen the last selected Shift project (or its Journal)
+      rather than falling back across lanes.
+- [x] Every tray menu action opens the expected flow.
+- [x] A second launch reports that Zetl is already running and exits.
+- [x] `Quit` removes the tray icon and a later launch starts normally.
+- [ ] **TODO:** Coordinated Quit must foreground Kastn's confirmation when
+      Kastn is behind other windows and must coalesce repeated Quit requests.
+      Currently a second Quit can close Zetl before Kastn confirms, after which
+      the still-running Kastn relaunches Zetl.
+- [x] Ending Zetl from Task Manager does not corrupt state and a later launch
       starts normally.
-- [ ] With a dirty Kastn editor, test normal Exit and coordinated Zetl Quit both
+- [x] With a dirty Kastn editor, test normal Exit and coordinated Zetl Quit both
       online and offline; verify save, keep-recovery, discard, and cancel paths.
-- [ ] Force-terminate Kastn after typing, relaunch it, and confirm the matching
+- [x] Force-terminate Kastn after typing, relaunch it, and confirm the matching
       project/slip opens with the local draft; change the slip remotely first and
       confirm recovery opens a conflict without losing either version.
+- [ ] **TODO:** Keep Kastn's recovered-conflict panel above the status bar.
+      Its two version previews currently overflow into the status area even at
+      the normal manual-test window size.
 
 ## Shortcut Workflows
 
-- [ ] Tap `Ctrl+C`, `Ctrl+X`, `Ctrl+V`, `Ctrl+B`, `Ctrl+P`, `Ctrl+R`, and
+- [x] Tap `Ctrl+C`, `Ctrl+X`, `Ctrl+V`, `Ctrl+B`, `Ctrl+P`, `Ctrl+R`, and
       `Ctrl+Z`; the foreground application keeps its normal tap behavior.
-- [ ] Held `Ctrl+C` captures copied text and click-away commits the slip.
-- [ ] Plain `Ctrl+C` captures clipboard images into the active bucket; verify
+- [x] Held `Ctrl+C` captures copied text and click-away commits the slip.
+- [x] Plain `Ctrl+C` captures clipboard images into the active bucket; verify
       Board thumbnail, full preview, provenance, deduplication, and ZIP export.
-- [ ] Copy a direct image URL; verify Zetl downloads it into the project's
+- [x] Copy a direct image URL; verify Zetl downloads it into the project's
       `assets` folder, retains the final URL privately, and keeps HTML/non-image
       URLs as text slips.
-- [ ] Held `Ctrl+C` with an image opens the image capture dialog; verify its
+- [x] Held `Ctrl+C` with an image opens the image capture dialog; verify its
       preview, optional caption, project/bucket routing, and click-away commit.
-- [ ] Held `Ctrl+X` opens quick note capture and respects the clipboard setting.
-- [ ] Held `Ctrl+B` opens an auto-hiding Board; held `Ctrl+Shift+B` uses the
+- [x] Held `Ctrl+X` opens quick note capture and respects the clipboard setting.
+- [x] Held `Ctrl+B` opens an auto-hiding Board; held `Ctrl+Shift+B` uses the
       Shift lane.
-- [ ] Held `Ctrl+V` opens Compile; click-away cancels without changing state.
-- [ ] Replay pastes in order, archives consumed slips, restores the user's
+- [x] Held `Ctrl+V` opens Compile; click-away cancels without changing state.
+- [x] Replay pastes in order, archives consumed slips, restores the user's
       clipboard, and can be undone.
-- [ ] In LibreOffice Calc, copy cells containing bold, underline, and right
+- [x] In LibreOffice Calc, copy cells containing bold, underline, and right
       alignment into a Replay bucket; verify each Replay paste preserves those
       styles without adding wrap/alignment rules, and the final clipboard
       restore preserves the original rich cells.
@@ -72,6 +94,9 @@ recursive shortcut handling.
       text/image content; verify every advertised clipboard format returns
       after each paste. If Zetl reports an unsupported format, verify Replay
       leaves both the clipboard and queued slip untouched.
+- For a manual Replay clipboard baseline, prefer the application's context-menu
+  **Copy** command. It updates the clipboard without routing the copy gesture
+  through Zetl's keyboard auto-capture path.
 - [ ] During Replay's restore delay, copy new rich content whose visible text
       matches the queued slip; verify Zetl does not overwrite the newer copy.
 - [ ] Pop removes the matching pasted slip and can be undone.
@@ -85,6 +110,9 @@ recursive shortcut handling.
 
 - [ ] Create, rename, select, and delete projects, buckets, nested buckets, and
       slips in both lanes.
+- [ ] **TODO:** Record project and bucket creation in Notification History and
+      `Zetl Logs`, including the direct tray/Board paths that currently persist
+      silently.
 - [ ] Edit and clear an image caption from the Board; verify its slip-list label
       updates and the caption survives restart.
 - [ ] Compile formatted, unformatted, and TSV output.
