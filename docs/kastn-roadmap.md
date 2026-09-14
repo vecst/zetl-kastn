@@ -131,6 +131,15 @@ leverage.
       the supported window sizes.
 - [ ] Record project and bucket creation in Notification History and the
       protected `Zetl Logs` project.
+- [ ] Correct capture and Replay destination defaults: prefer the lane's current
+      project, and within a rolling Journal prefer today's child rather than the
+      first seeded Monday child.
+- [ ] Decode valid clipboard `data:image/...;base64,...` payloads into normalized
+      image slips under the same MIME, dimension, and size validation used for
+      clipboard and HTTP images; malformed or unsupported data URIs stay text.
+- [ ] Preserve lane activation when a Quick Note is submitted to the
+      already-active project. No completion path should clear the active project
+      unless the user explicitly chooses to deactivate it.
 
 Done when no tested crash path loses an acknowledged mutation, conflict recovery
 never silently discards an edit, and capture latency remains acceptable while
