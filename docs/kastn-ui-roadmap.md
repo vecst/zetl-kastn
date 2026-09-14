@@ -202,14 +202,18 @@ bucket undo.
 
 ## Landing Lane Cards
 
-The landing page should expose the two active lanes as stable places rather
-than mixing lane state into an ordinary project list. The built-in labels are
+Status: implemented. The current landing page renders Main and Alternate as
+stable lane cards and places an active temporary consumable above its underlying
+durable project as a progress-bearing overlay.
+
+The landing page exposes the two active lanes as stable places rather than
+mixing lane state into an ordinary project list. The built-in labels are
 Main and Alternate, but users may rename both labels in settings. Blank custom
-labels mean "use the default." Custom labels should be short, with a maximum of
+labels mean "use the default." Custom labels are short, with a maximum of
 20 characters, so card headers, buttons, and menus stay predictable.
 
 Temporary consumable projects are lane overlays, not a third lane. When a
-temporary queue is active in a lane, Kastn should render it as a stacked card on
+temporary queue is active in a lane, Kastn renders it as a stacked card on
 top of that lane's underlying project card:
 
 ```text
@@ -286,7 +290,7 @@ directions.
 
 ### Deleted Slips
 
-- [ ] Deleted slips should be accessed through an explicit `View Deleted` button
+- [x] Deleted slips should be accessed through an explicit `View Deleted` button
       rather than letting the protected `Deleted` bucket appear wherever it falls
       in the tree.
 - [x] While browsing deleted slips, the button text should switch to `Read Slips`
@@ -296,10 +300,10 @@ directions.
 
 ### View And Layout Polish
 
-- [ ] Add per-view title controls: hide the project name, use the project name,
+- [x] Add per-view title controls: hide the project name, use the project name,
       or provide a custom document title.
-- [ ] Hiding an item low in a long View briefly flashes/scrolls to the top before
-      restoring position. Preserve scroll without the visible jump.
+- [x] Preserve View scroll synchronously across rebuilds so hiding an item low in
+      a long View does not visibly flash or jump to the top.
 - [ ] Compare the left Buckets and Slips pane layout against the center View
       layout; spacing, hierarchy, and visual rhythm currently feel mismatched.
 

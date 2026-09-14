@@ -68,7 +68,8 @@ shape:
       current View.
 - [x] Switch the Deleted toggle to `Read Slips` while browsing deleted slips.
 - [x] Let Board Mode card edits save with `Ctrl+Enter`.
-- [x] Restore/focus Kastn during Zetl quit when Kastn is minimized or hidden.
+- [x] Restore/focus Kastn for the initial coordinated Quit request when Kastn is
+      minimized or hidden.
 - [x] Make Markdown/HTML task export idempotent: authored task syntax is not
       double-prefixed, and HTML task output uses checkbox inputs.
 - [x] Keep Zetl quick Compile `Plain` and `TSV` literal while letting
@@ -120,9 +121,16 @@ leverage.
       policy.
 - [ ] Dogfood both applications together through restart, capture, editing, and
       publishing workflows.
-- [x] Fix minimized/hidden Kastn quit handoff: when the user chooses Quit from
-      Zetl, Kastn should surface the quit path or take focus instead of
-      requiring the user to manually restore Kastn first.
+- [ ] Make coordinated Quit re-entrant and reliably foreground its existing
+      Kastn confirmation. A repeated tray Quit can currently close Zetl before
+      Kastn answers, after which the still-running Kastn relaunches Zetl.
+- [ ] Initialize and activate both rolling Journals on a fresh profile, keep
+      Shift Board fallback inside the Shift lane, and remember the last selected
+      Shift project when that lane has no explicit active project.
+- [ ] Keep the recovered-draft conflict comparison above Kastn's status bar at
+      the supported window sizes.
+- [ ] Record project and bucket creation in Notification History and the
+      protected `Zetl Logs` project.
 
 Done when no tested crash path loses an acknowledged mutation, conflict recovery
 never silently discards an edit, and capture latency remains acceptable while
@@ -191,19 +199,19 @@ The overhaul is sequenced as four slices (design in
 ### Interaction Cleanup
 
 - [x] Add a clear live drop indicator to the existing tree drag-and-drop.
-- [ ] Replace the landing page's role-group project list with two stable lane
+- [x] Replace the landing page's role-group project list with two stable lane
       places. Each lane uses user-configurable labels that default to Main and
       Alternate; blank settings keep the defaults.
-- [ ] Show active temporary consumables as stacked overlay cards on their lane,
+- [x] Show active temporary consumables as stacked overlay cards on their lane,
       with a timer/replay cue and progress, while leaving the underlying lane
       project reachable from the card behind.
 - [ ] Remove or demote redundant Move/parent controls after direct manipulation
       is comfortably accessible.
 - [ ] Make nested bucket creation and placement faster in Zetl's quick Board.
-- [ ] Work through the dogfood polish notes in
+- [ ] Finish the remaining dogfood polish notes in
       [`kastn-ui-roadmap.md`](kastn-ui-roadmap.md#dogfood-notes-from-live-kastnzetl-use):
-      Markdown task fidelity, deleted-slip browsing, editor/detail overflow,
-      view scroll stability, Board Mode save shortcuts, and project bulk actions.
+      cross-output task/list verification, Delete-key confirmation, pane rhythm,
+      Board drag jitter, reader zoom/width, and project bulk actions.
 
 ### Kastn Undo
 
@@ -235,12 +243,48 @@ IPC, isolated from Zetl's coldkey stack.
 
 The detailed design is in [`kastn-undo-roadmap.md`](kastn-undo-roadmap.md).
 
-## Priority 3: Project Board And Cross-Project Organization
+## Priority 3: Workspace Discovery
 
-Add a project-level board where projects are columns, buckets are expandable
-cards, and slips can move or copy across projects. This depends on explicit
-Zetl-owned cross-project transfer commands, a workspace-level asset store, and
-cross-project wiki-link/export rules.
+Kastn currently searches and filters slips inside the open project. The next
+discovery layer should answer workspace-wide questions without requiring the
+user to remember which project contains a note. This is read-only work and can
+ship before cross-project mutation or asset-store migration.
+
+- [ ] Define a read-only workspace query boundary over project summaries and
+      addressable slip hits while keeping Zetl the storage authority.
+- [ ] Add global search across slip title/body, project name, bucket path, and
+      stable slip id. Search active, finished, and Journal projects by default;
+      make archived projects opt-in.
+- [ ] Show project, bucket path, capture date, type, and a short matching snippet
+      in each result; opening a result must select the exact project and slip.
+- [ ] Add a Calendar landing mode beside Projects. A local calendar day shows
+      every project with slips captured that day, with activity counts; a
+      project may therefore appear on multiple days.
+- [ ] Selecting a Calendar project opens it with the chosen day's filter active.
+- [ ] Remember Projects or Calendar as the user's preferred Kastn landing mode.
+- [ ] Measure query latency and memory across the existing 20,000-slip baseline
+      before introducing a persistent index. JSON remains canonical unless the
+      measurements show it is the limiting factor.
+- [ ] After global search is stable, let held `Ctrl+F` launch or focus it without
+      changing ordinary tap-`Ctrl+F` behavior in the foreground application.
+
+The held-shortcut entry point is discussed in
+[`coldkey-ideas-discussion.md`](coldkey-ideas-discussion.md#held-ctrlf-find-in-zetl).
+The search and Calendar surfaces should share one query/result model.
+
+Open decisions:
+
+- whether project creation or metadata-only edits count as Calendar activity;
+- whether `Zetl Logs` appears on the Calendar by default; and
+- whether a global-search invocation from an open project initially scopes to
+  that project or always starts workspace-wide.
+
+## Priority 4: Project Board And Cross-Project Organization
+
+After the read-only discovery layer, add a project-level board where projects
+are columns, buckets are expandable cards, and slips can move or copy across
+projects. This depends on explicit Zetl-owned cross-project transfer commands,
+a workspace-level asset store, and cross-project wiki-link/export rules.
 
 - [ ] Add a read-only Project Board projection over projects, buckets, and
       slips.
@@ -260,21 +304,21 @@ cross-project wiki-link/export rules.
 The detailed design is in
 [`kastn-project-board-roadmap.md`](kastn-project-board-roadmap.md).
 
-## Priority 4: Temporary Consumable Templates
+## Completed Foundation: Temporary Consumable Templates
 
 Consumable templates already seed ordered Replay queues. A temporary consumable
-should instantiate a disposable project, activate it in a chosen lane, and
-delete it when it leaves that lane.
+instantiates a disposable project, activates it in a chosen lane, and is deleted
+when it leaves that lane.
 
 - [x] Add a `Temporary` template flag and validation.
 - [x] Implement Zetl-owned disposal when the Replay queue empties, the lane is
       cleared, or another project replaces it.
 - [x] Leave the lane inactive after disposal.
 - [x] Add Kastn's Main/Alternate lane choice with optional remembered default.
-- [x] Show temporary and durable projects in Kastn landing role groups: Pinned,
-      Main, Alternate, and Projects.
+- [x] Show the two lanes as stable landing cards and active temporary projects
+      as progress-bearing overlays above their underlying durable lane project.
 - [x] Include currently active temporary projects in compile/source pickers; the
-      landing page should make their lane-bound, disposable status visible.
+      landing page makes their lane-bound, disposable status visible.
 - [x] Decide disposal ordering relative to Replay's empty-queue Standard-mode
       transition.
 

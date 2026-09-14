@@ -281,7 +281,7 @@ project creation, bucket setup, starter slips, and default-view assignment still
 go through Zetl.
 
 See [`kastn-templates-roadmap.md`](kastn-templates-roadmap.md) for the document
-model and remaining temporary-consumable design.
+model, remaining template polish, and completed temporary-consumable lifecycle.
 
 ## Keyboard
 

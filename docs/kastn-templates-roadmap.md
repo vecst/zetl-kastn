@@ -1,7 +1,7 @@
 # Kastn Templates And Creation Types
 
-This document records the template model and the remaining temporary-consumable
-design. Current priority is tracked in
+This document records the template model, remaining template polish, and the
+completed temporary-consumable lifecycle. Current priority is tracked in
 [`kastn-roadmap.md`](kastn-roadmap.md).
 
 ## Concepts
@@ -111,12 +111,13 @@ template again to create a fresh queue.
   remain Normal and Shift.
 - Held `Ctrl+V` with no active project opens the picker on Consumable templates.
 - Kastn's current `Use` action creates a named project from the template and can
-  minimize Kastn after use. For temporary consumables, Kastn asks for the
+  minimize Kastn after use. Each Consumable use can override the template's
+  durable/Temporary default. When Temporary is selected, Kastn asks for the
   chosen lane label unless a default lane has been saved.
 
-### Landing Shape
+### Landing Shape (Implemented)
 
-Kastn should present the two lanes as stable landing-page places. Temporary
+Kastn presents the two lanes as stable landing-page places. Temporary
 consumables appear as stacked overlay cards on the lane they currently occupy,
 with a timer/replay cue and progress such as remaining replay items. The
 underlying durable project remains visible and clickable behind the overlay, so
@@ -124,8 +125,8 @@ the temporary queue reads as "currently on this lane" rather than as a separate
 permanent project category.
 
 Because active temporary projects are visible as lane overlays, compile/source
-pickers may include them while active. They should still be disposed when they
-leave their lane and should not become ordinary inactive project entries.
+pickers may include them while active. They are still disposed when they leave
+their lane and do not become ordinary inactive project entries.
 
 ### Ownership
 
@@ -156,9 +157,10 @@ Kastn owns:
       temporary template use.
 - [x] Let each Kastn consumable-template use override the template's durable or
       temporary default before project creation.
-- [x] Show temporary projects in Kastn's landing project list through role
-      groups (Pinned, Main, Alternate, Projects), rather than hiding them.
+- [x] Show Main and Alternate as stable lane cards, with active temporary
+      projects rendered as progress-bearing overlays above the underlying
+      durable project.
 
-Done when firing a temporary consumable provides an immediately usable Replay
-queue and every completion, clear, switch, restart, or failure path avoids
-permanent project clutter.
+This completion gate is met: firing a temporary consumable provides an
+immediately usable Replay queue, and completion, clear, switch, restart, and
+tested failure paths avoid permanent project clutter.

@@ -36,6 +36,10 @@ of the normal shortcut, not a random command that merely found an available key.
 
 ### Held Ctrl+F: Find In Zetl
 
+Roadmap status: tracked as future work in
+[`kastn-roadmap.md`](kastn-roadmap.md#priority-3-workspace-discovery);
+implementation has not started.
+
 Tap behavior: normal app find.
 
 Hold behavior: open Zetl/Kastn search, ideally scoped by context:

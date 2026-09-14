@@ -18,6 +18,12 @@ bucket is a card, and each bucket card can expand to show its slips. Users can
 drag buckets or slips between projects to split, merge, triage, archive, or
 promote captured material.
 
+Workspace-wide search and Calendar are a preceding read-only discovery phase.
+They may share project summaries and stable result addressing with this board,
+but they do not depend on the asset migration or cross-project mutation commands
+below. See
+[`kastn-roadmap.md`](kastn-roadmap.md#priority-3-workspace-discovery).
+
 ## Core Model
 
 - Project columns represent active, finished, or optionally archived projects.
