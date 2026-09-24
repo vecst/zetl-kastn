@@ -226,36 +226,10 @@ internal static class KastnPdfRenderer
             paragraph.Format.Font.Size = fontSize;
         }
 
-        if (TryParseTextColor(ZetlViewRenderer.SlipTextColor(slip), out var color))
+        if (ZetlSlipTypography.TextColorRgb(slip.TextColor) is { } rgb)
         {
-            paragraph.Format.Font.Color = color;
+            paragraph.Format.Font.Color = new Color(rgb.Red, rgb.Green, rgb.Blue);
         }
-    }
-
-    private static bool TryParseTextColor(string? value, out Color color)
-    {
-        color = default;
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        var normalized = value.Trim();
-        if (normalized.Length != 7 || normalized[0] != '#'
-            || !uint.TryParse(
-                normalized.AsSpan(1),
-                System.Globalization.NumberStyles.AllowHexSpecifier,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out var rgb))
-        {
-            return false;
-        }
-
-        color = new Color(
-            (byte)((rgb >> 16) & 0xFF),
-            (byte)((rgb >> 8) & 0xFF),
-            (byte)(rgb & 0xFF));
-        return true;
     }
 
     // Render a slip's Markdown blocks into the section: paragraphs (the first line

@@ -444,56 +444,20 @@ internal partial class MainWindow
             return;
         }
 
-        if (AuthoredFontFamily(ZetlViewRenderer.SlipFontFamily(slip)) is { } fontFamily)
+        if (KastnSlipTypography.FamilyOf(slip) is { } fontFamily)
         {
             slipEditor.FontFamily = fontFamily;
         }
 
-        var fontSize = ZetlViewRenderer.SlipFontSize(slip);
-        if (fontSize > 0)
+        if (KastnSlipTypography.SizeOf(slip) is { } fontSize)
         {
             slipEditor.FontSize = fontSize;
         }
 
-        if (TryParseTextColor(ZetlViewRenderer.SlipTextColor(slip), out var color))
+        if (KastnSlipTypography.ForegroundOf(slip) is { } foreground)
         {
-            slipEditor.Foreground = new SolidColorBrush(color);
+            slipEditor.Foreground = foreground;
         }
-    }
-
-    private static FontFamily? AuthoredFontFamily(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        try
-        {
-            return new FontFamily(value);
-        }
-        catch (ArgumentException)
-        {
-            return null;
-        }
-    }
-
-    private static bool TryParseTextColor(string? value, out Color color)
-    {
-        color = default;
-        if (value is not { Length: 7 } || value[0] != '#'
-            || !byte.TryParse(value.AsSpan(1, 2), System.Globalization.NumberStyles.HexNumber,
-                System.Globalization.CultureInfo.InvariantCulture, out var red)
-            || !byte.TryParse(value.AsSpan(3, 2), System.Globalization.NumberStyles.HexNumber,
-                System.Globalization.CultureInfo.InvariantCulture, out var green)
-            || !byte.TryParse(value.AsSpan(5, 2), System.Globalization.NumberStyles.HexNumber,
-                System.Globalization.CultureInfo.InvariantCulture, out var blue))
-        {
-            return false;
-        }
-
-        color = Color.FromRgb(red, green, blue);
-        return true;
     }
 
     private void UpdateInlineFormatButtons()

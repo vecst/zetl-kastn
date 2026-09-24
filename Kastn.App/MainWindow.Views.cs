@@ -647,21 +647,19 @@ internal partial class MainWindow
         ZetlSlipSnapshot slip,
         bool applyFontFamily = true)
     {
-        if (applyFontFamily
-            && AuthoredFontFamily(ZetlViewRenderer.SlipFontFamily(slip)) is { } fontFamily)
+        if (applyFontFamily && KastnSlipTypography.FamilyOf(slip) is { } fontFamily)
         {
             block.FontFamily = fontFamily;
         }
 
-        var fontSize = ZetlViewRenderer.SlipFontSize(slip);
-        if (fontSize > 0)
+        if (KastnSlipTypography.SizeOf(slip) is { } fontSize)
         {
             block.FontSize = fontSize;
         }
 
-        if (TryParseTextColor(ZetlViewRenderer.SlipTextColor(slip), out var color))
+        if (KastnSlipTypography.ForegroundOf(slip) is { } foreground)
         {
-            block.Foreground = new SolidColorBrush(color);
+            block.Foreground = foreground;
         }
     }
 

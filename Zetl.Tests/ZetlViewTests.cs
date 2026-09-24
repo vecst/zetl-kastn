@@ -1442,6 +1442,24 @@ public class ZetlViewTests
         AssertEqual(new ZetlSlipListKinds(block, outer, inner), kinds, "List kinds should compose as documented.");
     }
 
+    [Theory]
+    [InlineData("#1A2b3C", true, 0x1A, 0x2B, 0x3C)]
+    [InlineData(" #ffffff ", true, 0xFF, 0xFF, 0xFF)]
+    [InlineData("", false, 0, 0, 0)]
+    [InlineData("#12345", false, 0, 0, 0)]
+    [InlineData("#GG0000", false, 0, 0, 0)]
+    [InlineData("red", false, 0, 0, 0)]
+    public void TextColorRgbParsesOnlyValidHexColors(string value, bool valid, int red, int green, int blue)
+    {
+        var rgb = ZetlSlipTypography.TextColorRgb(value);
+
+        AssertEqual(valid, rgb is not null, "Only a #RRGGBB color should parse.");
+        if (rgb is { } channels)
+        {
+            AssertEqual(((byte)red, (byte)green, (byte)blue), (channels.Red, channels.Green, channels.Blue), "Channels should match the hex digits.");
+        }
+    }
+
     [Fact] public void PictureSlipsTakeOnlyTheBucketListStyle()
     {
         var picture = PictureSlip("b", "caption", "pic", "hash") with { BlockKind = "heading" };

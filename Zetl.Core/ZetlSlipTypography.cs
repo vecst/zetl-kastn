@@ -38,6 +38,20 @@ internal static class ZetlSlipTypography
         return normalized.ToUpperInvariant();
     }
 
+    // The channels of a text color, or null when the slip inherits the theme
+    // color. Validates through NormalizeTextColor, so any stored value is safe.
+    public static (byte Red, byte Green, byte Blue)? TextColorRgb(string? value)
+    {
+        var normalized = NormalizeTextColor(value);
+        if (normalized.Length == 0)
+        {
+            return null;
+        }
+
+        var rgb = Convert.ToUInt32(normalized[1..], 16);
+        return ((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+    }
+
     private static bool ContainsOnlyHexDigits(this ReadOnlySpan<char> value)
     {
         foreach (var character in value)
