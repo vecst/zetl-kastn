@@ -1015,7 +1015,7 @@ internal sealed class ZetlStateStore
 
             foreach (var note in source.Notes)
             {
-                targetBucket.Slips.Add(CloneReplaySourceSlip(sourceProject, project, note));
+                targetBucket.Slips.Add(CloneSlip(note, "temporary-replay", CopyImageAssetAcross(sourceProject, project, note.Image)));
                 replayItemCount++;
             }
 
@@ -2236,7 +2236,7 @@ internal sealed class ZetlStateStore
         if (note.IsImage || !string.IsNullOrWhiteSpace(note.Text))
         {
             reviewBucket = GetOrCreateReplayReviewBucket(project, bucket);
-            reviewNote = CloneSlipForReview(note, "replay", trimText: true);
+            reviewNote = CloneSlip(note, "replay", CloneImageAssetReference(note.Image), trimText: true);
             reviewBucket.Slips.Add(reviewNote);
         }
 
@@ -3446,20 +3446,24 @@ internal sealed class ZetlStateStore
             && (note.IsImage || !string.IsNullOrWhiteSpace(note.Text)));
     }
 
-    private ZetlSlip CloneReplaySourceSlip(
-        ZetlProject sourceProject,
-        ZetlProject targetProject,
-        ZetlSlip source)
+    // A fresh copy of a slip's authored content and presentation under a new id,
+    // stamped as captured now in this session. The caller supplies the picture: a
+    // reference to the same asset within a project, or an asset copied across.
+    private ZetlSlip CloneSlip(
+        ZetlSlip source,
+        string cloneSource,
+        ZetlImageAsset? image,
+        bool trimText = false)
     {
         var clone = new ZetlSlip
         {
             Id = NewId(),
             Type = source.Type,
             Title = source.Title,
-            Text = source.Text,
+            Text = trimText ? source.Text.Trim() : source.Text,
             RichHtml = source.RichHtml,
             ReplayFormats = CloneReplayFormats(source.ReplayFormats),
-            Source = "temporary-replay",
+            Source = cloneSource,
             SessionId = sessionId,
             CreatedAtUtc = DateTimeOffset.UtcNow,
             ExcludedFromViews = source.ExcludedFromViews,
@@ -3474,20 +3478,19 @@ internal sealed class ZetlStateStore
             FontSize = source.FontSize,
             TextColor = source.TextColor,
             InlineStyles = source.InlineStyles.Select(style => style with { }).ToList(),
-            CaptureOrigin = source.CaptureOrigin is null
-                ? null
-                : new ZetlCaptureOrigin
+            CaptureOrigin = source.CaptureOrigin is { } origin
+                ? new ZetlCaptureOrigin
                 {
-                    ApplicationName = source.CaptureOrigin.ApplicationName,
-                    ProcessName = source.CaptureOrigin.ProcessName,
-                    WindowTitle = source.CaptureOrigin.WindowTitle
+                    ApplicationName = origin.ApplicationName,
+                    ProcessName = origin.ProcessName,
+                    WindowTitle = origin.WindowTitle
                 }
+                : null
         };
-        if (source.Image is not null)
-        {
-            clone.Image = CloneReplayImage(sourceProject, targetProject, source.Image);
-        }
 
+        // Assigned after Text so the Image setter sees the content and keeps a
+        // text-preferred dual slip presenting as text.
+        clone.Image = image;
         return clone;
     }
 
@@ -3500,84 +3503,43 @@ internal sealed class ZetlStateStore
                 item.Data.ToArray(),
                 item.RegisteredName)).ToList();
 
-    private ZetlSlip CloneSlipForReview(ZetlSlip source, string reviewSource, bool trimText = false)
+    private static ZetlImageAsset? CloneImageAssetReference(ZetlImageAsset? source)
     {
-        return new ZetlSlip
-        {
-            Id = NewId(),
-            Type = source.Type,
-            Title = source.Title,
-            Text = trimText ? source.Text.Trim() : source.Text,
-            RichHtml = source.RichHtml,
-            ReplayFormats = CloneReplayFormats(source.ReplayFormats),
-            Image = source.Image is null ? null : CloneImageAssetReference(source.Image),
-            Source = reviewSource,
-            SessionId = sessionId,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-            ExcludedFromViews = source.ExcludedFromViews,
-            Align = source.Align,
-            BlockKind = source.BlockKind,
-            IgnoreBucketRenderKind = source.IgnoreBucketRenderKind,
-            Checked = source.Checked,
-            Bold = source.Bold,
-            Italic = source.Italic,
-            Strike = source.Strike,
-            FontFamily = source.FontFamily,
-            FontSize = source.FontSize,
-            TextColor = source.TextColor,
-            InlineStyles = source.InlineStyles.Select(style => style with { }).ToList(),
-            CaptureOrigin = source.CaptureOrigin is null
-                ? null
-                : new ZetlCaptureOrigin
-                {
-                    ApplicationName = source.CaptureOrigin.ApplicationName,
-                    ProcessName = source.CaptureOrigin.ProcessName,
-                    WindowTitle = source.CaptureOrigin.WindowTitle
-                }
-        };
+        return source is null
+            ? null
+            : new ZetlImageAsset
+            {
+                RelativePath = source.RelativePath,
+                SourceUrl = source.SourceUrl,
+                MimeType = source.MimeType,
+                Width = source.Width,
+                Height = source.Height,
+                ByteLength = source.ByteLength,
+                Sha256 = source.Sha256
+            };
     }
 
-    private static ZetlImageAsset CloneImageAssetReference(ZetlImageAsset source)
-    {
-        return new ZetlImageAsset
-        {
-            RelativePath = source.RelativePath,
-            SourceUrl = source.SourceUrl,
-            MimeType = source.MimeType,
-            Width = source.Width,
-            Height = source.Height,
-            ByteLength = source.ByteLength,
-            Sha256 = source.Sha256
-        };
-    }
-
-    private ZetlImageAsset? CloneReplayImage(
+    // The picture copied into another project's asset folder, or null when the
+    // source has none or its asset file is missing.
+    private ZetlImageAsset? CopyImageAssetAcross(
         ZetlProject sourceProject,
         ZetlProject targetProject,
-        ZetlImageAsset source)
+        ZetlImageAsset? source)
     {
-        var bytes = projectStorage.ReadAsset(sourceProject, source.RelativePath);
+        var bytes = source is null ? null : projectStorage.ReadAsset(sourceProject, source.RelativePath);
         if (bytes is null)
         {
             return null;
         }
 
-        var extension = Path.GetExtension(source.RelativePath);
-        var relativePath = projectStorage.WriteAsset(
+        var extension = Path.GetExtension(source!.RelativePath);
+        var copy = CloneImageAssetReference(source)!;
+        copy.RelativePath = projectStorage.WriteAsset(
             targetProject,
             source.Sha256,
             string.IsNullOrWhiteSpace(extension) ? ".png" : extension,
             bytes);
-        return new ZetlImageAsset
-        {
-            RelativePath = relativePath,
-            SourceUrl = source.SourceUrl,
-            MimeType = source.MimeType,
-            Width = source.Width,
-            Height = source.Height,
-            ByteLength = source.ByteLength,
-            Sha256 = source.Sha256
-        };
+        return copy;
     }
 
     // The Scratch bucket is special (always present, the quick-note default)
@@ -3743,7 +3705,7 @@ internal sealed class ZetlStateStore
         sourceSlip.Revision++;
         sourceBucket.Slips.Remove(sourceSlip);
         poppedSlip = sourceSlip;
-        reviewSlip = CloneSlipForReview(sourceSlip, "pop-recovery");
+        reviewSlip = CloneSlip(sourceSlip, "pop-recovery", CloneImageAssetReference(sourceSlip.Image));
         reviewBucket.Slips.Add(reviewSlip);
         PersistProject(project);
         return true;

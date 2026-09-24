@@ -898,6 +898,63 @@ public class ZetlProjectServiceTests
         AssertEqual(3, scratch.Settings.DefaultTsvRowLength, "The Scratch settings change should apply.");
     }
 
+    // A slip copy (Replay review, Pop recovery, temporary Replay) must carry every
+    // authored property. Adding a ZetlSlip property fails here until the test sets
+    // it, which forces a decision about whether copies carry it.
+    [Fact] public void SlipCopiesCarryEveryAuthoredProperty()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var queue);
+        store.SetBucketKind(queue, "Replay");
+        var source = store.AddNote(queue, "A1\tB1", "copy");
+        store.SetNoteImage(project, source, new ZetlClipboardImage([1, 2, 3], 3, 1));
+        source.Type = ZetlSlipType.Picture;
+        source.Title = "Copied title";
+        source.RichHtml = "<b>A1</b>";
+        source.ReplayFormats = [new ZetlClipboardFormatData(49161, [1, 2, 3], "Biff12")];
+        source.ExcludedFromViews = true;
+        source.Align = "center";
+        source.BlockKind = "task";
+        source.IgnoreBucketRenderKind = true;
+        source.Checked = true;
+        source.Bold = true;
+        source.Italic = true;
+        source.Strike = true;
+        source.FontFamily = "Georgia";
+        source.FontSize = 14;
+        source.TextColor = "#123456";
+        source.InlineStyles = [new ZetlInlineStyleRange { Start = 0, Length = 2, Kind = "bold" }];
+        source.CaptureOrigin = new ZetlCaptureOrigin
+        {
+            ApplicationName = "Calc",
+            ProcessName = "soffice",
+            WindowTitle = "Sheet"
+        };
+
+        AssertTrue(
+            store.TryConsumeReplayNoteToReview(project, queue, source.Id, out _, out _, out var copy)
+                && copy is not null,
+            "Replay should produce a review copy.");
+
+        // Identity and lifecycle belong to the copy; everything else must match.
+        string[] ownedByCopy =
+        [
+            nameof(ZetlSlip.Id), nameof(ZetlSlip.Revision), nameof(ZetlSlip.Source),
+            nameof(ZetlSlip.SessionId), nameof(ZetlSlip.CreatedAtUtc),
+            nameof(ZetlSlip.DeletedFromBucketId), nameof(ZetlSlip.DeletedAtUtc)
+        ];
+        var blank = new ZetlSlip();
+        foreach (var property in typeof(ZetlSlip).GetProperties()
+            .Where(item => item.CanRead && item.CanWrite && !ownedByCopy.Contains(item.Name)))
+        {
+            var expected = JsonSerializer.Serialize(property.GetValue(source));
+            AssertTrue(
+                expected != JsonSerializer.Serialize(property.GetValue(blank)),
+                $"Set {property.Name} to a non-default value so the copy check covers it.");
+            AssertEqual(expected, JsonSerializer.Serialize(property.GetValue(copy)), $"The copy should carry {property.Name}.");
+        }
+    }
+
     [Fact] public void BucketAndSlipCommandsRoundTrip()
     {
         using var temp = new TempStateDirectory();
