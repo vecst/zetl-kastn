@@ -946,7 +946,7 @@ internal partial class MainWindow
             status.IsVisible = false;
         }
         catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or OperationCanceledException)
+            IsPictureLoadFailure(ex))
         {
             if (generation == pictureRenderGeneration)
             {
@@ -954,6 +954,13 @@ internal partial class MainWindow
             }
         }
     }
+
+    // What a picture load reports as "unavailable" rather than letting escape:
+    // IPC and cancellation failures, plus the ArgumentException Skia throws for
+    // image data it cannot decode.
+    private static bool IsPictureLoadFailure(Exception ex) =>
+        ex is IOException or InvalidOperationException or OperationCanceledException
+            or ArgumentException or NotSupportedException;
 
     private async Task<ZetlPictureContent?> GetPictureContentAsync(ZetlSlipSnapshot slip)
     {
@@ -1734,7 +1741,7 @@ internal partial class MainWindow
                 if (card.PendingPictureLoad is { } load)
                 {
                     card.PendingPictureLoad = null;
-                    LoadBoardCardPictureAsync(slip, card, load.Image, load.ExpandedImage, load.Status);
+                    _ = LoadBoardCardPictureAsync(slip, card, load.Image, load.ExpandedImage, load.Status);
                 }
             }
 
@@ -2478,7 +2485,7 @@ internal partial class MainWindow
     // that outlives its card — the card was replaced while the bytes were in
     // flight — drops its assignment; the decoded bitmap stays cached either way,
     // so the replacement card picks it up synchronously.
-    private async void LoadBoardCardPictureAsync(
+    private async Task LoadBoardCardPictureAsync(
         ZetlSlipSnapshot slip,
         BoardCardUi card,
         Avalonia.Controls.Image image,
@@ -2526,7 +2533,7 @@ internal partial class MainWindow
             status.IsVisible = false;
         }
         catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or OperationCanceledException)
+            IsPictureLoadFailure(ex))
         {
             if (IsCurrent())
             {
