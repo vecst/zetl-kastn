@@ -290,12 +290,10 @@ internal sealed class ZetlProjectService
                 continue;
             }
 
-            ApplyBucketDefinition(
+            store.UpdateBucket(
                 project,
                 bucket,
-                definition.Name,
-                definition.ParentBucketId,
-                definition.Settings ?? new ZETL.Contracts.ZetlBucketSettings());
+                BucketDefinition(definition.Name, definition.ParentBucketId, definition.Settings, renderKind: null));
         }
 
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(project);
@@ -649,14 +647,9 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "bucket_name_required", "A bucket name is required.");
         }
 
-        var bucket = store.AddBucket(project, payload.Name, payload.ParentBucketId, setActive: false);
-        bucket.RenderKind = ZetlViewRenderer.NormalizeBucketRenderKind(payload.RenderKind);
-        ApplyBucketDefinition(
+        var bucket = store.AddBucket(
             project,
-            bucket,
-            payload.Name,
-            payload.ParentBucketId,
-            payload.Settings ?? new ZETL.Contracts.ZetlBucketSettings());
+            BucketDefinition(payload.Name, payload.ParentBucketId, payload.Settings, payload.RenderKind));
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket);
         Publish(project, ZetlChangeKind.Created, ZetlEntityKind.Bucket, bucket.Id, bucket.Revision);
         return Success(command, project, snapshot);
@@ -696,23 +689,10 @@ internal sealed class ZetlProjectService
                 "A bucket cannot be moved beneath one of its descendants.");
         }
 
-        var settings = payload.Settings ?? new ZETL.Contracts.ZetlBucketSettings();
         store.UpdateBucket(
             project,
             bucket,
-            payload.Name,
-            payload.ParentBucketId,
-            settings.Kind,
-            settings.DefaultKind,
-            settings.DefaultCompileMode,
-            settings.DefaultStartingText,
-            settings.DefaultTsvRowLength,
-            settings.PopMode,
-            settings.ReplayReviewBucketId);
-        if (payload.RenderKind is not null)
-        {
-            bucket.RenderKind = ZetlBucketRenderKinds.Normalize(payload.RenderKind);
-        }
+            BucketDefinition(payload.Name, payload.ParentBucketId, payload.Settings, payload.RenderKind));
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Bucket, bucket.Id, bucket.Revision);
         return Success(command, project, snapshot);
@@ -1166,16 +1146,14 @@ internal sealed class ZetlProjectService
         return Success(command, project, snapshot);
     }
 
-    private void ApplyBucketDefinition(
-        ZetlProject project,
-        ZetlBucket bucket,
+    private static ZetlBucketDefinition BucketDefinition(
         string name,
         string? parentBucketId,
-        ZETL.Contracts.ZetlBucketSettings settings)
+        ZETL.Contracts.ZetlBucketSettings? settings,
+        string? renderKind)
     {
-        store.UpdateBucket(
-            project,
-            bucket,
+        settings ??= new ZETL.Contracts.ZetlBucketSettings();
+        return new ZetlBucketDefinition(
             name,
             parentBucketId,
             settings.Kind,
@@ -1184,7 +1162,8 @@ internal sealed class ZetlProjectService
             settings.DefaultStartingText,
             settings.DefaultTsvRowLength,
             settings.PopMode,
-            settings.ReplayReviewBucketId);
+            settings.ReplayReviewBucketId,
+            renderKind);
     }
 
     private ZetlResponseEnvelope? CheckRevision<T>(

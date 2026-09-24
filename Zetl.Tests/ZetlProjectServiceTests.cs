@@ -785,6 +785,43 @@ public class ZetlProjectServiceTests
         AssertEqual("", weirdSnapshot.RenderKind, "An unknown render kind normalizes to a normal bucket.");
     }
 
+    [Fact] public void BucketRenderKindIsDurable()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var inbox);
+        var service = new ZetlProjectService(store);
+
+        var added = service.Execute(ZetlCommandEnvelope.Create(
+            "add-group-durable",
+            ZetlCommandKind.AddBucket,
+            new AddBucketCommand { Name = "Group", RenderKind = "group" },
+            project.Id));
+        var addedSnapshot = added.Payload?.Deserialize<ZetlBucketSnapshot>(ZetlProtocolJson.Options)
+            ?? throw new InvalidOperationException("Group add returned no bucket.");
+        var updated = service.Execute(ZetlCommandEnvelope.Create(
+            "update-inbox-render-kind",
+            ZetlCommandKind.UpdateBucket,
+            new UpdateBucketCommand { Name = inbox.Name, RenderKind = "task" },
+            project.Id,
+            inbox.Id,
+            expectedTargetRevision: inbox.Revision));
+
+        AssertEqual(ZetlResponseStatus.Success, updated.Status, "The render-kind update should succeed.");
+
+        // Success promises a durable write, so a fresh store must see both kinds.
+        var reloaded = new ZetlStateStore(temp.StatePath);
+        var reloadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
+        AssertEqual(
+            "group",
+            reloadedProject.Buckets.Single(item => item.Id == addedSnapshot.Id).RenderKind,
+            "An added bucket's render kind should be on disk.");
+        AssertEqual(
+            "task",
+            reloadedProject.Buckets.Single(item => item.Id == inbox.Id).RenderKind,
+            "An updated bucket's render kind should be on disk.");
+        AssertEqual(1L, addedSnapshot.Revision, "A newly added bucket should start at revision 1.");
+    }
+
     [Fact] public void BucketAndSlipCommandsRoundTrip()
     {
         using var temp = new TempStateDirectory();

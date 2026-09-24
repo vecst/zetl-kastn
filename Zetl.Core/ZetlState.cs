@@ -321,6 +321,20 @@ internal sealed class ZetlImageAsset
     public string Sha256 { get; set; } = "";
 }
 
+// A bucket's complete authored definition, as the project service applies it
+// on add or update. A null RenderKind keeps the bucket's current render kind.
+internal sealed record ZetlBucketDefinition(
+    string Name,
+    string? ParentBucketId,
+    string Kind,
+    string DefaultKind,
+    string DefaultCompileMode,
+    string DefaultStartingText,
+    int DefaultTsvRowLength,
+    bool PopMode,
+    string? ReplayReviewBucketId,
+    string? RenderKind);
+
 internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, string CompileMode, int TsvRowLength)
 {
     // The hour (0-23, local) a journal day begins, used to roll a journal-mode
@@ -1746,19 +1760,27 @@ internal sealed class ZetlStateStore
         PersistBucket(bucket);
     }
 
+    // Creates a bucket carrying its complete definition in one durable write, so
+    // the new bucket starts at revision 1 with everything the caller asked for.
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public void UpdateBucket(
-        ZetlProject project,
-        ZetlBucket bucket,
-        string name,
-        string? parentBucketId,
-        string kind,
-        string defaultKind,
-        string defaultCompileMode,
-        string defaultStartingText,
-        int defaultTsvRowLength,
-        bool popMode,
-        string? replayReviewBucketId)
+    public ZetlBucket AddBucket(ZetlProject project, ZetlBucketDefinition definition)
+    {
+        var normalizedName = NormalizeName(definition.Name, "New Bucket");
+        if (IsDeletedBucketName(normalizedName))
+        {
+            return GetDeletedBucket(project);
+        }
+
+        var bucket = CreateBucket(normalizedName);
+        ApplyBucketDefaults(bucket);
+        project.Buckets.Add(bucket);
+        ApplyBucketDefinition(project, bucket, definition);
+        PersistProject(project);
+        return bucket;
+    }
+
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public void UpdateBucket(ZetlProject project, ZetlBucket bucket, ZetlBucketDefinition definition)
     {
         if (!project.Buckets.Any(item => item.Id == bucket.Id))
         {
@@ -1773,27 +1795,41 @@ internal sealed class ZetlStateStore
             return;
         }
 
-        if (!IsScratchBucket(bucket))
-        {
-            bucket.Name = NormalizeName(name, "Bucket");
-        }
-
-        bucket.ParentBucketId = parentBucketId != bucket.Id
-            && project.Buckets.Any(item => item.Id == parentBucketId && !IsDeletedBucket(item))
-                ? parentBucketId
-                : null;
-        bucket.Settings.Kind = NormalizeBucketKind(kind);
-        bucket.Settings.DefaultKind = NormalizeBucketKind(defaultKind);
-        bucket.Settings.DefaultCompileMode = NormalizeCompileMode(defaultCompileMode);
-        bucket.Settings.DefaultStartingText = (defaultStartingText ?? "").Trim();
-        bucket.Settings.DefaultTsvRowLength = Math.Max(1, defaultTsvRowLength);
-        bucket.Settings.PopMode = !IsReplayBucket(bucket) && popMode;
-        bucket.Settings.ReplayReviewBucketId = replayReviewBucketId != bucket.Id
-            && project.Buckets.Any(item => item.Id == replayReviewBucketId && !IsDeletedBucket(item))
-                ? replayReviewBucketId
-                : null;
+        ApplyBucketDefinition(project, bucket, definition);
         bucket.Revision++;
         PersistProject(project);
+    }
+
+    // Every field lands before the caller persists: a value assigned after the
+    // write reports success without ever reaching disk.
+    private static void ApplyBucketDefinition(
+        ZetlProject project,
+        ZetlBucket bucket,
+        ZetlBucketDefinition definition)
+    {
+        if (!IsScratchBucket(bucket))
+        {
+            bucket.Name = NormalizeName(definition.Name, "Bucket");
+        }
+
+        bucket.ParentBucketId = definition.ParentBucketId != bucket.Id
+            && project.Buckets.Any(item => item.Id == definition.ParentBucketId && !IsDeletedBucket(item))
+                ? definition.ParentBucketId
+                : null;
+        bucket.Settings.Kind = NormalizeBucketKind(definition.Kind);
+        bucket.Settings.DefaultKind = NormalizeBucketKind(definition.DefaultKind);
+        bucket.Settings.DefaultCompileMode = NormalizeCompileMode(definition.DefaultCompileMode);
+        bucket.Settings.DefaultStartingText = (definition.DefaultStartingText ?? "").Trim();
+        bucket.Settings.DefaultTsvRowLength = Math.Max(1, definition.DefaultTsvRowLength);
+        bucket.Settings.PopMode = !IsReplayBucket(bucket) && definition.PopMode;
+        bucket.Settings.ReplayReviewBucketId = definition.ReplayReviewBucketId != bucket.Id
+            && project.Buckets.Any(item => item.Id == definition.ReplayReviewBucketId && !IsDeletedBucket(item))
+                ? definition.ReplayReviewBucketId
+                : null;
+        if (definition.RenderKind is not null)
+        {
+            bucket.RenderKind = ZetlBucketRenderKinds.Normalize(definition.RenderKind);
+        }
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
