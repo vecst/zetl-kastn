@@ -959,11 +959,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         notifications.Show("Settings saved.");
     }
 
-    private async void ShowFirstRunIfNeeded()
+    private void ShowFirstRunIfNeeded()
     {
         if (!settingsStore.Settings.HasSeenFirstRun)
         {
-            await ShowFirstRunGuideAsync(markSeen: true);
+            ZetlAsync.RunLogged(() => ShowFirstRunGuideAsync(markSeen: true), "first-run guide", Log);
         }
     }
 
