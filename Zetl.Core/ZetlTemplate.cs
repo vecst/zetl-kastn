@@ -138,11 +138,6 @@ internal sealed class ZetlTemplateSlipDocument
 /// </summary>
 internal static class ZetlTemplateDefaults
 {
-    // Bucket names Zetl manages itself; templates must not define them. Scratch is
-    // always added to a new project, and Deleted is the protected soft-delete
-    // bucket.
-    public static readonly IReadOnlyList<string> ReservedBucketNames = ["Scratch", "Deleted"];
-
     // Fresh documents each call so a caller (e.g. a future "duplicate built-in"
     // authoring path) can mutate its copy without disturbing the shared presets.
     public static IReadOnlyList<ZetlTemplateDocument> CreateAll() =>
@@ -377,8 +372,10 @@ internal static class ZetlTemplateValidator
         return errors;
     }
 
-    public static bool ReservedName(string name) =>
-        ZetlTemplateDefaults.ReservedBucketNames.Contains(name, StringComparer.OrdinalIgnoreCase);
+    // Bucket names Zetl manages itself; templates must not define them. Scratch is
+    // always added to a new project, and Deleted is the protected soft-delete
+    // bucket.
+    public static bool ReservedName(string name) => ZetlStateStore.IsReservedBucketName(name);
 
     private static void ValidateSettings(ZetlTemplateBucketDocument bucket, List<string> errors)
     {

@@ -313,7 +313,7 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
     private IReadOnlyList<BucketDisplayItem> GetNewProjectBucketItems()
     {
         var bucketNames = store.Defaults.ResolvedProjectBuckets
-            .Append("Scratch")
+            .Append(ZetlStateStore.ScratchBucketName)
             .Select(name => name.Trim())
             .Where(name => name.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)

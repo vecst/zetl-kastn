@@ -347,7 +347,7 @@ internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, 
 
     public string JournalInterval { get; init; } = "Weekly";
 
-    public static ZetlBucketDefaults Standard { get; } = new(new[] { "Inbox", "Scratch" }, "Formatted", 5);
+    public static ZetlBucketDefaults Standard { get; } = new(new[] { "Inbox", ZetlStateStore.ScratchBucketName }, "Formatted", 5);
 
     // The configured project buckets, or the built-in Inbox/Scratch fallback
     // when none are set. Centralizes the fallback several call sites inlined.
@@ -365,6 +365,10 @@ internal sealed class ZetlStateStore
     public const string LogProjectName = "Zetl Logs";
     public const string DeletedBucketName = "Deleted";
     public const string DeletedBucketKind = "Deleted";
+
+    // Scratch is identified by its name, which is sound only while no other
+    // bucket can take that name: see IsReservedBucketName.
+    public const string ScratchBucketName = "Scratch";
 
     // A journal day is a parent bucket (named e.g. "Mon 07-06") holding two lazily
     // created children: Capture receives copy captures, Quick Note receives held-cut
@@ -1112,9 +1116,9 @@ internal sealed class ZetlStateStore
     public ZetlBucket AddBucket(ZetlProject project, string name, string? parentBucketId = null, bool setActive = true)
     {
         var normalizedName = NormalizeName(name, "New Bucket");
-        if (IsDeletedBucketName(normalizedName))
+        if (ResolveReservedBucket(project, normalizedName) is { } reserved)
         {
-            return GetDeletedBucket(project);
+            return reserved;
         }
 
         var bucket = CreateBucket(normalizedName);
@@ -1136,9 +1140,9 @@ internal sealed class ZetlStateStore
     public ZetlBucket GetOrCreateBucket(ZetlProject project, string name, bool setActive = true)
     {
         var normalizedName = NormalizeName(name, "New Bucket");
-        if (IsDeletedBucketName(normalizedName))
+        if (ResolveReservedBucket(project, normalizedName) is { } reserved)
         {
-            return GetDeletedBucket(project);
+            return reserved;
         }
 
         var bucket = project.Buckets.FirstOrDefault(item =>
@@ -1165,9 +1169,9 @@ internal sealed class ZetlStateStore
     public ZetlBucket GetOrCreateChildBucket(ZetlProject project, string? parentBucketId, string name, bool setActive = true)
     {
         var normalizedName = NormalizeName(name, "New Bucket");
-        if (IsDeletedBucketName(normalizedName))
+        if (ResolveReservedBucket(project, normalizedName) is { } reserved)
         {
-            return GetDeletedBucket(project);
+            return reserved;
         }
 
         var bucket = project.Buckets.FirstOrDefault(item =>
@@ -1205,16 +1209,17 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public void UpdateBucketName(ZetlBucket bucket, string name)
+    public bool UpdateBucketName(ZetlBucket bucket, string name)
     {
-        if (IsScratchBucket(bucket) || IsDeletedBucket(bucket))
+        if (IsScratchBucket(bucket) || IsDeletedBucket(bucket) || IsReservedBucketName(name))
         {
-            return;
+            return false;
         }
 
         bucket.Name = NormalizeName(name, "Bucket");
         bucket.Revision++;
         PersistBucket(bucket);
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -1766,9 +1771,9 @@ internal sealed class ZetlStateStore
     public ZetlBucket AddBucket(ZetlProject project, ZetlBucketDefinition definition)
     {
         var normalizedName = NormalizeName(definition.Name, "New Bucket");
-        if (IsDeletedBucketName(normalizedName))
+        if (ResolveReservedBucket(project, normalizedName) is { } reserved)
         {
-            return GetDeletedBucket(project);
+            return reserved;
         }
 
         var bucket = CreateBucket(normalizedName);
@@ -1807,7 +1812,7 @@ internal sealed class ZetlStateStore
         ZetlBucket bucket,
         ZetlBucketDefinition definition)
     {
-        if (!IsScratchBucket(bucket))
+        if (!IsScratchBucket(bucket) && !IsReservedBucketName(definition.Name))
         {
             bucket.Name = NormalizeName(definition.Name, "Bucket");
         }
@@ -1990,11 +1995,34 @@ internal sealed class ZetlStateStore
             return ResolveJournalQuickNoteBucket(project, DateTime.Now)!;
         }
 
-        EnsureScratchBucket(project.Buckets);
-        var scratch = project.Buckets.First(bucket => string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase));
+        var scratch = EnsuredScratchBucket(project);
         if (project.ActiveBucketId is null || project.Buckets.Any(bucket => bucket.Id == project.ActiveBucketId && IsDeletedBucket(bucket)))
         {
             project.ActiveBucketId = scratch.Id;
+        }
+
+        return scratch;
+    }
+
+    // Creating a bucket under a reserved name resolves to the bucket Zetl already
+    // owns under that name, so no second Scratch or Deleted bucket can appear.
+    private ZetlBucket? ResolveReservedBucket(ZetlProject project, string name)
+    {
+        if (IsDeletedBucketName(name))
+        {
+            return GetDeletedBucket(project);
+        }
+
+        if (!IsScratchBucketName(name))
+        {
+            return null;
+        }
+
+        var existed = project.Buckets.Any(IsScratchBucket);
+        var scratch = EnsuredScratchBucket(project);
+        if (!existed)
+        {
+            PersistProject(project);
         }
 
         return scratch;
@@ -2518,7 +2546,7 @@ internal sealed class ZetlStateStore
 
             // A normal project's scratch is the bucket literally named Scratch.
             var scratch = candidate.Buckets.FirstOrDefault(bucket =>
-                string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase)
+                IsScratchBucket(bucket)
                 && bucket.Slips.Any(note => IsCurrentSessionNote(note) && !string.IsNullOrWhiteSpace(note.Text)));
             if (scratch is not null)
             {
@@ -3034,8 +3062,7 @@ internal sealed class ZetlStateStore
     private static void RemoveEmptyScratchBucket(ZetlProject project)
     {
         var scratch = project.Buckets.FirstOrDefault(bucket =>
-            !IsDeletedBucket(bucket)
-            && string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase));
+            !IsDeletedBucket(bucket) && IsScratchBucket(bucket));
         if (scratch is null
             || scratch.Notes.Count > 0
             || project.Buckets.Any(bucket => string.Equals(bucket.ParentBucketId, scratch.Id, StringComparison.Ordinal)))
@@ -3301,12 +3328,18 @@ internal sealed class ZetlStateStore
 
     private static void EnsureScratchBucket(List<ZetlBucket> buckets)
     {
-        if (buckets.Any(bucket => string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase)))
+        if (buckets.Any(IsScratchBucket))
         {
             return;
         }
 
-        buckets.Add(CreateBucket("Scratch"));
+        buckets.Add(CreateBucket(ScratchBucketName));
+    }
+
+    private static ZetlBucket EnsuredScratchBucket(ZetlProject project)
+    {
+        EnsureScratchBucket(project.Buckets);
+        return project.Buckets.First(IsScratchBucket);
     }
 
     private static IEnumerable<string> NormalizeBucketNames(IEnumerable<string> bucketNames)
@@ -3551,12 +3584,25 @@ internal sealed class ZetlStateStore
     // and currently cannot be renamed or deleted.
     public static bool IsScratchBucket(ZetlBucket bucket)
     {
-        return string.Equals(bucket.Name, "Scratch", StringComparison.OrdinalIgnoreCase);
+        return IsScratchBucketName(bucket.Name);
     }
 
     public static bool IsDeletedBucket(ZetlBucket bucket)
     {
         return string.Equals(bucket.Settings.Kind, DeletedBucketKind, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Names Zetl owns. No ordinary bucket may take one: Scratch is recognized by
+    // name, and the normalizer reshapes any bucket named Deleted into the
+    // Deleted bucket, which would silently hide its slips.
+    public static bool IsReservedBucketName(string? name)
+    {
+        return IsScratchBucketName(name) || IsDeletedBucketName(name);
+    }
+
+    public static bool IsScratchBucketName(string? name)
+    {
+        return string.Equals(name?.Trim(), ScratchBucketName, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsDeletedBucketName(string? name)

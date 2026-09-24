@@ -822,6 +822,82 @@ public class ZetlProjectServiceTests
         AssertEqual(1L, addedSnapshot.Revision, "A newly added bucket should start at revision 1.");
     }
 
+    [Theory]
+    [InlineData("Scratch")]
+    [InlineData(" deleted ")]
+    public void RenameToAReservedBucketNameIsRejected(string reserved)
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out var inbox);
+        var note = store.AddNote(inbox, "keep me live", "copy");
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "rename-reserved",
+            ZetlCommandKind.UpdateBucket,
+            new UpdateBucketCommand { Name = reserved },
+            project.Id,
+            inbox.Id,
+            expectedTargetRevision: inbox.Revision));
+        var renamedDirectly = store.UpdateBucketName(inbox, reserved);
+
+        AssertEqual(ZetlResponseStatus.ValidationError, response.Status, "IPC rename to a reserved name should be rejected.");
+        AssertFalse(renamedDirectly, "A direct store rename to a reserved name should be refused.");
+        var reloaded = new ZetlStateStore(temp.StatePath);
+        var reloadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
+        var reloadedInbox = reloadedProject.Buckets.Single(item => item.Id == inbox.Id);
+        AssertEqual("Inbox", reloadedInbox.Name, "The bucket should keep its name.");
+        AssertEqual("Standard", reloadedInbox.Settings.Kind, "The bucket must not become a protected bucket.");
+        AssertEqual(note.Id, reloadedInbox.Slips.Single().Id, "The bucket's slips should stay live.");
+        AssertEqual(
+            1,
+            reloadedProject.Buckets.Count(ZetlStateStore.IsScratchBucket),
+            "There should still be exactly one Scratch bucket.");
+    }
+
+    [Theory]
+    [InlineData("scratch")]
+    [InlineData("Deleted")]
+    public void AddingAReservedBucketNameIsRejected(string reserved)
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out _);
+        var service = new ZetlProjectService(store);
+        var bucketCount = project.Buckets.Count;
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "add-reserved",
+            ZetlCommandKind.AddBucket,
+            new AddBucketCommand { Name = reserved },
+            project.Id));
+
+        AssertEqual(ZetlResponseStatus.ValidationError, response.Status, "Adding a reserved bucket name should be rejected.");
+        AssertEqual(bucketCount, project.Buckets.Count, "No bucket should be created.");
+    }
+
+    [Fact] public void ScratchBucketSettingsStillUpdate()
+    {
+        using var temp = new TempStateDirectory();
+        var store = CreateStoreWithProject(temp, out var project, out _);
+        var scratch = store.GetScratchBucket(project);
+        var service = new ZetlProjectService(store);
+
+        var response = service.Execute(ZetlCommandEnvelope.Create(
+            "scratch-settings",
+            ZetlCommandKind.UpdateBucket,
+            new UpdateBucketCommand
+            {
+                Name = scratch.Name,
+                Settings = new ZETL.Contracts.ZetlBucketSettings { DefaultTsvRowLength = 3 }
+            },
+            project.Id,
+            scratch.Id,
+            expectedTargetRevision: scratch.Revision));
+
+        AssertEqual(ZetlResponseStatus.Success, response.Status, "Scratch keeps its own name while its settings change.");
+        AssertEqual(3, scratch.Settings.DefaultTsvRowLength, "The Scratch settings change should apply.");
+    }
+
     [Fact] public void BucketAndSlipCommandsRoundTrip()
     {
         using var temp = new TempStateDirectory();

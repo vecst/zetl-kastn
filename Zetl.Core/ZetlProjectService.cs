@@ -647,6 +647,11 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "bucket_name_required", "A bucket name is required.");
         }
 
+        if (ZetlStateStore.IsReservedBucketName(payload.Name))
+        {
+            return ReservedBucketName(command);
+        }
+
         var bucket = store.AddBucket(
             project,
             BucketDefinition(payload.Name, payload.ParentBucketId, payload.Settings, payload.RenderKind));
@@ -679,6 +684,15 @@ internal sealed class ZetlProjectService
         if (string.IsNullOrWhiteSpace(payload.Name))
         {
             return ValidationError(command, "bucket_name_required", "A bucket name is required.");
+        }
+
+        // The protected buckets keep their own names; only another bucket taking
+        // a reserved name is refused.
+        if (ZetlStateStore.IsReservedBucketName(payload.Name)
+            && !ZetlStateStore.IsScratchBucket(bucket)
+            && !ZetlStateStore.IsDeletedBucket(bucket))
+        {
+            return ReservedBucketName(command);
         }
 
         if (CreatesParentCycle(project, bucket.Id, payload.ParentBucketId))
@@ -1145,6 +1159,12 @@ internal sealed class ZetlProjectService
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);
     }
+
+    private ZetlResponseEnvelope ReservedBucketName(ZetlCommandEnvelope command) =>
+        ValidationError(
+            command,
+            "bucket_name_reserved",
+            $"\"{ZetlStateStore.ScratchBucketName}\" and \"{ZetlStateStore.DeletedBucketName}\" are reserved bucket names.");
 
     private static ZetlBucketDefinition BucketDefinition(
         string name,

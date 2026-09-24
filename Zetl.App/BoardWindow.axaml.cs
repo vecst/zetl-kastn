@@ -550,9 +550,10 @@ internal partial class BoardWindow : ZetlPopupWindow
     private void SaveBucketName()
     {
         if (ActiveBucket is { } bucket
-            && !string.IsNullOrWhiteSpace(bucketNameBox.Text))
+            && !string.IsNullOrWhiteSpace(bucketNameBox.Text)
+            && !store.UpdateBucketName(bucket, bucketNameBox.Text))
         {
-            store.UpdateBucketName(bucket, bucketNameBox.Text);
+            bucketNameBox.Text = bucket.Name;
         }
     }
 
