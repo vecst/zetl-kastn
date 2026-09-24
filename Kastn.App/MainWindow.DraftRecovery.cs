@@ -39,21 +39,7 @@ internal partial class MainWindow
             return false;
         }
 
-        return draftStore.Save(new KastnDraftDocument
-        {
-            ProjectId = currentProject.Id,
-            SlipId = editorState.SlipId,
-            BaselineRevision = editorState.Revision,
-            BaselineText = editorState.BaselineText,
-            BaselineInlineStyles = editorState.BaselineInlineStyles
-                .Select(style => style with { })
-                .ToList(),
-            DraftText = editorState.DraftText,
-            DraftInlineStyles = editorState.DraftInlineStyles
-                .Select(style => style with { })
-                .ToList(),
-            UpdatedAtUtc = DateTimeOffset.UtcNow
-        });
+        return draftStore.Save(editorState.ToDraftDocument(currentProject.Id));
     }
 
     private bool ClearDraftJournal(string? projectId, string? slipId)
@@ -75,6 +61,24 @@ internal partial class MainWindow
         editorState.AcceptSaved(saved);
         recoveredDraftActive = false;
         ClearDraftJournal(currentProject?.Id, saved.Id);
+    }
+
+    // A save that did not carry the editor's text (attaching or removing a
+    // picture) advances the revision under a surviving draft. Re-record the
+    // journal against that revision, or recovery after a crash would see a
+    // spurious conflict with the slip's own newer save.
+    private void AcceptEditorSavedKeepDraft(ZetlSlipSnapshot saved)
+    {
+        editorState.AcceptSavedKeepDraft(saved);
+        if (editorState.IsDirty)
+        {
+            FlushDraftJournal();
+        }
+        else
+        {
+            recoveredDraftActive = false;
+            ClearDraftJournal(currentProject?.Id, saved.Id);
+        }
     }
 
     private string? RecoverySlipId(ZetlProjectSnapshot project)

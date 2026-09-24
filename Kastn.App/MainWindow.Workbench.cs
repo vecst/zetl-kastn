@@ -714,7 +714,7 @@ internal partial class MainWindow
             if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
                 && isEditing)
             {
-                editorState.AcceptSavedKeepDraft(saved);
+                AcceptEditorSavedKeepDraft(saved);
                 if (editorState.IsDirty)
                 {
                     FlushDraftJournal();

@@ -80,6 +80,24 @@ public class KastnDraftRecoveryTests
         Assert.Null(state.ConflictCurrent);
     }
 
+    [Fact]
+    public void JournalRecordedAfterAPictureSaveRecoversWithoutConflict()
+    {
+        var state = new KastnEditorState();
+        Assert.True(state.RestoreDraft(Draft(), Slip(revision: 3, text: "baseline")));
+
+        // Attaching a picture saves the slip without its text: the revision moves
+        // and the draft survives.
+        var afterPicture = Slip(revision: 4, text: "baseline");
+        state.AcceptSavedKeepDraft(afterPicture);
+        var journal = state.ToDraftDocument("project-1");
+
+        var recovered = new KastnEditorState();
+        Assert.True(recovered.RestoreDraft(journal, afterPicture));
+        Assert.Equal("local draft", recovered.DraftText);
+        Assert.Null(recovered.ConflictCurrent);
+    }
+
     private static KastnDraftDocument Draft() => new()
     {
         ProjectId = "project-1",

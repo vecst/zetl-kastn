@@ -527,6 +527,20 @@ internal sealed class KastnEditorState
         ConflictCurrent = null;
     }
 
+    // The crash-recovery journal entry for the current draft; RestoreDraft is its
+    // inverse.
+    public KastnDraftDocument ToDraftDocument(string projectId) => new()
+    {
+        ProjectId = projectId,
+        SlipId = SlipId ?? "",
+        BaselineRevision = Revision,
+        BaselineText = BaselineText,
+        BaselineInlineStyles = CopyInlineStyles(BaselineInlineStyles).ToList(),
+        DraftText = DraftText,
+        DraftInlineStyles = CopyInlineStyles(DraftInlineStyles).ToList(),
+        UpdatedAtUtc = DateTimeOffset.UtcNow
+    };
+
     public bool RestoreDraft(KastnDraftDocument draft, ZetlSlipSnapshot current)
     {
         if (!string.Equals(draft.SlipId, current.Id, StringComparison.Ordinal))
