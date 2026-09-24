@@ -163,13 +163,8 @@ internal static class KastnPdfRenderer
                 }
 
                 var displayText = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-                var slipKind = ZetlViewRenderer.SlipBlockKind(slip);
-                var bucketListKind = ZetlViewRenderer.BucketListKind(project, slip, preferSlipKindOverBucketKind);
-                var kind = bucketListKind.Length > 0 && ZetlViewRenderer.IsListRenderKind(slipKind)
-                    ? bucketListKind
-                    : slipKind.Length == 0 && bucketListKind.Length > 0
-                        ? bucketListKind
-                        : slipKind;
+                var listKinds = ZetlViewRenderer.ResolveListKinds(project, slip, preferSlipKindOverBucketKind);
+                var kind = listKinds.Block;
                 // A divider note carries no text but still renders (as a rule); other
                 // empty notes are skipped.
                 if (kind != ZetlBlockKinds.Divider && string.IsNullOrWhiteSpace(displayText))
@@ -177,16 +172,8 @@ internal static class KastnPdfRenderer
                     continue;
                 }
 
-                var markerKind = bucketListKind.Length > 0
-                    ? bucketListKind
-                    : ZetlViewRenderer.IsListRenderKind(slipKind) ? slipKind : "";
-                var innerKind = bucketListKind.Length > 0
-                    && ZetlViewRenderer.IsListRenderKind(slipKind)
-                    && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
-                        ? slipKind
-                        : "";
-                var slipMarker = PdfOuterListMarker(markerKind, slip.Checked, ref orderedRun)
-                    + PdfInnerListMarker(innerKind, slip.Checked);
+                var slipMarker = PdfOuterListMarker(listKinds.Outer, slip.Checked, ref orderedRun)
+                    + PdfInnerListMarker(listKinds.Inner, slip.Checked);
 
                 AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker, slipIds.Contains);
             }

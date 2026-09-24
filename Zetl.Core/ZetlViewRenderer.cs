@@ -2,6 +2,14 @@ using ZETL.Contracts;
 
 namespace ZETL;
 
+// A slip's resolved list kinds. Block governs how the whole slip renders; Outer
+// is the list it renders in ("" when none); Inner is its own list kind layered
+// inside a different bucket list style ("" when none).
+internal readonly record struct ZetlSlipListKinds(string Block, string Outer, string Inner)
+{
+    public bool IsCheckable => Outer == ZetlBlockKinds.Task || Inner == ZetlBlockKinds.Task;
+}
+
 /// <summary>
 /// A group of slips under one heading, produced by <see cref="ZetlViewRenderer.BuildGroups"/>:
 /// either one bucket (default views) or one named section merging buckets. Depth
@@ -410,13 +418,8 @@ internal static class ZetlViewRenderer
                         SlipText(slip),
                         EffectiveInlineStyles(slip, SlipText(slip))),
                     slipIds.Contains);
-                var slipKind = SlipBlockKind(slip);
-                var bucketListKind = BucketListKind(project, slip, preferSlipKindOverBucketKind);
-                var kind = bucketListKind.Length > 0 && IsListRenderKind(slipKind)
-                    ? bucketListKind
-                    : slipKind.Length == 0 && bucketListKind.Length > 0
-                        ? bucketListKind
-                        : slipKind;
+                var listKinds = ResolveListKinds(project, slip, preferSlipKindOverBucketKind);
+                var kind = listKinds.Block;
 
                 // A divider note has no content: emit a thematic break and move on.
                 if (kind == ZetlBlockKinds.Divider)
@@ -485,17 +488,9 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                var markerKind = bucketListKind.Length > 0
-                    ? bucketListKind
-                    : IsListRenderKind(slipKind) ? slipKind : "";
-                var innerKind = bucketListKind.Length > 0
-                    && IsListRenderKind(slipKind)
-                    && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
-                        ? slipKind
-                        : "";
-                if (markerKind.Length > 0)
+                if (listKinds.Outer.Length > 0)
                 {
-                    (markerKind, innerKind) = MarkdownListKinds(markerKind, innerKind);
+                    var (markerKind, innerKind) = MarkdownListKinds(listKinds.Outer, listKinds.Inner);
                     var marker = MarkdownOuterListMarker(markerKind, slip.Checked, ref orderedRun)
                         + MarkdownInnerListMarker(innerKind, slip.Checked);
                     EmitMarkedSlipMarkdown(parts, marker, lines);
@@ -538,12 +533,41 @@ internal static class ZetlViewRenderer
     public static bool IsListRenderKind(string? kind) =>
         kind is ZetlBlockKinds.Bullet or ZetlBlockKinds.Ordered or ZetlBlockKinds.Task;
 
-    public static string BucketListKind(
+    // How a slip's own kind composes with its bucket's list style. Every renderer
+    // (on-screen View, Board, Markdown, HTML, PDF) resolves through this so they
+    // agree. The bucket is always the slip's own bucket, never the view section it
+    // is rendered under.
+    public static ZetlSlipListKinds ResolveListKinds(
         ZetlProjectSnapshot project,
         ZetlSlipSnapshot slip,
         bool preferSlipKindOverBucketKind = false)
     {
-        var slipKind = SlipBlockKind(slip);
+        var slipKind = slip.Type == ZetlSlipType.Picture ? "" : SlipBlockKind(slip);
+        var bucketKind = BucketListKind(project, slip, slipKind, preferSlipKindOverBucketKind);
+        if (bucketKind.Length == 0)
+        {
+            return new ZetlSlipListKinds(
+                slipKind,
+                IsListRenderKind(slipKind) ? slipKind : "",
+                "");
+        }
+
+        // A list-kind or plain slip joins the bucket's list; a different list kind
+        // layers inside it (a task in a numbered bucket). Whole-slip blocks
+        // (heading/quote/code/divider) keep their own kind under the bucket marker.
+        var slipIsList = IsListRenderKind(slipKind);
+        return new ZetlSlipListKinds(
+            slipIsList || slipKind.Length == 0 ? bucketKind : slipKind,
+            bucketKind,
+            slipIsList && !string.Equals(slipKind, bucketKind, StringComparison.Ordinal) ? slipKind : "");
+    }
+
+    private static string BucketListKind(
+        ZetlProjectSnapshot project,
+        ZetlSlipSnapshot slip,
+        string slipKind,
+        bool preferSlipKindOverBucketKind)
+    {
         if (slip.IgnoreBucketRenderKind
             || (preferSlipKindOverBucketKind && slipKind.Length > 0))
         {
@@ -701,13 +725,8 @@ internal static class ZetlViewRenderer
                 }
 
                 var text = SlipText(slip);
-                var slipKind = SlipBlockKind(slip);
-                var bucketListKind = BucketListKind(project, slip, preferSlipKindOverBucketKind);
-                var kind = bucketListKind.Length > 0 && IsListRenderKind(slipKind)
-                    ? bucketListKind
-                    : slipKind.Length == 0 && bucketListKind.Length > 0
-                        ? bucketListKind
-                        : slipKind;
+                var listKinds = ResolveListKinds(project, slip, preferSlipKindOverBucketKind);
+                var kind = listKinds.Block;
 
                 // A whole-note block (heading/quote/code/divider) renders its synthesized
                 // block on its own; a divider carries no text, so it is handled before the
@@ -738,9 +757,7 @@ internal static class ZetlViewRenderer
                     continue;
                 }
 
-                var listKind = bucketListKind.Length > 0
-                    ? bucketListKind
-                    : IsListRenderKind(slipKind) ? slipKind : "";
+                var listKind = listKinds.Outer;
                 if (listKind.Length == 0)
                 {
                     CloseList();
@@ -760,12 +777,7 @@ internal static class ZetlViewRenderer
                     openKind = listKind;
                 }
 
-                var innerKind = bucketListKind.Length > 0
-                    && IsListRenderKind(slipKind)
-                    && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
-                        ? slipKind
-                        : "";
-                var marker = HtmlListItemMarker(listKind, innerKind, slip.Checked);
+                var marker = HtmlListItemMarker(listKind, listKinds.Inner, slip.Checked);
                 parts.Add($"<li id=\"{slip.Id}\"{style}>{marker}{inner}</li>");
             }
 

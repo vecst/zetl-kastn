@@ -369,27 +369,11 @@ internal partial class MainWindow
             var orderedRun = 0;
             foreach (var slip in group.Slips)
             {
-                var slipKind = slip.Type == ZetlSlipType.Picture
-                    ? ""
-                    : ZetlViewRenderer.SlipBlockKind(slip);
-                var bucketListKind = !slip.IgnoreBucketRenderKind
-                    && !(preferSlipKindOverBucketKind && slipKind.Length > 0)
-                    && group.RenderKind is ZetlBucketRenderKinds.Bullet
-                    or ZetlBucketRenderKinds.Ordered
-                    or ZetlBucketRenderKinds.Task
-                        ? group.RenderKind
-                        : "";
-                var markerKind = bucketListKind.Length > 0
-                    ? bucketListKind
-                    : ZetlViewRenderer.IsListRenderKind(slipKind) ? slipKind : "";
-                var innerKind = bucketListKind.Length > 0
-                    && ZetlViewRenderer.IsListRenderKind(slipKind)
-                    && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
-                        ? slipKind
-                        : "";
-                var marker = ViewOuterListMarker(markerKind, slip.Checked, ref orderedRun)
-                    + ViewInnerListMarker(innerKind, slip.Checked);
-                var checkable = markerKind == ZetlBlockKinds.Task || innerKind == ZetlBlockKinds.Task;
+                var listKinds = ZetlViewRenderer.ResolveListKinds(
+                    currentProject, slip, preferSlipKindOverBucketKind);
+                var marker = ViewOuterListMarker(listKinds.Outer, slip.Checked, ref orderedRun)
+                    + ViewInnerListMarker(listKinds.Inner, slip.Checked);
+                var checkable = listKinds.IsCheckable;
 
                 var depth = isGroup ? 0 : group.Depth;
                 var renderKey = $"{slip.Revision}|{depth}|{marker}|{checkable}";
@@ -2112,24 +2096,10 @@ internal partial class MainWindow
         };
         ApplySlipTypography(previewText, slip);
 
-        var slipKind = ZetlViewRenderer.SlipBlockKind(slip);
-        var bucket = currentProject?.Buckets.FirstOrDefault(b => b.Id == slip.BucketId);
-        var preferSlipKindOverBucketKind = CurrentAppSettings().KastnPreferSlipKindOverBucketKind;
-        var bucketListKind = !slip.IgnoreBucketRenderKind
-            && !(preferSlipKindOverBucketKind && slipKind.Length > 0)
-            && bucket?.RenderKind is ZetlBucketRenderKinds.Bullet
-            or ZetlBucketRenderKinds.Ordered
-            or ZetlBucketRenderKinds.Task
-                ? bucket.RenderKind
-                : "";
-        var markerKind = bucketListKind.Length > 0
-            ? bucketListKind
-            : ZetlViewRenderer.IsListRenderKind(slipKind) ? slipKind : "";
-        var innerKind = bucketListKind.Length > 0
-            && ZetlViewRenderer.IsListRenderKind(slipKind)
-            && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
-                ? slipKind
-                : "";
+        var listKinds = currentProject is null
+            ? new ZetlSlipListKinds("", "", "")
+            : ZetlViewRenderer.ResolveListKinds(
+                currentProject, slip, CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
 
         // Footer layout (contains tags/markers/checkbox)
         var footer = new StackPanel
@@ -2168,8 +2138,8 @@ internal partial class MainWindow
             }
         }
 
-        AddFooterMarker(markerKind);
-        AddFooterMarker(innerKind);
+        AddFooterMarker(listKinds.Outer);
+        AddFooterMarker(listKinds.Inner);
 
         // Capture origin icon/text if present
         if (slip.CaptureOrigin is { } origin)

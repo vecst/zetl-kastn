@@ -524,27 +524,10 @@ internal partial class MainWindow
             var orderedRun = 0;
             foreach (var slip in group.Slips)
             {
-                var slipKind = slip.Type == ZetlSlipType.Picture
-                    ? ""
-                    : ZetlViewRenderer.SlipBlockKind(slip);
-                var preferSlipKindOverBucketKind = CurrentAppSettings().KastnPreferSlipKindOverBucketKind;
-                var bucketListKind = !slip.IgnoreBucketRenderKind
-                    && !(preferSlipKindOverBucketKind && slipKind.Length > 0)
-                    && group.RenderKind is ZetlBucketRenderKinds.Bullet
-                    or ZetlBucketRenderKinds.Ordered
-                    or ZetlBucketRenderKinds.Task
-                        ? group.RenderKind
-                        : "";
-                var markerKind = bucketListKind.Length > 0
-                    ? bucketListKind
-                    : ZetlViewRenderer.IsListRenderKind(slipKind) ? slipKind : "";
-                var innerKind = bucketListKind.Length > 0
-                    && ZetlViewRenderer.IsListRenderKind(slipKind)
-                    && !string.Equals(slipKind, bucketListKind, StringComparison.Ordinal)
-                        ? slipKind
-                        : "";
-                var marker = ViewOuterListMarker(markerKind, slip.Checked, ref orderedRun)
-                    + ViewInnerListMarker(innerKind, slip.Checked);
+                var listKinds = ZetlViewRenderer.ResolveListKinds(
+                    currentProject, slip, CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
+                var marker = ViewOuterListMarker(listKinds.Outer, slip.Checked, ref orderedRun)
+                    + ViewInnerListMarker(listKinds.Inner, slip.Checked);
 
                 viewLivePreviewPanel.Children.Add(BuildViewPreviewSlip(slip, group.Depth, marker));
             }

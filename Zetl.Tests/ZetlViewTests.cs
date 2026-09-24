@@ -1411,6 +1411,47 @@ public class ZetlViewTests
         AssertEqual(expected, actual, $"{kind} render mismatch.");
     }
 
+    // bucket render kind, slip kind, ignore bucket style, prefer slip kind
+    //   -> block, outer, inner
+    [Theory]
+    [InlineData("", "", false, false, "", "", "")]
+    [InlineData("", "ordered", false, false, "ordered", "ordered", "")]
+    [InlineData("", "heading", false, false, "heading", "", "")]
+    [InlineData("bullet", "", false, false, "bullet", "bullet", "")]
+    [InlineData("bullet", "bullet", false, false, "bullet", "bullet", "")]
+    [InlineData("ordered", "task", false, false, "ordered", "ordered", "task")]
+    [InlineData("bullet", "quote", false, false, "quote", "bullet", "")]
+    [InlineData("group", "bullet", false, false, "bullet", "bullet", "")]
+    [InlineData("task", "bullet", true, false, "bullet", "bullet", "")]
+    [InlineData("task", "bullet", false, true, "bullet", "bullet", "")]
+    [InlineData("task", "", false, true, "task", "task", "")]
+    public void SlipListKindsComposeWithTheBucketStyle(
+        string bucketKind,
+        string slipKind,
+        bool ignoreBucketStyle,
+        bool preferSlipKind,
+        string block,
+        string outer,
+        string inner)
+    {
+        var slip = Slip("b", "text", blockKind: slipKind, ignoreBucketRenderKind: ignoreBucketStyle);
+        var project = Project("P", [Bucket("b", "Bucket", renderKind: bucketKind)], [slip]);
+
+        var kinds = ZetlViewRenderer.ResolveListKinds(project, slip, preferSlipKind);
+
+        AssertEqual(new ZetlSlipListKinds(block, outer, inner), kinds, "List kinds should compose as documented.");
+    }
+
+    [Fact] public void PictureSlipsTakeOnlyTheBucketListStyle()
+    {
+        var picture = PictureSlip("b", "caption", "pic", "hash") with { BlockKind = "heading" };
+        var project = Project("P", [Bucket("b", "Bucket", renderKind: "task")], [picture]);
+
+        var kinds = ZetlViewRenderer.ResolveListKinds(project, picture);
+
+        AssertEqual(new ZetlSlipListKinds("task", "task", ""), kinds, "A picture ignores its own block kind.");
+    }
+
     private static ZetlProjectSnapshot Project(
         string name,
         IReadOnlyList<ZetlBucketSnapshot> buckets,
