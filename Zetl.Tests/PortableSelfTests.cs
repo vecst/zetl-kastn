@@ -2278,17 +2278,17 @@ public class PortableSelfTests
 
             var store = new KASTN.KastnStateStore(statePath);
             AssertEqual("", store.LastProjectId, "Last project id should default to empty.");
-            AssertFalse(store.IsPinned("proj-42"), "Projects should default to unpinned.");
             store.LastProjectId = "proj-42";
-            store.SetPinned("proj-42", true);
 
             var loaded = new KASTN.KastnStateStore(statePath);
             AssertEqual("proj-42", loaded.LastProjectId, "Last project id should round-trip.");
-            AssertTrue(loaded.IsPinned("proj-42"), "Pinned project ids should round-trip.");
-            loaded.SetPinned("proj-42", false);
 
-            var unpinned = new KASTN.KastnStateStore(statePath);
-            AssertFalse(unpinned.IsPinned("proj-42"), "Unpinning should round-trip.");
+            // State files written while project pinning existed must still load.
+            System.IO.File.WriteAllText(
+                statePath,
+                "{ \"lastProjectId\": \"proj-7\", \"pinnedProjectIds\": [\"proj-7\"] }");
+            var legacy = new KASTN.KastnStateStore(statePath);
+            AssertEqual("proj-7", legacy.LastProjectId, "A legacy state file with pins should still load.");
         }
 
         private static void JournalBucketRollsAtDayStartHour()

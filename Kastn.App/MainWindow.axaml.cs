@@ -841,12 +841,7 @@ internal partial class MainWindow : Window
         laneCards.Clear();
         recentProjects.Clear();
         projects.Clear();
-        var allProjects = new List<ProjectListItem>();
-        foreach (var project in lastProjectSummaries)
-        {
-            var pinned = stateStore.IsPinned(project.Id);
-            allProjects.Add(CreateProjectListItem(project, pinned));
-        }
+        var allProjects = lastProjectSummaries.Select(CreateProjectListItem).ToList();
 
         AddLaneCard(allProjects, ZetlStateStore.NormalLane, LaneLabel(ZetlStateStore.NormalLane));
         AddLaneCard(allProjects, ZetlStateStore.ShiftLane, LaneLabel(ZetlStateStore.ShiftLane));
@@ -855,20 +850,12 @@ internal partial class MainWindow : Window
             .SelectMany(card => new[] { card.Project?.Id, card.OverlayProject?.Id })
             .Where(id => id is not null)
             .ToHashSet(StringComparer.Ordinal);
-        foreach (var project in allProjects.Where(project =>
-            !project.IsTemporary
-            && !laneProjectIds.Contains(project.Id)
-            && project.IsArchived == landingShowArchived))
-        {
-            projects.Add(project);
-        }
-
-        var ordered = projects
-            .OrderBy(project => project.SectionRank)
-            .ThenBy(project => project.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        projects.Clear();
-        foreach (var project in ordered)
+        foreach (var project in allProjects
+            .Where(project =>
+                !project.IsTemporary
+                && !laneProjectIds.Contains(project.Id)
+                && project.IsArchived == landingShowArchived)
+            .OrderBy(project => project.Name, StringComparer.OrdinalIgnoreCase))
         {
             projects.Add(project);
         }
@@ -883,16 +870,12 @@ internal partial class MainWindow : Window
         }
     }
 
-    private static ProjectListItem CreateProjectListItem(
-        ZetlProjectSummary project,
-        bool pinned)
+    private static ProjectListItem CreateProjectListItem(ZetlProjectSummary project)
     {
         return new ProjectListItem(
             project.Id,
             project.Name,
             project.MetadataRevision,
-            LandingProjectSection(project, pinned),
-            LandingProjectSectionRank(project, pinned),
             LandingProjectDetail(project),
             string.IsNullOrWhiteSpace(project.PreviewText)
                 ? "No slips yet"
@@ -901,7 +884,6 @@ internal partial class MainWindow : Window
             project.LastActivityUtc,
             project.Status,
             project.VisibleSlipCount,
-            pinned,
             project.ActiveLane,
             project.UnderlyingLane,
             project.CanCreateTemporaryFromReplay,
@@ -961,46 +943,6 @@ internal partial class MainWindow : Window
         return project.DeletedSlipCount == 0
             ? detail
             : $"{detail} | {project.DeletedSlipCount} deleted";
-    }
-
-    private static string LandingProjectSection(ZetlProjectSummary project, bool pinned)
-    {
-        if (pinned)
-        {
-            return "Pinned";
-        }
-
-        if (string.Equals(project.ActiveLane, ZetlStateStore.NormalLane, StringComparison.Ordinal))
-        {
-            return "Main";
-        }
-
-        if (string.Equals(project.ActiveLane, ZetlStateStore.ShiftLane, StringComparison.Ordinal))
-        {
-            return "Alternate";
-        }
-
-        return "Projects";
-    }
-
-    private static int LandingProjectSectionRank(ZetlProjectSummary project, bool pinned)
-    {
-        if (pinned)
-        {
-            return 0;
-        }
-
-        if (string.Equals(project.ActiveLane, ZetlStateStore.NormalLane, StringComparison.Ordinal))
-        {
-            return 1;
-        }
-
-        if (string.Equals(project.ActiveLane, ZetlStateStore.ShiftLane, StringComparison.Ordinal))
-        {
-            return 2;
-        }
-
-        return 3;
     }
 
     private static string LandingProjectActivity(ZetlProjectSummary project)
@@ -1884,15 +1826,12 @@ internal partial class MainWindow : Window
         string Id,
         string Name,
         long MetadataRevision,
-        string Section,
-        int SectionRank,
         string Detail,
         string PreviewText,
         string ActivityText,
         DateTimeOffset? LastActivityUtc,
         string Status,
         int VisibleSlipCount,
-        bool IsPinned,
         string ActiveLane,
         string UnderlyingLane,
         bool CanCreateTemporaryFromReplay,
