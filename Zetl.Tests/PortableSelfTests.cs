@@ -4981,6 +4981,10 @@ public class PortableSelfTests
             AssertTrue(
                 !(clipboard.RichHtml ?? "").Contains("<input type=\"checkbox\"", StringComparison.Ordinal),
                 "Formatted clipboard output should not rely on interactive task inputs.");
+            AssertTrue(
+                !(clipboard.RichHtml ?? "").Contains("<body", StringComparison.OrdinalIgnoreCase)
+                    && !(clipboard.RichHtml ?? "").Contains("<head", StringComparison.OrdinalIgnoreCase),
+                "Formatted clipboard output should be a body fragment, not a whole page.");
         }
 
         private static void RuntimeCompileDoesNotPasteWhenClipboardWriteFails()

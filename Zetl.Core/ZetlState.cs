@@ -2281,7 +2281,7 @@ internal sealed class ZetlStateStore
             .Where(item => !item.Note.IsImage)
             .Select(item => ZetlProjectSnapshotMapper.ToSnapshot(item.Bucket, item.Note))
             .ToList();
-        var html = ZetlViewRenderer.Render(
+        var html = ZetlViewRenderer.RenderHtmlBody(
             ZetlProjectSnapshotMapper.ToSnapshot(project),
             selected,
             new ZetlViewDocument
@@ -2290,25 +2290,15 @@ internal sealed class ZetlStateStore
                 Name = "Formatted",
                 Kind = ZetlViewKinds.Html
             });
-        return PrintableTaskBoxes(HtmlBodyFragment(html));
+        return PrintableTaskBoxes(html);
     }
 
-    private static string HtmlBodyFragment(string html)
-    {
-        var start = html.IndexOf("<body>", StringComparison.OrdinalIgnoreCase);
-        var end = html.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
-        if (start < 0 || end <= start)
-        {
-            return html;
-        }
-
-        return html[(start + "<body>".Length)..end].Trim();
-    }
-
+    // Clipboard targets such as word processors drop form inputs, so a quick
+    // worksheet prints its task boxes as characters instead.
     private static string PrintableTaskBoxes(string html) =>
         html
-            .Replace("<input type=\"checkbox\" checked /> ", "☑ ", StringComparison.OrdinalIgnoreCase)
-            .Replace("<input type=\"checkbox\" /> ", "☐ ", StringComparison.OrdinalIgnoreCase);
+            .Replace(ZetlMarkdown.TaskCheckboxHtml(isChecked: true), "☑ ", StringComparison.Ordinal)
+            .Replace(ZetlMarkdown.TaskCheckboxHtml(isChecked: false), "☐ ", StringComparison.Ordinal);
 
     public string CompileUnformattedFromNotes(IEnumerable<SlipDisplayItem> selectedNotes)
     {
@@ -2326,20 +2316,13 @@ internal sealed class ZetlStateStore
         foreach (var group in selectedNotes.GroupBy(item => item.Bucket))
         {
             parts.Add(group.Key.Name.Trim());
-            var headers = GetBucketHeaderCells(group.Key);
+            var headers = ZetlTsv.HeaderCells(group.Key.Settings.DefaultStartingText);
             if (headers.Count > 0)
             {
                 parts.Add(string.Join('\t', headers));
             }
 
-            var cells = group
-                .Select(item => NormalizeTsvCell(item.Note.Text))
-                .Where(text => text.Length > 0)
-                .ToList();
-            for (var i = 0; i < cells.Count; i += normalizedRowLength)
-            {
-                parts.Add(string.Join('\t', cells.Skip(i).Take(normalizedRowLength)));
-            }
+            parts.AddRange(ZetlTsv.Rows(group.Select(item => item.Note.Text), normalizedRowLength));
 
             parts.Add("");
         }
@@ -2349,7 +2332,7 @@ internal sealed class ZetlStateStore
 
     public int GetBucketTsvRowLength(ZetlBucket bucket)
     {
-        var headerLength = GetBucketHeaderCells(bucket).Count;
+        var headerLength = ZetlTsv.HeaderCells(bucket.Settings.DefaultStartingText).Count;
         return headerLength > 0 ? headerLength : Math.Max(1, bucket.Settings.DefaultTsvRowLength);
     }
 
@@ -3701,23 +3684,6 @@ internal sealed class ZetlStateStore
     {
         var preview = text.ReplaceLineEndings(" ").Trim();
         return preview.Length <= 80 ? preview : $"{preview[..77]}...";
-    }
-
-    private static string NormalizeTsvCell(string text)
-    {
-        return text
-            .ReplaceLineEndings(" ")
-            .Replace('\t', ' ')
-            .Trim();
-    }
-
-    private static IReadOnlyList<string> GetBucketHeaderCells(ZetlBucket bucket)
-    {
-        return (bucket.Settings.DefaultStartingText ?? "")
-            .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None)
-            .Select(NormalizeTsvCell)
-            .Where(text => text.Length > 0)
-            .ToList();
     }
 
     private static string NewId()

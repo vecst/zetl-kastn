@@ -302,21 +302,16 @@ internal static class ZetlViewRenderer
         foreach (var group in groups)
         {
             parts.Add(group.Heading);
-            var headers = group.HeaderBucket is null ? [] : HeaderCells(group.HeaderBucket);
+            var headers = group.HeaderBucket is null
+                ? []
+                : ZetlTsv.HeaderCells(group.HeaderBucket.Settings.DefaultStartingText);
             if (headers.Count > 0)
             {
                 parts.Add(string.Join('\t', headers));
             }
 
             var rowLength = headers.Count > 0 ? headers.Count : Math.Max(1, viewRowLength);
-            var cells = group.Slips
-                .Select(slip => NormalizeTsvCell(SlipText(slip)))
-                .Where(text => text.Length > 0)
-                .ToList();
-            for (var i = 0; i < cells.Count; i += rowLength)
-            {
-                parts.Add(string.Join('\t', cells.Skip(i).Take(rowLength)));
-            }
+            parts.AddRange(ZetlTsv.Rows(group.Slips.Select(SlipText), rowLength));
 
             parts.Add("");
         }
@@ -656,6 +651,33 @@ internal static class ZetlViewRenderer
             "</head>",
             "<body>"
         };
+        parts.AddRange(HtmlBodyParts(project, groups, view, pictures, preferSlipKindOverBucketKind));
+        parts.Add("</body>");
+        parts.Add("</html>");
+        return string.Join(Environment.NewLine, parts);
+    }
+
+    // The document body alone (no <html>/<head>), for surfaces that embed
+    // rendered slips in their own HTML, such as Zetl's rich compile clipboard.
+    public static string RenderHtmlBody(
+        ZetlProjectSnapshot project,
+        IReadOnlyList<ZetlSlipSnapshot> slips,
+        ZetlViewDocument view,
+        IReadOnlyDictionary<string, ZetlPictureContent>? pictures = null,
+        bool preferSlipKindOverBucketKind = false) =>
+        string.Join(
+            Environment.NewLine,
+            HtmlBodyParts(project, BuildGroups(project, slips, view), view, pictures, preferSlipKindOverBucketKind));
+
+    private static List<string> HtmlBodyParts(
+        ZetlProjectSnapshot project,
+        IReadOnlyList<ZetlViewGroup> groups,
+        ZetlViewDocument view,
+        IReadOnlyDictionary<string, ZetlPictureContent>? pictures,
+        bool preferSlipKindOverBucketKind)
+    {
+        var documentTitle = DocumentTitle(project, view);
+        var parts = new List<string>();
         if (documentTitle is not null)
         {
             parts.Add($"<h1>{ZetlHtml.Escape(documentTitle)}</h1>");
@@ -788,9 +810,7 @@ internal static class ZetlViewRenderer
             }
         }
 
-        parts.Add("</body>");
-        parts.Add("</html>");
-        return string.Join(Environment.NewLine, parts);
+        return parts;
     }
 
     // Whether a line already begins with a Markdown list marker (bullet, task
@@ -994,14 +1014,4 @@ internal static class ZetlViewRenderer
 
     private static string DataUri(ZetlPictureContent picture) =>
         $"data:image/png;base64,{Convert.ToBase64String(picture.Bytes)}";
-
-    private static string NormalizeTsvCell(string text) =>
-        text.ReplaceLineEndings(" ").Replace('\t', ' ').Trim();
-
-    private static IReadOnlyList<string> HeaderCells(ZetlBucketSnapshot bucket) =>
-        (bucket.Settings.DefaultStartingText ?? "")
-            .Split(["\r\n", "\n", "\r"], StringSplitOptions.None)
-            .Select(NormalizeTsvCell)
-            .Where(text => text.Length > 0)
-            .ToList();
 }
