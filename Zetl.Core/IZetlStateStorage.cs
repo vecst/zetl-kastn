@@ -21,8 +21,6 @@ internal interface IZetlProjectStorage
 
     byte[]? ReadAsset(ZetlProject project, string relativePath);
 
-    string? GetAssetPath(ZetlProject project, string relativePath);
-
     IReadOnlyList<ZetlProjectAssetFile> GetAssets(ZetlProject project);
 }
 

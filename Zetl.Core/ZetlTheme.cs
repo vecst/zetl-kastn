@@ -279,14 +279,6 @@ internal static class ZetlThemeDefaults
 
     public static ZetlThemeDocument Clone(ZetlThemeDocument theme) => JsonFile.Clone(theme);
 
-    public static ZetlThemeDocument CreateCustom(string name)
-    {
-        var theme = Create();
-        theme.Id = CreateId(name);
-        theme.Name = string.IsNullOrWhiteSpace(name) ? "Custom Theme" : name.Trim();
-        return theme;
-    }
-
     public static string CreateId(string name) => ZetlDocumentId.Create(name, "theme");
 }
 

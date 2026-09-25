@@ -21,7 +21,7 @@ public class ZetlShortcutLifecycleTests
             shifted: false,
             clipboardSequenceNumber: 17,
             origin);
-        pending.SetObservedClipboardText("observed copy");
+        pending.SetObservedClipboardContent("observed copy", image: null);
 
         var claimed = registry.Claim(ChordlKeys.VK_C, shifted: false);
 

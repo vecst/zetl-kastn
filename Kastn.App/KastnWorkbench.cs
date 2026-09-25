@@ -443,35 +443,6 @@ internal static class KastnWorkbench
         return query.ToList();
     }
 
-    public static string BuildViewerText(
-        ZetlProjectSnapshot project,
-        IReadOnlyList<ZetlSlipSnapshot> visibleSlips)
-    {
-        var parts = new List<string> { project.Name.Trim(), "" };
-        var slipLookup = visibleSlips
-            .GroupBy(slip => slip.BucketId)
-            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
-
-        foreach (var item in BuildBucketHierarchy(project))
-        {
-            if (item.Bucket is null || !slipLookup.TryGetValue(item.Id!, out var bucketSlips))
-            {
-                continue;
-            }
-
-            var depth = ZetlTreeText.BucketDepth(item.Bucket, project.Buckets);
-            parts.Add(ZetlTreeText.IndentedText(item.Bucket.Name.Trim(), depth));
-            parts.AddRange(bucketSlips
-                .Select(slip => ZetlTreeText.IndentedText(
-                    (string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text).Trim(),
-                    depth + 1))
-                .Where(text => text.Trim().Length > 0));
-            parts.Add("");
-        }
-
-        return string.Join(Environment.NewLine, parts).TrimEnd();
-    }
-
     private static HashSet<string> DescendantBucketIds(
         ZetlProjectSnapshot project,
         string bucketId)

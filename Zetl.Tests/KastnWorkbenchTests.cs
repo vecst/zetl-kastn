@@ -523,41 +523,6 @@ public class KastnWorkbenchTests
         AssertTrue(label.Length <= 24, "A truncated slip label should respect the max length.");
     }
 
-    [Fact] public void ViewerFormatsVisibleSlipsAsReadableOutline()
-    {
-        var now = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
-        var project = Project(
-            buckets:
-            [
-                Bucket("child", "Child", "root"),
-                Bucket("root", "Root"),
-                Bucket("other", "Other")
-            ],
-            slips:
-            [
-                Slip("one", "root", "root note", "copy", "a", now),
-                Slip("two", "child", $"child note{Environment.NewLine}continued", "copy", "a", now),
-                Slip("three", "other", "hidden", "copy", "a", now)
-            ]);
-
-        var text = KastnWorkbench.BuildViewerText(
-            project,
-            project.Slips.Where(slip => slip.BucketId != "other").ToList());
-        var expected = string.Join(Environment.NewLine,
-        [
-            "Project",
-            "",
-            "Root",
-            "\troot note",
-            "",
-            "\tChild",
-            "\t\tchild note",
-            "\t\tcontinued"
-        ]);
-
-        AssertEqual(expected, text, "Viewer text should outline visible slips by nested bucket.");
-    }
-
     [Fact] public void InspectorSurfacesCaptureAndPictureMetadata()
     {
         var captured = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);

@@ -98,12 +98,6 @@ internal sealed class ZetlStateStorage : IZetlStateStorage
         }
     }
 
-    public string? GetAssetPath(ZetlProject project, string relativePath)
-    {
-        var path = ResolveAssetPath(project, relativePath);
-        return path is not null && File.Exists(path) ? path : null;
-    }
-
     public IReadOnlyList<ZetlProjectAssetFile> GetAssets(ZetlProject project)
     {
         var directory = ResolveAssetPath(project, "assets", createProjectDirectory: false);

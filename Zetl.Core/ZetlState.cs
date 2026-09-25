@@ -923,19 +923,6 @@ internal sealed class ZetlStateStore
         DisposeInactiveTemporaryProjects(persistWorkspace: true);
     }
 
-    // Seal the given lane's active project: mark it Finished and clear it from the
-    // lane, leaving the lane with no active project. The next capture advances to
-    // a fresh dated session rather than reopening the sealed one. Reversible by
-    // setting the status back to Active. No-op (returns null) when the lane is
-    // already empty. Finishing is lane management, so it lives here rather than on
-    // the IPC service; Kastn changes status through SetProjectStatus instead.
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public ZetlProject? FinishActiveProject(bool shifted = false)
-    {
-        var project = GetActiveProject(shifted);
-        return project is null ? null : FinishProject(project.Id);
-    }
-
     // Seal a project by id: mark it Finished and clear it from whichever lane(s)
     // it occupies, so the next capture advances to a fresh dated session. Used by
     // the compile dialog, whose source project may be any project (not just the
@@ -1388,13 +1375,6 @@ internal sealed class ZetlStateStore
     {
         return note.Image is not null
             ? projectStorage.ReadAsset(project, note.Image.RelativePath)
-            : null;
-    }
-
-    public string? GetImageAssetPath(ZetlProject project, ZetlSlip note)
-    {
-        return note.Image is not null
-            ? projectStorage.GetAssetPath(project, note.Image.RelativePath)
             : null;
     }
 
@@ -2245,26 +2225,6 @@ internal sealed class ZetlStateStore
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public void RestoreNote(ZetlBucket bucket, ZetlSlip note, bool insertAtFront = false)
-    {
-        if (bucket.Slips.Any(item => item.Id == note.Id))
-        {
-            return;
-        }
-
-        if (insertAtFront)
-        {
-            bucket.Slips.Insert(0, note);
-        }
-        else
-        {
-            bucket.Slips.Add(note);
-        }
-
-        PersistBucket(bucket);
-    }
-
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void RestoreReplayConsumedNote(ZetlBucket bucket, ZetlSlip note, ZetlBucket? reviewBucket, string? reviewNoteId)
     {
         bucket.Settings.Kind = "Replay";
@@ -2297,22 +2257,6 @@ internal sealed class ZetlStateStore
         }
 
         PersistBucket(bucket);
-    }
-
-    public string CompilePlainText(ZetlProject project, IEnumerable<ZetlBucket> selectedBuckets)
-    {
-        var parts = new List<string> { project.Name.Trim(), "" };
-        foreach (var bucket in selectedBuckets.Where(bucket => !IsDeletedBucket(bucket)))
-        {
-            var depth = ZetlTreeText.BucketDepth(bucket, project.Buckets);
-            parts.Add(ZetlTreeText.IndentedLine(bucket.Name.Trim(), depth));
-            parts.AddRange(bucket.Slips
-                .Where(note => !note.IsImage)
-                .Select(note => ZetlTreeText.IndentedText(note.Text, depth + 1)));
-            parts.Add("");
-        }
-
-        return string.Join(Environment.NewLine, parts).TrimEnd();
     }
 
     public string CompilePlainTextFromNotes(ZetlProject project, IEnumerable<SlipDisplayItem> selectedNotes)

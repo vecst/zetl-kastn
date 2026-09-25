@@ -132,19 +132,6 @@ internal sealed class ZetlPendingShortcut
         }
     }
 
-    public void SetObservedClipboardText(string? text)
-    {
-        lock (gate)
-        {
-            observedClipboardContent = new ZetlClipboardCaptureSnapshot(
-                ClipboardSequenceNumber,
-                text,
-                null,
-                null,
-                null);
-        }
-    }
-
     public ZetlClipboardCaptureSnapshot? GetObservedClipboardContent()
     {
         lock (gate)

@@ -639,7 +639,6 @@ public class ZetlFaultInjectionTests
 
         public byte[]? ReadAsset(ZetlProject project, string relativePath) => null;
 
-        public string? GetAssetPath(ZetlProject project, string relativePath) => null;
 
         public IReadOnlyList<ZetlProjectAssetFile> GetAssets(ZetlProject project) => [];
     }
@@ -726,7 +725,6 @@ public class ZetlFaultInjectionTests
 
         public byte[]? ReadAsset(ZetlProject project, string relativePath) => null;
 
-        public string? GetAssetPath(ZetlProject project, string relativePath) => null;
 
         public IReadOnlyList<ZetlProjectAssetFile> GetAssets(ZetlProject project) => [];
 

@@ -388,25 +388,6 @@ internal sealed class ZetlShortcutCoordinator
             : "Couldn't restore the cut text; it remains on the clipboard."));
     }
 
-    public async Task<string?> WaitForClipboardTextAsync(uint beforeSequence, TimeSpan timeout)
-    {
-        var elapsed = TimeSpan.Zero;
-        do
-        {
-            var content = TryCaptureChangedClipboardContent(beforeSequence);
-            if (!string.IsNullOrWhiteSpace(content?.Text))
-            {
-                return content.Text;
-            }
-
-            await delay.WaitAsync(ClipboardPollInterval);
-            elapsed += ClipboardPollInterval;
-        }
-        while (elapsed < timeout);
-
-        return null;
-    }
-
     public void ResetReplayClipboardTracking(bool shifted)
     {
         replayClipboard.Reset(shifted);

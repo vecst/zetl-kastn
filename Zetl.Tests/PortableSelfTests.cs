@@ -40,7 +40,6 @@ public class PortableSelfTests
                 ("Zetl state configures and rolls journal intervals", StateJournalIntervalConfiguresAndRolls),
                 ("Zetl state reuses the journal default home", StateReusesDatedDefaultProject),
                 ("Zetl state finish starts a fresh journal", StateFinishStartsFreshJournal),
-                ("Zetl state finish with no active project is a no-op", StateFinishWithNoActiveProjectIsNoop),
                 ("Zetl state consolidates child buckets regardless of order", StateConsolidatesChildBucketsRegardlessOfOrder),
                 ("Zetl state can start without an active project", StateCanStartWithoutActiveProject),
                 ("Zetl state keeps normal and Shift active projects separate", StateKeepsNormalAndShiftProjectsSeparate),
@@ -650,8 +649,6 @@ public class PortableSelfTests
             AssertEqual(1, bucket.Notes.Count, "One note should remain.");
             AssertEqual("alpha", bucket.Notes[0].Text, "The earlier note should remain.");
 
-            store.RestoreNote(bucket, bucket.Notes[0]);
-            AssertEqual(1, bucket.Notes.Count, "Restoring an existing note should not duplicate it.");
             AssertTrue(
                 store.TryPopLastMatchingActiveNote(
                     "alpha",
@@ -1008,7 +1005,6 @@ public class PortableSelfTests
 
             store.DeleteNote(bucket, first.Id);
             AssertEqual(1, store.GetProjectAssets(project).Count, "Deleting a slip should retain its asset for undo safety.");
-            store.RestoreNote(bucket, first);
 
             var reloaded = new ZetlStateStore(temp.Path);
             var loadedProject = reloaded.State.Projects.Single(item => item.Name == "Images");
@@ -1100,7 +1096,7 @@ public class PortableSelfTests
             // Renaming the journal keeps it the default (it is tracked by id), and
             // compile reflects the new name.
             store.UpdateProjectName(project, "Renamed");
-            AssertEqual("Renamed", store.CompilePlainText(project, [store.ActiveBucket!]).Split(Environment.NewLine)[0], "Compile should use the updated project name.");
+            AssertEqual("Renamed", store.CompilePlainTextFromNotes(project, []).Split(Environment.NewLine)[0], "Compile should use the updated project name.");
             store.ClearActiveProject();
             AssertEqual(project.Id, store.GetOrCreateDefaultProject().Id, "The renamed journal is still the default home.");
         }
@@ -1241,7 +1237,7 @@ public class PortableSelfTests
             var first = store.GetOrCreateDefaultProject();
             AssertTrue(first.JournalMode, "The default home is the Journal.");
 
-            var finished = store.FinishActiveProject();
+            var finished = store.FinishProject(first.Id);
             AssertEqual(first.Id, finished?.Id, "Finish should return the sealed journal.");
             AssertEqual("Finished", first.Status, "Finish should mark the journal Finished.");
             AssertEqual<ZetlProject?>(null, store.ActiveProject, "Finish should clear the lane.");
@@ -1255,17 +1251,6 @@ public class PortableSelfTests
             AssertTrue(
                 store.State.Projects.Any(project => project.Id == first.Id && project.Status == "Finished"),
                 "The finished journal is retained, not deleted.");
-        }
-
-        private static void StateFinishWithNoActiveProjectIsNoop()
-        {
-            using var temp = new TempStateFile();
-            var store = new ZetlStateStore(temp.Path);
-            store.GetOrCreateDefaultProject();
-            store.ClearActiveProject();
-
-            var result = store.FinishActiveProject();
-            AssertEqual<ZetlProject?>(null, result, "Finishing an empty lane should be a no-op.");
         }
 
         private static void StateConsolidatesChildBucketsRegardlessOfOrder()
@@ -1433,7 +1418,7 @@ public class PortableSelfTests
             AssertEqual(2, project.Buckets.Count, "Existing bucket lookup should not create duplicates.");
 
             var created = store.GetOrCreateBucket(project, "Compiled");
-            store.AddNote(created, store.CompilePlainText(project, [existing]), "compile");
+            store.AddNote(created, "compiled text", "compile");
             AssertEqual("Compiled", created.Name, "Missing bucket should be created.");
             AssertEqual("compile", created.Notes.Single().Source, "Compiled note should store its source.");
         }
@@ -1532,7 +1517,6 @@ public class PortableSelfTests
             AssertFalse(store.GetBucketDisplayItems(project).Any(item => item.Bucket.Id == deleted.Id), "Normal bucket lists should hide Deleted.");
             AssertTrue(store.GetBucketDisplayItems(project, includeDeleted: true).Any(item => item.Bucket.Id == deleted.Id), "Explicit bucket lists may show Deleted.");
             AssertFalse(store.HasCompilableNotes(project), "Deleted notes should not make a project compilable.");
-            AssertFalse(store.CompilePlainText(project, [deleted]).Contains("removed"), "Bucket-based compile should skip Deleted.");
 
             store.SetActiveBucket(project, deleted.Id);
             AssertEqual(inbox.Id, store.ActiveBucket?.Id, "Deleted should not become the active capture bucket.");
@@ -2397,7 +2381,9 @@ public class PortableSelfTests
                 System.IO.Path.GetDirectoryName(temp.Path)!,
                 "themes");
             var store = new ZetlThemeStore(directory);
-            var theme = ZetlThemeDefaults.CreateCustom("Midnight Notes");
+            var theme = ZetlThemeDefaults.Create();
+            theme.Id = ZetlThemeDefaults.CreateId("Midnight Notes");
+            theme.Name = "Midnight Notes";
             theme.Dark.Accent = "#12ABEF";
             theme.Light.Surface = "#FAFAFA";
             theme.Typography.FontFamily = "Segoe UI";
