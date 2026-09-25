@@ -238,77 +238,13 @@ internal partial class MainWindow
     // Set the selected text slip's block alignment (left/center/right). Carries the
     // current editor draft along like the eye-toggle does, so it also commits any
     // pending text edit; the renderer and on-screen View honor Align.
-    private async Task SetSlipAlignAsync(string align)
-    {
-        if (!IsOnline || saving || currentProject is null
-            || editorState.ConflictCurrent is not null)
-        {
-            return;
-        }
-
-        var selected = SelectedSlips();
-        if (selected.Count != 1
-            || selected[0].Type != ZetlSlipType.Text
-            || IsSlipInDeleted(selected[0]))
-        {
-            return;
-        }
-
-        var slip = selected[0];
-        var isEditing = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal);
-        var revision = isEditing ? editorState.Revision : slip.Revision;
-        var text = isEditing ? editorState.DraftText.Trim() : slip.Text;
-
-        saving = true;
-        SetEditingEnabled();
-        try
-        {
-            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.UpdateSlip,
-                new UpdateSlipCommand { Text = text, Align = align },
-                currentProject.Id,
-                slip.Id,
-                revision));
-            if (response.Status == ZetlResponseStatus.Conflict)
-            {
-                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
-                    ZetlProtocolJson.Options);
-                if (current is not null)
-                {
-                    editorState.Reconcile(current);
-                    ShowConflict();
-                }
-
-                return;
-            }
-
-            if (response.Status != ZetlResponseStatus.Success)
-            {
-                statusText.Text = response.Error?.Message ?? $"Align failed: {response.Status}.";
-                return;
-            }
-
-            if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
-                && isEditing)
-            {
-                AcceptEditorSaved(saved);
-            }
-
-            await connection.RefreshAsync();
-            statusText.Text = $"Slip aligned {align}.";
-        }
-        catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or OperationCanceledException)
-        {
-            statusText.Text = ex.Message;
-        }
-        finally
-        {
-            saving = false;
-            SetEditingEnabled();
-        }
-    }
+    private Task SetSlipAlignAsync(string align) =>
+        SelectedSlips() is [var slip]
+            ? UpdateSlipPropertyAsync(
+                slip,
+                text => new UpdateSlipCommand { Text = text, Align = align },
+                $"Slip aligned {align}.")
+            : Task.CompletedTask;
 
     private void UpdateAlignButtons()
     {
@@ -603,11 +539,13 @@ internal partial class MainWindow
             return;
         }
 
-        await SendSlipPictureCommandAsync(
+        var picture = new SetSlipPictureCommand { Bytes = pngBytes, Width = width, Height = height };
+        await SendSlipCommandAsync(
             slip,
             ZetlCommandKind.SetSlipPicture,
-            new SetSlipPictureCommand { Bytes = pngBytes, Width = width, Height = height },
-            slip.Picture is null ? "Picture attached." : "Picture replaced.");
+            _ => picture,
+            slip.Picture is null ? "Picture attached." : "Picture replaced.",
+            carriesText: false);
     }
 
     private Task RemoveSlipPictureAsync()
@@ -617,91 +555,12 @@ internal partial class MainWindow
             return Task.CompletedTask;
         }
 
-        return SendSlipPictureCommandAsync(
+        return SendSlipCommandAsync(
             slip,
             ZetlCommandKind.RemoveSlipPicture,
-            new RemoveSlipPictureCommand(),
-            "Picture removed.");
-    }
-
-    // Send one picture attach/remove for a slip. Mirrors UpdateSlipPropertyAsync
-    // except for the editor draft: the command never carries text, so on success
-    // the editor accepts the new revision while keeping in-progress typing.
-    private async Task SendSlipPictureCommandAsync<TPayload>(
-        ZetlSlipSnapshot slip,
-        ZetlCommandKind kind,
-        TPayload payload,
-        string successText)
-    {
-        if (!IsOnline || saving || currentProject is null || IsSlipInDeleted(slip))
-        {
-            return;
-        }
-
-        var isEditing = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal);
-        if (isEditing && editorState.ConflictCurrent is not null)
-        {
-            return;
-        }
-
-        var revision = isEditing ? editorState.Revision : slip.Revision;
-        saving = true;
-        SetEditingEnabled();
-        try
-        {
-            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                kind,
-                payload,
-                currentProject.Id,
-                slip.Id,
-                revision));
-            if (response.Status == ZetlResponseStatus.Conflict)
-            {
-                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
-                    ZetlProtocolJson.Options);
-                if (current is not null && isEditing)
-                {
-                    editorState.Reconcile(current);
-                    ShowConflict();
-                }
-
-                return;
-            }
-
-            if (response.Status != ZetlResponseStatus.Success)
-            {
-                statusText.Text = response.Error?.Message ?? $"Picture update failed: {response.Status}.";
-                return;
-            }
-
-            if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
-                && isEditing)
-            {
-                AcceptEditorSavedKeepDraft(saved);
-                if (editorState.IsDirty)
-                {
-                    FlushDraftJournal();
-                }
-                else
-                {
-                    ClearDraftJournal(currentProject.Id, saved.Id);
-                }
-            }
-
-            await connection.RefreshAsync();
-            statusText.Text = successText;
-        }
-        catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or OperationCanceledException)
-        {
-            statusText.Text = ex.Message;
-        }
-        finally
-        {
-            saving = false;
-            SetEditingEnabled();
-        }
+            _ => new RemoveSlipPictureCommand(),
+            "Picture removed.",
+            carriesText: false);
     }
 
     private async Task OnIgnoreBucketRenderKindChangedAsync()
@@ -739,20 +598,31 @@ internal partial class MainWindow
             toggled ? "Checked." : "Unchecked.");
     }
 
-    // Send one UpdateSlip for a single text note, preserving an in-progress editor draft
-    // and resolving conflicts exactly like the editor save path. Used by the per-note
-    // list-kind and checked toggles (alignment keeps its own copy for the title-bucket
-    // and batch cases). The representation toggle passes requireTextType: false
-    // because it legitimately targets Picture and Url slips too.
-    private async Task UpdateSlipPropertyAsync(
+    // Send one UpdateSlip for a single text note. The representation toggle passes
+    // requireTextType: false because it legitimately targets Picture and Url slips.
+    private Task UpdateSlipPropertyAsync(
         ZetlSlipSnapshot slip,
         Func<string, UpdateSlipCommand> buildWithText,
         string successText,
-        bool requireTextType = true)
+        bool requireTextType = true) =>
+        requireTextType && slip.Type != ZetlSlipType.Text
+            ? Task.CompletedTask
+            : SendSlipCommandAsync(slip, ZetlCommandKind.UpdateSlip, buildWithText, successText, carriesText: true);
+
+    // Send one revision-checked command for a single slip with the editor-aware
+    // handling every slip action shares: skip while the slip has an unresolved
+    // conflict, send the editor's revision when the slip is open, surface a
+    // conflict in the editor, and refresh. A command that carries the slip's text
+    // takes it from the editor draft, so it also commits pending typing; one that
+    // does not (a picture change) keeps the draft.
+    private async Task SendSlipCommandAsync<TPayload>(
+        ZetlSlipSnapshot slip,
+        ZetlCommandKind kind,
+        Func<string, TPayload> buildWithText,
+        string successText,
+        bool carriesText)
     {
-        if (!IsOnline || saving || currentProject is null
-            || (requireTextType && slip.Type != ZetlSlipType.Text)
-            || IsSlipInDeleted(slip))
+        if (!IsOnline || saving || currentProject is null || IsSlipInDeleted(slip))
         {
             return;
         }
@@ -772,7 +642,7 @@ internal partial class MainWindow
         {
             var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.UpdateSlip,
+                kind,
                 buildWithText(text),
                 currentProject.Id,
                 slip.Id,
@@ -799,7 +669,14 @@ internal partial class MainWindow
             if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
                 && isEditing)
             {
-                AcceptEditorSaved(saved);
+                if (carriesText)
+                {
+                    AcceptEditorSaved(saved);
+                }
+                else
+                {
+                    AcceptEditorSavedKeepDraft(saved);
+                }
             }
 
             await connection.RefreshAsync();
