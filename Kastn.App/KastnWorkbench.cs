@@ -341,7 +341,7 @@ internal static class KastnWorkbench
         Label = SlipNodeLabel(slip),
         Slip = slip,
         IsPicture = slip.Type == ZetlSlipType.Picture,
-        IsStructural = ZetlViewRenderer.IsStructuralKind(slip.BlockKind),
+        IsStructural = ZetlBlockKinds.IsStructural(slip.BlockKind),
         IsExcluded = slip.ExcludedFromViews
     };
 

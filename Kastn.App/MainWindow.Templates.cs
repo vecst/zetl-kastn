@@ -621,7 +621,11 @@ internal partial class MainWindow
             return configured;
         }
 
-        var choice = await KastnDialogs.PickTemporaryTemplateLaneAsync(this, template.Name);
+        var choice = await KastnDialogs.PickTemporaryTemplateLaneAsync(
+            this,
+            template.Name,
+            LaneLabel(ZetlStateStore.NormalLane),
+            LaneLabel(ZetlStateStore.ShiftLane));
         if (choice is null)
         {
             return null;

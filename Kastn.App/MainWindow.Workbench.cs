@@ -321,7 +321,7 @@ internal partial class MainWindow
         var batchAlign = selected.Count >= 2
             && selected.Any(item => item.Type == ZetlSlipType.Text
                 && !IsSlipInDeleted(item)
-                && !ZetlViewRenderer.IsStructuralKind(item.BlockKind));
+                && !ZetlBlockKinds.IsStructural(item.BlockKind));
         var canAlign = IsOnline
             && !savingVisual
             && editorState.ConflictCurrent is null
@@ -329,7 +329,7 @@ internal partial class MainWindow
                 || batchAlign
                 || (slip is { Type: ZetlSlipType.Text }
                     && !IsSlipInDeleted(slip)
-                    && !ZetlViewRenderer.IsStructuralKind(slip.BlockKind)));
+                    && !ZetlBlockKinds.IsStructural(slip.BlockKind)));
         alignLeftButton.IsEnabled = canAlign;
         alignCenterButton.IsEnabled = canAlign;
         alignRightButton.IsEnabled = canAlign;
@@ -559,7 +559,7 @@ internal partial class MainWindow
         if (!IsOnline || saving || currentProject is null
             || SelectedSlips() is not [var slip]
             || IsSlipInDeleted(slip)
-            || ZetlViewRenderer.IsStructuralKind(slip.BlockKind))
+            || ZetlBlockKinds.IsStructural(slip.BlockKind))
         {
             return;
         }
@@ -1003,7 +1003,7 @@ internal partial class MainWindow
         var selected = SelectedSlips();
         if (selected.Count != 1
             || selected[0].Type != ZetlSlipType.Text
-            || ZetlViewRenderer.IsStructuralKind(selected[0].BlockKind)
+            || ZetlBlockKinds.IsStructural(selected[0].BlockKind)
             || IsSlipInDeleted(selected[0])
             || !slipEditor.IsEnabled)
         {
@@ -1020,7 +1020,7 @@ internal partial class MainWindow
         var selected = SelectedSlips();
         if (selected.Count != 1
             || selected[0].Type != ZetlSlipType.Text
-            || ZetlViewRenderer.IsStructuralKind(selected[0].BlockKind)
+            || ZetlBlockKinds.IsStructural(selected[0].BlockKind)
             || IsSlipInDeleted(selected[0])
             || editorState.SlipId is null)
         {
@@ -1410,7 +1410,7 @@ internal partial class MainWindow
             return;
         }
 
-        var normalized = ZetlViewRenderer.NormalizeBucketRenderKind(kind);
+        var normalized = ZetlBucketRenderKinds.Normalize(kind);
         if (!IsBucketListRenderKind(normalized))
         {
             return;
@@ -1683,6 +1683,8 @@ internal partial class MainWindow
         var laneChoice = await KastnDialogs.PickTemporaryTemplateLaneAsync(
             this,
             project.Name,
+            LaneLabel(ZetlStateStore.NormalLane),
+            LaneLabel(ZetlStateStore.ShiftLane),
             title: "Use Temporarily",
             prompt: $"Create a temporary project from '{project.Name}' in which lane?",
             confirmText: "Create Temporary",
@@ -2025,7 +2027,7 @@ internal partial class MainWindow
             ?? currentProject?.Slips.FirstOrDefault(item => item.Id == editorState.SlipId);
         slipMetadataText.Text = slip is null
             ? "Select a slip to read or edit it."
-            : ZetlViewRenderer.IsStructuralKind(slip.BlockKind)
+            : ZetlBlockKinds.IsStructural(slip.BlockKind)
                 ? "Structural element — a divider Kastn renders and Zetl ignores. It has no text to edit; use Delete to remove it."
                 : SlipMetadata(slip);
         slipRenderOptionUpdating = true;
@@ -2039,7 +2041,7 @@ internal partial class MainWindow
             : "Show as picture";
         var canHavePicture = slip is not null
             && !IsSlipInDeleted(slip)
-            && !ZetlViewRenderer.IsStructuralKind(slip.BlockKind);
+            && !ZetlBlockKinds.IsStructural(slip.BlockKind);
         attachPictureButton.IsVisible = canHavePicture;
         attachPictureButton.Content = slip?.Picture is null ? "Add picture…" : "Replace picture…";
         // Removing must leave the slip standing on text or a title.
@@ -2061,7 +2063,7 @@ internal partial class MainWindow
         // element with no authored content, so the editor and content-format controls
         // do not apply to it — only move/delete remain.
         var selectedIsStructural = selectedSlips.Count == 1
-            && ZetlViewRenderer.IsStructuralKind(selectedSlips[0].BlockKind);
+            && ZetlBlockKinds.IsStructural(selectedSlips[0].BlockKind);
         var canEdit = IsOnline
             && editorState.SlipId is not null
             && !hasMultipleSelectedSlips

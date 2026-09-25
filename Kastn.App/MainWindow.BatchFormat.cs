@@ -214,7 +214,7 @@ internal partial class MainWindow
             .Where(slip => selectedIds.Contains(slip.Id)
                 && slip.Type == ZetlSlipType.Text
                 && !IsSlipInDeleted(slip)
-                && !ZetlViewRenderer.IsStructuralKind(slip.BlockKind))
+                && !ZetlBlockKinds.IsStructural(slip.BlockKind))
             .ToList();
         if (ordered.Count == 0)
         {

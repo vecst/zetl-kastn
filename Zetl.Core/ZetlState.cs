@@ -2429,7 +2429,7 @@ internal sealed class ZetlStateStore
     // A structural note (divider, and later group/table/latex) is a Kastn-only rendering
     // element with no authored content, so Zetl's capture, compile, Replay, and Pop flows
     // pass over it.
-    public static bool IsStructuralNote(ZetlSlip note) => ZetlViewRenderer.IsStructuralKind(note.BlockKind);
+    public static bool IsStructuralNote(ZetlSlip note) => ZetlBlockKinds.IsStructural(note.BlockKind);
 
     // The project most recently written to (its latest note), ignoring the
     // Zetl Logs infrastructure project, which is appended to constantly. Used to

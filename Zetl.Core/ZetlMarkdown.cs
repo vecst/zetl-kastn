@@ -752,7 +752,7 @@ internal static class ZetlMarkdown
                         .Append("</blockquote>");
                     break;
                 case ZetlCodeBlock code:
-                    builder.Append("<pre><code>").Append(Escape(code.Text)).Append("</code></pre>");
+                    builder.Append("<pre><code>").Append(ZetlHtml.Escape(code.Text)).Append("</code></pre>");
                     break;
                 case ZetlDividerBlock:
                     builder.Append("<hr />");
@@ -815,10 +815,10 @@ internal static class ZetlMarkdown
         switch (inline)
         {
             case ZetlTextRun run:
-                builder.Append(Escape(run.Text));
+                builder.Append(ZetlHtml.Escape(run.Text));
                 break;
             case ZetlCodeRun code:
-                builder.Append("<code>").Append(Escape(code.Text)).Append("</code>");
+                builder.Append("<code>").Append(ZetlHtml.Escape(code.Text)).Append("</code>");
                 break;
             case ZetlEmphasis emphasis:
                 var tag = emphasis.Kind switch
@@ -838,7 +838,7 @@ internal static class ZetlMarkdown
             case ZetlLink link:
                 if (ZetlLinkSafety.TryNormalizeTarget(link.Url, out var safeTarget))
                 {
-                    builder.Append("<a href=\"").Append(EscapeAttribute(safeTarget)).Append("\">");
+                    builder.Append("<a href=\"").Append(ZetlHtml.EscapeAttribute(safeTarget)).Append("\">");
                     foreach (var child in link.Children)
                     {
                         AppendHtml(builder, child, isResolved);
@@ -859,14 +859,14 @@ internal static class ZetlMarkdown
                 var resolved = isResolved?.Invoke(wiki.TargetId) ?? false;
                 if (resolved)
                 {
-                    builder.Append("<a href=\"#").Append(EscapeAttribute(wiki.TargetId)).Append("\">")
-                        .Append(Escape(wiki.CachedTitle))
+                    builder.Append("<a href=\"#").Append(ZetlHtml.EscapeAttribute(wiki.TargetId)).Append("\">")
+                        .Append(ZetlHtml.Escape(wiki.CachedTitle))
                         .Append("</a>");
                 }
                 else
                 {
                     builder.Append("<span class=\"kastn-unresolved-link\" style=\"color:#666;text-decoration:underline;cursor:help;\" title=\"Slip not found\">")
-                        .Append(Escape(wiki.CachedTitle))
+                        .Append(ZetlHtml.Escape(wiki.CachedTitle))
                         .Append("</span>");
                 }
                 break;
@@ -993,10 +993,4 @@ internal static class ZetlMarkdown
             }
         }
     }
-
-    private static string Escape(string text) =>
-        text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
-
-    private static string EscapeAttribute(string text) =>
-        Escape(text).Replace("\"", "&quot;");
 }

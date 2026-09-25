@@ -342,6 +342,8 @@ internal static class KastnDialogs
     public static async Task<TemporaryTemplateLaneResult?> PickTemporaryTemplateLaneAsync(
         Window owner,
         string templateName,
+        string mainLaneLabel,
+        string alternateLaneLabel,
         string title = "Use Temporary Template",
         string? prompt = null,
         string confirmText = "Use Template",
@@ -349,13 +351,13 @@ internal static class KastnDialogs
     {
         var main = new RadioButton
         {
-            Content = "Main",
+            Content = mainLaneLabel,
             GroupName = "temporary-template-lane",
             IsChecked = true
         };
         var alternate = new RadioButton
         {
-            Content = "Alternate",
+            Content = alternateLaneLabel,
             GroupName = "temporary-template-lane"
         };
         var remember = new CheckBox

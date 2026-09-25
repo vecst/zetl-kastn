@@ -205,7 +205,7 @@ internal static class ZetlViewRenderer
                 HeadingAlign = bucket.HeadingAlign,
                 HeadingBold = bucket.HeadingBold,
                 HeadingLevel = bucket.HeadingLevel,
-                RenderKind = NormalizeBucketRenderKind(bucket.RenderKind)
+                RenderKind = ZetlBucketRenderKinds.Normalize(bucket.RenderKind)
             });
 
             if (!childrenByParentId.TryGetValue(bucket.Id, out var children))
@@ -634,7 +634,7 @@ internal static class ZetlViewRenderer
         var documentTitle = DocumentTitle(project, view);
         // The <title> tab label always needs a value, even when the on-page heading
         // is hidden; fall back to the project name there.
-        var headTitle = Escape((documentTitle ?? project.Name).Trim());
+        var headTitle = ZetlHtml.Escape((documentTitle ?? project.Name).Trim());
         var parts = new List<string>
         {
             "<!DOCTYPE html>",
@@ -658,7 +658,7 @@ internal static class ZetlViewRenderer
         };
         if (documentTitle is not null)
         {
-            parts.Add($"<h1>{Escape(documentTitle)}</h1>");
+            parts.Add($"<h1>{ZetlHtml.Escape(documentTitle)}</h1>");
         }
 
         // One id set for the whole render: the wiki-link resolver runs per link,
@@ -674,7 +674,7 @@ internal static class ZetlViewRenderer
             }
 
             var level = group.EffectiveLevel;
-            parts.Add($"<h{level}{HeadingStyleAttribute(group)}>{Escape(HeadingText(group, view))}</h{level}>");
+            parts.Add($"<h{level}{HeadingStyleAttribute(group)}>{ZetlHtml.Escape(HeadingText(group, view))}</h{level}>");
 
             if (group.Slips.Count == 0)
             {
@@ -709,16 +709,16 @@ internal static class ZetlViewRenderer
                     if (pictures?.TryGetValue(slip.Id, out var picture) == true)
                     {
                         parts.Add($"<figure id=\"{slip.Id}\"{typographyStyle}>");
-                        parts.Add($"<img src=\"{DataUri(picture)}\" alt=\"{EscapeAttribute(caption)}\" />");
+                        parts.Add($"<img src=\"{DataUri(picture)}\" alt=\"{ZetlHtml.EscapeAttribute(caption)}\" />");
                         if (!string.IsNullOrWhiteSpace(slip.Text))
                         {
-                            parts.Add($"<figcaption>{Escape(slip.Text.Trim())}</figcaption>");
+                            parts.Add($"<figcaption>{ZetlHtml.Escape(slip.Text.Trim())}</figcaption>");
                         }
                         parts.Add("</figure>");
                     }
                     else
                     {
-                        parts.Add($"<p id=\"{slip.Id}\"{typographyStyle}>[Picture: {Escape(caption)}]</p>");
+                        parts.Add($"<p id=\"{slip.Id}\"{typographyStyle}>[Picture: {ZetlHtml.Escape(caption)}]</p>");
                     }
 
                     continue;
@@ -792,12 +792,6 @@ internal static class ZetlViewRenderer
         parts.Add("</html>");
         return string.Join(Environment.NewLine, parts);
     }
-
-    private static string Escape(string text) =>
-        text.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
-
-    private static string EscapeAttribute(string text) =>
-        Escape(text).Replace("\"", "&quot;");
 
     // Whether a line already begins with a Markdown list marker (bullet, task
     // checkbox, or ordered). Such a slip is emitted verbatim by the Markdown view
@@ -974,23 +968,15 @@ internal static class ZetlViewRenderer
 
         return rules.Count == 0
             ? ""
-            : $" style=\"{EscapeAttribute(string.Join(';', rules))}\"";
+            : $" style=\"{ZetlHtml.EscapeAttribute(string.Join(';', rules))}\"";
     }
 
     // The note's own block kind in a rendered view, normalized — see ZetlBlockKinds.
     // Authoritative per note: a view never markers slips uniformly.
     public static string SlipBlockKind(ZetlSlipSnapshot slip) => ZetlBlockKinds.Normalize(slip.BlockKind);
 
-    // Whether a slip's block kind is a structural element (a divider): content-less, so
-    // Zetl skips it in capture/compile/Replay/Pop and Kastn's content controls don't
-    // apply. The content kinds render the note's text instead.
-    public static bool IsStructuralKind(string? kind) => ZetlBlockKinds.IsStructural(kind);
-
-    // How Kastn renders a bucket's contents, normalized — see ZetlBucketRenderKinds.
-    public static string NormalizeBucketRenderKind(string? kind) => ZetlBucketRenderKinds.Normalize(kind);
-
     public static string BucketRenderKind(ZetlBucketSnapshot bucket) =>
-        NormalizeBucketRenderKind(bucket.RenderKind);
+        ZetlBucketRenderKinds.Normalize(bucket.RenderKind);
 
     private static string SlipText(ZetlSlipSnapshot slip) =>
         slip.Type == ZetlSlipType.Picture

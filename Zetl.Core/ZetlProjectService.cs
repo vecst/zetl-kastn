@@ -914,7 +914,7 @@ internal sealed class ZetlProjectService
         var resultingKind = payload.BlockKind ?? note.BlockKind;
         var presentsAsPicture = (payload.Type ?? note.Type) == ZetlSlipType.Picture
             && note.Image is not null;
-        if (!ZetlViewRenderer.IsStructuralKind(resultingKind)
+        if (!ZetlBlockKinds.IsStructural(resultingKind)
             && string.IsNullOrWhiteSpace(payload.Text)
             && string.IsNullOrWhiteSpace(title)
             && !presentsAsPicture)

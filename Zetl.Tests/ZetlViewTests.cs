@@ -688,11 +688,11 @@ public class ZetlViewTests
 
     [Fact] public void StructuralKindClassification()
     {
-        AssertTrue(ZetlViewRenderer.IsStructuralKind("divider"), "A divider is a structural kind.");
+        AssertTrue(ZetlBlockKinds.IsStructural("divider"), "A divider is a structural kind.");
         foreach (var kind in new[] { "", "bullet", "ordered", "task", "heading", "quote", "code" })
         {
             AssertTrue(
-                !ZetlViewRenderer.IsStructuralKind(kind),
+                !ZetlBlockKinds.IsStructural(kind),
                 $"'{kind}' renders a note's content, so it is not structural.");
         }
     }

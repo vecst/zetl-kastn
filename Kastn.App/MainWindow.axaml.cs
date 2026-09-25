@@ -22,7 +22,6 @@ internal partial class MainWindow : Window
 {
     private string UntitledSlipTitle => CurrentAppSettings().UntitledSlipTitle;
     private const int RecentProjectLimit = 10;
-    private const int LaneLabelMaxLength = 20;
     private const long MaximumPictureCacheBytes = 128L * 1024 * 1024;
 
     private readonly KastnConnectionController connection;
@@ -952,26 +951,8 @@ internal partial class MainWindow : Window
             : $"Last slip {project.LastActivityUtc.Value.LocalDateTime:g}";
     }
 
-    private string LaneLabel(string lane)
-    {
-        var settings = CurrentAppSettings();
-        return string.Equals(lane, ZetlStateStore.ShiftLane, StringComparison.Ordinal)
-            ? ResolveLaneLabel(settings.KastnAlternateLaneLabel, "Alternate")
-            : ResolveLaneLabel(settings.KastnMainLaneLabel, "Main");
-    }
-
-    private static string ResolveLaneLabel(string? value, string fallback)
-    {
-        var trimmed = (value ?? "").Trim();
-        if (trimmed.Length == 0)
-        {
-            return fallback;
-        }
-
-        return trimmed.Length <= LaneLabelMaxLength
-            ? trimmed
-            : trimmed[..LaneLabelMaxLength].TrimEnd();
-    }
+    private string LaneLabel(string lane) =>
+        CurrentAppSettings().LaneLabel(string.Equals(lane, ZetlStateStore.ShiftLane, StringComparison.Ordinal));
 
     private void RefreshFilterChoices(ZetlProjectSnapshot project)
     {

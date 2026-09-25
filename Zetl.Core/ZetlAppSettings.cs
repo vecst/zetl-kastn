@@ -54,6 +54,34 @@ internal sealed class ZetlAppSettings
     public int PopClipboardDelayMs { get; set; } = 75;
     public int ReplayClipboardRestoreDelayMs { get; set; } = 150;
     public int DownloadTimeoutSeconds { get; set; } = 10;
+
+    // The user-facing name of a lane: the configured label, or the default when
+    // blank. The stored lane values stay Normal and Shift.
+    public string LaneLabel(bool shifted) => ZetlLaneLabels.Resolve(
+        shifted ? KastnAlternateLaneLabel : KastnMainLaneLabel,
+        shifted);
+}
+
+internal static class ZetlLaneLabels
+{
+    // Short enough that card headers, buttons, and menus stay predictable.
+    public const int MaxLength = 20;
+    public const string DefaultMain = "Main";
+    public const string DefaultAlternate = "Alternate";
+
+    public static string Trim(string? value)
+    {
+        var trimmed = (value ?? "").Trim();
+        return trimmed.Length <= MaxLength ? trimmed : trimmed[..MaxLength].TrimEnd();
+    }
+
+    public static string Resolve(string? value, bool shifted)
+    {
+        var trimmed = Trim(value);
+        return trimmed.Length > 0
+            ? trimmed
+            : shifted ? DefaultAlternate : DefaultMain;
+    }
 }
 
 internal static class ZetlKastnStartup

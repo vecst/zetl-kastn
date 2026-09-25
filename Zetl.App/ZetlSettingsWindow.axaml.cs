@@ -274,8 +274,8 @@ internal partial class ZetlSettingsWindow : Window
         ? ZetlKastnStartup.LastProject
         : ZetlKastnStartup.Landing;
     public string KastnDefaultViewId => (kastnDefaultViewBox.SelectedItem as ViewChoice)?.Id ?? "";
-    public string KastnMainLaneLabel => TrimLaneLabel(kastnMainLaneLabelBox.Text);
-    public string KastnAlternateLaneLabel => TrimLaneLabel(kastnAlternateLaneLabelBox.Text);
+    public string KastnMainLaneLabel => ZetlLaneLabels.Trim(kastnMainLaneLabelBox.Text);
+    public string KastnAlternateLaneLabel => ZetlLaneLabels.Trim(kastnAlternateLaneLabelBox.Text);
     public bool KastnMinimizeAfterTemplate => kastnMinimizeAfterTemplateBox.IsChecked == true;
     public bool KastnCloseToTray => kastnCloseToTrayBox.IsChecked == true;
     public string KastnTemporaryTemplateLaneDefault => kastnTemporaryTemplateLaneBox.SelectedIndex switch
@@ -301,26 +301,14 @@ internal partial class ZetlSettingsWindow : Window
         return Math.Min(max, Math.Max(min, value));
     }
 
-    private static string TrimLaneLabel(string? value)
-    {
-        var trimmed = (value ?? "").Trim();
-        return trimmed.Length <= 20 ? trimmed : trimmed[..20].TrimEnd();
-    }
-
-    private static string ResolveLaneLabel(string? value, string fallback)
-    {
-        var trimmed = TrimLaneLabel(value);
-        return trimmed.Length == 0 ? fallback : trimmed;
-    }
-
     private void RefreshKastnLaneChoices()
     {
         var selectedIndex = kastnTemporaryTemplateLaneBox.SelectedIndex;
         kastnTemporaryTemplateLaneBox.ItemsSource = new[]
         {
             "Ask every time",
-            ResolveLaneLabel(kastnMainLaneLabelBox.Text, "Main"),
-            ResolveLaneLabel(kastnAlternateLaneLabelBox.Text, "Alternate")
+            ZetlLaneLabels.Resolve(kastnMainLaneLabelBox.Text, shifted: false),
+            ZetlLaneLabels.Resolve(kastnAlternateLaneLabelBox.Text, shifted: true)
         };
         kastnTemporaryTemplateLaneBox.SelectedIndex = Math.Clamp(selectedIndex, 0, 2);
     }
