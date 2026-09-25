@@ -54,7 +54,7 @@ internal partial class MainWindow : Window
     // Creation types: bundle a template with a default view.
     private readonly ZetlCreationTypeStore creationStore = new(log: Console.Error.WriteLine);
     private readonly ObservableCollection<CreationListItem> creations = [];
-    private bool landingShowingCreations;
+    private LandingSection landingSection;
     private ZetlCreationTypeDocument? editingCreation;
     private string creationBaselineJson = "";
     // Sentinel for the creation editor's "no view" choice.
@@ -224,7 +224,6 @@ internal partial class MainWindow : Window
     private GridLength rightColumnWidth = new GridLength(360, GridUnitType.Pixel);
     private GridLength rightSplitterWidth = new GridLength(8, GridUnitType.Pixel);
     private bool bucketHeadingUpdating;
-    private bool landingShowingTemplates;
     private bool landingShowingConsumable;
     private bool landingShowArchived;
     private IReadOnlyList<ZetlProjectSummary> lastProjectSummaries = [];
@@ -433,9 +432,9 @@ internal partial class MainWindow : Window
         restoreSlipButton.Click += async (_, _) => await RestoreSlipAsync();
         useZetlButton.Click += (_, _) => UseZetlVersion();
         keepMineButton.Click += async (_, _) => await KeepMineAsync();
-        landingProjectsButton.Click += (_, _) => ShowLandingSection(templates: false, creations: false);
-        landingTemplatesButton.Click += (_, _) => ShowLandingSection(templates: true, creations: false);
-        landingCreateButton.Click += (_, _) => ShowLandingSection(templates: false, creations: true);
+        landingProjectsButton.Click += (_, _) => ShowLandingSection(LandingSection.Projects);
+        landingTemplatesButton.Click += (_, _) => ShowLandingSection(LandingSection.Templates);
+        landingCreateButton.Click += (_, _) => ShowLandingSection(LandingSection.Creations);
         landingCurrentProjectsButton.Click += (_, _) => SetArchivedProjectMode(showArchived: false);
         landingArchivedProjectsButton.Click += (_, _) => SetArchivedProjectMode(showArchived: true);
         landingCaptureButton.Click += (_, _) => SetTemplateType(consumable: false);
@@ -728,20 +727,19 @@ internal partial class MainWindow : Window
         }
     }
 
-    private void ShowLandingSection(bool templates, bool creations)
+    private void ShowLandingSection(LandingSection section)
     {
-        landingShowingTemplates = templates;
-        landingShowingCreations = creations;
+        landingSection = section;
         landingProjectList.SelectedItem = null;
         landingProjectWorkspaceList.SelectedItem = null;
         // Re-read each catalog from disk on visit so added/removed user files show
         // up without restarting Kastn.
-        if (templates)
+        if (section == LandingSection.Templates)
         {
             RebuildTemplateCards();
         }
 
-        if (creations)
+        if (section == LandingSection.Creations)
         {
             RebuildCreationCards();
         }
@@ -780,7 +778,9 @@ internal partial class MainWindow : Window
     private void RefreshLandingMode()
     {
         var showChoices = emptyState.IsVisible && landingModeToggle.IsVisible;
-        var showProjects = !landingShowingTemplates && !landingShowingCreations;
+        var showProjects = landingSection == LandingSection.Projects;
+        var showTemplates = landingSection == LandingSection.Templates;
+        var showCreations = landingSection == LandingSection.Creations;
         // The toggle stays visible even with no visible projects, so archived-only
         // workspaces can still reveal their projects.
         landingProjectsPanel.IsVisible = showChoices;
@@ -788,31 +788,31 @@ internal partial class MainWindow : Window
         landingProjectLibraryHeader.IsVisible = showChoices;
         landingProjectList.IsVisible = showChoices && recentProjects.Count > 0;
         landingProjectWorkspaceList.IsVisible = showChoices && showProjects && projects.Count > 0;
-        landingTemplateList.IsVisible = showChoices && landingShowingTemplates;
+        landingTemplateList.IsVisible = showChoices && showTemplates;
         landingTemplateList.IsEnabled = IsOnline;
-        landingCreationList.IsVisible = showChoices && landingShowingCreations;
+        landingCreationList.IsVisible = showChoices && showCreations;
         landingCreationList.IsEnabled = IsOnline;
         landingLowerActionRow.IsVisible = showChoices
-            && (showProjects || landingShowingTemplates || landingShowingCreations);
+            && (showProjects || showTemplates || showCreations);
         landingProjectArchiveToggle.IsVisible = showChoices && showProjects;
-        landingTemplateTypeToggle.IsVisible = showChoices && landingShowingTemplates;
+        landingTemplateTypeToggle.IsVisible = showChoices && showTemplates;
         landingTemplateTypeToggle.IsEnabled = IsOnline;
-        landingNewTemplateButton.IsVisible = showChoices && landingShowingTemplates;
-        landingNewCreationButton.IsVisible = showChoices && landingShowingCreations;
-        landingWorkspaceTitle.Text = landingShowingCreations
+        landingNewTemplateButton.IsVisible = showChoices && showTemplates;
+        landingNewCreationButton.IsVisible = showChoices && showCreations;
+        landingWorkspaceTitle.Text = showCreations
             ? "Create"
-            : landingShowingTemplates ? "Templates" : "Projects";
-        landingWorkspaceSubtitle.Text = landingShowingCreations
+            : showTemplates ? "Templates" : "Projects";
+        landingWorkspaceSubtitle.Text = showCreations
             ? "Start from a saved creation type."
-            : landingShowingTemplates
+            : showTemplates
                 ? "Start a project from a reusable template."
                 : "Open a project or manage the library.";
         landingProjectsButton.IsEnabled = !showProjects;
-        landingTemplatesButton.IsEnabled = !landingShowingTemplates;
+        landingTemplatesButton.IsEnabled = !showTemplates;
         landingCurrentProjectsButton.IsEnabled = landingShowArchived;
         landingArchivedProjectsButton.IsEnabled = !landingShowArchived;
         landingCreateButton.IsVisible = showChoices;
-        landingCreateButton.IsEnabled = !landingShowingCreations;
+        landingCreateButton.IsEnabled = !showCreations;
         landingCaptureButton.IsEnabled = landingShowingConsumable;
         landingConsumableButton.IsEnabled = !landingShowingConsumable;
         RefreshLandingGridLayout();
@@ -1802,6 +1802,14 @@ internal partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
+
+    // The landing page shows exactly one of these lists at a time.
+    private enum LandingSection
+    {
+        Projects,
+        Templates,
+        Creations
+    }
 
     private sealed record ProjectListItem(
         string Id,

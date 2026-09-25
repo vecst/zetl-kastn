@@ -454,7 +454,7 @@ internal partial class MainWindow
         // card is visible (unless a project is open, where Close returns there).
         if (currentProject is null)
         {
-            landingShowingTemplates = true;
+            landingSection = LandingSection.Templates;
             landingShowingConsumable = savedConsumable;
             RebuildTemplateCards();
             RefreshLandingMode();

@@ -247,8 +247,7 @@ internal partial class MainWindow
         CloseCreationEditor();
         if (currentProject is null)
         {
-            landingShowingTemplates = false;
-            landingShowingCreations = true;
+            landingSection = LandingSection.Creations;
             RebuildCreationCards();
             RefreshLandingMode();
         }
