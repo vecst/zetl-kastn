@@ -50,7 +50,7 @@ internal static class StorageBaselineScenario
         var rewriteTimes = new List<double>(MeasurementRuns);
         for (var run = 0; run < MeasurementRuns; run++)
         {
-            project.Buckets[0].Notes[0].Text = $"revised-{run:D2}";
+            project.Buckets[0].Slips[0].Text = $"revised-{run:D2}";
             var stopwatch = Stopwatch.StartNew();
             storage.WriteProject(project);
             stopwatch.Stop();
@@ -71,7 +71,7 @@ internal static class StorageBaselineScenario
             stopwatch.Stop();
             var memoryAfter = GC.GetTotalMemory(forceFullCollection: true);
 
-            if (loaded.Projects.Single().Buckets.Sum(bucket => bucket.Notes.Count) != noteCount)
+            if (loaded.Projects.Single().Buckets.Sum(bucket => bucket.Slips.Count) != noteCount)
             {
                 throw new InvalidOperationException("Loaded slip count did not match the baseline project.");
             }

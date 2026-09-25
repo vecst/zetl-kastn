@@ -433,7 +433,7 @@ public class KastnLifecycleTests
             AssertEqual(ZetlResponseStatus.Success, response.Status, "The same-server retry should recover the cached result.");
             AssertEqual(
                 1,
-                fixture.Bucket.Notes.Count(note => note.Text == "deduplicated retry"),
+                fixture.Bucket.Slips.Count(note => note.Text == "deduplicated retry"),
                 "An unknown mutation retry must not execute the command twice.");
         });
     }

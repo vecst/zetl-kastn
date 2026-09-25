@@ -646,8 +646,8 @@ public class PortableSelfTests
             store.SetBucketPopMode(bucket, true);
             AssertFalse(store.TryPopLastMatchingActiveNote("alpha"), "Only the last note may pop.");
             AssertTrue(store.TryPopLastMatchingActiveNote("beta"), "Matching last note should pop.");
-            AssertEqual(1, bucket.Notes.Count, "One note should remain.");
-            AssertEqual("alpha", bucket.Notes[0].Text, "The earlier note should remain.");
+            AssertEqual(1, bucket.Slips.Count, "One note should remain.");
+            AssertEqual("alpha", bucket.Slips[0].Text, "The earlier note should remain.");
 
             AssertTrue(
                 store.TryPopLastMatchingActiveNote(
@@ -662,7 +662,7 @@ public class PortableSelfTests
             AssertEqual("alpha", poppedNote?.Text, "Pop should report the removed note.");
             AssertEqual("Inbox Pop Review", reviewBucket?.Name, "Pop should report its recovery bucket.");
             store.RestorePoppedNote(poppedBucket!, poppedNote!, reviewBucket, reviewNote?.Id);
-            AssertEqual("alpha", bucket.Notes.Single().Text, "Restore should put popped note back.");
+            AssertEqual("alpha", bucket.Slips.Single().Text, "Restore should put popped note back.");
         }
 
         private static void StatePopRecoversTextAcrossRestart()
@@ -683,9 +683,9 @@ public class PortableSelfTests
             var loadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
             var loadedSource = loadedProject.Buckets.Single(item => item.Id == source.Id);
             var loadedReview = loadedProject.Buckets.Single(item => item.Id == loadedSource.Settings.PopReviewBucketId);
-            AssertEqual(0, loadedSource.Notes.Count, "The source should remain consumed after restart.");
-            AssertEqual("durable text", loadedReview.Notes.Single().Text, "Popped text should remain recoverable after restart.");
-            AssertEqual("pop-recovery", loadedReview.Notes.Single().Source, "Recovered slips should identify their Pop origin.");
+            AssertEqual(0, loadedSource.Slips.Count, "The source should remain consumed after restart.");
+            AssertEqual("durable text", loadedReview.Slips.Single().Text, "Popped text should remain recoverable after restart.");
+            AssertEqual("pop-recovery", loadedReview.Slips.Single().Source, "Recovered slips should identify their Pop origin.");
         }
 
         private static void StatePopRecoversImageAcrossRestart()
@@ -711,7 +711,7 @@ public class PortableSelfTests
             var loadedSource = loadedProject.Buckets.Single(item => item.Id == source.Id);
             var recovered = loadedProject.Buckets
                 .Single(item => item.Id == loadedSource.Settings.PopReviewBucketId)
-                .Notes.Single();
+                .Slips.Single();
             AssertTrue(recovered.IsImage, "Popped image type should survive restart.");
             AssertEqual(7, recovered.Image?.Width, "Popped image metadata should survive restart.");
             AssertEqual(bytes.Length, reloaded.ReadImageAsset(loadedProject, recovered)?.Length, "Popped image bytes should remain readable after restart.");
@@ -753,7 +753,7 @@ public class PortableSelfTests
             var loadedSource = loadedProject.Buckets.Single(item => item.Id == source.Id);
             var recovered = loadedProject.Buckets
                 .Single(item => item.Id == loadedSource.Settings.PopReviewBucketId)
-                .Notes.Single();
+                .Slips.Single();
             AssertEqual("mixed", recovered.Text, "Mixed Pop should retain text after restart.");
             AssertTrue(recovered.Image is not null, "Mixed Pop should retain its attached image after restart.");
             AssertEqual(html, recovered.RichHtml, "Mixed Pop should retain rich clipboard content after restart.");
@@ -833,7 +833,7 @@ public class PortableSelfTests
             var note = reloaded.State.Projects
                 .Single(project => project.Name == "Demo")
                 .Buckets.Single(bucket => bucket.Name == "Inbox")
-                .Notes.Single();
+                .Slips.Single();
             AssertEqual("Browser", note.CaptureOrigin?.ApplicationName, "Application name should persist with the note.");
             AssertEqual("browser", note.CaptureOrigin?.ProcessName, "Process name should persist with the note.");
             AssertEqual("Research — Browser", note.CaptureOrigin?.WindowTitle, "Window title should persist with the note.");
@@ -868,26 +868,26 @@ public class PortableSelfTests
 
             AssertEqual<ZetlCaptureOrigin?>(
                 null,
-                clean.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin,
+                clean.Buckets.SelectMany(bucket => bucket.Slips).Single().CaptureOrigin,
                 "A clean export snapshot should remove the complete capture-origin envelope.");
             AssertEqual<string?>(
                 null,
-                clean.Buckets.SelectMany(bucket => bucket.Notes).Single().RichHtml,
+                clean.Buckets.SelectMany(bucket => bucket.Slips).Single().RichHtml,
                 "A clean export snapshot should remove hidden source HTML.");
             AssertEqual(
                 "Sensitive customer name",
-                archive.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin?.WindowTitle,
+                archive.Buckets.SelectMany(bucket => bucket.Slips).Single().CaptureOrigin?.WindowTitle,
                 "An archive export snapshot should preserve capture origin.");
             AssertTrue(
-                archive.Buckets.SelectMany(bucket => bucket.Notes).Single().RichHtml
+                archive.Buckets.SelectMany(bucket => bucket.Slips).Single().RichHtml
                     ?.Contains("producer-metadata", StringComparison.Ordinal) == true,
                 "An archive export snapshot should preserve Replay's source HTML.");
             AssertEqual<List<ZetlClipboardFormatData>?>(
                 null,
-                clean.Buckets.SelectMany(bucket => bucket.Notes).Single().ReplayFormats,
+                clean.Buckets.SelectMany(bucket => bucket.Slips).Single().ReplayFormats,
                 "A clean export snapshot should remove native Replay formats.");
             AssertTrue(
-                archive.Buckets.SelectMany(bucket => bucket.Notes).Single().ReplayFormats
+                archive.Buckets.SelectMany(bucket => bucket.Slips).Single().ReplayFormats
                     ?.Any(item => item.RegisteredName == "Star Embed Source (XML)") == true,
                 "An archive export snapshot should preserve native Replay formats.");
             AssertTrue(note.CaptureOrigin is not null, "Sanitizing an export snapshot must not modify the live project.");
@@ -951,12 +951,12 @@ public class PortableSelfTests
             AssertFalse(clean.Manifest.CaptureOriginsIncluded, "Clean package manifest should declare stripped provenance.");
             AssertEqual<ZetlCaptureOrigin?>(
                 null,
-                clean.Project.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin,
+                clean.Project.Buckets.SelectMany(bucket => bucket.Slips).Single().CaptureOrigin,
                 "Clean package should not contain capture provenance.");
             AssertTrue(archiveCopy.Manifest.CaptureOriginsIncluded, "Archive package manifest should declare retained provenance.");
             AssertEqual(
                 "Private account title",
-                archiveCopy.Project.Buckets.SelectMany(bucket => bucket.Notes).Single().CaptureOrigin?.WindowTitle,
+                archiveCopy.Project.Buckets.SelectMany(bucket => bucket.Slips).Single().CaptureOrigin?.WindowTitle,
                 "Archive package should retain capture provenance.");
             AssertTrue(liveNote.CaptureOrigin is not null, "Writing either package must leave live state untouched.");
             AssertEqual(
@@ -1010,7 +1010,7 @@ public class PortableSelfTests
             var loadedProject = reloaded.State.Projects.Single(item => item.Name == "Images");
             var loadedImage = loadedProject.Buckets
                 .Single(item => item.Name == "Inbox")
-                .Notes.First();
+                .Slips.First();
             AssertTrue(loadedImage.IsImage, "Image slip type should survive persistence.");
             AssertEqual(20, loadedImage.Image?.Width, "Image dimensions should survive persistence.");
         }
@@ -1060,7 +1060,7 @@ public class PortableSelfTests
                 JsonFile.Options)!;
             AssertEqual<string?>(
                 null,
-                packagedProject.Buckets.SelectMany(bucket => bucket.Notes).Single().Image?.SourceUrl,
+                packagedProject.Buckets.SelectMany(bucket => bucket.Slips).Single().Image?.SourceUrl,
                 "A clean package should strip private image source URLs.");
             AssertTrue(note.Image?.SourceUrl is not null, "Clean export must not modify the live image source URL.");
         }
@@ -1084,7 +1084,7 @@ public class PortableSelfTests
                 var dayBucket = project.Buckets.SingleOrDefault(bucket => bucket.ParentBucketId is null
                     && string.Equals(bucket.Name, dayName, StringComparison.OrdinalIgnoreCase));
                 AssertTrue(dayBucket is not null, $"The weekly journal seeds a day bucket for {dayName}.");
-                AssertEqual(0, dayBucket!.Notes.Count, $"Seeded day bucket {dayName} starts empty.");
+                AssertEqual(0, dayBucket!.Slips.Count, $"Seeded day bucket {dayName} starts empty.");
             }
             AssertTrue(
                 project.Buckets.All(bucket => !string.Equals(bucket.Name, ZetlStateStore.JournalCaptureBucketName, StringComparison.OrdinalIgnoreCase)),
@@ -1420,7 +1420,7 @@ public class PortableSelfTests
             var created = store.GetOrCreateBucket(project, "Compiled");
             store.AddNote(created, "compiled text", "compile");
             AssertEqual("Compiled", created.Name, "Missing bucket should be created.");
-            AssertEqual("compile", created.Notes.Single().Source, "Compiled note should store its source.");
+            AssertEqual("compile", created.Slips.Single().Source, "Compiled note should store its source.");
         }
 
         private static void StateAddsNotesPreservingStructure()
@@ -1433,10 +1433,10 @@ public class PortableSelfTests
             var added = store.AddNotes(bucket, ["one", "   ", "two", "three"], "compile");
 
             AssertEqual(3, added.Count, "AddNotes should skip blank entries.");
-            AssertEqual(3, bucket.Notes.Count, "Each non-blank text should become its own note.");
-            AssertEqual("one", bucket.Notes[0].Text, "Notes should keep insertion order.");
-            AssertEqual("three", bucket.Notes[2].Text, "Notes should keep insertion order.");
-            AssertEqual("compile", bucket.Notes[0].Source, "AddNotes should set the note source.");
+            AssertEqual(3, bucket.Slips.Count, "Each non-blank text should become its own note.");
+            AssertEqual("one", bucket.Slips[0].Text, "Notes should keep insertion order.");
+            AssertEqual("three", bucket.Slips[2].Text, "Notes should keep insertion order.");
+            AssertEqual("compile", bucket.Slips[0].Source, "AddNotes should set the note source.");
         }
 
         private static void StateCompilesToOtherProjectWithoutChangingActive()
@@ -1457,7 +1457,7 @@ public class PortableSelfTests
             AssertEqual(source.Id, store.State.ActiveProjectId, "Compiling should not change which project is active.");
             AssertEqual(destActiveBucketBefore, dest.ActiveBucketId, "Compiling into another project should not change its active bucket.");
             AssertTrue(dest.Buckets.Any(bucket => bucket.Name == "Compiled"), "Compile destination bucket should be created in the destination project.");
-            AssertEqual("compiled text", destination.Notes.Single().Text, "Compiled note should land in the destination bucket.");
+            AssertEqual("compiled text", destination.Slips.Single().Text, "Compiled note should land in the destination bucket.");
         }
 
         private static void StateCompilesSelectedNotes()
@@ -1474,8 +1474,8 @@ public class PortableSelfTests
             var notes = store.GetNoteDisplayItems(project);
             var compiled = store.CompilePlainTextFromNotes(project,
             [
-                notes.Single(item => item.Note.Text == "first"),
-                notes.Single(item => item.Note.Text == "third")
+                notes.Single(item => item.Slip.Text == "first"),
+                notes.Single(item => item.Slip.Text == "third")
             ]);
 
             AssertTrue(compiled.Contains("Inbox"), "Selected inbox note should include its bucket heading.");
@@ -1593,11 +1593,11 @@ public class PortableSelfTests
 
             store.DeleteNote(bucket, remove.Id);
 
-            AssertEqual(1, bucket.Notes.Count, "Deleting a note should remove only the selected note.");
-            AssertEqual(keep.Id, bucket.Notes.Single().Id, "Unselected notes should remain.");
+            AssertEqual(1, bucket.Slips.Count, "Deleting a note should remove only the selected note.");
+            AssertEqual(keep.Id, bucket.Slips.Single().Id, "Unselected notes should remain.");
 
             var loaded = new ZetlStateStore(temp.Path);
-            AssertEqual(keep.Id, loaded.ActiveBucket!.Notes.Single().Id, "Note deletion should persist.");
+            AssertEqual(keep.Id, loaded.ActiveBucket!.Slips.Single().Id, "Note deletion should persist.");
         }
 
         private static void StatePreservesBucketSettings()
@@ -1648,8 +1648,8 @@ public class PortableSelfTests
             var notes = store.GetNoteDisplayItems(project);
             var compiled = store.CompileUnformattedFromNotes(
             [
-                notes.Single(item => item.Note.Text == "first"),
-                notes.Single(item => item.Note.Text == "third")
+                notes.Single(item => item.Slip.Text == "first"),
+                notes.Single(item => item.Slip.Text == "third")
             ]);
 
             AssertEqual($"first{Environment.NewLine}third", compiled, "Unformatted compile should include only note text.");
@@ -1722,9 +1722,9 @@ public class PortableSelfTests
             store.AddNote(ideas, "latest", "copy");
 
             AssertTrue(store.TryGetLastNoteDisplayItem(project, null, out var note), "Last active note should be found.");
-            AssertEqual("latest", note?.Note.Text, "Last active note should use the newest note timestamp.");
+            AssertEqual("latest", note?.Slip.Text, "Last active note should use the newest note timestamp.");
             AssertTrue(store.TryGetLastNoteDisplayItem(project, [inbox], out var scopedNote), "Scoped last note should be found.");
-            AssertEqual("first", scopedNote?.Note.Text, "Scoped last note should respect bucket scope.");
+            AssertEqual("first", scopedNote?.Slip.Text, "Scoped last note should respect bucket scope.");
         }
 
         private static void StateCompileScopeRespectsSessionToggle()
@@ -1761,7 +1761,7 @@ public class PortableSelfTests
             AssertEqual(2, allNotes.Count, "Whole-project compile should list both notes.");
             AssertTrue(allCompiled.Contains("old note"), "Whole-project compile should include old-session notes.");
             AssertTrue(allCompiled.Contains("new note"), "Whole-project compile should include current-session notes.");
-            AssertEqual(2, inbox.Notes.Count, "Old notes should remain stored for board/history.");
+            AssertEqual(2, inbox.Slips.Count, "Old notes should remain stored for board/history.");
         }
 
         private static void StateReplayResumesQueuedSlipsAcrossRestart()
@@ -1784,7 +1784,7 @@ public class PortableSelfTests
             AssertEqual("two", second?.Text, "Replay should resume at the first unconsumed slip.");
             AssertTrue(reloaded.TryConsumeReplayNote(loadedQueue, second!.Id), "Replay should consume a prior-session slip.");
             AssertFalse(reloaded.TryPeekNextReplayNote(loadedQueue, out _), "Replay should be empty after its last slip is consumed.");
-            AssertEqual(0, loadedQueue.Notes.Count, "Consumed Replay slips should stay consumed.");
+            AssertEqual(0, loadedQueue.Slips.Count, "Consumed Replay slips should stay consumed.");
         }
 
         private static void StateReplayArchivesConsumedSlipsForReview()
@@ -1803,8 +1803,8 @@ public class PortableSelfTests
             AssertEqual(queue.Id, project.ActiveBucketId, "Review archive should not steal the active bucket.");
             AssertEqual("Queue Review", reviewBucket!.Name, "Review bucket should be named from the Replay bucket.");
             AssertEqual("Standard", reviewBucket.Settings.Kind, "Review bucket should stay standard.");
-            AssertEqual("posted", reviewBucket.Notes.Single().Text, "Review bucket should keep consumed text.");
-            AssertEqual("replay", reviewBucket.Notes.Single().Source, "Review note should be tagged as replay.");
+            AssertEqual("posted", reviewBucket.Slips.Single().Text, "Review bucket should keep consumed text.");
+            AssertEqual("replay", reviewBucket.Slips.Single().Source, "Review note should be tagged as replay.");
             AssertFalse(store.TryPeekNextReplayNote(queue, out _), "Consumed Replay slip should leave the queue.");
 
             store.AddNote(queue, "posted again", "copy");
@@ -1812,7 +1812,7 @@ public class PortableSelfTests
             AssertTrue(store.TryConsumeReplayNoteToReview(project, queue, second!.Id, out var sameReviewBucket), "Replay should consume into the same review bucket.");
             AssertTrue(sameReviewBucket is not null, "Replay consume should return the reused review bucket.");
             AssertEqual(reviewBucket.Id, sameReviewBucket!.Id, "Review bucket should be reused.");
-            AssertEqual(2, sameReviewBucket.Notes.Count, "Review bucket should accumulate consumed Replay slips.");
+            AssertEqual(2, sameReviewBucket.Slips.Count, "Review bucket should accumulate consumed Replay slips.");
         }
 
         private static void StateReplayRestoresConsumedSlipsFromReview()
@@ -1836,8 +1836,8 @@ public class PortableSelfTests
             store.RestoreReplayConsumedNote(queue, consumedNote!, reviewBucket, reviewNote?.Id);
 
             AssertTrue(ZetlStateStore.IsReplayBucket(queue), "Replay undo should restore Replay kind.");
-            AssertEqual("posted", queue.Notes.Single().Text, "Replay undo should restore the consumed slip.");
-            AssertEqual(0, reviewBucket!.Notes.Count, "Replay undo should remove the review copy.");
+            AssertEqual("posted", queue.Slips.Single().Text, "Replay undo should restore the consumed slip.");
+            AssertEqual(0, reviewBucket!.Slips.Count, "Replay undo should remove the review copy.");
         }
 
         private static void StateReplayDisablesPopMode()
@@ -1895,8 +1895,8 @@ public class PortableSelfTests
             var loaded = new ZetlStateStore(temp.Path);
             AssertEqual(project.Id, loaded.ActiveProject?.Id, "Active project id should round-trip.");
             AssertEqual(bucket.Id, loaded.ActiveBucket?.Id, "Active bucket id should round-trip.");
-            AssertEqual(note.Id, loaded.ActiveBucket?.Notes.Single().Id, "Note id should round-trip.");
-            AssertEqual("round trip", loaded.ActiveBucket?.Notes.Single().Text, "Note text should round-trip.");
+            AssertEqual(note.Id, loaded.ActiveBucket?.Slips.Single().Id, "Note id should round-trip.");
+            AssertEqual("round trip", loaded.ActiveBucket?.Slips.Single().Text, "Note text should round-trip.");
 
             var projectPath = Directory.GetFiles(
                 System.IO.Path.GetDirectoryName(temp.Path)!,
@@ -1950,7 +1950,7 @@ public class PortableSelfTests
                 Directory.GetFiles(System.IO.Path.Combine(root, "projects"), "project.json", SearchOption.AllDirectories).Length,
                 "Migration should split the legacy project into its own file.");
             AssertEqual("Legacy", store.ActiveProject?.Name, "Migrated active project should load.");
-            AssertEqual("carried over", store.ActiveBucket?.Notes.Single().Text, "Migrated note should survive the split.");
+            AssertEqual("carried over", store.ActiveBucket?.Slips.Single().Text, "Migrated note should survive the split.");
 
             var reloaded = new ZetlStateStore(temp.Path);
             AssertEqual("Legacy", reloaded.State.Projects.Single().Name, "Migrated project should reload from the new layout.");
@@ -2135,12 +2135,12 @@ public class PortableSelfTests
             AssertEqual(activeBefore, store.State.ActiveProjectId, "Logging should not change the active project.");
             var today = DateTime.Now.ToString("yyyy-MM-dd");
             var dayBucket = logProject.Buckets.Single(bucket => bucket.Name == today);
-            AssertEqual(2, dayBucket.Notes.Count, "Both log lines should be stored as notes.");
-            AssertEqual("log", dayBucket.Notes[0].Source, "Log notes should use the log source.");
+            AssertEqual(2, dayBucket.Slips.Count, "Both log lines should be stored as notes.");
+            AssertEqual("log", dayBucket.Slips[0].Source, "Log notes should use the log source.");
 
             store.AppendLogNotes(["a", "b", "c", "d", "e"], maxDayBuckets: 14, maxNotesPerBucket: 3);
-            AssertEqual(3, logProject.Buckets.Single(bucket => bucket.Name == today).Notes.Count, "Day bucket should be capped to maxNotesPerBucket.");
-            AssertEqual("e", logProject.Buckets.Single(bucket => bucket.Name == today).Notes[^1].Text, "Capping should keep the newest notes.");
+            AssertEqual(3, logProject.Buckets.Single(bucket => bucket.Name == today).Slips.Count, "Day bucket should be capped to maxNotesPerBucket.");
+            AssertEqual("e", logProject.Buckets.Single(bucket => bucket.Name == today).Slips[^1].Text, "Capping should keep the newest notes.");
 
             var reloaded = new ZetlStateStore(temp.Path);
             AssertTrue(reloaded.State.Projects.Any(project => project.Name == ZetlStateStore.LogProjectName), "Log project should persist across reload.");
@@ -2717,7 +2717,7 @@ public class PortableSelfTests
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
                 origin).GetAwaiter().GetResult();
 
-            var note = store.GetActiveBucket()!.Notes.Single();
+            var note = store.GetActiveBucket()!.Slips.Single();
             AssertEqual("copied text", note.Text, "Auto-capture should trim and save copied text.");
             AssertEqual("copy", note.Source, "Auto-capture should mark the copy source.");
             AssertEqual("Editor", note.CaptureOrigin?.ApplicationName, "Auto-capture should retain its keydown origin.");
@@ -2768,7 +2768,7 @@ public class PortableSelfTests
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
                 captureOrigin: null).GetAwaiter().GetResult();
 
-            var captured = queue.Notes.Single();
+            var captured = queue.Slips.Single();
             AssertEqual(richHtml, captured.RichHtml, "Auto-capture should retain the source HTML fragment.");
             AssertTrue(
                 captured.ReplayFormats?.Any(item =>
@@ -2789,7 +2789,7 @@ public class PortableSelfTests
                 "Rich Replay should prefer Calc's native representation over HTML import.");
             var review = store.GetActiveProject()!.Buckets
                 .Single(bucket => bucket.Id == queue.Settings.ReplayReviewBucketId);
-            AssertEqual(richHtml, review.Notes.Single().RichHtml, "Replay review should retain the rich representation.");
+            AssertEqual(richHtml, review.Slips.Single().RichHtml, "Replay review should retain the rich representation.");
         }
 
         private static void RuntimeAutoCapturesCopiedImages()
@@ -2818,7 +2818,7 @@ public class PortableSelfTests
                     ZetlCaptureOriginDetail.ApplicationAndWindowTitle))
                 .GetAwaiter().GetResult();
 
-            var note = store.GetActiveBucket()!.Notes.Single();
+            var note = store.GetActiveBucket()!.Slips.Single();
             AssertTrue(note.IsImage, "An image clipboard should create an image slip.");
             AssertEqual(30, note.Image?.Width, "Captured image width should persist.");
             AssertEqual("Canvas", note.CaptureOrigin?.WindowTitle, "Image capture should retain keydown provenance.");
@@ -2856,7 +2856,7 @@ public class PortableSelfTests
                 captureOrigin: null)
                 .GetAwaiter().GetResult();
 
-            var note = store.GetActiveBucket()!.Notes.Single();
+            var note = store.GetActiveBucket()!.Slips.Single();
             AssertFalse(note.IsImage, "A dual capture should present as text, not as a picture.");
             AssertEqual("A1\tB1\nA2\tB2", note.Text, "A dual capture should keep the clipboard text as content.");
             AssertTrue(note.Image is not null, "A dual capture should retain the clipboard picture.");
@@ -2886,7 +2886,7 @@ public class PortableSelfTests
                 captureOrigin: null)
                 .GetAwaiter().GetResult();
 
-            var note = store.GetActiveBucket()!.Notes.Single();
+            var note = store.GetActiveBucket()!.Slips.Single();
             AssertTrue(
                 clipboard.TextReadCount >= 2,
                 "Capture should retry after the token changes between format reads.");
@@ -2926,7 +2926,7 @@ public class PortableSelfTests
 
             AssertEqual(
                 0,
-                store.GetActiveBucket()!.Notes.Count,
+                store.GetActiveBucket()!.Slips.Count,
                 "Auto-capture must commit nothing when no retry observes one complete generation.");
         }
 
@@ -2989,7 +2989,7 @@ public class PortableSelfTests
             var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
 
             AssertFalse(handled, "Dual Pop should allow the physical paste through.");
-            AssertEqual(0, bucket.Notes.Count, "Pop should remove the matching dual slip via its image hash.");
+            AssertEqual(0, bucket.Slips.Count, "Pop should remove the matching dual slip via its image hash.");
             AssertTrue(undo.TryPop(false, out _), "Popped dual slip should be undoable.");
         }
 
@@ -3021,9 +3021,9 @@ public class PortableSelfTests
             AssertTrue(handled, "Dual Replay should suppress the physical paste.");
             AssertEqual(1, keyboard.PasteCount, "Dual Replay should send one synthetic paste.");
             AssertEqual("A1\tB1", clipboard.Text, "Dual Replay should paste the preferred text representation.");
-            AssertEqual(0, queue.Notes.Count, "Dual Replay should consume the queued slip.");
+            AssertEqual(0, queue.Slips.Count, "Dual Replay should consume the queued slip.");
             var review = project.Buckets.Single(item => item.Id == queue.Settings.ReplayReviewBucketId);
-            var reviewNote = review.Notes.Single();
+            var reviewNote = review.Slips.Single();
             AssertFalse(reviewNote.IsImage, "The review copy should stay text-preferred.");
             AssertTrue(reviewNote.Image is not null, "The review copy should retain the attached picture.");
         }
@@ -3071,7 +3071,7 @@ public class PortableSelfTests
                     SelectedBucket: capture.PreferredBucket));
 
             var project = store.GetActiveProject()!;
-            var note = project.Buckets.SelectMany(bucket => bucket.Notes).Single();
+            var note = project.Buckets.SelectMany(bucket => bucket.Slips).Single();
             AssertTrue(note.IsImage, "Held image copy should create an image slip.");
             AssertEqual("Annotated screenshot", note.Text, "The image caption should be stored as slip text.");
             AssertEqual("Screenshot", note.CaptureOrigin?.WindowTitle, "Held image copy should retain its origin.");
@@ -3120,7 +3120,7 @@ public class PortableSelfTests
                     SelectedBucket: capture.PreferredBucket));
 
             var note = store.GetActiveProject()!
-                .Buckets.SelectMany(bucket => bucket.Notes).Single();
+                .Buckets.SelectMany(bucket => bucket.Slips).Single();
             AssertFalse(note.IsImage, "A held dual capture should save text-preferred.");
             AssertEqual("A1\tB1 edited", note.Text, "The edited dialog text should be the slip content.");
             AssertTrue(note.Image is not null, "The held dual capture should retain the picture.");
@@ -3165,7 +3165,7 @@ public class PortableSelfTests
                     SelectedBucket: capture.PreferredBucket));
 
             var note = store.GetActiveProject()!
-                .Buckets.SelectMany(bucket => bucket.Notes).Single();
+                .Buckets.SelectMany(bucket => bucket.Slips).Single();
             AssertTrue(note.IsImage, "Clearing the dialog text should fall back to a picture slip.");
             AssertTrue(
                 notifications.Messages.Single().StartsWith("Saved image to", StringComparison.Ordinal),
@@ -3192,7 +3192,7 @@ public class PortableSelfTests
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1))
                 .GetAwaiter().GetResult();
 
-            var note = store.GetActiveBucket()!.Notes.Single();
+            var note = store.GetActiveBucket()!.Slips.Single();
             AssertTrue(note.IsImage, "An image URL should become an image slip.");
             AssertEqual(
                 "https://cdn.example/photo.png",
@@ -3219,7 +3219,7 @@ public class PortableSelfTests
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1))
                 .GetAwaiter().GetResult();
 
-            var note = store.GetActiveBucket()!.Notes.Single();
+            var note = store.GetActiveBucket()!.Slips.Single();
             AssertFalse(note.IsImage, "A URL that does not resolve as an image should remain text.");
             AssertEqual(url, note.Text, "Failed image resolution must preserve the copied URL.");
         }
@@ -3274,7 +3274,7 @@ public class PortableSelfTests
             delay.Release();
             captureTask.GetAwaiter().GetResult();
 
-            AssertEqual(0, store.GetActiveBucket()!.Notes.Count, "Cancelled copy should not auto-capture.");
+            AssertEqual(0, store.GetActiveBucket()!.Slips.Count, "Cancelled copy should not auto-capture.");
             AssertEqual("copied text", pending!.ObservedClipboardText, "Observed copy text should remain available to the hold flow.");
         }
 
@@ -3316,7 +3316,7 @@ public class PortableSelfTests
 
             AssertEqual(
                 0,
-                store.GetActiveBucket()!.Notes.Count,
+                store.GetActiveBucket()!.Slips.Count,
                 "A claimed hold must not auto-save the copied text.");
             AssertTrue(
                 holdTask.Result is ZetlNoteCaptureRequest,
@@ -3404,9 +3404,9 @@ public class PortableSelfTests
             AssertTrue(handled, "Replay tap should suppress the physical paste.");
             AssertEqual(1, keyboard.PasteCount, "Replay tap should send one synthetic paste.");
             AssertEqual("user clipboard", clipboard.Text, "Replay should restore the user's clipboard.");
-            AssertEqual(0, queue.Notes.Count, "Replay should consume the queued note.");
+            AssertEqual(0, queue.Slips.Count, "Replay should consume the queued note.");
             var review = project.Buckets.Single(bucket => bucket.Id == queue.Settings.ReplayReviewBucketId);
-            AssertEqual("queued value", review.Notes.Single().Text, "Replay should archive the consumed note.");
+            AssertEqual("queued value", review.Slips.Single().Text, "Replay should archive the consumed note.");
             AssertEqual("Standard", queue.Settings.Kind, "An empty Replay bucket should return to Standard.");
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
@@ -3550,8 +3550,8 @@ public class PortableSelfTests
             AssertTrue(handled, "Replay should handle a visible prior-session queue item.");
             AssertEqual(1, keyboard.PasteCount, "Replay should paste rather than pass through an apparently empty queue.");
             AssertEqual("user clipboard", clipboard.Text, "Replay should restore the user's clipboard after restart.");
-            AssertEqual(1, queue.Notes.Count, "Replay should consume exactly the first visible queued item.");
-            AssertEqual("second queued value", queue.Notes.Single().Text, "Replay should leave the next item queued.");
+            AssertEqual(1, queue.Slips.Count, "Replay should consume exactly the first visible queued item.");
+            AssertEqual("second queued value", queue.Slips.Single().Text, "Replay should leave the next item queued.");
             AssertEqual("Replay", queue.Settings.Kind, "Replay should remain enabled while a visible item remains.");
         }
 
@@ -3580,17 +3580,17 @@ public class PortableSelfTests
 
             AssertTrue(firstHandled && secondHandled, "Both rapid Replay taps should be handled.");
             AssertEqual(1, keyboard.PasteCount, "The second same-lane tap must wait for the first paste outcome.");
-            AssertEqual(2, queue.Notes.Count, "No slip should be consumed before the first paste succeeds.");
+            AssertEqual(2, queue.Slips.Count, "No slip should be consumed before the first paste succeeds.");
 
             firstPaste.SetResult(true);
             AssertTrue(
                 notifications.WaitForCount(2, TimeSpan.FromSeconds(5)),
                 "Both serialized Replay taps should persist and report completion within the timeout.");
             AssertEqual(2, keyboard.PasteCount, "Both serialized Replay taps should send a paste.");
-            AssertEqual(0, queue.Notes.Count, "Both serialized Replay taps should consume their slips.");
+            AssertEqual(0, queue.Slips.Count, "Both serialized Replay taps should consume their slips.");
             var review = project.Buckets.Single(bucket => bucket.Id == queue.Settings.ReplayReviewBucketId);
-            AssertEqual(2, review.Notes.Count, "Rapid taps should archive two distinct slips, not paste one twice.");
-            AssertEqual(2, review.Notes.Select(note => note.Id).Distinct().Count(), "Each consumed Replay slip should remain distinct.");
+            AssertEqual(2, review.Slips.Count, "Rapid taps should archive two distinct slips, not paste one twice.");
+            AssertEqual(2, review.Slips.Select(note => note.Id).Distinct().Count(), "Each consumed Replay slip should remain distinct.");
         }
 
         private static void RuntimeReplayLanesProgressIndependently()
@@ -3634,8 +3634,8 @@ public class PortableSelfTests
             AssertTrue(
                 notifications.WaitForCount(2, TimeSpan.FromSeconds(5)),
                 "Alternate Replay should persist and report its result within the timeout.");
-            AssertEqual(0, mainQueue.Notes.Count, "Main Replay should consume its slip.");
-            AssertEqual(0, shiftQueue.Notes.Count, "Alternate Replay should consume its slip.");
+            AssertEqual(0, mainQueue.Slips.Count, "Main Replay should consume its slip.");
+            AssertEqual(0, shiftQueue.Slips.Count, "Alternate Replay should consume its slip.");
         }
 
         private static void RuntimeReplaySuppressesTapDuringFinalRestore()
@@ -3664,7 +3664,7 @@ public class PortableSelfTests
                 "The final Replay tap should be handled.");
             AssertTrue(
                 dispatcher.RunUntil(
-                    () => keyboard.PasteCount == 1 && queue.Notes.Count == 0,
+                    () => keyboard.PasteCount == 1 && queue.Slips.Count == 0,
                     TimeSpan.FromSeconds(5)),
                 "Replay should consume its final item before the restore delay settles.");
 
@@ -3720,7 +3720,7 @@ public class PortableSelfTests
                 "Main Replay should handle its final tap.");
             AssertTrue(
                 dispatcher.RunUntil(
-                    () => mainQueue.Notes.Count == 0 && keyboard.PasteCount == 1,
+                    () => mainQueue.Slips.Count == 0 && keyboard.PasteCount == 1,
                     TimeSpan.FromSeconds(5)),
                 "Main Replay should enter its delayed final restoration.");
             AssertEqual("Replay", mainQueue.Settings.Kind, "Main should remain in its restoring state.");
@@ -3778,7 +3778,7 @@ public class PortableSelfTests
                 "Replay should handle the final item before the injected restore failure.");
             AssertTrue(
                 dispatcher.RunUntil(
-                    () => keyboard.PasteCount == 1 && queue.Notes.Count == 0,
+                    () => keyboard.PasteCount == 1 && queue.Slips.Count == 0,
                     TimeSpan.FromSeconds(5)),
                 "Replay should reach final restoration before failure injection.");
             clipboard.WriteResultOverride = new(
@@ -3822,7 +3822,7 @@ public class PortableSelfTests
 
             AssertTrue(handled, "Shift-lane Replay tap should suppress the physical paste.");
             AssertEqual(1, keyboard.PasteCount, "Shift-lane Replay tap should send one synthetic paste.");
-            AssertEqual(0, queue.Notes.Count, "Shift-lane Replay should consume the queued note.");
+            AssertEqual(0, queue.Slips.Count, "Shift-lane Replay should consume the queued note.");
         }
 
         private static void RuntimeReplayResumesClipboardWhenEnabled()
@@ -3906,7 +3906,7 @@ public class PortableSelfTests
                 clipboard.Image?.PngBytes.SequenceEqual(userImage.PngBytes) == true,
                 "Replay should restore an image format carried alongside text.");
             AssertEqual(1, clipboard.BackupRestoreCount, "Replay should perform one complete clipboard restore.");
-            AssertEqual(0, queue.Notes.Count, "A successfully restored Replay should consume its item.");
+            AssertEqual(0, queue.Slips.Count, "A successfully restored Replay should consume its item.");
         }
 
         private static void RuntimeReplayRefusesLossyClipboardReplacement()
@@ -3934,7 +3934,7 @@ public class PortableSelfTests
             AssertTrue(handled, "Replay tap should remain handled when safe backup is impossible.");
             AssertEqual(0, keyboard.PasteCount, "Replay must not paste after an incomplete clipboard backup.");
             AssertEqual("user clipboard", clipboard.Text, "Replay must leave the user's clipboard untouched.");
-            AssertEqual(1, queue.Notes.Count, "Replay must keep the queued item after refusing replacement.");
+            AssertEqual(1, queue.Slips.Count, "Replay must keep the queued item after refusing replacement.");
             AssertFalse(undo.TryPop(false, out _), "A refused Replay must not create an undo entry.");
             AssertTrue(
                 notifications.Messages.Exists(message =>
@@ -3969,7 +3969,7 @@ public class PortableSelfTests
 
             AssertTrue(handled, "Replay should still suppress the physical paste.");
             AssertEqual(0, keyboard.PasteCount, "Replay must not inject paste after target staging fails.");
-            AssertEqual(1, queue.Notes.Count, "The queued item must remain after staging rollback.");
+            AssertEqual(1, queue.Slips.Count, "The queued item must remain after staging rollback.");
             AssertFalse(undo.TryPop(false, out _), "A failed stage must not create an undo entry.");
             AssertTrue(
                 notifications.Messages.Exists(message =>
@@ -4003,7 +4003,7 @@ public class PortableSelfTests
                 "Replay tap should be handled.");
             AssertTrue(
                 dispatcher.RunUntil(
-                    () => keyboard.PasteCount == 1 && queue.Notes.Count == 0,
+                    () => keyboard.PasteCount == 1 && queue.Slips.Count == 0,
                     TimeSpan.FromSeconds(5)),
                 "Replay should stage, paste, and consume before the delayed restore.");
 
@@ -4065,16 +4065,16 @@ public class PortableSelfTests
             AssertTrue(
                 clipboard.Image?.PngBytes.SequenceEqual(userBytes) == true,
                 "Image Replay should restore the user's previous image clipboard.");
-            AssertEqual(0, queue.Notes.Count, "Successful image Replay should consume the queued slip.");
+            AssertEqual(0, queue.Slips.Count, "Successful image Replay should consume the queued slip.");
             var review = project.Buckets.Single(bucket => bucket.Id == queue.Settings.ReplayReviewBucketId);
-            AssertTrue(review.Notes.Single().IsImage, "Replay review should preserve the image slip type.");
+            AssertTrue(review.Slips.Single().IsImage, "Replay review should preserve the image slip type.");
             AssertEqual(
                 queuedBytes.Length,
-                store.ReadImageAsset(project, review.Notes.Single())?.Length,
+                store.ReadImageAsset(project, review.Slips.Single())?.Length,
                 "Replay review should retain the queued image asset.");
             AssertTrue(undo.TryPop(false, out var action), "Image Replay should be undoable.");
             action!.Undo();
-            AssertTrue(queue.Notes.Single().IsImage, "Undo should restore the image slip to the Replay queue.");
+            AssertTrue(queue.Slips.Single().IsImage, "Undo should restore the image slip to the Replay queue.");
         }
 
         private static void RuntimeRunLoggedRecordsAsyncFailure()
@@ -4170,7 +4170,7 @@ public class PortableSelfTests
 
             AssertTrue(handled, "Replay tap should still be handled even when the paste fails.");
             AssertEqual(1, keyboard.PasteCount, "A paste should have been attempted.");
-            AssertEqual(1, queue.Notes.Count, "The note must be kept when the synthetic paste was not accepted.");
+            AssertEqual(1, queue.Slips.Count, "The note must be kept when the synthetic paste was not accepted.");
             AssertFalse(undo.TryPop(false, out _), "A failed paste should not push an undo entry.");
         }
 
@@ -4201,12 +4201,12 @@ public class PortableSelfTests
             AssertTrue(handled, "Replay tap should be handled synchronously.");
             AssertTrue(dispatcher.PendingCount > 0, "Replay work should be enqueued, not run on the hook thread.");
             AssertEqual(0, keyboard.PasteCount, "No paste should be sent before the queued work runs.");
-            AssertEqual(1, queue.Notes.Count, "The queued note should not be consumed inline.");
+            AssertEqual(1, queue.Slips.Count, "The queued note should not be consumed inline.");
 
             AssertTrue(
                 dispatcher.RunUntil(
                     () => keyboard.PasteCount == 1
-                        && queue.Notes.Count == 0
+                        && queue.Slips.Count == 0
                         && queue.Settings.Kind == "Standard"
                         && notifications.Messages.Exists(message =>
                             message.Contains("replay complete", StringComparison.OrdinalIgnoreCase)),
@@ -4234,7 +4234,7 @@ public class PortableSelfTests
             var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
 
             AssertFalse(handled, "Pop tap should allow the physical paste through.");
-            AssertEqual(0, bucket.Notes.Count, "Pop tap should remove the matching note.");
+            AssertEqual(0, bucket.Slips.Count, "Pop tap should remove the matching note.");
             AssertEqual(
                 "Popped item from Inbox to Inbox Pop Review.",
                 notifications.Messages.Single(),
@@ -4273,10 +4273,10 @@ public class PortableSelfTests
             var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
 
             AssertFalse(handled, "Image Pop should allow the physical paste through.");
-            AssertEqual(0, bucket.Notes.Count, "Image Pop should remove the matching image slip.");
+            AssertEqual(0, bucket.Slips.Count, "Image Pop should remove the matching image slip.");
             AssertTrue(undo.TryPop(false, out var action), "Popped image should be undoable.");
             action!.Undo();
-            AssertTrue(bucket.Notes.Single().IsImage, "Undo should restore the popped image slip.");
+            AssertTrue(bucket.Slips.Single().IsImage, "Undo should restore the popped image slip.");
         }
 
         private static void RuntimeCopyHoldCreatesNoteRequest()
@@ -4528,10 +4528,10 @@ public class PortableSelfTests
                     SelectedBucketName: scratch.Name,
                     SelectedBucket: scratch));
 
-            AssertEqual("quick note", scratch.Notes.Single().Text, "Quick-note result should save the note.");
+            AssertEqual("quick note", scratch.Slips.Single().Text, "Quick-note result should save the note.");
             AssertEqual(
                 "Quick note source",
-                scratch.Notes.Single().CaptureOrigin?.WindowTitle,
+                scratch.Slips.Single().CaptureOrigin?.WindowTitle,
                 "Completed note capture should save the origin carried by its request.");
             AssertEqual("keep me", clipboard.Text, "Quick note should preserve clipboard when disabled.");
             AssertTrue(store.GetActiveProject() is null, "Quick note should leave the project inactive.");
@@ -4587,7 +4587,7 @@ public class PortableSelfTests
                     CutRequest("cut text"),
                     Cancelled() with { Committed = true, NoteText = "kept" }),
                 "Keeping the note should not paste the cut back.");
-            AssertEqual("kept", scratch.Notes.Single(note => note.Source == "cut").Text, "Only the kept cut note should be saved; discarded cuts should not.");
+            AssertEqual("kept", scratch.Slips.Single(note => note.Source == "cut").Text, "Only the kept cut note should be saved; discarded cuts should not.");
         }
 
         private static void RuntimeFilesQuickNoteIntoSelectedProject()
@@ -4631,8 +4631,8 @@ public class PortableSelfTests
                     SelectedBucket: targetBucket,
                     SelectedProject: target));
 
-            AssertEqual("redirected jot", targetBucket.Notes.Single().Text, "Note should be filed into the selected project's bucket.");
-            AssertEqual(0, source.Buckets.Sum(bucket => bucket.Notes.Count), "The request's project should receive no note.");
+            AssertEqual("redirected jot", targetBucket.Slips.Single().Text, "Note should be filed into the selected project's bucket.");
+            AssertEqual(0, source.Buckets.Sum(bucket => bucket.Slips.Count), "The request's project should receive no note.");
             AssertEqual(targetBucket.Id, target.QuickNoteBucketId, "Selected project should remember its quick-note bucket.");
             AssertEqual("Source", source.Name, "Filing into another project must not rename the request project.");
             AssertEqual(source.Id, store.GetActiveProject()?.Id, "Redirecting without activating should leave the prior active project active.");
@@ -4679,8 +4679,8 @@ public class PortableSelfTests
                     SelectedBucket: otherBucket,
                     SelectedProject: other));
 
-            AssertEqual("redirected jot", otherBucket.Notes.Single().Text, "Redirected jot should land in the chosen existing project.");
-            AssertEqual(0, dated.Buckets.Sum(bucket => bucket.Notes.Count), "The dated default should receive no note when redirected.");
+            AssertEqual("redirected jot", otherBucket.Slips.Single().Text, "Redirected jot should land in the chosen existing project.");
+            AssertEqual(0, dated.Buckets.Sum(bucket => bucket.Slips.Count), "The dated default should receive no note when redirected.");
             AssertFalse(dated.Name == "Renamed Attempt", "Redirecting must not rename the dated default project.");
             AssertEqual(otherBucket.Id, other.QuickNoteBucketId, "The chosen project should remember its quick-note bucket.");
             AssertTrue(store.GetActiveProject() is null, "A redirected jot should leave no active project.");
@@ -4727,7 +4727,7 @@ public class PortableSelfTests
                     SelectedBucket: otherBucket,
                     SelectedProject: other));
 
-            AssertEqual("activate me", otherBucket.Notes.Single().Text, "Note should be filed into the chosen project.");
+            AssertEqual("activate me", otherBucket.Slips.Single().Text, "Note should be filed into the chosen project.");
             AssertEqual(other.Id, store.GetActiveProject()?.Id, "Activating from a quick note should make the chosen project active.");
         }
 
@@ -4771,7 +4771,7 @@ public class PortableSelfTests
                     SelectedBucket: bucket,
                     SelectedProject: active));
 
-            AssertEqual("kept", bucket.Notes.Single().Text, "The note should still be saved when deactivating.");
+            AssertEqual("kept", bucket.Slips.Single().Text, "The note should still be saved when deactivating.");
             AssertTrue(store.GetActiveProject() is null, "Toggling Activate off on the active project should deactivate it.");
         }
 
@@ -4815,7 +4815,7 @@ public class PortableSelfTests
 
             var fresh = store.State.Projects.SingleOrDefault(project => project.Name == "Fresh");
             AssertTrue(fresh is not null, "Choosing New project should create the named project.");
-            AssertEqual("fresh note", fresh!.Buckets.Single(bucket => bucket.Name == "Inbox").Notes.Single().Text, "The note should land in the chosen bucket of the new project.");
+            AssertEqual("fresh note", fresh!.Buckets.Single(bucket => bucket.Name == "Inbox").Slips.Single().Text, "The note should land in the chosen bucket of the new project.");
             AssertEqual(fresh.Id, store.GetActiveProject()?.Id, "A new project created with Activate on should become active.");
         }
 
@@ -4852,7 +4852,7 @@ public class PortableSelfTests
             AssertEqual(ZetlCompileOutcome.RestoreTarget, outcome, "Saved compile should restore the target.");
             AssertEqual(
                 "compiled text",
-                destination.Buckets.Single(bucket => bucket.Name == "Output").Notes.Single().Text,
+                destination.Buckets.Single(bucket => bucket.Name == "Output").Slips.Single().Text,
                 "Compile result should save to the selected destination.");
             AssertTrue(undo.TryPop(false, out _), "Saved compile should be undoable.");
             AssertTrue(
@@ -4890,9 +4890,9 @@ public class PortableSelfTests
 
             var compiled = destination.Buckets.Single(bucket => bucket.Name == "Compiled");
             AssertEqual(ZetlCompileOutcome.RestoreTarget, outcome, "Structured save should restore the target.");
-            AssertEqual(2, compiled.Notes.Count, "Structured save should preserve note boundaries.");
-            AssertEqual("one", compiled.Notes[0].Text, "Structured save should preserve note order.");
-            AssertEqual("two", compiled.Notes[1].Text, "Structured save should preserve note order.");
+            AssertEqual(2, compiled.Slips.Count, "Structured save should preserve note boundaries.");
+            AssertEqual("one", compiled.Slips[0].Text, "Structured save should preserve note order.");
+            AssertEqual("two", compiled.Slips[1].Text, "Structured save should preserve note order.");
             AssertEqual(source.Id, store.GetActiveProject()?.Id, "Structured save should not change the active project.");
             AssertEqual(destinationActiveBucketId, destination.ActiveBucketId, "Structured save should not change the destination active bucket.");
         }
@@ -4949,7 +4949,7 @@ public class PortableSelfTests
             var source = store.CreateProject("Source", ["Inbox"], "Inbox");
             var task = store.AddNote(source.Buckets.First(), "compiled task", "copy", blockKind: ZetlBlockKinds.Task);
             var selected = store.GetSlipDisplayItems(source)
-                .Where(item => item.Note.Id == task.Id)
+                .Where(item => item.Slip.Id == task.Id)
                 .ToList();
             var clipboard = new FakeClipboard("before", changeToken: 1);
             var coordinator = CreateShortcutCoordinator(

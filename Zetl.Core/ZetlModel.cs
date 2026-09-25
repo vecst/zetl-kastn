@@ -122,14 +122,6 @@ internal sealed class ZetlBucket
     public string RenderKind { get; set; } = "";
     [System.Text.Json.Serialization.JsonPropertyName("notes")]
     public List<ZetlSlip> Slips { get; set; } = new();
-
-    // Transitional source alias. Persisted JSON is owned by Slips above.
-    [System.Text.Json.Serialization.JsonIgnore]
-    public List<ZetlSlip> Notes
-    {
-        get => Slips;
-        set => Slips = value;
-    }
 }
 
 internal sealed record BucketDisplayItem(ZetlBucket Bucket, string Label)
@@ -142,9 +134,6 @@ internal sealed record BucketDisplayItem(ZetlBucket Bucket, string Label)
 
 internal sealed record SlipDisplayItem(ZetlBucket Bucket, ZetlSlip Slip, string Label)
 {
-    // Transitional member alias for callers not yet migrated.
-    public ZetlSlip Note => Slip;
-
     public override string ToString()
     {
         return Label;

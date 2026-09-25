@@ -162,7 +162,7 @@ internal partial class BoardWindow : ZetlPopupWindow
 
     private ZetlBucket? ActiveBucket => (bucketList.SelectedItem as BucketDisplayItem)?.Bucket;
 
-    private ZetlSlip? ActiveNote => (noteList.SelectedItem as BoardNoteItem)?.Note;
+    private ZetlSlip? ActiveNote => (noteList.SelectedItem as BoardNoteItem)?.Slip;
 
     public void ShowActiveProject()
     {
@@ -303,7 +303,7 @@ internal partial class BoardWindow : ZetlPopupWindow
             // an existing note mid-typing.
             noteList.SelectedItem = composingBucket is not null
                 ? null
-                : noteItems.FirstOrDefault(item => item.Note.Id == selectedNoteId)
+                : noteItems.FirstOrDefault(item => item.Slip.Id == selectedNoteId)
                     ?? noteItems.LastOrDefault();
             RefreshSelectedNote();
         }
@@ -765,10 +765,10 @@ internal partial class BoardWindow : ZetlPopupWindow
     }
 }
 
-internal sealed record BoardNoteItem(ZetlSlip Note, Bitmap? Thumbnail)
+internal sealed record BoardNoteItem(ZetlSlip Slip, Bitmap? Thumbnail)
 {
-    public string DisplayText => Note.DisplayText;
-    public bool IsImage => Note.IsImage;
-    public bool HasCaptureOrigin => Note.HasCaptureOrigin;
-    public string CaptureOriginLabel => Note.CaptureOriginLabel;
+    public string DisplayText => Slip.DisplayText;
+    public bool IsImage => Slip.IsImage;
+    public bool HasCaptureOrigin => Slip.HasCaptureOrigin;
+    public string CaptureOriginLabel => Slip.CaptureOriginLabel;
 }

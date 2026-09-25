@@ -88,7 +88,7 @@ internal partial class CompileWindow : ZetlPopupWindow
     public bool Flatten => flattenCheck.IsChecked == true;
 
     public IReadOnlyList<string> SelectedNoteTexts => SelectedNotes
-        .Select(item => item.Note.Text.Trim())
+        .Select(item => item.Slip.Text.Trim())
         .Where(text => text.Length > 0)
         .ToList();
 
@@ -175,7 +175,7 @@ internal partial class CompileWindow : ZetlPopupWindow
             {
                 var noteCheckBox = new CheckBox
                 {
-                    Content = ZetlStateStore.PreviewText(item.Note.Text),
+                    Content = ZetlStateStore.PreviewText(item.Slip.Text),
                     IsChecked = defaultChecked,
                     HorizontalContentAlignment = HorizontalAlignment.Stretch
                 };
@@ -374,7 +374,7 @@ internal partial class CompileWindow : ZetlPopupWindow
 
         PasteNow = true;
         SaveToBucket = false;
-        CompiledText = note.Note.Text.Trim();
+        CompiledText = note.Slip.Text.Trim();
         CompiledHtml = null;
         completionDecided = true;
         Saved = true;

@@ -604,9 +604,9 @@ internal sealed class ZetlStateStore
             .Select(bucket => new
             {
                 SourceBucket = bucket,
-                Notes = ReplaySourceNotes(sourceProject, bucket).ToList()
+                Slips = ReplaySourceNotes(sourceProject, bucket).ToList()
             })
-            .Where(source => source.Notes.Count > 0)
+            .Where(source => source.Slips.Count > 0)
             .ToList();
         if (sources.Count == 0)
         {
@@ -644,7 +644,7 @@ internal sealed class ZetlStateStore
             targetBucket.Settings.ReplayReviewBucketId = null;
             targetBucket.Slips.Clear();
 
-            foreach (var note in source.Notes)
+            foreach (var note in source.Slips)
             {
                 targetBucket.Slips.Add(CloneSlip(note, "temporary-replay", CopyImageAssetAcross(sourceProject, project, note.Image)));
                 replayItemCount++;
@@ -1911,8 +1911,8 @@ internal sealed class ZetlStateStore
             var depth = ZetlTreeText.BucketDepth(group.Key, project.Buckets);
             parts.Add(ZetlTreeText.IndentedLine(group.Key.Name.Trim(), depth));
             parts.AddRange(group
-                .Where(item => !item.Note.IsImage)
-                .Select(item => ZetlTreeText.IndentedText(item.Note.Text, depth + 1)));
+                .Where(item => !item.Slip.IsImage)
+                .Select(item => ZetlTreeText.IndentedText(item.Slip.Text, depth + 1)));
             parts.Add("");
         }
 
@@ -1922,8 +1922,8 @@ internal sealed class ZetlStateStore
     public string CompileHtmlFromNotes(ZetlProject project, IEnumerable<SlipDisplayItem> selectedNotes)
     {
         var selected = selectedNotes
-            .Where(item => !item.Note.IsImage)
-            .Select(item => ZetlProjectSnapshotMapper.ToSnapshot(item.Bucket, item.Note))
+            .Where(item => !item.Slip.IsImage)
+            .Select(item => ZetlProjectSnapshotMapper.ToSnapshot(item.Bucket, item.Slip))
             .ToList();
         var html = ZetlViewRenderer.RenderHtmlBody(
             ZetlProjectSnapshotMapper.ToSnapshot(project),
@@ -1949,7 +1949,7 @@ internal sealed class ZetlStateStore
         return string.Join(
             Environment.NewLine,
             selectedNotes
-                .Select(item => item.Note.Text.Trim())
+                .Select(item => item.Slip.Text.Trim())
                 .Where(text => text.Length > 0));
     }
 
@@ -1966,7 +1966,7 @@ internal sealed class ZetlStateStore
                 parts.Add(string.Join('\t', headers));
             }
 
-            parts.AddRange(ZetlTsv.Rows(group.Select(item => item.Note.Text), normalizedRowLength));
+            parts.AddRange(ZetlTsv.Rows(group.Select(item => item.Slip.Text), normalizedRowLength));
 
             parts.Add("");
         }
@@ -2034,7 +2034,7 @@ internal sealed class ZetlStateStore
     public bool TryGetLastSlipDisplayItem(ZetlProject project, IReadOnlyList<ZetlBucket>? bucketScope, out SlipDisplayItem? slip, bool currentSessionOnly = false)
     {
         slip = GetSlipDisplayItems(project, bucketScope, currentSessionOnly)
-            .OrderByDescending(item => item.Note.CreatedAtUtc)
+            .OrderByDescending(item => item.Slip.CreatedAtUtc)
             .FirstOrDefault();
         return slip is not null;
     }
@@ -2635,7 +2635,7 @@ internal sealed class ZetlStateStore
         var scratch = project.Buckets.FirstOrDefault(bucket =>
             !IsDeletedBucket(bucket) && IsScratchBucket(bucket));
         if (scratch is null
-            || scratch.Notes.Count > 0
+            || scratch.Slips.Count > 0
             || project.Buckets.Any(bucket => string.Equals(bucket.ParentBucketId, scratch.Id, StringComparison.Ordinal)))
         {
             return;

@@ -25,7 +25,7 @@ public class ZetlProjectServiceTests
 
         AssertEqual(ZetlResponseStatus.Success, first.Status, "Initial add should succeed.");
         AssertTrue(ReferenceEquals(first, retry), "A duplicate command ID should return the cached response.");
-        AssertEqual(1, bucket.Notes.Count, "Retrying an add must not duplicate the slip.");
+        AssertEqual(1, bucket.Slips.Count, "Retrying an add must not duplicate the slip.");
     }
 
     [Fact] public void StaleEditReturnsCurrentSlip()
@@ -109,16 +109,16 @@ public class ZetlProjectServiceTests
         AssertTrue(
             responses.All(response => response.Status == ZetlResponseStatus.Success),
             "Every concurrent add should succeed.");
-        AssertEqual(40, bucket.Notes.Count, "Serialized adds should preserve every slip.");
+        AssertEqual(40, bucket.Slips.Count, "Serialized adds should preserve every slip.");
         AssertEqual(
             40,
-            bucket.Notes.Select(note => note.Id).Distinct(StringComparer.Ordinal).Count(),
+            bucket.Slips.Select(note => note.Id).Distinct(StringComparer.Ordinal).Count(),
             "Every added slip should have a unique ID.");
 
         var reloaded = new ZetlStateStore(temp.StatePath);
         AssertEqual(
             40,
-            reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Notes.Count,
+            reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Slips.Count,
             "Every acknowledged add should be durable.");
     }
 
@@ -152,11 +152,11 @@ public class ZetlProjectServiceTests
                 }
             });
 
-        AssertEqual(40, bucket.Notes.Count, "Direct and service mutations should preserve every slip.");
+        AssertEqual(40, bucket.Slips.Count, "Direct and service mutations should preserve every slip.");
         var reloaded = new ZetlStateStore(temp.StatePath);
         AssertEqual(
             40,
-            reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Notes.Count,
+            reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Slips.Count,
             "The shared writer monitor should make every mixed mutation durable.");
     }
 
@@ -1188,7 +1188,7 @@ public class ZetlProjectServiceTests
         var reloaded = new ZetlStateStore(temp.StatePath);
         var loadedProject = reloaded.State.Projects.Single();
         var loadedBucket = loadedProject.Buckets.Single(item => item.Name == "Renamed Bucket");
-        var loadedNote = loadedBucket.Notes.Single();
+        var loadedNote = loadedBucket.Slips.Single();
 
         AssertEqual(2L, loadedProject.MetadataRevision, "Project metadata revision should persist.");
         AssertTrue(loadedProject.ChangeSequence >= 4, "Project change sequence should persist all writes.");
@@ -1261,7 +1261,7 @@ public class ZetlProjectServiceTests
         AssertEqual(ZetlResponseStatus.Success, response.Status, "Subscriber failures must not change a durable success.");
         AssertEqual(
             "still durable",
-            reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Notes.Single().Text,
+            reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Slips.Single().Text,
             "Acknowledged mutation should remain durable.");
         AssertTrue(logs.Count >= 2, "Subscriber failures should be logged.");
     }
@@ -1380,7 +1380,7 @@ public class ZetlProjectServiceTests
         AssertEqual(ZetlResponseStatus.Success, toFront.Status, "Reorder to front should succeed.");
         AssertEqual(
             "third,first,second",
-            string.Join(",", inbox.Notes.Select(note => note.Text)),
+            string.Join(",", inbox.Slips.Select(note => note.Text)),
             "Reorder should move the slip immediately before its anchor.");
         AssertEqual(2L, third.Revision, "Reorder should advance the moved slip's revision.");
 
@@ -1390,7 +1390,7 @@ public class ZetlProjectServiceTests
         AssertEqual(ZetlResponseStatus.Conflict, stale.Status, "A stale reorder should conflict.");
         AssertEqual(
             "third,first,second",
-            string.Join(",", inbox.Notes.Select(note => note.Text)),
+            string.Join(",", inbox.Slips.Select(note => note.Text)),
             "A stale reorder must not change order.");
 
         // An anchor in another bucket is rejected and changes nothing.
@@ -1402,7 +1402,7 @@ public class ZetlProjectServiceTests
             "An anchor in another bucket should be rejected.");
         AssertEqual(
             "third,first,second",
-            string.Join(",", inbox.Notes.Select(note => note.Text)),
+            string.Join(",", inbox.Slips.Select(note => note.Text)),
             "A rejected reorder must not change order.");
 
         // A null anchor moves the slip to the end: third, first, second -> third, second, first.
@@ -1411,7 +1411,7 @@ public class ZetlProjectServiceTests
         AssertEqual(ZetlResponseStatus.Success, toEnd.Status, "Reorder to end should succeed.");
         AssertEqual(
             "third,second,first",
-            string.Join(",", inbox.Notes.Select(note => note.Text)),
+            string.Join(",", inbox.Slips.Select(note => note.Text)),
             "A null anchor should move the slip to the end of its bucket.");
     }
 

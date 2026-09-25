@@ -111,7 +111,7 @@ public class ZetlIpcTests
             AssertEqual(fixture.Project.Id, summaries.Single().Id, "IPC list should return the project.");
             AssertEqual(fixture.Project.Id, snapshot.Id, "IPC open should return the requested project.");
             AssertEqual(ZetlResponseStatus.Success, add.Status, "IPC mutation should succeed.");
-            AssertEqual("through the pipe", fixture.Bucket.Notes.Single().Text, "IPC mutation should reach the live store.");
+            AssertEqual("through the pipe", fixture.Bucket.Slips.Single().Text, "IPC mutation should reach the live store.");
         });
     }
 
@@ -440,7 +440,7 @@ public class ZetlIpcTests
                 "saturated-response"));
 
             AssertTrue(
-                fixture.Bucket.Notes.Any(note => note.Text == "committed under saturation"),
+                fixture.Bucket.Slips.Any(note => note.Text == "committed under saturation"),
                 "The mutation should be durably applied before its response is queued.");
             AssertTrue(
                 handled.Reply is not null && outbound.TryQueueReply(handled.Reply),
@@ -474,7 +474,7 @@ public class ZetlIpcTests
                 "peer mutation"));
 
             AssertEqual(ZetlResponseStatus.Success, response.Status, "Remaining client should still mutate.");
-            AssertEqual(2, fixture.Bucket.Notes.Count, "Direct capture and peer mutation should both survive.");
+            AssertEqual(2, fixture.Bucket.Slips.Count, "Direct capture and peer mutation should both survive.");
         });
     }
 
@@ -569,7 +569,7 @@ public class ZetlIpcTests
                 var reloaded = new ZetlStateStore(Path.Combine(directory, "state.json"));
                 AssertEqual(
                     "written by another process",
-                    reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Notes.Single().Text,
+                    reloaded.State.Projects.Single().Buckets.Single(item => item.Name == "Inbox").Slips.Single().Text,
                     "The real Zetl process should persist the IPC mutation.");
             }
             finally
