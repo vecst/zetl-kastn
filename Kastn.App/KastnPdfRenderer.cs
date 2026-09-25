@@ -162,7 +162,7 @@ internal static class KastnPdfRenderer
                     continue;
                 }
 
-                var displayText = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
+                var displayText = ZetlViewRenderer.TextOrTitle(slip);
                 var listKinds = ZetlViewRenderer.ResolveListKinds(project, slip, preferSlipKindOverBucketKind);
                 var kind = listKinds.Block;
                 // A divider note carries no text but still renders (as a rule); other

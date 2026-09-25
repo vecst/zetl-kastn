@@ -100,6 +100,12 @@ internal sealed class ZetlActivityLogBuffer
     }
 }
 
+// Per-lane state lives in two-slot arrays: the Normal lane first, then Shift.
+internal static class ZetlLanes
+{
+    public static int Index(bool shifted) => shifted ? 1 : 0;
+}
+
 internal static class ZetlAsync
 {
     // Fire-and-forget a task while still surfacing failures: await it and log any

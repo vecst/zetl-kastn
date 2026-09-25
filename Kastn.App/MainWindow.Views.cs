@@ -483,19 +483,7 @@ internal partial class MainWindow
                 Padding = new Avalonia.Thickness(8),
                 Child = preview
             });
-            var caption = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-            if (!string.IsNullOrWhiteSpace(caption))
-            {
-                var captionBlock = new TextBlock
-                {
-                    Text = caption.Trim(),
-                    Classes = { "muted" },
-                    FontStyle = FontStyle.Italic,
-                    TextWrapping = TextWrapping.Wrap
-                };
-                ApplySlipTypography(captionBlock, slip);
-                content.Children.Add(captionBlock);
-            }
+            AddPictureCaption(content, slip);
 
             if (CachedDecodedPicture(slip, 1100) is { } cachedBitmap)
             {
@@ -509,8 +497,7 @@ internal partial class MainWindow
         }
         else
         {
-            var text = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-            AppendSlipBlocks(content, slip, text.Trim());
+            AppendSlipBlocks(content, slip, ZetlViewRenderer.TextOrTitle(slip).Trim());
         }
 
         // The view's list style puts a marker beside each slip (the slip's content may
@@ -661,6 +648,26 @@ internal partial class MainWindow
         {
             block.Foreground = foreground;
         }
+    }
+
+    // The italic caption under a picture in the View and the view-editor preview.
+    private static void AddPictureCaption(Panel content, ZetlSlipSnapshot slip)
+    {
+        var caption = ZetlViewRenderer.TextOrTitle(slip);
+        if (string.IsNullOrWhiteSpace(caption))
+        {
+            return;
+        }
+
+        var captionBlock = new TextBlock
+        {
+            Text = caption.Trim(),
+            Classes = { "muted" },
+            FontStyle = FontStyle.Italic,
+            TextWrapping = TextWrapping.Wrap
+        };
+        ApplySlipTypography(captionBlock, slip);
+        content.Children.Add(captionBlock);
     }
 
     private static TextAlignment SlipTextAlignment(ZetlSlipSnapshot slip) =>

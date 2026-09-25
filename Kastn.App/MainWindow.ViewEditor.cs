@@ -562,24 +562,11 @@ internal partial class MainWindow
                     HorizontalAlignment = HorizontalAlignment.Center
                 }
             });
-            var caption = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-            if (!string.IsNullOrWhiteSpace(caption))
-            {
-                var captionBlock = new TextBlock
-                {
-                    Text = caption.Trim(),
-                    Classes = { "muted" },
-                    FontStyle = FontStyle.Italic,
-                    TextWrapping = TextWrapping.Wrap
-                };
-                ApplySlipTypography(captionBlock, slip);
-                content.Children.Add(captionBlock);
-            }
+            AddPictureCaption(content, slip);
         }
         else
         {
-            var text = string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
-            AppendSlipBlocks(content, slip, text.Trim());
+            AppendSlipBlocks(content, slip, ZetlViewRenderer.TextOrTitle(slip).Trim());
         }
 
         Control child = content;

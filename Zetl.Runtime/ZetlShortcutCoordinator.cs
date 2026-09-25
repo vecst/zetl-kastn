@@ -864,7 +864,7 @@ internal sealed class ZetlShortcutCoordinator
     // hook-vs-dispatcher race the inline version had.
     private async Task HandleReplayTapAsync(bool shifted, ZetlBucket activeBucket)
     {
-        var laneGate = replayLaneGates[shifted ? 1 : 0];
+        var laneGate = replayLaneGates[ZetlLanes.Index(shifted)];
         await laneGate.WaitAsync();
         try
         {

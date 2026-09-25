@@ -11,12 +11,12 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
 
     public void Reset(bool shifted)
     {
-        lanes[LaneIndex(shifted)] = new ReplayLaneState();
+        lanes[ZetlLanes.Index(shifted)] = new ReplayLaneState();
     }
 
     public bool TryPreserveUserClipboard(bool shifted, out string failureReason)
     {
-        var index = LaneIndex(shifted);
+        var index = ZetlLanes.Index(shifted);
         var lane = lanes[index];
         var current = ReadSnapshot();
         if (lane.UserBackup is not null && MatchesTracked(lane, current))
@@ -72,7 +72,7 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
             return result;
         }
 
-        var lane = lanes[LaneIndex(shifted)];
+        var lane = lanes[ZetlLanes.Index(shifted)];
         injectedToken = clipboard.GetChangeToken();
         lane.Injected = item;
         lane.InjectedToken = injectedToken;
@@ -81,7 +81,7 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
 
     public ZetlClipboardRestoreOutcome RestoreOriginalIfOwned(bool shifted)
     {
-        var lane = lanes[LaneIndex(shifted)];
+        var lane = lanes[ZetlLanes.Index(shifted)];
         if (lane.UserBackup is null)
         {
             return ZetlClipboardRestoreOutcome.NoBackup;
@@ -100,7 +100,7 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
         ZetlClipboardSnapshot injected,
         uint injectedToken)
     {
-        var lane = lanes[LaneIndex(shifted)];
+        var lane = lanes[ZetlLanes.Index(shifted)];
         if (lane.UserBackup is null)
         {
             return ZetlClipboardRestoreOutcome.NoBackup;
@@ -160,8 +160,6 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
     {
         return ZetlClipboardContentWriter.Write(clipboard, snapshot);
     }
-
-    private static int LaneIndex(bool shifted) => shifted ? 1 : 0;
 
     private sealed class ReplayLaneState
     {

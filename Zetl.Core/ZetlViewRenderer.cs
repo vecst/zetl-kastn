@@ -978,10 +978,14 @@ internal static class ZetlViewRenderer
     public static string BucketRenderKind(ZetlBucketSnapshot bucket) =>
         ZetlBucketRenderKinds.Normalize(bucket.RenderKind);
 
+    // A slip's displayed text: its body, or its title when the body is blank.
+    public static string TextOrTitle(ZetlSlipSnapshot slip) =>
+        string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
+
     private static string SlipText(ZetlSlipSnapshot slip) =>
         slip.Type == ZetlSlipType.Picture
             ? $"[Picture: {PictureCaption(slip)}]"
-            : string.IsNullOrWhiteSpace(slip.Text) ? slip.Title : slip.Text;
+            : TextOrTitle(slip);
 
     private static string PictureCaption(ZetlSlipSnapshot slip) =>
         !string.IsNullOrWhiteSpace(slip.Text)
