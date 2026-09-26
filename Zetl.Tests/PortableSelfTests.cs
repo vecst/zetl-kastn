@@ -8,195 +8,8 @@ namespace ZETL.Tests;
 
 public class PortableSelfTests
 {
-    public static IEnumerable<object[]> GetTests()
-    {
-        var tests = new (string Name, Action Test)[]
-        {
-                ("Ctrl+C pass-through suppresses later repeats", CopyPassThroughSuppressesRepeats),
-                ("Ctrl+V tap dispatches paste on key-up", PasteTapDispatchesOnKeyUp),
-                ("Ctrl+V gallop tap dispatches after Ctrl key-up", PasteGallopTapDispatchesAfterCtrlKeyUp),
-                ("Ctrl+V late gallop does not dispatch paste", PasteLateGallopDoesNotDispatch),
-                ("Ctrl+V handled tap suppresses default paste", PasteHandledTapSuppressesDefaultPaste),
-                ("Ctrl+V hold reserves paste", PasteHoldDoesNotDispatch),
-                ("Ctrl+V hold suppresses repeats after Ctrl key-up", PasteHoldSuppressesRepeatsAfterCtrlKeyUp),
-                ("Fresh target key passes after Ctrl-up repeat guard", FreshTargetKeyPassesAfterCtrlUpRepeatGuard),
-                ("Ctrl+B tap dispatches board shortcut on key-up", BoardTapDispatchesOnKeyUp),
-                ("Ctrl+B hold opens board without dispatch", BoardHoldDoesNotDispatch),
-                ("Ctrl+P tap dispatches pop key on key-up", PopToggleTapDispatchesOnKeyUp),
-                ("Ctrl+P hold raises Pop toggle", PopToggleHoldDoesNotDispatch),
-                ("Ctrl+R tap dispatches replay key on key-up", ReplayToggleTapDispatchesOnKeyUp),
-                ("Ctrl+R hold raises Replay toggle", ReplayToggleHoldDoesNotDispatch),
-                ("Ctrl+Z hold raises Zetl undo", UndoHoldDoesNotDispatch),
-                ("Shift changes restart hold detection", ShiftChangeRestartsHold),
-                ("Shift repeat does not restart hold detection", ShiftRepeatDoesNotRestartHold),
-                ("Shift change after hold does not dispatch twice", ShiftChangeAfterHoldDoesNotDispatchTwice),
-                ("Synthetic modifier injection uses an unheld side", SyntheticModifierUsesUnheldSide),
-                ("Chord injection suppresses a held Shift for a plain chord", ChordInjectionSuppressesHeldShiftForPlainChord),
-                ("Zetl state creates projects and scratch buckets", StateCreatesProjectAndScratch),
-                ("Zetl state keeps active temporary consumables", StateKeepsActiveTemporaryConsumables),
-                ("Zetl state disposes temporary consumables when lane clears", StateDisposesTemporaryConsumablesWhenLaneClears),
-                ("Zetl state disposes abandoned temporary consumables on load", StateDisposesAbandonedTemporaryConsumablesOnLoad),
-                ("Zetl state creates the journal default home", StateCreatesJournalDefaultProject),
-                ("Zetl state configures and rolls journal intervals", StateJournalIntervalConfiguresAndRolls),
-                ("Zetl state reuses the journal default home", StateReusesDatedDefaultProject),
-                ("Zetl state finish starts a fresh journal", StateFinishStartsFreshJournal),
-                ("Zetl state consolidates child buckets regardless of order", StateConsolidatesChildBucketsRegardlessOfOrder),
-                ("Zetl state can start without an active project", StateCanStartWithoutActiveProject),
-                ("Zetl state keeps normal and Shift active projects separate", StateKeepsNormalAndShiftProjectsSeparate),
-                ("Zetl state supports child buckets", StateSupportsChildBuckets),
-                ("Zetl state switches active bucket", StateSwitchesActiveBucket),
-                ("Zetl state remembers quick note bucket", StateRemembersQuickNoteBucket),
-                ("Zetl state gets or creates compile buckets", StateGetsOrCreatesCompileBuckets),
-                ("Zetl compiles across projects without changing the active project", StateCompilesToOtherProjectWithoutChangingActive),
-                ("Zetl adds notes preserving structure", StateAddsNotesPreservingStructure),
-                ("Zetl state preserves bucket settings", StatePreservesBucketSettings),
-                ("Zetl state protects the Scratch bucket", StateProtectsScratchBucket),
-                ("Zetl state protects the Deleted bucket", StateProtectsDeletedBucket),
-                ("Zetl state deletes projects and repairs active lanes", StateDeletesProjectsAndRepairsActiveLanes),
-                ("Zetl state deletes bucket trees and repairs pointers", StateDeletesBucketTreesAndRepairsPointers),
-                ("Zetl state deletes notes", StateDeletesNotes),
-                ("Zetl state compiles selected notes", StateCompilesSelectedNotes),
-                ("Zetl state compiles selected notes unformatted", StateCompilesSelectedNotesUnformatted),
-                ("Zetl state compiles selected notes as TSV rows", StateCompilesSelectedNotesAsTsvRows),
-                ("Zetl state compiles TSV with bucket headers", StateCompilesTsvWithBucketHeaders),
-                ("Zetl state finds last active note", StateFindsLastActiveNote),
-                ("Zetl compile scope respects the session-only toggle", StateCompileScopeRespectsSessionToggle),
-                ("Zetl state Replay resumes queued slips across restart", StateReplayResumesQueuedSlipsAcrossRestart),
-                ("Zetl state Replay archives consumed slips for review", StateReplayArchivesConsumedSlipsForReview),
-                ("Zetl state Replay restores consumed slips from review", StateReplayRestoresConsumedSlipsFromReview),
-                ("Zetl state Replay disables pop mode", StateReplayDisablesPopMode),
-                ("Zetl state maps legacy Fifo kind to Replay", StateMapsLegacyFifoKindToReplay),
-                ("Zetl state detects compilable notes", StateDetectsCompilableNotes),
-                ("Zetl state finds inactive scratch notes for compile", StateFindsInactiveScratchCompileTarget),
-                ("Zetl state pop mode removes matching last note", StatePopModeRemovesLastMatchingNote),
-                ("Zetl state Pop recovers text across restart", StatePopRecoversTextAcrossRestart),
-                ("Zetl state Pop recovers images across restart", StatePopRecoversImageAcrossRestart),
-                ("Zetl state Pop recovers mixed slips across restart", StatePopRecoversMixedSlipAcrossRestart),
-                ("Zetl state finds the most recently written project", StateFindsMostRecentlyWrittenProject),
-                ("Zetl capture origin respects privacy detail", CaptureOriginRespectsPrivacyDetail),
-                ("Zetl capture origin round-trips with notes", CaptureOriginRoundTripsWithNotes),
-                ("Zetl clean export strips capture origin", CleanExportStripsCaptureOrigin),
-                ("Zetl project packages separate clean and archive provenance", ProjectPackagesSeparateProvenance),
-                ("Zetl image slips store deduplicated project assets", ImageSlipsStoreDeduplicatedAssets),
-                ("Zetl image project packages include referenced assets", ImageProjectPackagesIncludeAssets),
-                ("Zetl state round-trips JSON", StateRoundTripsJson),
-                ("Zetl state stores each project in its own folder", StateStoresEachProjectInItsOwnFolder),
-                ("Zetl state migrates a legacy single state file", StateMigratesLegacySingleFile),
-                ("Zetl state migration tolerates a backup rename failure", StateMigrationToleratesBackupRenameFailure),
-                ("Zetl json writes do not collide under concurrent writers", JsonFileConcurrentWritesDoNotCollide),
-                ("Zetl json parse errors name the damaged file", JsonFileReadNamesDamagedFile),
-                ("Zetl json read-or-quarantine moves corrupt files aside", JsonFileQuarantinesCorruptFile),
-                ("Zetl state skips a corrupt project and keeps the rest", StateSkipsCorruptProjectFile),
-                ("Zetl state recovers from a corrupt workspace file", StateRecoversFromCorruptWorkspace),
-                ("Zetl state skips an unreadable project and keeps the rest", StateSkipsUnreadableProjectFile),
-                ("Zetl state appends activity-log notes without activating", StateAppendsLogNotesWithoutActivating),
-                ("Zetl app settings round-trip first-run flag", AppSettingsRoundTripFirstRunFlag),
-                ("Zetl app settings round-trip configurable fields", AppSettingsRoundTripFields),
-                ("Kastn state round-trips the last project", KastnStateRoundTripsLastProject),
-                ("Journal bucket rolls at the day-start hour", JournalBucketRollsAtDayStartHour),
-                ("Zetl app settings recover from a corrupt file", AppSettingsRecoverFromCorruptFile),
-                ("Zetl app settings recover from an unreadable file", AppSettingsRecoverFromUnreadableFile),
-                ("Zetl built-in theme validates", ThemeDefaultsValidate),
-                ("Zetl Dusk built-in theme validates", ThemeDuskValidates),
-                ("Zetl built-in presets all validate", ThemeBuiltInPresetsValidate),
-                ("Zetl themes round-trip custom values", ThemeRoundTripsCustomValues),
-                ("Zetl themes preserve unknown JSON fields", ThemePreservesUnknownJsonFields),
-                ("Zetl theme store ignores invalid files", ThemeStoreIgnoresInvalidFiles),
-                ("Zetl state applies bucket defaults", StateAppliesBucketDefaults),
-                ("Journal mode rolls into dated buckets", JournalModeRollsIntoDatedBuckets),
-                ("Journal auto-returns from a quiet project", JournalAutoReturnsFromQuietProject),
-                ("Journal auto-return off keeps the project", JournalAutoReturnOffKeepsProject),
-                ("Ctrl+J toggles between the Journal and the last project", ToggleActiveProjectSwitchesBetweenJournalAndLastProject),
-                ("URL slips are derived from content", UrlSlipsAreDerivedFromContent),
-                ("Zetl default hotkeys config parses", DefaultConfigParses),
-                ("Zetl config tolerates null replay modifiers", ConfigNullReplayModifiersDoesNotThrow),
-                ("Zetl config reports clean errors for null fields", ConfigNullFieldsReportCleanErrors),
-                ("Runtime applies app settings defaults", RuntimeAppliesAppSettingsDefaults),
-                ("Runtime undo stack keeps lanes separate", RuntimeUndoStackKeepsLanesSeparate),
-                ("Runtime activity log buffer drains safely", RuntimeActivityLogBufferDrainsSafely),
-                ("Runtime auto-captures copied text", RuntimeAutoCapturesCopiedText),
-                ("Runtime auto-captures and replays rich text", RuntimeAutoCapturesAndReplaysRichText),
-                ("Runtime auto-captures copied images", RuntimeAutoCapturesCopiedImages),
-                ("Runtime auto-captures dual text+image clipboards as text", RuntimeAutoCapturesDualClipboardAsText),
-                ("Runtime clipboard capture retries a changed generation atomically", RuntimeClipboardCaptureRetriesChangedGeneration),
-                ("Runtime clipboard capture refuses persistently unstable generations", RuntimeClipboardCaptureRefusesUnstableGenerations),
-                ("Dual slips survive persistence text-preferred", DualSlipSurvivesPersistence),
-                ("Runtime Pop removes a dual slip by image hash", RuntimePopRemovesDualSlipByImageHash),
-                ("Runtime Replay pastes a dual slip as text", RuntimeReplayPastesDualSlipAsText),
-                ("Runtime downloads copied image URLs", RuntimeAutoCapturesCopiedImageUrls),
-                ("Runtime keeps non-image URLs as text", RuntimeKeepsNonImageUrlsAsText),
-                ("Runtime held copy opens image capture and saves captions", RuntimeHeldCopyCapturesImagesDirectly),
-                ("Runtime held dual copy saves text-preferred with the picture", RuntimeHeldCopyDualSavesTextPreferred),
-                ("Runtime held dual copy with cleared text saves a picture", RuntimeHeldCopyDualClearedTextSavesPicture),
-                ("Runtime held copy opens downloaded image URLs", RuntimeHeldCopyCapturesImageUrls),
-                ("Runtime hold cancellation prevents auto-capture", RuntimeHoldCancellationPreventsAutoCapture),
-                ("Runtime claimed hold prevents delayed auto-capture", RuntimeClaimedHoldPreventsDelayedAutoCapture),
-                ("Runtime claimed copy hold resolves without polling", RuntimeClaimedCopyHoldResolvesWithoutPolling),
-                ("Runtime Replay tap consumes and restores clipboard", RuntimeReplayTapConsumesAndRestoresClipboard),
-                ("Runtime Replay clipboard session reports restore outcomes", RuntimeReplayClipboardSessionReportsRestoreOutcomes),
-                ("Runtime clipboard content writer chooses the richest representation", RuntimeClipboardContentWriterChoosesRichestRepresentation),
-                ("Runtime Replay resumes visible items after restart", RuntimeReplayResumesVisibleItemsAfterRestart),
-                ("Runtime rapid Replay taps consume distinct slips", RuntimeRapidReplayTapsConsumeDistinctSlips),
-                ("Runtime Replay lanes progress independently", RuntimeReplayLanesProgressIndependently),
-                ("Runtime Replay suppresses taps during final clipboard restoration", RuntimeReplaySuppressesTapDuringFinalRestore),
-                ("Runtime Replay final restoration remains lane-local", RuntimeReplayFinalRestoreRemainsLaneLocal),
-                ("Runtime Replay final restore failures complete visibly", RuntimeReplayFinalRestoreFailureCompletesVisibly),
-                ("Runtime Shift-lane Replay tap consumes a shifted paste chord", RuntimeShiftLaneReplayTapConsumesShiftedPaste),
-                ("Runtime Replay handles images and restores image clipboard", RuntimeReplayHandlesImagesAndRestoresImageClipboard),
-                ("Runtime Replay restores rich and mixed clipboard formats", RuntimeReplayRestoresRichAndMixedClipboardFormats),
-                ("Runtime Replay refuses a lossy clipboard replacement", RuntimeReplayRefusesLossyClipboardReplacement),
-                ("Runtime Replay does not paste after transactional staging fails", RuntimeReplayDoesNotPasteAfterTransactionalStageFailure),
-                ("Runtime Replay does not overwrite a newer matching clipboard", RuntimeReplayDoesNotOverwriteNewerMatchingClipboard),
-                ("Runtime Replay tap defers clipboard work off the hook", RuntimeReplayTapDefersClipboardWorkOffHook),
-                ("Runtime Replay tap keeps the note when the paste fails", RuntimeReplayTapKeepsNoteWhenPasteFails),
-                ("Runtime empty Replay reports a failed final paste", RuntimeEmptyReplayReportsFinalPasteFailure),
-                ("Runtime Replay resumes clipboard when enabled", RuntimeReplayResumesClipboardWhenEnabled),
-                ("Runtime Replay keeps last paste when disabled", RuntimeReplayKeepsLastPasteWhenDisabled),
-                ("Runtime logged fire-and-forget records async failures", RuntimeRunLoggedRecordsAsyncFailure),
-                ("Runtime logged fire-and-forget records delayed async failures", RuntimeRunLoggedRecordsDelayedAsyncFailure),
-                ("Runtime Pop tap removes matching note", RuntimePopTapRemovesMatchingNote),
-                ("Runtime Pop removes matching image slip", RuntimePopRemovesMatchingImageSlip),
-                ("Runtime copy hold creates note request", RuntimeCopyHoldCreatesNoteRequest),
-                ("Runtime empty copy hold opens Board", RuntimeEmptyCopyHoldOpensBoard),
-                ("Runtime cut hold defaults to today's journal bucket", RuntimeCutHoldDefaultsToTodaysJournalBucket),
-                ("Runtime select-all hold captures the selection", RuntimeSelectAllHoldCapturesTheSelection),
-                ("Runtime select-all shift hold captures the selection", RuntimeSelectAllShiftHoldCapturesTheSelection),
-                ("Runtime template hold requests the picker", RuntimeTemplateHoldRequestsPicker),
-                ("Runtime compile hold without a project requests the picker", RuntimeCompileHoldWithoutProjectRequestsPicker),
-                ("Runtime compile hold with an active project stays compile", RuntimeCompileHoldWithActiveProjectStaysCompile),
-                ("Runtime hold toggles and undo stay portable", RuntimeHoldTogglesAndUndoStayPortable),
-                ("Runtime completes quick-note result", RuntimeCompletesQuickNoteResult),
-                ("Runtime pastes cut back when held cut is discarded", RuntimePastesCutBackOnDiscardedCut),
-                ("Runtime files quick note into the selected project", RuntimeFilesQuickNoteIntoSelectedProject),
-                ("Runtime redirects quick note with no active project", RuntimeRedirectsQuickNoteWithNoActiveProject),
-                ("Runtime activates the selected project from a quick note", RuntimeActivatesSelectedProjectFromQuickNote),
-                ("Runtime deactivates the active project when toggled off", RuntimeDeactivatesActiveProjectWhenToggledOff),
-                ("Runtime creates a new project from the capture dialog", RuntimeCreatesNewProjectFromCapture),
-                ("Runtime completes flattened compile result", RuntimeCompletesCompileResult),
-                ("Runtime preserves structured compile saves", RuntimePreservesStructuredCompileSaves),
-                ("Runtime returns copy and paste compile outcomes", RuntimeReturnsCopyAndPasteCompileOutcomes),
-                ("Runtime formatted compile stages rich clipboard", RuntimeFormattedCompileStagesRichClipboard),
-                ("Runtime compile does not paste when the clipboard write fails", RuntimeCompileDoesNotPasteWhenClipboardWriteFails),
-                ("Runtime compile surfaces an uncertain clipboard rollback", RuntimeCompileSurfacesUncertainClipboardRollback),
-                ("Runtime reports rejected compiled paste", RuntimeReportsRejectedCompiledPaste),
-                ("Runtime parity scenario writes a reloadable snapshot", RuntimeParityScenarioWritesSnapshot)
-        };
-
-        foreach (var t in tests)
-        {
-            yield return new object[] { t.Name, t.Test };
-        }
-    }
-
-    [Theory]
-    [MemberData(nameof(GetTests))]
-    public void RunPortableTest(string name, Action test)
-    {
-        Assert.NotNull(name);
-        test();
-    }
-
-        private static void CopyPassThroughSuppressesRepeats()
+        [Fact(DisplayName = "Ctrl+C pass-through suppresses later repeats")]
+        public static void CopyPassThroughSuppressesRepeats()
         {
             using var processor = CreateProcessor(out _, out _, out _, out _);
             AssertFalse(processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false), "Ctrl down should pass through.");
@@ -207,7 +20,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void PasteTapDispatchesOnKeyUp()
+        [Fact(DisplayName = "Ctrl+V tap dispatches paste on key-up")]
+        public static void PasteTapDispatchesOnKeyUp()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out var taps, out _);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -219,7 +33,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void PasteGallopTapDispatchesAfterCtrlKeyUp()
+        [Fact(DisplayName = "Ctrl+V gallop tap dispatches after Ctrl key-up")]
+        public static void PasteGallopTapDispatchesAfterCtrlKeyUp()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out var taps, out _);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -231,7 +46,8 @@ public class PortableSelfTests
             AssertEqual(1, taps.Count, "Tap callback should fire once.");
         }
 
-        private static void PasteLateGallopDoesNotDispatch()
+        [Fact(DisplayName = "Ctrl+V late gallop does not dispatch paste")]
+        public static void PasteLateGallopDoesNotDispatch()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out _);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -242,7 +58,8 @@ public class PortableSelfTests
             AssertEqual(0, dispatched.Count, "Late gallop should not dispatch paste.");
         }
 
-        private static void PasteHandledTapSuppressesDefaultPaste()
+        [Fact(DisplayName = "Ctrl+V handled tap suppresses default paste")]
+        public static void PasteHandledTapSuppressesDefaultPaste()
         {
             using var processor = CreateProcessor(
                 out var dispatched,
@@ -258,7 +75,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void PasteHoldDoesNotDispatch()
+        [Fact(DisplayName = "Ctrl+V hold reserves paste")]
+        public static void PasteHoldDoesNotDispatch()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -269,7 +87,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void PasteHoldSuppressesRepeatsAfterCtrlKeyUp()
+        [Fact(DisplayName = "Ctrl+V hold suppresses repeats after Ctrl key-up")]
+        public static void PasteHoldSuppressesRepeatsAfterCtrlKeyUp()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -283,7 +102,8 @@ public class PortableSelfTests
             AssertEqual(0, dispatched.Count, "Held paste should not dispatch paste.");
         }
 
-        private static void FreshTargetKeyPassesAfterCtrlUpRepeatGuard()
+        [Fact(DisplayName = "Fresh target key passes after Ctrl-up repeat guard")]
+        public static void FreshTargetKeyPassesAfterCtrlUpRepeatGuard()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -301,7 +121,8 @@ public class PortableSelfTests
             AssertEqual(0, dispatched.Count, "Held paste should not dispatch paste.");
         }
 
-        private static void BoardTapDispatchesOnKeyUp()
+        [Fact(DisplayName = "Ctrl+B tap dispatches board shortcut on key-up")]
+        public static void BoardTapDispatchesOnKeyUp()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out var taps, out _);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -313,7 +134,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void BoardHoldDoesNotDispatch()
+        [Fact(DisplayName = "Ctrl+B hold opens board without dispatch")]
+        public static void BoardHoldDoesNotDispatch()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -325,7 +147,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void PopToggleTapDispatchesOnKeyUp()
+        [Fact(DisplayName = "Ctrl+P tap dispatches pop key on key-up")]
+        public static void PopToggleTapDispatchesOnKeyUp()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out var taps, out _);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -337,7 +160,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void PopToggleHoldDoesNotDispatch()
+        [Fact(DisplayName = "Ctrl+P hold raises Pop toggle")]
+        public static void PopToggleHoldDoesNotDispatch()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -349,7 +173,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void ReplayToggleTapDispatchesOnKeyUp()
+        [Fact(DisplayName = "Ctrl+R tap dispatches replay key on key-up")]
+        public static void ReplayToggleTapDispatchesOnKeyUp()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out var taps, out _);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -361,7 +186,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void ReplayToggleHoldDoesNotDispatch()
+        [Fact(DisplayName = "Ctrl+R hold raises Replay toggle")]
+        public static void ReplayToggleHoldDoesNotDispatch()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -373,7 +199,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void UndoHoldDoesNotDispatch()
+        [Fact(DisplayName = "Ctrl+Z hold raises Zetl undo")]
+        public static void UndoHoldDoesNotDispatch()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -385,7 +212,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void ShiftChangeRestartsHold()
+        [Fact(DisplayName = "Shift changes restart hold detection")]
+        public static void ShiftChangeRestartsHold()
         {
             using var processor = CreateProcessor(out _, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -401,7 +229,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void ShiftRepeatDoesNotRestartHold()
+        [Fact(DisplayName = "Shift repeat does not restart hold detection")]
+        public static void ShiftRepeatDoesNotRestartHold()
         {
             using var processor = CreateProcessor(out _, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
@@ -417,7 +246,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void ShiftChangeAfterHoldDoesNotDispatchTwice()
+        [Fact(DisplayName = "Shift change after hold does not dispatch twice")]
+        public static void ShiftChangeAfterHoldDoesNotDispatchTwice()
         {
             using var processor = CreateProcessor(
                 out var dispatched,
@@ -438,7 +268,8 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        private static void SyntheticModifierUsesUnheldSide()
+        [Fact(DisplayName = "Synthetic modifier injection uses an unheld side")]
+        public static void SyntheticModifierUsesUnheldSide()
         {
             AssertEqual<int?>(
                 VK_LCONTROL,
@@ -474,7 +305,8 @@ public class PortableSelfTests
                 "With both sides held, no synthetic modifier is needed.");
         }
 
-        private static void ChordInjectionSuppressesHeldShiftForPlainChord()
+        [Fact(DisplayName = "Chord injection suppresses a held Shift for a plain chord")]
+        public static void ChordInjectionSuppressesHeldShiftForPlainChord()
         {
             // Shift-lane copy/cut replays a plain Ctrl+C/Ctrl+X while the user
             // physically holds Ctrl+Shift. A held Shift must be released for the
@@ -553,7 +385,8 @@ public class PortableSelfTests
             return virtualKey == VK_LSHIFT || virtualKey == VK_RSHIFT;
         }
 
-        private static void StateCreatesProjectAndScratch()
+        [Fact(DisplayName = "Zetl state creates projects and scratch buckets")]
+        public static void StateCreatesProjectAndScratch()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -563,7 +396,8 @@ public class PortableSelfTests
             AssertEqual("Inbox", store.ActiveBucket?.Name, "Requested active bucket should be active.");
         }
 
-        private static void StateKeepsActiveTemporaryConsumables()
+        [Fact(DisplayName = "Zetl state keeps active temporary consumables")]
+        public static void StateKeepsActiveTemporaryConsumables()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -587,7 +421,8 @@ public class PortableSelfTests
                 "Reload should not dispose a temporary project that still owns its lane.");
         }
 
-        private static void StateDisposesTemporaryConsumablesWhenLaneClears()
+        [Fact(DisplayName = "Zetl state disposes temporary consumables when lane clears")]
+        public static void StateDisposesTemporaryConsumablesWhenLaneClears()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -612,7 +447,8 @@ public class PortableSelfTests
                 "Disposed temporary projects should not return after reload.");
         }
 
-        private static void StateDisposesAbandonedTemporaryConsumablesOnLoad()
+        [Fact(DisplayName = "Zetl state disposes abandoned temporary consumables on load")]
+        public static void StateDisposesAbandonedTemporaryConsumablesOnLoad()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -635,7 +471,8 @@ public class PortableSelfTests
                 "A temporary project that is not active in its assigned lane should be disposed on load.");
         }
 
-        private static void StatePopModeRemovesLastMatchingNote()
+        [Fact(DisplayName = "Zetl state pop mode removes matching last note")]
+        public static void StatePopModeRemovesLastMatchingNote()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -665,7 +502,8 @@ public class PortableSelfTests
             AssertEqual("alpha", bucket.Slips.Single().Text, "Restore should put popped note back.");
         }
 
-        private static void StatePopRecoversTextAcrossRestart()
+        [Fact(DisplayName = "Zetl state Pop recovers text across restart")]
+        public static void StatePopRecoversTextAcrossRestart()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -688,7 +526,8 @@ public class PortableSelfTests
             AssertEqual("pop-recovery", loadedReview.Slips.Single().Source, "Recovered slips should identify their Pop origin.");
         }
 
-        private static void StatePopRecoversImageAcrossRestart()
+        [Fact(DisplayName = "Zetl state Pop recovers images across restart")]
+        public static void StatePopRecoversImageAcrossRestart()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -717,7 +556,8 @@ public class PortableSelfTests
             AssertEqual(bytes.Length, reloaded.ReadImageAsset(loadedProject, recovered)?.Length, "Popped image bytes should remain readable after restart.");
         }
 
-        private static void StatePopRecoversMixedSlipAcrossRestart()
+        [Fact(DisplayName = "Zetl state Pop recovers mixed slips across restart")]
+        public static void StatePopRecoversMixedSlipAcrossRestart()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -766,7 +606,8 @@ public class PortableSelfTests
             AssertEqual(bytes.Length, reloaded.ReadImageAsset(loadedProject, recovered)?.Length, "Mixed Pop should retain readable image bytes after restart.");
         }
 
-        private static void StateFindsMostRecentlyWrittenProject()
+        [Fact(DisplayName = "Zetl state finds the most recently written project")]
+        public static void StateFindsMostRecentlyWrittenProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -785,7 +626,8 @@ public class PortableSelfTests
             AssertEqual("Newer", store.GetMostRecentlyWrittenProject()?.Name, "Zetl Logs must be excluded from the last-written project.");
         }
 
-        private static void CaptureOriginRespectsPrivacyDetail()
+        [Fact(DisplayName = "Zetl capture origin respects privacy detail")]
+        public static void CaptureOriginRespectsPrivacyDetail()
         {
             var full = ZetlCaptureOrigin.Create(
                 "Browser",
@@ -814,7 +656,8 @@ public class PortableSelfTests
                 "Disabled origin capture should produce no metadata envelope.");
         }
 
-        private static void CaptureOriginRoundTripsWithNotes()
+        [Fact(DisplayName = "Zetl capture origin round-trips with notes")]
+        public static void CaptureOriginRoundTripsWithNotes()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -840,7 +683,8 @@ public class PortableSelfTests
             AssertTrue(note.HasCaptureOrigin, "A persisted origin should remain displayable.");
         }
 
-        private static void CleanExportStripsCaptureOrigin()
+        [Fact(DisplayName = "Zetl clean export strips capture origin")]
+        public static void CleanExportStripsCaptureOrigin()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -893,7 +737,8 @@ public class PortableSelfTests
             AssertTrue(note.CaptureOrigin is not null, "Sanitizing an export snapshot must not modify the live project.");
         }
 
-        private static void ProjectPackagesSeparateProvenance()
+        [Fact(DisplayName = "Zetl project packages separate clean and archive provenance")]
+        public static void ProjectPackagesSeparateProvenance()
         {
             using var temp = new TempStateFile();
             var root = System.IO.Path.GetDirectoryName(temp.Path)!;
@@ -965,7 +810,8 @@ public class PortableSelfTests
                 "Successful package writes should not leave temporary files behind.");
         }
 
-        private static void ImageSlipsStoreDeduplicatedAssets()
+        [Fact(DisplayName = "Zetl image slips store deduplicated project assets")]
+        public static void ImageSlipsStoreDeduplicatedAssets()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1015,7 +861,8 @@ public class PortableSelfTests
             AssertEqual(20, loadedImage.Image?.Width, "Image dimensions should survive persistence.");
         }
 
-        private static void ImageProjectPackagesIncludeAssets()
+        [Fact(DisplayName = "Zetl image project packages include referenced assets")]
+        public static void ImageProjectPackagesIncludeAssets()
         {
             using var temp = new TempStateFile();
             var root = System.IO.Path.GetDirectoryName(temp.Path)!;
@@ -1065,7 +912,8 @@ public class PortableSelfTests
             AssertTrue(note.Image?.SourceUrl is not null, "Clean export must not modify the live image source URL.");
         }
 
-        private static void StateCreatesJournalDefaultProject()
+        [Fact(DisplayName = "Zetl state creates the journal default home")]
+        public static void StateCreatesJournalDefaultProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1101,7 +949,8 @@ public class PortableSelfTests
             AssertEqual(project.Id, store.GetOrCreateDefaultProject().Id, "The renamed journal is still the default home.");
         }
 
-        private static void StateJournalIntervalConfiguresAndRolls()
+        [Fact(DisplayName = "Zetl state configures and rolls journal intervals")]
+        public static void StateJournalIntervalConfiguresAndRolls()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1154,7 +1003,8 @@ public class PortableSelfTests
             AssertEqual(store.DefaultProjectName(), rolledProject.Name, "Rolled project has current week's name");
         }
 
-        private static void StateCanStartWithoutActiveProject()
+        [Fact(DisplayName = "Zetl state can start without an active project")]
+        public static void StateCanStartWithoutActiveProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1169,7 +1019,8 @@ public class PortableSelfTests
             AssertEqual(2, loaded.State.Projects.Count, "Inactive startup should preserve existing projects.");
         }
 
-        private static void StateKeepsNormalAndShiftProjectsSeparate()
+        [Fact(DisplayName = "Zetl state keeps normal and Shift active projects separate")]
+        public static void StateKeepsNormalAndShiftProjectsSeparate()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1182,7 +1033,8 @@ public class PortableSelfTests
             AssertEqual(store.DefaultProjectName(shifted: true), shifted.Name, "Shift default project should be named distinctly.");
         }
 
-        private static void StateSwitchesActiveBucket()
+        [Fact(DisplayName = "Zetl state switches active bucket")]
+        public static void StateSwitchesActiveBucket()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1196,7 +1048,8 @@ public class PortableSelfTests
             AssertEqual(ideas.Id, loaded.ActiveBucket?.Id, "Selected active bucket should persist.");
         }
 
-        private static void StateRemembersQuickNoteBucket()
+        [Fact(DisplayName = "Zetl state remembers quick note bucket")]
+        public static void StateRemembersQuickNoteBucket()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1217,7 +1070,8 @@ public class PortableSelfTests
             AssertEqual("Scratch", loaded.GetQuickNoteBucket(loadedProject).Name, "Deleted quick note bucket should fall back to Scratch.");
         }
 
-        private static void StateReusesDatedDefaultProject()
+        [Fact(DisplayName = "Zetl state reuses the journal default home")]
+        public static void StateReusesDatedDefaultProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1229,7 +1083,8 @@ public class PortableSelfTests
             AssertEqual(1, store.State.Projects.Count, "Default project reuse should not create duplicates.");
         }
 
-        private static void StateFinishStartsFreshJournal()
+        [Fact(DisplayName = "Zetl state finish starts a fresh journal")]
+        public static void StateFinishStartsFreshJournal()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1253,7 +1108,8 @@ public class PortableSelfTests
                 "The finished journal is retained, not deleted.");
         }
 
-        private static void StateConsolidatesChildBucketsRegardlessOfOrder()
+        [Fact(DisplayName = "Zetl state consolidates child buckets regardless of order")]
+        public static void StateConsolidatesChildBucketsRegardlessOfOrder()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1282,7 +1138,8 @@ public class PortableSelfTests
             AssertEqual(group.Id, sub.ParentBucketId, "Child bucket should keep its parent after consolidation regardless of list order.");
         }
 
-        private static void DefaultConfigParses()
+        [Fact(DisplayName = "Zetl default hotkeys config parses")]
+        public static void DefaultConfigParses()
         {
             var configPath = Path.Combine(AppContext.BaseDirectory, "hotkeys.json");
             var config = ChordlConfigLoader.LoadFromFile(configPath);
@@ -1305,7 +1162,8 @@ public class PortableSelfTests
             }
         }
 
-        private static void ConfigNullReplayModifiersDoesNotThrow()
+        [Fact(DisplayName = "Zetl config tolerates null replay modifiers")]
+        public static void ConfigNullReplayModifiersDoesNotThrow()
         {
             var json =
                 """
@@ -1318,7 +1176,8 @@ public class PortableSelfTests
             AssertFalse(config.Actions.Values.Single().ReplayShift, "Normalized replay modifiers should not request Shift.");
         }
 
-        private static void ConfigNullFieldsReportCleanErrors()
+        [Fact(DisplayName = "Zetl config reports clean errors for null fields")]
+        public static void ConfigNullFieldsReportCleanErrors()
         {
             var nullModifiers =
                 """
@@ -1366,7 +1225,8 @@ public class PortableSelfTests
             }
         }
 
-        private static void StateDetectsCompilableNotes()
+        [Fact(DisplayName = "Zetl state detects compilable notes")]
+        public static void StateDetectsCompilableNotes()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1377,7 +1237,8 @@ public class PortableSelfTests
             AssertTrue(store.HasCompilableSlips(project), "A project with a note should be compilable.");
         }
 
-        private static void StateFindsInactiveScratchCompileTarget()
+        [Fact(DisplayName = "Zetl state finds inactive scratch notes for compile")]
+        public static void StateFindsInactiveScratchCompileTarget()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1392,7 +1253,8 @@ public class PortableSelfTests
             AssertEqual<ZetlProject?>(null, store.ActiveProject, "Scratch compile lookup should not activate the project.");
         }
 
-        private static void StateSupportsChildBuckets()
+        [Fact(DisplayName = "Zetl state supports child buckets")]
+        public static void StateSupportsChildBuckets()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1407,7 +1269,8 @@ public class PortableSelfTests
             AssertFalse(project.Buckets.Any(bucket => bucket.Id == child.Id), "Deleting a parent bucket should remove child buckets.");
         }
 
-        private static void StateGetsOrCreatesCompileBuckets()
+        [Fact(DisplayName = "Zetl state gets or creates compile buckets")]
+        public static void StateGetsOrCreatesCompileBuckets()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1423,7 +1286,8 @@ public class PortableSelfTests
             AssertEqual("compile", created.Slips.Single().Source, "Compiled note should store its source.");
         }
 
-        private static void StateAddsNotesPreservingStructure()
+        [Fact(DisplayName = "Zetl adds notes preserving structure")]
+        public static void StateAddsNotesPreservingStructure()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1439,7 +1303,8 @@ public class PortableSelfTests
             AssertEqual("compile", bucket.Slips[0].Source, "AddNotes should set the note source.");
         }
 
-        private static void StateCompilesToOtherProjectWithoutChangingActive()
+        [Fact(DisplayName = "Zetl compiles across projects without changing the active project")]
+        public static void StateCompilesToOtherProjectWithoutChangingActive()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1460,7 +1325,8 @@ public class PortableSelfTests
             AssertEqual("compiled text", destination.Slips.Single().Text, "Compiled note should land in the destination bucket.");
         }
 
-        private static void StateCompilesSelectedNotes()
+        [Fact(DisplayName = "Zetl state compiles selected notes")]
+        public static void StateCompilesSelectedNotes()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1485,7 +1351,8 @@ public class PortableSelfTests
             AssertTrue(compiled.Contains($"{Environment.NewLine}\tthird"), "Second selected note should compile indented under its bucket.");
         }
 
-        private static void StateProtectsScratchBucket()
+        [Fact(DisplayName = "Zetl state protects the Scratch bucket")]
+        public static void StateProtectsScratchBucket()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1502,7 +1369,8 @@ public class PortableSelfTests
             AssertTrue(project.Buckets.Any(bucket => bucket.Id == scratch.Id), "Scratch should not be deletable.");
         }
 
-        private static void StateProtectsDeletedBucket()
+        [Fact(DisplayName = "Zetl state protects the Deleted bucket")]
+        public static void StateProtectsDeletedBucket()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1540,7 +1408,8 @@ public class PortableSelfTests
             AssertFalse(loaded.GetBucketDisplayItems(loadedProject).Any(item => item.Bucket.Id == loadedDeleted.Id), "Reloaded normal bucket lists should hide Deleted.");
         }
 
-        private static void StateDeletesProjectsAndRepairsActiveLanes()
+        [Fact(DisplayName = "Zetl state deletes projects and repairs active lanes")]
+        public static void StateDeletesProjectsAndRepairsActiveLanes()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1559,7 +1428,8 @@ public class PortableSelfTests
             AssertEqual(second.Id, loaded.GetActiveProject()?.Id, "Repaired normal lane should persist.");
         }
 
-        private static void StateDeletesBucketTreesAndRepairsPointers()
+        [Fact(DisplayName = "Zetl state deletes bucket trees and repairs pointers")]
+        public static void StateDeletesBucketTreesAndRepairsPointers()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1582,7 +1452,8 @@ public class PortableSelfTests
             AssertEqual<string?>(null, loadedProject.QuickNoteBucketId, "Cleared quick-note pointer should persist.");
         }
 
-        private static void StateDeletesNotes()
+        [Fact(DisplayName = "Zetl state deletes notes")]
+        public static void StateDeletesNotes()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1600,7 +1471,8 @@ public class PortableSelfTests
             AssertEqual(keep.Id, loaded.ActiveBucket!.Slips.Single().Id, "Note deletion should persist.");
         }
 
-        private static void StatePreservesBucketSettings()
+        [Fact(DisplayName = "Zetl state preserves bucket settings")]
+        public static void StatePreservesBucketSettings()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1635,7 +1507,8 @@ public class PortableSelfTests
             AssertEqual(3, loaded.GetBucketTsvRowLength(loadedBucket), "Inferred TSV length should round-trip.");
         }
 
-        private static void StateCompilesSelectedNotesUnformatted()
+        [Fact(DisplayName = "Zetl state compiles selected notes unformatted")]
+        public static void StateCompilesSelectedNotesUnformatted()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1655,7 +1528,8 @@ public class PortableSelfTests
             AssertEqual($"first{Environment.NewLine}third", compiled, "Unformatted compile should include only note text.");
         }
 
-        private static void StateCompilesSelectedNotesAsTsvRows()
+        [Fact(DisplayName = "Zetl state compiles selected notes as TSV rows")]
+        public static void StateCompilesSelectedNotesAsTsvRows()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1679,7 +1553,8 @@ public class PortableSelfTests
             AssertEqual(expected, compiled, "TSV compile should split selected notes into fixed-length rows.");
         }
 
-        private static void StateCompilesTsvWithBucketHeaders()
+        [Fact(DisplayName = "Zetl state compiles TSV with bucket headers")]
+        public static void StateCompilesTsvWithBucketHeaders()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1710,7 +1585,8 @@ public class PortableSelfTests
             AssertEqual(expected, compiled, "TSV compile should include bucket headers before data rows.");
         }
 
-        private static void StateFindsLastActiveNote()
+        [Fact(DisplayName = "Zetl state finds last active note")]
+        public static void StateFindsLastActiveNote()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1727,7 +1603,8 @@ public class PortableSelfTests
             AssertEqual("first", scopedNote?.Slip.Text, "Scoped last note should respect bucket scope.");
         }
 
-        private static void StateCompileScopeRespectsSessionToggle()
+        [Fact(DisplayName = "Zetl compile scope respects the session-only toggle")]
+        public static void StateCompileScopeRespectsSessionToggle()
         {
             using var temp = new TempStateFile();
             var oldStore = new ZetlStateStore(temp.Path, "old-session");
@@ -1764,7 +1641,8 @@ public class PortableSelfTests
             AssertEqual(2, inbox.Slips.Count, "Old notes should remain stored for board/history.");
         }
 
-        private static void StateReplayResumesQueuedSlipsAcrossRestart()
+        [Fact(DisplayName = "Zetl state Replay resumes queued slips across restart")]
+        public static void StateReplayResumesQueuedSlipsAcrossRestart()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path, "replay-session");
@@ -1787,7 +1665,8 @@ public class PortableSelfTests
             AssertEqual(0, loadedQueue.Slips.Count, "Consumed Replay slips should stay consumed.");
         }
 
-        private static void StateReplayArchivesConsumedSlipsForReview()
+        [Fact(DisplayName = "Zetl state Replay archives consumed slips for review")]
+        public static void StateReplayArchivesConsumedSlipsForReview()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path, "replay-session");
@@ -1815,7 +1694,8 @@ public class PortableSelfTests
             AssertEqual(2, sameReviewBucket.Slips.Count, "Review bucket should accumulate consumed Replay slips.");
         }
 
-        private static void StateReplayRestoresConsumedSlipsFromReview()
+        [Fact(DisplayName = "Zetl state Replay restores consumed slips from review")]
+        public static void StateReplayRestoresConsumedSlipsFromReview()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path, "replay-session");
@@ -1840,7 +1720,8 @@ public class PortableSelfTests
             AssertEqual(0, reviewBucket!.Slips.Count, "Replay undo should remove the review copy.");
         }
 
-        private static void StateReplayDisablesPopMode()
+        [Fact(DisplayName = "Zetl state Replay disables pop mode")]
+        public static void StateReplayDisablesPopMode()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1855,7 +1736,8 @@ public class PortableSelfTests
             AssertFalse(queue.Settings.PopMode, "Replay bucket should reject pop mode.");
         }
 
-        private static void StateMapsLegacyFifoKindToReplay()
+        [Fact(DisplayName = "Zetl state maps legacy Fifo kind to Replay")]
+        public static void StateMapsLegacyFifoKindToReplay()
         {
             using var temp = new TempStateFile();
             // A state file written by an older build that used the "Fifo" kind.
@@ -1884,7 +1766,8 @@ public class PortableSelfTests
                 "Replay review links should retain their historical JSON field name.");
         }
 
-        private static void StateRoundTripsJson()
+        [Fact(DisplayName = "Zetl state round-trips JSON")]
+        public static void StateRoundTripsJson()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1907,7 +1790,8 @@ public class PortableSelfTests
             AssertFalse(projectJson.Contains("\"slips\":", StringComparison.Ordinal), "Slip storage should not introduce a second serialized collection.");
         }
 
-        private static void StateStoresEachProjectInItsOwnFolder()
+        [Fact(DisplayName = "Zetl state stores each project in its own folder")]
+        public static void StateStoresEachProjectInItsOwnFolder()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -1930,7 +1814,8 @@ public class PortableSelfTests
             AssertTrue(loaded.State.Projects.Any(project => project.Name == "Beta"), "Reloaded projects should keep their names.");
         }
 
-        private static void StateMigratesLegacySingleFile()
+        [Fact(DisplayName = "Zetl state migrates a legacy single state file")]
+        public static void StateMigratesLegacySingleFile()
         {
             using var temp = new TempStateFile();
             var legacyJson =
@@ -1956,7 +1841,8 @@ public class PortableSelfTests
             AssertEqual("Legacy", reloaded.State.Projects.Single().Name, "Migrated project should reload from the new layout.");
         }
 
-        private static void JsonFileConcurrentWritesDoNotCollide()
+        [Fact(DisplayName = "Zetl json writes do not collide under concurrent writers")]
+        public static void JsonFileConcurrentWritesDoNotCollide()
         {
             using var temp = new TempStateFile();
             // Another writer mid-write used to hold this exact temp name,
@@ -1977,7 +1863,8 @@ public class PortableSelfTests
                 "Replacing an existing file should also ignore the held temp name.");
         }
 
-        private static void JsonFileReadNamesDamagedFile()
+        [Fact(DisplayName = "Zetl json parse errors name the damaged file")]
+        public static void JsonFileReadNamesDamagedFile()
         {
             using var temp = new TempStateFile();
             File.WriteAllText(temp.Path, "{ this is not json");
@@ -1994,7 +1881,8 @@ public class PortableSelfTests
             }
         }
 
-        private static void JsonFileQuarantinesCorruptFile()
+        [Fact(DisplayName = "Zetl json read-or-quarantine moves corrupt files aside")]
+        public static void JsonFileQuarantinesCorruptFile()
         {
             using var temp = new TempStateFile();
             var directory = System.IO.Path.GetDirectoryName(temp.Path)!;
@@ -2010,7 +1898,8 @@ public class PortableSelfTests
                 "ReadOrQuarantine should leave one quarantined copy.");
         }
 
-        private static void StateSkipsCorruptProjectFile()
+        [Fact(DisplayName = "Zetl state skips a corrupt project and keeps the rest")]
+        public static void StateSkipsCorruptProjectFile()
         {
             using var temp = new TempStateFile();
             var projectsDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "projects");
@@ -2036,7 +1925,8 @@ public class PortableSelfTests
                 "The corrupt project.json should be quarantined in place.");
         }
 
-        private static void StateRecoversFromCorruptWorkspace()
+        [Fact(DisplayName = "Zetl state recovers from a corrupt workspace file")]
+        public static void StateRecoversFromCorruptWorkspace()
         {
             using var temp = new TempStateFile();
             var root = System.IO.Path.GetDirectoryName(temp.Path)!;
@@ -2056,7 +1946,8 @@ public class PortableSelfTests
                 "The corrupt workspace.json should be quarantined.");
         }
 
-        private static void StateSkipsUnreadableProjectFile()
+        [Fact(DisplayName = "Zetl state skips an unreadable project and keeps the rest")]
+        public static void StateSkipsUnreadableProjectFile()
         {
             using var temp = new TempStateFile();
             var projectsDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "projects");
@@ -2083,7 +1974,8 @@ public class PortableSelfTests
             AssertTrue(File.Exists(lockedFile), "An unreadable (not corrupt) file must be left in place, not quarantined.");
         }
 
-        private static void AppSettingsRecoverFromUnreadableFile()
+        [Fact(DisplayName = "Zetl app settings recover from an unreadable file")]
+        public static void AppSettingsRecoverFromUnreadableFile()
         {
             using var temp = new TempStateFile();
             var settingsPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "settings.json");
@@ -2098,7 +1990,8 @@ public class PortableSelfTests
             AssertTrue(File.Exists(settingsPath), "Unreadable settings must be left in place, not quarantined.");
         }
 
-        private static void StateMigrationToleratesBackupRenameFailure()
+        [Fact(DisplayName = "Zetl state migration tolerates a backup rename failure")]
+        public static void StateMigrationToleratesBackupRenameFailure()
         {
             using var temp = new TempStateFile();
             var legacyJson =
@@ -2122,7 +2015,8 @@ public class PortableSelfTests
             }
         }
 
-        private static void StateAppendsLogNotesWithoutActivating()
+        [Fact(DisplayName = "Zetl state appends activity-log notes without activating")]
+        public static void StateAppendsLogNotesWithoutActivating()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2147,7 +2041,8 @@ public class PortableSelfTests
             AssertEqual("Work", reloaded.ActiveProject?.Name, "Logging should leave the real active project untouched across reload.");
         }
 
-        private static void AppSettingsRoundTripFirstRunFlag()
+        [Fact(DisplayName = "Zetl app settings round-trip first-run flag")]
+        public static void AppSettingsRoundTripFirstRunFlag()
         {
             using var temp = new TempStateFile();
             var settingsPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "settings.json");
@@ -2160,7 +2055,8 @@ public class PortableSelfTests
             AssertTrue(loaded.Settings.HasSeenFirstRun, "First-run flag should round-trip.");
         }
 
-        private static void AppSettingsRoundTripFields()
+        [Fact(DisplayName = "Zetl app settings round-trip configurable fields")]
+        public static void AppSettingsRoundTripFields()
         {
             using var temp = new TempStateFile();
             var settingsPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "settings.json");
@@ -2254,7 +2150,8 @@ public class PortableSelfTests
                 "Kastn slip-kind preference should round-trip.");
         }
 
-        private static void KastnStateRoundTripsLastProject()
+        [Fact(DisplayName = "Kastn state round-trips the last project")]
+        public static void KastnStateRoundTripsLastProject()
         {
             using var temp = new TempStateFile();
             var directory = System.IO.Path.GetDirectoryName(temp.Path)!;
@@ -2275,7 +2172,8 @@ public class PortableSelfTests
             AssertEqual("proj-7", legacy.LastProjectId, "A legacy state file with pins should still load.");
         }
 
-        private static void JournalBucketRollsAtDayStartHour()
+        [Fact(DisplayName = "Journal bucket rolls at the day-start hour")]
+        public static void JournalBucketRollsAtDayStartHour()
         {
             // Day parents are named "ddd MM-dd" (2026-06-24 is a Wednesday, 06-23 a Tuesday).
             // Midnight boundary: every clock hour maps to its own calendar day.
@@ -2309,7 +2207,8 @@ public class PortableSelfTests
                 "An out-of-range day-start hour clamps to 23.");
         }
 
-        private static void AppSettingsRecoverFromCorruptFile()
+        [Fact(DisplayName = "Zetl app settings recover from a corrupt file")]
+        public static void AppSettingsRecoverFromCorruptFile()
         {
             using var temp = new TempStateFile();
             var directory = System.IO.Path.GetDirectoryName(temp.Path)!;
@@ -2326,7 +2225,8 @@ public class PortableSelfTests
                 "The corrupt settings.json should be quarantined.");
         }
 
-        private static void ThemeDefaultsValidate()
+        [Fact(DisplayName = "Zetl built-in theme validates")]
+        public static void ThemeDefaultsValidate()
         {
             var theme = ZetlThemeDefaults.Create();
 
@@ -2339,7 +2239,8 @@ public class PortableSelfTests
                 "Invalid colors should produce a useful validation error.");
         }
 
-        private static void ThemeDuskValidates()
+        [Fact(DisplayName = "Zetl Dusk built-in theme validates")]
+        public static void ThemeDuskValidates()
         {
             var theme = ZetlThemeDefaults.CreateDusk();
 
@@ -2352,7 +2253,8 @@ public class PortableSelfTests
                 "Dusk should retain the First Build periwinkle accent.");
         }
 
-        private static void ThemeBuiltInPresetsValidate()
+        [Fact(DisplayName = "Zetl built-in presets all validate")]
+        public static void ThemeBuiltInPresetsValidate()
         {
             var presets = ZetlThemeDefaults.CreateAll();
 
@@ -2374,7 +2276,8 @@ public class PortableSelfTests
             }
         }
 
-        private static void ThemeRoundTripsCustomValues()
+        [Fact(DisplayName = "Zetl themes round-trip custom values")]
+        public static void ThemeRoundTripsCustomValues()
         {
             using var temp = new TempStateFile();
             var directory = System.IO.Path.Combine(
@@ -2399,7 +2302,8 @@ public class PortableSelfTests
             AssertEqual(9d, loaded.Metrics.CornerRadius, "Theme metrics should round-trip.");
         }
 
-        private static void ThemePreservesUnknownJsonFields()
+        [Fact(DisplayName = "Zetl themes preserve unknown JSON fields")]
+        public static void ThemePreservesUnknownJsonFields()
         {
             using var temp = new TempStateFile();
             var root = System.IO.Path.GetDirectoryName(temp.Path)!;
@@ -2460,7 +2364,8 @@ public class PortableSelfTests
             AssertTrue(saved.Contains("\"futurePaletteMode\"", StringComparison.Ordinal), "Unknown palette values should survive.");
         }
 
-        private static void ThemeStoreIgnoresInvalidFiles()
+        [Fact(DisplayName = "Zetl theme store ignores invalid files")]
+        public static void ThemeStoreIgnoresInvalidFiles()
         {
             using var temp = new TempStateFile();
             var directory = System.IO.Path.Combine(
@@ -2482,7 +2387,8 @@ public class PortableSelfTests
             AssertEqual(ZetlThemeDefaults.BuiltInId, store.Resolve("missing").Id, "Missing themes should resolve to the built-in fallback.");
         }
 
-        private static void StateAppliesBucketDefaults()
+        [Fact(DisplayName = "Zetl state applies bucket defaults")]
+        public static void StateAppliesBucketDefaults()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path)
@@ -2504,7 +2410,8 @@ public class PortableSelfTests
             AssertEqual(4, added.Settings.DefaultTsvRowLength, "Added bucket should take the default TSV row length.");
         }
 
-        private static void JournalModeRollsIntoDatedBuckets()
+        [Fact(DisplayName = "Journal mode rolls into dated buckets")]
+        public static void JournalModeRollsIntoDatedBuckets()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2550,7 +2457,8 @@ public class PortableSelfTests
                 "A non-journal project has no journal quick-note bucket.");
         }
 
-        private static void JournalAutoReturnsFromQuietProject()
+        [Fact(DisplayName = "Journal auto-returns from a quiet project")]
+        public static void JournalAutoReturnsFromQuietProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path)
@@ -2570,7 +2478,8 @@ public class PortableSelfTests
             AssertTrue(resolved.Id != work.Id, "Capture left the quiet deliberate project.");
         }
 
-        private static void JournalAutoReturnOffKeepsProject()
+        [Fact(DisplayName = "Journal auto-return off keeps the project")]
+        public static void JournalAutoReturnOffKeepsProject()
         {
             using var temp = new TempStateFile();
             // JournalAutoReturnHours defaults to 0 (off).
@@ -2583,7 +2492,8 @@ public class PortableSelfTests
                 "With auto-return off, even a long-quiet project keeps capture.");
         }
 
-        private static void ToggleActiveProjectSwitchesBetweenJournalAndLastProject()
+        [Fact(DisplayName = "Ctrl+J toggles between the Journal and the last project")]
+        public static void ToggleActiveProjectSwitchesBetweenJournalAndLastProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2615,7 +2525,8 @@ public class PortableSelfTests
             AssertEqual(work.Id, store.GetActiveProject()?.Id, "Work is active again.");
         }
 
-        private static void UrlSlipsAreDerivedFromContent()
+        [Fact(DisplayName = "URL slips are derived from content")]
+        public static void UrlSlipsAreDerivedFromContent()
         {
             // A note is a link if it contains an http/https URL anywhere.
             AssertTrue(ZetlSlipClassifier.LooksLikeUrl("https://example.com"), "A bare URL is a link.");
@@ -2645,7 +2556,8 @@ public class PortableSelfTests
                 "Plain text maps to a Text slip.");
         }
 
-        private static void RuntimeAppliesAppSettingsDefaults()
+        [Fact(DisplayName = "Runtime applies app settings defaults")]
+        public static void RuntimeAppliesAppSettingsDefaults()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2664,7 +2576,8 @@ public class PortableSelfTests
             AssertEqual(4, store.Defaults.TsvRowLength, "TSV row length should flow into state defaults.");
         }
 
-        private static void RuntimeUndoStackKeepsLanesSeparate()
+        [Fact(DisplayName = "Runtime undo stack keeps lanes separate")]
+        public static void RuntimeUndoStackKeepsLanesSeparate()
         {
             var stack = new ZetlUndoStack(capacity: 3);
             var normalUndone = false;
@@ -2681,7 +2594,8 @@ public class PortableSelfTests
             AssertTrue(shiftedUndone, "Shift lane undo should run.");
         }
 
-        private static void RuntimeActivityLogBufferDrainsSafely()
+        [Fact(DisplayName = "Runtime activity log buffer drains safely")]
+        public static void RuntimeActivityLogBufferDrainsSafely()
         {
             var now = new DateTime(2026, 6, 6, 12, 34, 56, DateTimeKind.Local);
             var buffer = new ZetlActivityLogBuffer(() => now);
@@ -2694,7 +2608,8 @@ public class PortableSelfTests
             AssertEqual(0, buffer.Drain().Count, "Drain should remove returned entries.");
         }
 
-        private static void RuntimeAutoCapturesCopiedText()
+        [Fact(DisplayName = "Runtime auto-captures copied text")]
+        public static async Task RuntimeAutoCapturesCopiedText()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2713,9 +2628,9 @@ public class PortableSelfTests
                 "editor",
                 "Draft",
                 ZetlCaptureOriginDetail.ApplicationAndWindowTitle);
-            coordinator.OnPhysicalShortcutPassedThroughAsync(
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
-                origin).GetAwaiter().GetResult();
+                origin);
 
             var note = store.GetActiveBucket()!.Slips.Single();
             AssertEqual("copied text", note.Text, "Auto-capture should trim and save copied text.");
@@ -2728,7 +2643,8 @@ public class PortableSelfTests
             AssertEqual(project.Id, store.GetActiveProject()!.Id, "Auto-capture should keep the active project.");
         }
 
-        private static void RuntimeAutoCapturesAndReplaysRichText()
+        [Fact(DisplayName = "Runtime auto-captures and replays rich text")]
+        public static async Task RuntimeAutoCapturesAndReplaysRichText()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2764,9 +2680,9 @@ public class PortableSelfTests
                 out _,
                 replayResumeClipboard: false);
 
-            coordinator.OnPhysicalShortcutPassedThroughAsync(
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
-                captureOrigin: null).GetAwaiter().GetResult();
+                captureOrigin: null);
 
             var captured = queue.Slips.Single();
             AssertEqual(richHtml, captured.RichHtml, "Auto-capture should retain the source HTML fragment.");
@@ -2792,7 +2708,8 @@ public class PortableSelfTests
             AssertEqual(richHtml, review.Slips.Single().RichHtml, "Replay review should retain the rich representation.");
         }
 
-        private static void RuntimeAutoCapturesCopiedImages()
+        [Fact(DisplayName = "Runtime auto-captures copied images")]
+        public static async Task RuntimeAutoCapturesCopiedImages()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2809,14 +2726,13 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            coordinator.OnPhysicalShortcutPassedThroughAsync(
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
                 ZetlCaptureOrigin.Create(
                     "Image Editor",
                     "editor",
                     "Canvas",
-                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle))
-                .GetAwaiter().GetResult();
+                    ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
 
             var note = store.GetActiveBucket()!.Slips.Single();
             AssertTrue(note.IsImage, "An image clipboard should create an image slip.");
@@ -2829,7 +2745,8 @@ public class PortableSelfTests
                 "Image capture should report its destination clearly.");
         }
 
-        private static void RuntimeAutoCapturesDualClipboardAsText()
+        [Fact(DisplayName = "Runtime auto-captures dual text+image clipboards as text")]
+        public static async Task RuntimeAutoCapturesDualClipboardAsText()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2851,10 +2768,9 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            coordinator.OnPhysicalShortcutPassedThroughAsync(
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
-                captureOrigin: null)
-                .GetAwaiter().GetResult();
+                captureOrigin: null);
 
             var note = store.GetActiveBucket()!.Slips.Single();
             AssertFalse(note.IsImage, "A dual capture should present as text, not as a picture.");
@@ -2868,7 +2784,8 @@ public class PortableSelfTests
                 "A dual capture should report as an ordinary text capture.");
         }
 
-        private static void RuntimeClipboardCaptureRetriesChangedGeneration()
+        [Fact(DisplayName = "Runtime clipboard capture retries a changed generation atomically")]
+        public static async Task RuntimeClipboardCaptureRetriesChangedGeneration()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2881,10 +2798,9 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            coordinator.OnPhysicalShortcutPassedThroughAsync(
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
-                captureOrigin: null)
-                .GetAwaiter().GetResult();
+                captureOrigin: null);
 
             var note = store.GetActiveBucket()!.Slips.Single();
             AssertTrue(
@@ -2906,7 +2822,8 @@ public class PortableSelfTests
                 "Native Replay data must come from the same generation as the committed text.");
         }
 
-        private static void RuntimeClipboardCaptureRefusesUnstableGenerations()
+        [Fact(DisplayName = "Runtime clipboard capture refuses persistently unstable generations")]
+        public static async Task RuntimeClipboardCaptureRefusesUnstableGenerations()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2919,10 +2836,9 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            coordinator.OnPhysicalShortcutPassedThroughAsync(
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
-                captureOrigin: null)
-                .GetAwaiter().GetResult();
+                captureOrigin: null);
 
             AssertEqual(
                 0,
@@ -2930,7 +2846,8 @@ public class PortableSelfTests
                 "Auto-capture must commit nothing when no retry observes one complete generation.");
         }
 
-        private static void DualSlipSurvivesPersistence()
+        [Fact(DisplayName = "Dual slips survive persistence text-preferred")]
+        public static void DualSlipSurvivesPersistence()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2959,7 +2876,8 @@ public class PortableSelfTests
                 "A reloaded dual slip should keep its rich HTML representation.");
         }
 
-        private static void RuntimePopRemovesDualSlipByImageHash()
+        [Fact(DisplayName = "Runtime Pop removes a dual slip by image hash")]
+        public static void RuntimePopRemovesDualSlipByImageHash()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -2993,7 +2911,8 @@ public class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Popped dual slip should be undoable.");
         }
 
-        private static void RuntimeReplayPastesDualSlipAsText()
+        [Fact(DisplayName = "Runtime Replay pastes a dual slip as text")]
+        public static void RuntimeReplayPastesDualSlipAsText()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3028,7 +2947,8 @@ public class PortableSelfTests
             AssertTrue(reviewNote.Image is not null, "The review copy should retain the attached picture.");
         }
 
-        private static void RuntimeHeldCopyCapturesImagesDirectly()
+        [Fact(DisplayName = "Runtime held copy opens image capture and saves captions")]
+        public static async Task RuntimeHeldCopyCapturesImagesDirectly()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3053,8 +2973,7 @@ public class PortableSelfTests
                 null,
                 new ZetlClipboardImage([7, 8, 9], 3, 2));
 
-            var request = coordinator.HandleClaimedHoldAsync(context, pending)
-                .GetAwaiter().GetResult();
+            var request = await coordinator.HandleClaimedHoldAsync(context, pending);
 
             AssertTrue(request is ZetlNoteCaptureRequest, "Held image copy should open the shared capture dialog.");
             var capture = (ZetlNoteCaptureRequest)request!;
@@ -3080,7 +2999,8 @@ public class PortableSelfTests
                 "Committed image capture should report its destination.");
         }
 
-        private static void RuntimeHeldCopyDualSavesTextPreferred()
+        [Fact(DisplayName = "Runtime held dual copy saves text-preferred with the picture")]
+        public static async Task RuntimeHeldCopyDualSavesTextPreferred()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3100,9 +3020,9 @@ public class PortableSelfTests
                 "A1\tB1",
                 new ZetlClipboardImage([7, 8, 9], 3, 2));
 
-            var request = coordinator.HandleClaimedHoldAsync(
+            var request = await coordinator.HandleClaimedHoldAsync(
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
-                pending).GetAwaiter().GetResult();
+                pending);
 
             AssertTrue(request is ZetlNoteCaptureRequest, "Held dual copy should open the capture dialog.");
             var capture = (ZetlNoteCaptureRequest)request!;
@@ -3129,7 +3049,8 @@ public class PortableSelfTests
                 "A text-preferred dual save should report as an ordinary note.");
         }
 
-        private static void RuntimeHeldCopyDualClearedTextSavesPicture()
+        [Fact(DisplayName = "Runtime held dual copy with cleared text saves a picture")]
+        public static async Task RuntimeHeldCopyDualClearedTextSavesPicture()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3149,9 +3070,9 @@ public class PortableSelfTests
                 "A1\tB1",
                 new ZetlClipboardImage([7, 8, 9], 3, 2));
 
-            var request = coordinator.HandleClaimedHoldAsync(
+            var request = await coordinator.HandleClaimedHoldAsync(
                 ShortcutContext(VK_C, clipboardSequenceNumber: 1),
-                pending).GetAwaiter().GetResult();
+                pending);
             var capture = (ZetlNoteCaptureRequest)request!;
             coordinator.CompleteNoteCapture(
                 capture,
@@ -3172,7 +3093,8 @@ public class PortableSelfTests
                 "A picture fallback save should report as an image.");
         }
 
-        private static void RuntimeAutoCapturesCopiedImageUrls()
+        [Fact(DisplayName = "Runtime downloads copied image URLs")]
+        public static async Task RuntimeAutoCapturesCopiedImageUrls()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3188,9 +3110,8 @@ public class PortableSelfTests
                         new ZetlClipboardImage([4, 5, 6], 40, 30),
                         "https://cdn.example/photo.png")));
 
-            coordinator.OnPhysicalShortcutPassedThroughAsync(
-                ShortcutContext(VK_C, clipboardSequenceNumber: 1))
-                .GetAwaiter().GetResult();
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1));
 
             var note = store.GetActiveBucket()!.Slips.Single();
             AssertTrue(note.IsImage, "An image URL should become an image slip.");
@@ -3201,7 +3122,8 @@ public class PortableSelfTests
             AssertEqual(1, store.GetProjectAssets(project).Count, "A downloaded image URL should write one asset.");
         }
 
-        private static void RuntimeKeepsNonImageUrlsAsText()
+        [Fact(DisplayName = "Runtime keeps non-image URLs as text")]
+        public static async Task RuntimeKeepsNonImageUrlsAsText()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3215,16 +3137,16 @@ public class PortableSelfTests
                 out _,
                 imageUrlResolver: new FakeImageUrlResolver(null));
 
-            coordinator.OnPhysicalShortcutPassedThroughAsync(
-                ShortcutContext(VK_C, clipboardSequenceNumber: 1))
-                .GetAwaiter().GetResult();
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1));
 
             var note = store.GetActiveBucket()!.Slips.Single();
             AssertFalse(note.IsImage, "A URL that does not resolve as an image should remain text.");
             AssertEqual(url, note.Text, "Failed image resolution must preserve the copied URL.");
         }
 
-        private static void RuntimeHeldCopyCapturesImageUrls()
+        [Fact(DisplayName = "Runtime held copy opens downloaded image URLs")]
+        public static async Task RuntimeHeldCopyCapturesImageUrls()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3242,8 +3164,8 @@ public class PortableSelfTests
             var pending = new ZetlPendingShortcut(VK_C, false, 1);
             pending.SetObservedClipboardContent("https://images.example/photo", null);
 
-            var request = coordinator.HandleClaimedHoldAsync(context, pending)
-                .GetAwaiter().GetResult() as ZetlNoteCaptureRequest;
+            var request = await coordinator.HandleClaimedHoldAsync(context, pending)
+                as ZetlNoteCaptureRequest;
 
             AssertTrue(request?.Image is not null, "Held copy should preview a downloaded image URL.");
             AssertEqual(
@@ -3252,7 +3174,8 @@ public class PortableSelfTests
                 "Held capture should retain the downloaded image URL.");
         }
 
-        private static void RuntimeHoldCancellationPreventsAutoCapture()
+        [Fact(DisplayName = "Runtime hold cancellation prevents auto-capture")]
+        public static async Task RuntimeHoldCancellationPreventsAutoCapture()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3272,13 +3195,14 @@ public class PortableSelfTests
             var pending = coordinator.CancelPending(VK_C, shifted: false);
             AssertTrue(pending is not null, "Hold should find and cancel the pending copy.");
             delay.Release();
-            captureTask.GetAwaiter().GetResult();
+            await captureTask;
 
             AssertEqual(0, store.GetActiveBucket()!.Slips.Count, "Cancelled copy should not auto-capture.");
             AssertEqual("copied text", pending!.ObservedClipboardText, "Observed copy text should remain available to the hold flow.");
         }
 
-        private static void RuntimeClaimedHoldPreventsDelayedAutoCapture()
+        [Fact(DisplayName = "Runtime claimed hold prevents delayed auto-capture")]
+        public static async Task RuntimeClaimedHoldPreventsDelayedAutoCapture()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3312,26 +3236,28 @@ public class PortableSelfTests
                 pending);
 
             delay.Release();
-            Task.WhenAll(captureTask, holdTask).GetAwaiter().GetResult();
+            await Task.WhenAll(captureTask, holdTask);
+            var hold = await holdTask;
 
             AssertEqual(
                 0,
                 store.GetActiveBucket()!.Slips.Count,
                 "A claimed hold must not auto-save the copied text.");
             AssertTrue(
-                holdTask.Result is ZetlNoteCaptureRequest,
+                hold is ZetlNoteCaptureRequest,
                 "A claimed hold with copied text should open note capture.");
             AssertEqual(
                 "copied text",
-                ((ZetlNoteCaptureRequest)holdTask.Result!).Text,
+                ((ZetlNoteCaptureRequest)hold!).Text,
                 "The hold request should retain the observed clipboard text.");
             AssertEqual(
                 "Held copy source",
-                ((ZetlNoteCaptureRequest)holdTask.Result!).CaptureOrigin?.WindowTitle,
+                ((ZetlNoteCaptureRequest)hold!).CaptureOrigin?.WindowTitle,
                 "The hold request should retain the keydown origin while clipboard observation finishes.");
         }
 
-        private static void RuntimeClaimedCopyHoldResolvesWithoutPolling()
+        [Fact(DisplayName = "Runtime claimed copy hold resolves without polling")]
+        public static async Task RuntimeClaimedCopyHoldResolvesWithoutPolling()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3361,7 +3287,7 @@ public class PortableSelfTests
                 copiedTask.IsCompleted,
                 "Changed clipboard text should resolve without polling.");
             AssertTrue(
-                copiedTask.Result is ZetlNoteCaptureRequest,
+                await copiedTask is ZetlNoteCaptureRequest,
                 "Changed clipboard text should open note capture.");
 
             clipboard.SetState(null, changeToken: 2);
@@ -3379,11 +3305,12 @@ public class PortableSelfTests
                 emptyTask.IsCompleted,
                 "Unchanged clipboard should resolve without polling.");
             AssertTrue(
-                emptyTask.Result is ZetlBoardRequest,
+                await emptyTask is ZetlBoardRequest,
                 "Unchanged clipboard should open the Board immediately.");
         }
 
-        private static void RuntimeReplayTapConsumesAndRestoresClipboard()
+        [Fact(DisplayName = "Runtime Replay tap consumes and restores clipboard")]
+        public static void RuntimeReplayTapConsumesAndRestoresClipboard()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3411,7 +3338,8 @@ public class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
-        private static void RuntimeReplayClipboardSessionReportsRestoreOutcomes()
+        [Fact(DisplayName = "Runtime Replay clipboard session reports restore outcomes")]
+        public static void RuntimeReplayClipboardSessionReportsRestoreOutcomes()
         {
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var session = new ZetlReplayClipboardSession(clipboard);
@@ -3482,7 +3410,8 @@ public class PortableSelfTests
                 "Replay must distinguish a failed restore whose rollback was also partial.");
         }
 
-        private static void RuntimeClipboardContentWriterChoosesRichestRepresentation()
+        [Fact(DisplayName = "Runtime clipboard content writer chooses the richest representation")]
+        public static void RuntimeClipboardContentWriterChoosesRichestRepresentation()
         {
             var clipboard = new FakeClipboard("before", changeToken: 1);
             var nativeFormats = new[]
@@ -3525,7 +3454,8 @@ public class PortableSelfTests
             AssertEqual("plain only", clipboard.Text, "The plain fallback should reach the backend.");
         }
 
-        private static void RuntimeReplayResumesVisibleItemsAfterRestart()
+        [Fact(DisplayName = "Runtime Replay resumes visible items after restart")]
+        public static void RuntimeReplayResumesVisibleItemsAfterRestart()
         {
             using var temp = new TempStateFile();
             var firstSession = new ZetlStateStore(temp.Path, "first-session");
@@ -3555,7 +3485,8 @@ public class PortableSelfTests
             AssertEqual("Replay", queue.Settings.Kind, "Replay should remain enabled while a visible item remains.");
         }
 
-        private static void RuntimeRapidReplayTapsConsumeDistinctSlips()
+        [Fact(DisplayName = "Runtime rapid Replay taps consume distinct slips")]
+        public static void RuntimeRapidReplayTapsConsumeDistinctSlips()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3593,7 +3524,8 @@ public class PortableSelfTests
             AssertEqual(2, review.Slips.Select(note => note.Id).Distinct().Count(), "Each consumed Replay slip should remain distinct.");
         }
 
-        private static void RuntimeReplayLanesProgressIndependently()
+        [Fact(DisplayName = "Runtime Replay lanes progress independently")]
+        public static void RuntimeReplayLanesProgressIndependently()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3638,7 +3570,8 @@ public class PortableSelfTests
             AssertEqual(0, shiftQueue.Slips.Count, "Alternate Replay should consume its slip.");
         }
 
-        private static void RuntimeReplaySuppressesTapDuringFinalRestore()
+        [Fact(DisplayName = "Runtime Replay suppresses taps during final clipboard restoration")]
+        public static void RuntimeReplaySuppressesTapDuringFinalRestore()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3690,7 +3623,8 @@ public class PortableSelfTests
             AssertEqual(1, keyboard.PasteCount, "Finalization must not inject another paste.");
         }
 
-        private static void RuntimeReplayFinalRestoreRemainsLaneLocal()
+        [Fact(DisplayName = "Runtime Replay final restoration remains lane-local")]
+        public static void RuntimeReplayFinalRestoreRemainsLaneLocal()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3750,7 +3684,8 @@ public class PortableSelfTests
             AssertEqual("user clipboard", clipboard.Text, "The lanes should converge on the original user clipboard.");
         }
 
-        private static void RuntimeReplayFinalRestoreFailureCompletesVisibly()
+        [Fact(DisplayName = "Runtime Replay final restore failures complete visibly")]
+        public static void RuntimeReplayFinalRestoreFailureCompletesVisibly()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3799,7 +3734,8 @@ public class PortableSelfTests
                 "A failed final restore should also leave a diagnostic log entry.");
         }
 
-        private static void RuntimeShiftLaneReplayTapConsumesShiftedPaste()
+        [Fact(DisplayName = "Runtime Shift-lane Replay tap consumes a shifted paste chord")]
+        public static void RuntimeShiftLaneReplayTapConsumesShiftedPaste()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3825,7 +3761,8 @@ public class PortableSelfTests
             AssertEqual(0, queue.Slips.Count, "Shift-lane Replay should consume the queued note.");
         }
 
-        private static void RuntimeReplayResumesClipboardWhenEnabled()
+        [Fact(DisplayName = "Runtime Replay resumes clipboard when enabled")]
+        public static void RuntimeReplayResumesClipboardWhenEnabled()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3848,7 +3785,8 @@ public class PortableSelfTests
             AssertEqual("user clipboard", clipboard.Text, "Replay should restore the user's clipboard when setting is enabled.");
         }
 
-        private static void RuntimeReplayKeepsLastPasteWhenDisabled()
+        [Fact(DisplayName = "Runtime Replay keeps last paste when disabled")]
+        public static void RuntimeReplayKeepsLastPasteWhenDisabled()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3871,7 +3809,8 @@ public class PortableSelfTests
             AssertEqual("queued value", clipboard.Text, "Replay should NOT restore the user's clipboard and keep the last paste when setting is disabled.");
         }
 
-        private static void RuntimeReplayRestoresRichAndMixedClipboardFormats()
+        [Fact(DisplayName = "Runtime Replay restores rich and mixed clipboard formats")]
+        public static void RuntimeReplayRestoresRichAndMixedClipboardFormats()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3909,7 +3848,8 @@ public class PortableSelfTests
             AssertEqual(0, queue.Slips.Count, "A successfully restored Replay should consume its item.");
         }
 
-        private static void RuntimeReplayRefusesLossyClipboardReplacement()
+        [Fact(DisplayName = "Runtime Replay refuses a lossy clipboard replacement")]
+        public static void RuntimeReplayRefusesLossyClipboardReplacement()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3943,7 +3883,8 @@ public class PortableSelfTests
                 "Replay should explain that it paused to avoid a lossy clipboard replacement.");
         }
 
-        private static void RuntimeReplayDoesNotPasteAfterTransactionalStageFailure()
+        [Fact(DisplayName = "Runtime Replay does not paste after transactional staging fails")]
+        public static void RuntimeReplayDoesNotPasteAfterTransactionalStageFailure()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3977,7 +3918,8 @@ public class PortableSelfTests
                 "Replay should report that transactional rollback preserved the clipboard.");
         }
 
-        private static void RuntimeReplayDoesNotOverwriteNewerMatchingClipboard()
+        [Fact(DisplayName = "Runtime Replay does not overwrite a newer matching clipboard")]
+        public static void RuntimeReplayDoesNotOverwriteNewerMatchingClipboard()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4032,7 +3974,8 @@ public class PortableSelfTests
             AssertEqual(0, clipboard.BackupRestoreCount, "A changed clipboard token must cancel restoration.");
         }
 
-        private static void RuntimeReplayHandlesImagesAndRestoresImageClipboard()
+        [Fact(DisplayName = "Runtime Replay handles images and restores image clipboard")]
+        public static void RuntimeReplayHandlesImagesAndRestoresImageClipboard()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4077,7 +4020,8 @@ public class PortableSelfTests
             AssertTrue(queue.Slips.Single().IsImage, "Undo should restore the image slip to the Replay queue.");
         }
 
-        private static void RuntimeRunLoggedRecordsAsyncFailure()
+        [Fact(DisplayName = "Runtime logged fire-and-forget records async failures")]
+        public static void RuntimeRunLoggedRecordsAsyncFailure()
         {
             var messages = new List<string>();
 
@@ -4093,7 +4037,8 @@ public class PortableSelfTests
                 "A faulted fire-and-forget task should be logged with its operation label and exception.");
         }
 
-        private static void RuntimeRunLoggedRecordsDelayedAsyncFailure()
+        [Fact(DisplayName = "Runtime logged fire-and-forget records delayed async failures")]
+        public static void RuntimeRunLoggedRecordsDelayedAsyncFailure()
         {
             var messages = new List<string>();
             using var logged = new ManualResetEventSlim();
@@ -4119,7 +4064,8 @@ public class PortableSelfTests
                 "A fault after an await should be logged with the operation label and exception.");
         }
 
-        private static void RuntimeEmptyReplayReportsFinalPasteFailure()
+        [Fact(DisplayName = "Runtime empty Replay reports a failed final paste")]
+        public static void RuntimeEmptyReplayReportsFinalPasteFailure()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4147,7 +4093,8 @@ public class PortableSelfTests
                 "A failed final paste should be reported, not silently called complete.");
         }
 
-        private static void RuntimeReplayTapKeepsNoteWhenPasteFails()
+        [Fact(DisplayName = "Runtime Replay tap keeps the note when the paste fails")]
+        public static void RuntimeReplayTapKeepsNoteWhenPasteFails()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4174,7 +4121,8 @@ public class PortableSelfTests
             AssertFalse(undo.TryPop(false, out _), "A failed paste should not push an undo entry.");
         }
 
-        private static void RuntimeReplayTapDefersClipboardWorkOffHook()
+        [Fact(DisplayName = "Runtime Replay tap defers clipboard work off the hook")]
+        public static void RuntimeReplayTapDefersClipboardWorkOffHook()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4214,7 +4162,8 @@ public class PortableSelfTests
                 "Running queued work should paste, consume, restore, and finalize Replay off the hook thread.");
         }
 
-        private static void RuntimePopTapRemovesMatchingNote()
+        [Fact(DisplayName = "Runtime Pop tap removes matching note")]
+        public static void RuntimePopTapRemovesMatchingNote()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4246,7 +4195,8 @@ public class PortableSelfTests
                 "Pop undo should name both recovery endpoints.");
         }
 
-        private static void RuntimePopRemovesMatchingImageSlip()
+        [Fact(DisplayName = "Runtime Pop removes matching image slip")]
+        public static void RuntimePopRemovesMatchingImageSlip()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4279,7 +4229,8 @@ public class PortableSelfTests
             AssertTrue(bucket.Slips.Single().IsImage, "Undo should restore the popped image slip.");
         }
 
-        private static void RuntimeCopyHoldCreatesNoteRequest()
+        [Fact(DisplayName = "Runtime copy hold creates note request")]
+        public static async Task RuntimeCopyHoldCreatesNoteRequest()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4290,8 +4241,8 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            var request = coordinator.HandleHoldAsync(
-                ShortcutContext(VK_C, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+            var request = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1));
 
             AssertTrue(request is ZetlNoteCaptureRequest, "Copied text should open note capture.");
             var note = (ZetlNoteCaptureRequest)request!;
@@ -4301,7 +4252,8 @@ public class PortableSelfTests
             AssertTrue(note.StartProjectDefault, "Held copy should activate the project by default.");
         }
 
-        private static void RuntimeEmptyCopyHoldOpensBoard()
+        [Fact(DisplayName = "Runtime empty copy hold opens Board")]
+        public static async Task RuntimeEmptyCopyHoldOpensBoard()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4312,13 +4264,14 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            var request = coordinator.HandleHoldAsync(
-                ShortcutContext(VK_C, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+            var request = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1));
 
             AssertTrue(request is ZetlBoardRequest, "Copy hold without new text should open the Board.");
         }
 
-        private static void RuntimeCutHoldDefaultsToTodaysJournalBucket()
+        [Fact(DisplayName = "Runtime cut hold defaults to today's journal bucket")]
+        public static async Task RuntimeCutHoldDefaultsToTodaysJournalBucket()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4329,8 +4282,8 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            var request = coordinator.HandleHoldAsync(
-                ShortcutContext(VK_X, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+            var request = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_X, clipboardSequenceNumber: 1));
 
             AssertTrue(request is ZetlNoteCaptureRequest, "Cut hold should always open note capture.");
             var note = (ZetlNoteCaptureRequest)request!;
@@ -4346,7 +4299,8 @@ public class PortableSelfTests
             AssertFalse(note.StartProjectDefault, "Quick note should not activate the project by default.");
         }
 
-        private static void RuntimeSelectAllHoldCapturesTheSelection()
+        [Fact(DisplayName = "Runtime select-all hold captures the selection")]
+        public static async Task RuntimeSelectAllHoldCapturesTheSelection()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4360,8 +4314,8 @@ public class PortableSelfTests
             // Holding Ctrl+A injects a copy; simulate the app copying the selected field.
             keyboard.OnSendChord = () => clipboard.SetText("the whole field");
 
-            var request = coordinator.HandleHoldAsync(
-                ShortcutContext(VK_A, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+            var request = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_A, clipboardSequenceNumber: 1));
 
             AssertTrue(request is ZetlNoteCaptureRequest, "Holding Ctrl+A opens a capture.");
             AssertEqual(
@@ -4370,7 +4324,8 @@ public class PortableSelfTests
                 "It captures the freshly-copied selection.");
         }
 
-        private static void RuntimeSelectAllShiftHoldCapturesTheSelection()
+        [Fact(DisplayName = "Runtime select-all shift hold captures the selection")]
+        public static async Task RuntimeSelectAllShiftHoldCapturesTheSelection()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4384,8 +4339,8 @@ public class PortableSelfTests
             // Holding Ctrl+Shift+A injects a copy; simulate the app copying the selected field.
             keyboard.OnSendChord = () => clipboard.SetText("the whole field on shift");
 
-            var request = coordinator.HandleHoldAsync(
-                ShortcutContext(VK_A, shifted: true, clipboardSequenceNumber: 1)).GetAwaiter().GetResult();
+            var request = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_A, shifted: true, clipboardSequenceNumber: 1));
 
             AssertTrue(request is ZetlNoteCaptureRequest, "Holding Ctrl+Shift+A opens a capture.");
             var note = (ZetlNoteCaptureRequest)request!;
@@ -4396,7 +4351,8 @@ public class PortableSelfTests
                 "It captures the freshly-copied selection on the shift lane.");
         }
 
-        private static void RuntimeTemplateHoldRequestsPicker()
+        [Fact(DisplayName = "Runtime template hold requests the picker")]
+        public static async Task RuntimeTemplateHoldRequestsPicker()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4407,8 +4363,8 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            var request = coordinator.HandleHoldAsync(
-                ShortcutContext(VK_T)).GetAwaiter().GetResult();
+            var request = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_T));
 
             AssertTrue(request is ZetlTemplatePickerRequest, "Held Ctrl+T should request the template picker.");
             AssertFalse(
@@ -4416,7 +4372,8 @@ public class PortableSelfTests
                 "A held Ctrl+T picker request is not a compile fallback.");
         }
 
-        private static void RuntimeCompileHoldWithoutProjectRequestsPicker()
+        [Fact(DisplayName = "Runtime compile hold without a project requests the picker")]
+        public static async Task RuntimeCompileHoldWithoutProjectRequestsPicker()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4429,15 +4386,16 @@ public class PortableSelfTests
 
             // No active project and nothing in Scratch to compile: held Ctrl+V should
             // offer the template picker (flagged as the compile fallback).
-            var request = coordinator.HandleHoldAsync(
-                ShortcutContext(VK_V)).GetAwaiter().GetResult();
+            var request = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_V));
 
             AssertTrue(
                 request is ZetlTemplatePickerRequest { FromCompileFallback: true },
                 "Held Ctrl+V with nothing to compile should request the template picker as a fallback.");
         }
 
-        private static void RuntimeCompileHoldWithActiveProjectStaysCompile()
+        [Fact(DisplayName = "Runtime compile hold with an active project stays compile")]
+        public static async Task RuntimeCompileHoldWithActiveProjectStaysCompile()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4451,15 +4409,16 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            var request = coordinator.HandleHoldAsync(
-                ShortcutContext(VK_V)).GetAwaiter().GetResult();
+            var request = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_V));
 
             AssertTrue(
                 request is ZetlCompileRequest,
                 "Held Ctrl+V with an active project and notes should still compile.");
         }
 
-        private static void RuntimeHoldTogglesAndUndoStayPortable()
+        [Fact(DisplayName = "Runtime hold toggles and undo stay portable")]
+        public static async Task RuntimeHoldTogglesAndUndoStayPortable()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4472,20 +4431,21 @@ public class PortableSelfTests
                 out _,
                 out var undo);
 
-            coordinator.HandleHoldAsync(ShortcutContext(VK_P)).GetAwaiter().GetResult();
+            await coordinator.HandleHoldAsync(ShortcutContext(VK_P));
             AssertTrue(store.GetActiveBucket()!.Settings.PopMode, "Ctrl+P hold should enable Pop.");
-            coordinator.HandleHoldAsync(ShortcutContext(VK_R)).GetAwaiter().GetResult();
+            await coordinator.HandleHoldAsync(ShortcutContext(VK_R));
             AssertEqual("Replay", store.GetActiveBucket()!.Settings.Kind, "Ctrl+R hold should enable Replay.");
             AssertFalse(store.GetActiveBucket()!.Settings.PopMode, "Replay should disable Pop.");
 
             var undone = false;
             undo.Push(false, "Undone.", () => undone = true);
-            coordinator.HandleHoldAsync(ShortcutContext(VK_Z)).GetAwaiter().GetResult();
+            await coordinator.HandleHoldAsync(ShortcutContext(VK_Z));
             AssertTrue(undone, "Ctrl+Z hold should run the latest lane undo.");
             AssertEqual("Undone.", notifications.Messages.Last(), "Undo should report its message.");
         }
 
-        private static void RuntimeCompletesQuickNoteResult()
+        [Fact(DisplayName = "Runtime completes quick-note result")]
+        public static void RuntimeCompletesQuickNoteResult()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4537,7 +4497,8 @@ public class PortableSelfTests
             AssertTrue(store.GetActiveProject() is null, "Quick note should leave the project inactive.");
         }
 
-        private static void RuntimePastesCutBackOnDiscardedCut()
+        [Fact(DisplayName = "Runtime pastes cut back when held cut is discarded")]
+        public static void RuntimePastesCutBackOnDiscardedCut()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4590,7 +4551,8 @@ public class PortableSelfTests
             AssertEqual("kept", scratch.Slips.Single(note => note.Source == "cut").Text, "Only the kept cut note should be saved; discarded cuts should not.");
         }
 
-        private static void RuntimeFilesQuickNoteIntoSelectedProject()
+        [Fact(DisplayName = "Runtime files quick note into the selected project")]
+        public static void RuntimeFilesQuickNoteIntoSelectedProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4638,7 +4600,8 @@ public class PortableSelfTests
             AssertEqual(source.Id, store.GetActiveProject()?.Id, "Redirecting without activating should leave the prior active project active.");
         }
 
-        private static void RuntimeRedirectsQuickNoteWithNoActiveProject()
+        [Fact(DisplayName = "Runtime redirects quick note with no active project")]
+        public static void RuntimeRedirectsQuickNoteWithNoActiveProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4686,7 +4649,8 @@ public class PortableSelfTests
             AssertTrue(store.GetActiveProject() is null, "A redirected jot should leave no active project.");
         }
 
-        private static void RuntimeActivatesSelectedProjectFromQuickNote()
+        [Fact(DisplayName = "Runtime activates the selected project from a quick note")]
+        public static void RuntimeActivatesSelectedProjectFromQuickNote()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4731,7 +4695,8 @@ public class PortableSelfTests
             AssertEqual(other.Id, store.GetActiveProject()?.Id, "Activating from a quick note should make the chosen project active.");
         }
 
-        private static void RuntimeDeactivatesActiveProjectWhenToggledOff()
+        [Fact(DisplayName = "Runtime deactivates the active project when toggled off")]
+        public static void RuntimeDeactivatesActiveProjectWhenToggledOff()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4775,7 +4740,8 @@ public class PortableSelfTests
             AssertTrue(store.GetActiveProject() is null, "Toggling Activate off on the active project should deactivate it.");
         }
 
-        private static void RuntimeCreatesNewProjectFromCapture()
+        [Fact(DisplayName = "Runtime creates a new project from the capture dialog")]
+        public static void RuntimeCreatesNewProjectFromCapture()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4819,7 +4785,8 @@ public class PortableSelfTests
             AssertEqual(fresh.Id, store.GetActiveProject()?.Id, "A new project created with Activate on should become active.");
         }
 
-        private static void RuntimeCompletesCompileResult()
+        [Fact(DisplayName = "Runtime completes flattened compile result")]
+        public static async Task RuntimeCompletesCompileResult()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4834,8 +4801,8 @@ public class PortableSelfTests
                 notifications,
                 out _,
                 out var undo);
-            var request = (ZetlCompileRequest)coordinator.HandleHoldAsync(
-                ShortcutContext(VK_V)).GetAwaiter().GetResult()!;
+            var request = (ZetlCompileRequest)(await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_V)))!;
 
             var outcome = coordinator.CompleteCompile(
                 request,
@@ -4860,7 +4827,8 @@ public class PortableSelfTests
                 "Compile should report its destination.");
         }
 
-        private static void RuntimePreservesStructuredCompileSaves()
+        [Fact(DisplayName = "Runtime preserves structured compile saves")]
+        public static void RuntimePreservesStructuredCompileSaves()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4897,7 +4865,8 @@ public class PortableSelfTests
             AssertEqual(destinationActiveBucketId, destination.ActiveBucketId, "Structured save should not change the destination active bucket.");
         }
 
-        private static void RuntimeReturnsCopyAndPasteCompileOutcomes()
+        [Fact(DisplayName = "Runtime returns copy and paste compile outcomes")]
+        public static void RuntimeReturnsCopyAndPasteCompileOutcomes()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4942,7 +4911,8 @@ public class PortableSelfTests
             AssertEqual("pasted compile", clipboard.Text, "Paste Now should stage compiled text on the clipboard.");
         }
 
-        private static void RuntimeFormattedCompileStagesRichClipboard()
+        [Fact(DisplayName = "Runtime formatted compile stages rich clipboard")]
+        public static void RuntimeFormattedCompileStagesRichClipboard()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -4987,7 +4957,8 @@ public class PortableSelfTests
                 "Formatted clipboard output should be a body fragment, not a whole page.");
         }
 
-        private static void RuntimeCompileDoesNotPasteWhenClipboardWriteFails()
+        [Fact(DisplayName = "Runtime compile does not paste when the clipboard write fails")]
+        public static void RuntimeCompileDoesNotPasteWhenClipboardWriteFails()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -5017,7 +4988,8 @@ public class PortableSelfTests
             AssertEqual("before", clipboard.Text, "A failed clipboard write should leave the clipboard untouched.");
         }
 
-        private static void RuntimeCompileSurfacesUncertainClipboardRollback()
+        [Fact(DisplayName = "Runtime compile surfaces an uncertain clipboard rollback")]
+        public static void RuntimeCompileSurfacesUncertainClipboardRollback()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -5059,7 +5031,8 @@ public class PortableSelfTests
                 "The user should be told that clipboard rollback was incomplete.");
         }
 
-        private static void RuntimeReportsRejectedCompiledPaste()
+        [Fact(DisplayName = "Runtime reports rejected compiled paste")]
+        public static async Task RuntimeReportsRejectedCompiledPaste()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -5072,7 +5045,7 @@ public class PortableSelfTests
                 out _);
             keyboard.PasteSucceeds = false;
 
-            coordinator.PasteCompiledTextAsync().GetAwaiter().GetResult();
+            await coordinator.PasteCompiledTextAsync();
 
             AssertEqual(1, keyboard.PasteCount, "Compiled paste should be attempted once.");
             AssertTrue(
@@ -5083,7 +5056,8 @@ public class PortableSelfTests
                 "Rejected paste should mention the Windows privilege mismatch.");
         }
 
-        private static void RuntimeParityScenarioWritesSnapshot()
+        [Fact(DisplayName = "Runtime parity scenario writes a reloadable snapshot")]
+        public static void RuntimeParityScenarioWritesSnapshot()
         {
             using var temp = new TempStateFile();
             var directory = System.IO.Path.GetDirectoryName(temp.Path)!;
