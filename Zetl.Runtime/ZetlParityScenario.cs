@@ -40,11 +40,11 @@ internal static class ZetlParityScenario
         var inbox = project.Buckets.Single(bucket => bucket.Name == "Inbox");
         var queue = project.Buckets.Single(bucket => bucket.Name == "Queue");
         var child = store.AddBucket(project, "Child", inbox.Id, setActive: false);
-        store.AddNote(inbox, "alpha", "copy");
-        store.AddNote(inbox, "beta", "cut");
-        store.AddNote(child, "nested", "manual");
-        store.AddNote(queue, "first replay item", "copy");
-        store.AddNote(queue, "second replay item", "copy");
+        store.AddSlip(inbox, "alpha", "copy");
+        store.AddSlip(inbox, "beta", "cut");
+        store.AddSlip(child, "nested", "manual");
+        store.AddSlip(queue, "first replay item", "copy");
+        store.AddSlip(queue, "second replay item", "copy");
         store.SetBucketKind(queue, "Replay");
         store.SetQuickNoteBucket(project, inbox.Id);
         store.SetActiveBucket(project, inbox.Id);
@@ -54,11 +54,11 @@ internal static class ZetlParityScenario
             ["Shift Inbox", "Scratch"],
             activeBucketName: "Shift Inbox",
             shifted: true);
-        store.AddNote(
+        store.AddSlip(
             shifted.Buckets.Single(bucket => bucket.Name == "Shift Inbox"),
             "shift lane note",
             "copy");
-        store.AppendLogNotes(["Parity scenario completed."], 14, 2000);
+        store.AppendLogSlips(["Parity scenario completed."], 14, 2000);
 
         var snapshot = new ParitySnapshot(
             settingsStore.Settings.HasSeenFirstRun,

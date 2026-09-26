@@ -273,15 +273,15 @@ internal partial class CompileWindow : ZetlPopupWindow
     {
         return SelectedCompileMode switch
         {
-            "Plain" => store.CompileUnformattedFromNotes(selected),
-            "TSV" => store.CompileTsvFromNotes(sourceProject, selected, TsvRowLength),
-            _ => store.CompilePlainTextFromNotes(sourceProject, selected)
+            "Plain" => store.CompileUnformattedFromSlips(selected),
+            "TSV" => store.CompileTsvFromSlips(sourceProject, selected, TsvRowLength),
+            _ => store.CompilePlainTextFromSlips(sourceProject, selected)
         };
     }
 
     private string? BuildCompiledHtml(IReadOnlyList<SlipDisplayItem> selected) =>
         string.Equals(SelectedCompileMode, "Formatted", StringComparison.OrdinalIgnoreCase)
-            ? store.CompileHtmlFromNotes(sourceProject, selected)
+            ? store.CompileHtmlFromSlips(sourceProject, selected)
             : null;
 
     private void UpdateCompileModeControls()
@@ -349,7 +349,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         PasteNow = pasteNow;
         SaveToBucket = saveToBucket;
         CompiledText = unformatted
-            ? store.CompileUnformattedFromNotes(selected)
+            ? store.CompileUnformattedFromSlips(selected)
             : BuildCompiledText(selected);
         CompiledHtml = !saveToBucket && !unformatted
             ? BuildCompiledHtml(selected)

@@ -112,7 +112,7 @@ public partial class App : Application
             };
             if (bucket.Slips.Count == 0)
             {
-                store.AddNote(
+                store.AddSlip(
                     bucket,
                     "Review the Linux port roadmap.",
                     "copy",
@@ -121,12 +121,12 @@ public partial class App : Application
                         "msedge",
                         "Zetl Linux Port Roadmap",
                         ZetlCaptureOriginDetail.ApplicationAndWindowTitle));
-                store.AddNote(bucket, "Test Replay and Pop behavior.", "manual");
+                store.AddSlip(bucket, "Test Replay and Pop behavior.", "manual");
             }
 
             if (bucket.Slips.All(slip => !slip.IsImage))
             {
-                store.AddImageNote(
+                store.AddImageSlip(
                     project,
                     bucket,
                     new ZetlClipboardImage(
@@ -151,13 +151,13 @@ public partial class App : Application
             if (ideasBucket is not null
                 && ideasBucket.Slips.All(slip => slip.Text != "Compare formatted and plain output."))
             {
-                store.AddNote(ideasBucket, "Compare formatted and plain output.", "manual");
+                store.AddSlip(ideasBucket, "Compare formatted and plain output.", "manual");
             }
 
             var nestedBucket = project.Buckets.First(item => item.Name == "Nested");
             if (nestedBucket.Slips.All(slip => slip.Text != "Verify nested bucket selection."))
             {
-                store.AddNote(nestedBucket, "Verify nested bucket selection.", "manual");
+                store.AddSlip(nestedBucket, "Verify nested bucket selection.", "manual");
             }
 
             const string currentSessionPreviewText = "Current-session compile preview.";
@@ -165,9 +165,9 @@ public partial class App : Application
                 .Where(slip => slip.Text == currentSessionPreviewText)
                 .ToList())
             {
-                store.DeleteNote(bucket, slip.Id);
+                store.DeleteSlip(bucket, slip.Id);
             }
-            store.AddNote(bucket, currentSessionPreviewText, "manual");
+            store.AddSlip(bucket, currentSessionPreviewText, "manual");
 
             if (store.State.Projects.All(item => item.Name != "Second Project"))
             {
@@ -183,7 +183,7 @@ public partial class App : Application
             var queueBucket = secondProject.Buckets.First(item => item.Name == "Queue");
             if (queueBucket.Slips.All(slip => slip.Text != "Compile from another project."))
             {
-                store.AddNote(queueBucket, "Compile from another project.", "manual");
+                store.AddSlip(queueBucket, "Compile from another project.", "manual");
             }
 
             if (preview == "theme-board")

@@ -49,7 +49,7 @@ public class ZetlFaultInjectionTests
 
         var project = store.State.Projects.Single(item => item.Id == "project-a");
         var bucket = project.Buckets.Single(item => item.Id == "bucket-a");
-        store.AddNote(bucket, "routed write", "test");
+        store.AddSlip(bucket, "routed write", "test");
         store.SetActiveProject("project-b");
         store.DeleteProject("project-b");
 
@@ -70,7 +70,7 @@ public class ZetlFaultInjectionTests
         var originalSequence = project.ChangeSequence;
 
         storage.FailNextProjectWrite = true;
-        Assert.Throws<IOException>(() => store.UpdateNote(slip, "failed edit"));
+        Assert.Throws<IOException>(() => store.UpdateSlip(slip, "failed edit"));
 
         var restoredProject = store.State.Projects.Single(item => item.Id == "project-a");
         var restoredSlip = restoredProject.Buckets.Single(item => item.Id == "bucket-a").Slips.Single();
@@ -78,7 +78,7 @@ public class ZetlFaultInjectionTests
         AssertEqual(originalRevision, restoredSlip.Revision, "A failed write must restore the slip revision.");
         AssertEqual(originalSequence, restoredProject.ChangeSequence, "A failed write must restore the project sequence.");
 
-        store.UpdateNote(restoredSlip, "confirmed edit");
+        store.UpdateSlip(restoredSlip, "confirmed edit");
         AssertEqual(
             "confirmed edit",
             storage.DurableState.Projects.Single(item => item.Id == "project-a")

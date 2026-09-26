@@ -345,7 +345,7 @@ public class KastnLifecycleTests
                 controller,
                 snapshot => snapshot.ConnectionState == KastnConnectionState.Online);
 
-            fixture.Store.AddNote(
+            fixture.Store.AddSlip(
                 fixture.Bucket,
                 "captured while Kastn is open",
                 "copy");

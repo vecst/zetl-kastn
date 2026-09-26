@@ -138,7 +138,7 @@ internal partial class BoardWindow : ZetlPopupWindow
         noteEditor.LostFocus += (_, _) => SaveEditingNote();
         imageCaptionBox.LostFocus += (_, _) => SaveEditingNote();
         createNoteButton.Click += (_, _) => CreateNote();
-        deleteNoteButton.Click += (_, _) => DeleteNote();
+        deleteNoteButton.Click += (_, _) => DeleteSlip();
         closeBoardButton.Click += (_, _) => CloseBoard();
         ZetlWindowShortcuts.Enable(
             this,
@@ -390,7 +390,7 @@ internal partial class BoardWindow : ZetlPopupWindow
             composingBucket = null;
             if (text.Length > 0)
             {
-                store.AddNote(draftBucket, text, "manual");
+                store.AddSlip(draftBucket, text, "manual");
             }
 
             return;
@@ -401,7 +401,7 @@ internal partial class BoardWindow : ZetlPopupWindow
             var caption = imageCaptionBox.Text?.Trim() ?? "";
             if (!string.Equals(editingNote.Text, caption, StringComparison.Ordinal))
             {
-                store.UpdateNote(editingNote, caption);
+                store.UpdateSlip(editingNote, caption);
             }
 
             return;
@@ -424,7 +424,7 @@ internal partial class BoardWindow : ZetlPopupWindow
 
         if (!string.Equals(editingNote.Text, text, StringComparison.Ordinal))
         {
-            store.UpdateNote(editingNote, text);
+            store.UpdateSlip(editingNote, text);
         }
     }
 
@@ -627,12 +627,12 @@ internal partial class BoardWindow : ZetlPopupWindow
         Dispatcher.UIThread.Post(() => noteEditor.Focus());
     }
 
-    private void DeleteNote()
+    private void DeleteSlip()
     {
         if (ActiveBucket is { } bucket && ActiveNote is { } note)
         {
             editingNote = null;
-            store.DeleteNote(bucket, note.Id);
+            store.DeleteSlip(bucket, note.Id);
         }
     }
 

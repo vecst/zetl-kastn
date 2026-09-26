@@ -1037,7 +1037,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
         try
         {
-            store.AppendLogNotes(
+            store.AppendLogSlips(
                 batch,
                 LogRetentionDays,
                 LogMaxNotesPerDay);

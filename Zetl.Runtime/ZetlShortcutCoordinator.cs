@@ -209,9 +209,9 @@ internal sealed class ZetlShortcutCoordinator
         // A request carrying both clipboard text and a picture is a dual
         // capture: the (possibly edited) text is the content and the slip
         // saves text-preferred. Clearing the text in the dialog falls back to
-        // an ordinary picture slip via AddImageNote's blank-text guard.
+        // an ordinary picture slip via AddImageSlip's blank-text guard.
         var note = request.Image is not null
-            ? store.AddImageNote(
+            ? store.AddImageSlip(
                 noteProject,
                 bucket,
                 request.Image,
@@ -222,7 +222,7 @@ internal sealed class ZetlShortcutCoordinator
                 preferTextContent: !string.IsNullOrWhiteSpace(request.Text),
                 richHtml: RichHtmlForSavedText(request, result.NoteText),
                 replayFormats: ReplayFormatsForSavedText(request, result.NoteText))
-            : store.AddNote(
+            : store.AddSlip(
                 bucket,
                 result.NoteText,
                 request.Source,
@@ -232,7 +232,7 @@ internal sealed class ZetlShortcutCoordinator
         undoStack.Push(
             request.Shifted,
             $"Undid save to {bucket.Name}.",
-            () => store.DeleteNote(bucket, note.Id));
+            () => store.DeleteSlip(bucket, note.Id));
         var savedRichHtml = RichHtmlForSavedText(request, result.NoteText);
         var savedReplayFormats = ReplayFormatsForSavedText(request, result.NoteText);
         var clipboardWrite = request.Image is null
@@ -316,16 +316,16 @@ internal sealed class ZetlShortcutCoordinator
             string savedSummary;
             if (result.Flatten)
             {
-                var note = store.AddNote(destination, result.CompiledText, "compile");
+                var note = store.AddSlip(destination, result.CompiledText, "compile");
                 undoStack.Push(
                     request.Shifted,
                     $"Undid compile to {destination.Name}.",
-                    () => store.DeleteNote(destination, note.Id));
+                    () => store.DeleteSlip(destination, note.Id));
                 savedSummary = $"to {destinationLabel}";
             }
             else
             {
-                var notes = store.AddNotes(destination, result.SelectedNoteTexts, "compile");
+                var notes = store.AddSlips(destination, result.SelectedNoteTexts, "compile");
                 undoStack.Push(
                     request.Shifted,
                     $"Undid compile to {destination.Name}.",
@@ -333,7 +333,7 @@ internal sealed class ZetlShortcutCoordinator
                     {
                         foreach (var note in notes)
                         {
-                            store.DeleteNote(destination, note.Id);
+                            store.DeleteSlip(destination, note.Id);
                         }
                     });
                 savedSummary = $"{notes.Count} notes to {destinationLabel}";
@@ -577,7 +577,7 @@ internal sealed class ZetlShortcutCoordinator
                 return new ZetlTemplatePickerRequest(shifted, FromCompileFallback: true);
             }
         }
-        else if (!store.HasCompilableNotes(project))
+        else if (!store.HasCompilableSlips(project))
         {
             notifications.Show("No Zetl notes to compile yet.");
             return null;
@@ -806,7 +806,7 @@ internal sealed class ZetlShortcutCoordinator
             // slip, presenting as text. The picture rides along so Kastn can
             // offer the alternate representation later.
             var note = image is not null
-                ? store.AddImageNote(
+                ? store.AddImageSlip(
                     project,
                     bucket,
                     image,
@@ -817,7 +817,7 @@ internal sealed class ZetlShortcutCoordinator
                     preferTextContent: text is not null,
                     richHtml: text is not null ? richHtml : null,
                     replayFormats: text is not null ? replayFormats : null)
-                : store.AddNote(
+                : store.AddSlip(
                     bucket,
                     text!,
                     "copy",
@@ -830,7 +830,7 @@ internal sealed class ZetlShortcutCoordinator
                 capturedAsImage
                     ? $"Undid image capture to {bucket.Name}."
                     : $"Undid capture to {bucket.Name}.",
-                () => store.DeleteNote(bucket, note.Id));
+                () => store.DeleteSlip(bucket, note.Id));
             notifications.Show(capturedAsImage
                 ? $"Captured image to {ZetlRuntimeLabels.Destination(project, bucket)}."
                 : $"Captured to {ZetlRuntimeLabels.Destination(project, bucket)}.");
@@ -888,7 +888,7 @@ internal sealed class ZetlShortcutCoordinator
 
     private async Task HandleReplayTapCoreAsync(bool shifted, ZetlBucket activeBucket)
     {
-        if (!store.TryPeekNextReplayNote(activeBucket, out var replayNote) || replayNote is null)
+        if (!store.TryPeekNextReplaySlip(activeBucket, out var replayNote) || replayNote is null)
         {
             // The bucket is empty, so replay is genuinely done -- return to
             // Standard regardless. But this tap suppressed the physical Ctrl+V, so
@@ -1004,14 +1004,14 @@ internal sealed class ZetlShortcutCoordinator
             ZetlSlip? consumedSlip = null;
             ZetlSlip? reviewSlip = null;
             var consumed = project is not null
-                ? store.TryConsumeReplayNoteToReview(
+                ? store.TryConsumeReplaySlipToReview(
                     project,
                     activeBucket,
                     noteId,
                     out reviewBucket,
                     out consumedSlip,
                     out reviewSlip)
-                : store.TryConsumeReplayNote(activeBucket, noteId, out consumedSlip);
+                : store.TryConsumeReplaySlip(activeBucket, noteId, out consumedSlip);
             if (consumed && reviewBucket is not null)
             {
                 log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
@@ -1023,7 +1023,7 @@ internal sealed class ZetlShortcutCoordinator
                 return new ReplayPasteResult(Pasted: true, ReplayComplete: false);
             }
 
-            var replayComplete = !store.TryPeekNextReplayNote(activeBucket, out _);
+            var replayComplete = !store.TryPeekNextReplaySlip(activeBucket, out _);
             var disposingTemporaryProject = replayComplete
                 && project is not null
                 && ZetlStateStore.IsTemporaryConsumableProject(project);
@@ -1034,7 +1034,7 @@ internal sealed class ZetlShortcutCoordinator
                 undoStack.Push(
                     shifted,
                     $"Restored replay item to {bucketName}.",
-                    () => store.RestoreReplayConsumedNote(
+                    () => store.RestoreReplayConsumedSlip(
                         activeBucket,
                         consumedSlip,
                         undoReviewBucket,
@@ -1180,7 +1180,7 @@ internal sealed class ZetlShortcutCoordinator
                     out reviewNote);
             if (!popped && content.Text is not null)
             {
-                popped = store.TryPopLastMatchingActiveNote(
+                popped = store.TryPopLastMatchingActiveSlip(
                     content.Text,
                     shifted,
                     out bucket,
@@ -1198,7 +1198,7 @@ internal sealed class ZetlShortcutCoordinator
                 undoStack.Push(
                     shifted,
                     $"Restored popped item to {bucket.Name} from {reviewBucket.Name}.",
-                    () => store.RestorePoppedNote(bucket, note, reviewBucket, reviewNote.Id));
+                    () => store.RestorePoppedSlip(bucket, note, reviewBucket, reviewNote.Id));
                 notifications.Show($"Popped item from {bucket.Name} to {reviewBucket.Name}.");
             }
         });

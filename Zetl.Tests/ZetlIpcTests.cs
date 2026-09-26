@@ -121,7 +121,7 @@ public class ZetlIpcTests
         {
             using var fixture = new IpcFixture();
             var bytes = new byte[] { 9, 8, 7, 6 };
-            var picture = fixture.Store.AddImageNote(
+            var picture = fixture.Store.AddImageSlip(
                 fixture.Project,
                 fixture.Bucket,
                 new ZetlClipboardImage(bytes, 12, 8),
@@ -467,7 +467,7 @@ public class ZetlIpcTests
             await using var remaining = await fixture.ConnectClientAsync("remaining-client");
             await disconnected.DisposeAsync();
 
-            fixture.Store.AddNote(fixture.Bucket, "direct capture", "copy");
+            fixture.Store.AddSlip(fixture.Bucket, "direct capture", "copy");
             var response = await remaining.ExecuteAsync(AddSlip(
                 "after-disconnect",
                 fixture,

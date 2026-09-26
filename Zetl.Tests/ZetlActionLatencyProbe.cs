@@ -116,7 +116,7 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             var bucket = project.Buckets.Single(item => item.Name == "Inbox");
             for (var i = 0; i < 300; i++)
             {
-                store.AddNote(
+                store.AddSlip(
                     bucket,
                     $"note {i}\nsecond line of note {i}\nthird line with some more text {i}",
                     "copy");

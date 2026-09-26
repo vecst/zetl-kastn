@@ -641,16 +641,16 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.ActiveBucket!;
-            store.AddNote(bucket, "alpha", "copy");
-            store.AddNote(bucket, "beta", "copy");
+            store.AddSlip(bucket, "alpha", "copy");
+            store.AddSlip(bucket, "beta", "copy");
             store.SetBucketPopMode(bucket, true);
-            AssertFalse(store.TryPopLastMatchingActiveNote("alpha"), "Only the last note may pop.");
-            AssertTrue(store.TryPopLastMatchingActiveNote("beta"), "Matching last note should pop.");
+            AssertFalse(store.TryPopLastMatchingActiveSlip("alpha"), "Only the last note may pop.");
+            AssertTrue(store.TryPopLastMatchingActiveSlip("beta"), "Matching last note should pop.");
             AssertEqual(1, bucket.Slips.Count, "One note should remain.");
             AssertEqual("alpha", bucket.Slips[0].Text, "The earlier note should remain.");
 
             AssertTrue(
-                store.TryPopLastMatchingActiveNote(
+                store.TryPopLastMatchingActiveSlip(
                     "alpha",
                     shifted: false,
                     out var poppedBucket,
@@ -661,7 +661,7 @@ public class PortableSelfTests
             AssertEqual(bucket.Id, poppedBucket?.Id, "Pop should report the source bucket.");
             AssertEqual("alpha", poppedNote?.Text, "Pop should report the removed note.");
             AssertEqual("Inbox Pop Review", reviewBucket?.Name, "Pop should report its recovery bucket.");
-            store.RestorePoppedNote(poppedBucket!, poppedNote!, reviewBucket, reviewNote?.Id);
+            store.RestorePoppedSlip(poppedBucket!, poppedNote!, reviewBucket, reviewNote?.Id);
             AssertEqual("alpha", bucket.Slips.Single().Text, "Restore should put popped note back.");
         }
 
@@ -672,10 +672,10 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             var source = store.ActiveBucket!;
             store.SetBucketPopMode(source, true);
-            store.AddNote(source, "durable text", "copy");
+            store.AddSlip(source, "durable text", "copy");
 
             AssertTrue(
-                store.TryPopLastMatchingActiveNote("durable text", false, out _, out _, out var review, out _),
+                store.TryPopLastMatchingActiveSlip("durable text", false, out _, out _, out var review, out _),
                 "Text Pop should move the slip to review.");
             AssertEqual("Inbox Pop Review", review?.Name, "Pop review should name its source bucket.");
 
@@ -696,7 +696,7 @@ public class PortableSelfTests
             var source = store.ActiveBucket!;
             store.SetBucketPopMode(source, true);
             var bytes = new byte[] { 8, 6, 7, 5, 3, 0, 9 };
-            var image = store.AddImageNote(
+            var image = store.AddImageSlip(
                 project,
                 source,
                 new ZetlClipboardImage(bytes, 7, 1),
@@ -726,7 +726,7 @@ public class PortableSelfTests
             store.SetBucketPopMode(source, true);
             var bytes = new byte[] { 1, 3, 3, 7 };
             var html = "<p><strong>mixed</strong></p>";
-            var mixed = store.AddImageNote(
+            var mixed = store.AddImageSlip(
                 project,
                 source,
                 new ZetlClipboardImage(bytes, 2, 2),
@@ -735,7 +735,7 @@ public class PortableSelfTests
                 preferTextContent: true,
                 richHtml: html,
                 replayFormats: [new ZetlClipboardFormatData(42, [4, 2], "Native Test")]);
-            store.UpdateNote(
+            store.UpdateSlip(
                 mixed,
                 mixed.Text,
                 align: "right",
@@ -772,8 +772,8 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var older = store.CreateProject("Older", ["Inbox"], "Inbox");
             var newer = store.CreateProject("Newer", ["Inbox"], "Inbox");
-            var olderNote = store.AddNote(older.Buckets.First(), "old", "copy");
-            var newerNote = store.AddNote(newer.Buckets.First(), "new", "copy");
+            var olderNote = store.AddSlip(older.Buckets.First(), "old", "copy");
+            var newerNote = store.AddSlip(newer.Buckets.First(), "new", "copy");
             olderNote.CreatedAtUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
             newerNote.CreatedAtUtc = new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -781,7 +781,7 @@ public class PortableSelfTests
 
             // The Zetl Logs infra project is appended to constantly but must
             // never be chosen as the last-written project.
-            store.AppendLogNotes(["log line"], maxDayBuckets: 14, maxNotesPerBucket: 2000);
+            store.AppendLogSlips(["log line"], maxDayBuckets: 14, maxNotesPerBucket: 2000);
             AssertEqual("Newer", store.GetMostRecentlyWrittenProject()?.Name, "Zetl Logs must be excluded from the last-written project.");
         }
 
@@ -819,7 +819,7 @@ public class PortableSelfTests
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
-            store.AddNote(
+            store.AddSlip(
                 project.Buckets[0],
                 "captured text",
                 "copy",
@@ -845,7 +845,7 @@ public class PortableSelfTests
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
-            var note = store.AddNote(
+            var note = store.AddSlip(
                 project.Buckets[0],
                 "captured text",
                 "copy",
@@ -899,7 +899,7 @@ public class PortableSelfTests
             var root = System.IO.Path.GetDirectoryName(temp.Path)!;
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Share Me", ["Inbox"], "Inbox");
-            var liveNote = store.AddNote(
+            var liveNote = store.AddSlip(
                 project.Buckets[0],
                 "captured text",
                 "copy",
@@ -973,7 +973,7 @@ public class PortableSelfTests
             var bucket = project.Buckets.Single(item => item.Name == "Inbox");
             var image = new ZetlClipboardImage([1, 2, 3, 4, 5], 20, 10);
 
-            var first = store.AddImageNote(
+            var first = store.AddImageSlip(
                 project,
                 bucket,
                 image,
@@ -984,7 +984,7 @@ public class PortableSelfTests
                     "Screenshot",
                     ZetlCaptureOriginDetail.ApplicationAndWindowTitle),
                 "Diagram");
-            var second = store.AddImageNote(project, bucket, image, "copy");
+            var second = store.AddImageSlip(project, bucket, image, "copy");
 
             AssertTrue(first.IsImage, "An image slip should identify its typed content.");
             AssertEqual("Diagram", first.Text, "An image caption should remain separate from its asset bytes.");
@@ -1003,7 +1003,7 @@ public class PortableSelfTests
                 snapshot.CaptureOrigin?.WindowTitle,
                 "Kastn snapshots should expose private capture provenance locally.");
 
-            store.DeleteNote(bucket, first.Id);
+            store.DeleteSlip(bucket, first.Id);
             AssertEqual(1, store.GetProjectAssets(project).Count, "Deleting a slip should retain its asset for undo safety.");
 
             var reloaded = new ZetlStateStore(temp.Path);
@@ -1022,7 +1022,7 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Images", ["Inbox"], "Inbox");
             var bytes = new byte[] { 9, 8, 7, 6 };
-            var note = store.AddImageNote(
+            var note = store.AddImageSlip(
                 project,
                 project.Buckets.Single(item => item.Name == "Inbox"),
                 new ZetlClipboardImage(bytes, 2, 2),
@@ -1096,7 +1096,7 @@ public class PortableSelfTests
             // Renaming the journal keeps it the default (it is tracked by id), and
             // compile reflects the new name.
             store.UpdateProjectName(project, "Renamed");
-            AssertEqual("Renamed", store.CompilePlainTextFromNotes(project, []).Split(Environment.NewLine)[0], "Compile should use the updated project name.");
+            AssertEqual("Renamed", store.CompilePlainTextFromSlips(project, []).Split(Environment.NewLine)[0], "Compile should use the updated project name.");
             store.ClearActiveProject();
             AssertEqual(project.Id, store.GetOrCreateDefaultProject().Id, "The renamed journal is still the default home.");
         }
@@ -1371,10 +1371,10 @@ public class PortableSelfTests
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
-            AssertFalse(store.HasCompilableNotes(project), "Empty buckets should not be compilable.");
+            AssertFalse(store.HasCompilableSlips(project), "Empty buckets should not be compilable.");
 
-            store.AddNote(store.ActiveBucket!, "compiled", "copy");
-            AssertTrue(store.HasCompilableNotes(project), "A project with a note should be compilable.");
+            store.AddSlip(store.ActiveBucket!, "compiled", "copy");
+            AssertTrue(store.HasCompilableSlips(project), "A project with a note should be compilable.");
         }
 
         private static void StateFindsInactiveScratchCompileTarget()
@@ -1383,7 +1383,7 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var project = store.GetOrCreateDefaultProject();
             var scratch = store.GetScratchBucket(project);
-            store.AddNote(scratch, "scratch note", "cut");
+            store.AddSlip(scratch, "scratch note", "cut");
             store.ClearActiveProject();
 
             AssertTrue(store.TryGetScratchCompileTarget(out var compileProject, out var compileBucket), "Inactive scratch note should be compilable.");
@@ -1418,7 +1418,7 @@ public class PortableSelfTests
             AssertEqual(2, project.Buckets.Count, "Existing bucket lookup should not create duplicates.");
 
             var created = store.GetOrCreateBucket(project, "Compiled");
-            store.AddNote(created, "compiled text", "compile");
+            store.AddSlip(created, "compiled text", "compile");
             AssertEqual("Compiled", created.Name, "Missing bucket should be created.");
             AssertEqual("compile", created.Slips.Single().Source, "Compiled note should store its source.");
         }
@@ -1430,7 +1430,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.ActiveBucket!;
 
-            var added = store.AddNotes(bucket, ["one", "   ", "two", "three"], "compile");
+            var added = store.AddSlips(bucket, ["one", "   ", "two", "three"], "compile");
 
             AssertEqual(3, added.Count, "AddNotes should skip blank entries.");
             AssertEqual(3, bucket.Slips.Count, "Each non-blank text should become its own note.");
@@ -1452,7 +1452,7 @@ public class PortableSelfTests
 
             // Compile-to path: create/find a bucket in another project, add the note.
             var destination = store.GetOrCreateBucket(dest, "Compiled", setActive: false);
-            store.AddNote(destination, "compiled text", "compile");
+            store.AddSlip(destination, "compiled text", "compile");
 
             AssertEqual(source.Id, store.State.ActiveProjectId, "Compiling should not change which project is active.");
             AssertEqual(destActiveBucketBefore, dest.ActiveBucketId, "Compiling into another project should not change its active bucket.");
@@ -1467,12 +1467,12 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Inbox", "Ideas"], "Inbox");
             var inbox = store.ActiveBucket!;
             var ideas = project.Buckets.Single(bucket => bucket.Name == "Ideas");
-            store.AddNote(inbox, "first", "copy");
-            store.AddNote(inbox, "second", "copy");
-            store.AddNote(ideas, "third", "copy");
+            store.AddSlip(inbox, "first", "copy");
+            store.AddSlip(inbox, "second", "copy");
+            store.AddSlip(ideas, "third", "copy");
 
-            var notes = store.GetNoteDisplayItems(project);
-            var compiled = store.CompilePlainTextFromNotes(project,
+            var notes = store.GetSlipDisplayItems(project);
+            var compiled = store.CompilePlainTextFromSlips(project,
             [
                 notes.Single(item => item.Slip.Text == "first"),
                 notes.Single(item => item.Slip.Text == "third")
@@ -1509,14 +1509,14 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             var inbox = store.ActiveBucket!;
             var deleted = store.GetDeletedBucket(project);
-            store.AddNote(deleted, "removed", "kastn-delete");
+            store.AddSlip(deleted, "removed", "kastn-delete");
 
             AssertEqual("Deleted", deleted.Name, "Deleted bucket should have a readable name.");
             AssertEqual("Deleted", deleted.Settings.Kind, "Deleted bucket should use a protected kind.");
             AssertTrue(project.Buckets.Any(bucket => bucket.Id == deleted.Id), "Deleted bucket should remain human-readable in project JSON.");
             AssertFalse(store.GetBucketDisplayItems(project).Any(item => item.Bucket.Id == deleted.Id), "Normal bucket lists should hide Deleted.");
             AssertTrue(store.GetBucketDisplayItems(project, includeDeleted: true).Any(item => item.Bucket.Id == deleted.Id), "Explicit bucket lists may show Deleted.");
-            AssertFalse(store.HasCompilableNotes(project), "Deleted notes should not make a project compilable.");
+            AssertFalse(store.HasCompilableSlips(project), "Deleted notes should not make a project compilable.");
 
             store.SetActiveBucket(project, deleted.Id);
             AssertEqual(inbox.Id, store.ActiveBucket?.Id, "Deleted should not become the active capture bucket.");
@@ -1588,10 +1588,10 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.ActiveBucket!;
-            var keep = store.AddNote(bucket, "keep", "copy");
-            var remove = store.AddNote(bucket, "remove", "copy");
+            var keep = store.AddSlip(bucket, "keep", "copy");
+            var remove = store.AddSlip(bucket, "remove", "copy");
 
-            store.DeleteNote(bucket, remove.Id);
+            store.DeleteSlip(bucket, remove.Id);
 
             AssertEqual(1, bucket.Slips.Count, "Deleting a note should remove only the selected note.");
             AssertEqual(keep.Id, bucket.Slips.Single().Id, "Unselected notes should remain.");
@@ -1642,11 +1642,11 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Inbox", "Ideas"], "Inbox");
             var inbox = store.ActiveBucket!;
             var ideas = project.Buckets.Single(bucket => bucket.Name == "Ideas");
-            store.AddNote(inbox, "first", "copy");
-            store.AddNote(ideas, "third", "copy");
+            store.AddSlip(inbox, "first", "copy");
+            store.AddSlip(ideas, "third", "copy");
 
-            var notes = store.GetNoteDisplayItems(project);
-            var compiled = store.CompileUnformattedFromNotes(
+            var notes = store.GetSlipDisplayItems(project);
+            var compiled = store.CompileUnformattedFromSlips(
             [
                 notes.Single(item => item.Slip.Text == "first"),
                 notes.Single(item => item.Slip.Text == "third")
@@ -1661,13 +1661,13 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
-            store.AddNote(queue, "one", "copy");
-            store.AddNote(queue, "two", "copy");
-            store.AddNote(queue, "three", "copy");
-            store.AddNote(queue, $"four{Environment.NewLine}line", "copy");
-            store.AddNote(queue, "five\tcell", "copy");
+            store.AddSlip(queue, "one", "copy");
+            store.AddSlip(queue, "two", "copy");
+            store.AddSlip(queue, "three", "copy");
+            store.AddSlip(queue, $"four{Environment.NewLine}line", "copy");
+            store.AddSlip(queue, "five\tcell", "copy");
 
-            var compiled = store.CompileTsvFromNotes(project, store.GetNoteDisplayItems(project), 3);
+            var compiled = store.CompileTsvFromSlips(project, store.GetSlipDisplayItems(project), 3);
             var expected = string.Join(Environment.NewLine,
             [
                 "Demo",
@@ -1692,12 +1692,12 @@ public class PortableSelfTests
                 "TSV",
                 $"VIN{Environment.NewLine}Make{Environment.NewLine}Model",
                 3);
-            store.AddNote(vehicles, "vin-1", "copy");
-            store.AddNote(vehicles, "ford", "copy");
-            store.AddNote(vehicles, "f150", "copy");
-            store.AddNote(vehicles, "vin-2", "copy");
+            store.AddSlip(vehicles, "vin-1", "copy");
+            store.AddSlip(vehicles, "ford", "copy");
+            store.AddSlip(vehicles, "f150", "copy");
+            store.AddSlip(vehicles, "vin-2", "copy");
 
-            var compiled = store.CompileTsvFromNotes(project, store.GetNoteDisplayItems(project), store.GetBucketTsvRowLength(vehicles));
+            var compiled = store.CompileTsvFromSlips(project, store.GetSlipDisplayItems(project), store.GetBucketTsvRowLength(vehicles));
             var expected = string.Join(Environment.NewLine,
             [
                 "Demo",
@@ -1717,13 +1717,13 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Inbox", "Ideas"], "Inbox");
             var inbox = store.ActiveBucket!;
             var ideas = project.Buckets.Single(bucket => bucket.Name == "Ideas");
-            store.AddNote(inbox, "first", "copy");
+            store.AddSlip(inbox, "first", "copy");
             Thread.Sleep(2);
-            store.AddNote(ideas, "latest", "copy");
+            store.AddSlip(ideas, "latest", "copy");
 
-            AssertTrue(store.TryGetLastNoteDisplayItem(project, null, out var note), "Last active note should be found.");
+            AssertTrue(store.TryGetLastSlipDisplayItem(project, null, out var note), "Last active note should be found.");
             AssertEqual("latest", note?.Slip.Text, "Last active note should use the newest note timestamp.");
-            AssertTrue(store.TryGetLastNoteDisplayItem(project, [inbox], out var scopedNote), "Scoped last note should be found.");
+            AssertTrue(store.TryGetLastSlipDisplayItem(project, [inbox], out var scopedNote), "Scoped last note should be found.");
             AssertEqual("first", scopedNote?.Slip.Text, "Scoped last note should respect bucket scope.");
         }
 
@@ -1732,7 +1732,7 @@ public class PortableSelfTests
             using var temp = new TempStateFile();
             var oldStore = new ZetlStateStore(temp.Path, "old-session");
             var project = oldStore.CreateProject("Demo", ["Inbox"], "Inbox");
-            oldStore.AddNote(oldStore.ActiveBucket!, "old note", "copy");
+            oldStore.AddSlip(oldStore.ActiveBucket!, "old note", "copy");
 
             var newStore = new ZetlStateStore(temp.Path, "new-session");
             var loadedProject = newStore.State.Projects.Single(project => project.Name == "Demo");
@@ -1740,24 +1740,24 @@ public class PortableSelfTests
 
             // Whole-project compile (the default) now reaches across sessions, so
             // a reactivated project still has its old notes available to compile.
-            AssertTrue(newStore.HasCompilableNotes(loadedProject), "Whole-project compile should include old-session notes.");
-            AssertEqual(1, newStore.GetNoteDisplayItems(loadedProject).Count, "Whole-project compile should list old-session notes.");
+            AssertTrue(newStore.HasCompilableSlips(loadedProject), "Whole-project compile should include old-session notes.");
+            AssertEqual(1, newStore.GetSlipDisplayItems(loadedProject).Count, "Whole-project compile should list old-session notes.");
 
             // The "This session only" toggle narrows compile back to the session.
-            AssertFalse(newStore.HasCompilableNotes(loadedProject, currentSessionOnly: true), "Session-only compile should exclude old-session notes.");
-            AssertEqual(0, newStore.GetNoteDisplayItems(loadedProject, null, currentSessionOnly: true).Count, "Session-only compile should not list old-session notes.");
+            AssertFalse(newStore.HasCompilableSlips(loadedProject, currentSessionOnly: true), "Session-only compile should exclude old-session notes.");
+            AssertEqual(0, newStore.GetSlipDisplayItems(loadedProject, null, currentSessionOnly: true).Count, "Session-only compile should not list old-session notes.");
 
             var inbox = newStore.ActiveBucket!;
-            newStore.AddNote(inbox, "new note", "copy");
+            newStore.AddSlip(inbox, "new note", "copy");
 
-            var sessionNotes = newStore.GetNoteDisplayItems(loadedProject, null, currentSessionOnly: true);
+            var sessionNotes = newStore.GetSlipDisplayItems(loadedProject, null, currentSessionOnly: true);
             AssertEqual(1, sessionNotes.Count, "Session-only compile should list just the current-session note.");
-            var sessionCompiled = newStore.CompilePlainTextFromNotes(loadedProject, sessionNotes);
+            var sessionCompiled = newStore.CompilePlainTextFromSlips(loadedProject, sessionNotes);
             AssertFalse(sessionCompiled.Contains("old note"), "Session-only compile should omit old-session notes.");
             AssertTrue(sessionCompiled.Contains("new note"), "Session-only compile should include current-session notes.");
 
-            var allNotes = newStore.GetNoteDisplayItems(loadedProject);
-            var allCompiled = newStore.CompilePlainTextFromNotes(loadedProject, allNotes);
+            var allNotes = newStore.GetSlipDisplayItems(loadedProject);
+            var allCompiled = newStore.CompilePlainTextFromSlips(loadedProject, allNotes);
             AssertEqual(2, allNotes.Count, "Whole-project compile should list both notes.");
             AssertTrue(allCompiled.Contains("old note"), "Whole-project compile should include old-session notes.");
             AssertTrue(allCompiled.Contains("new note"), "Whole-project compile should include current-session notes.");
@@ -1771,19 +1771,19 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "one", "copy");
-            store.AddNote(queue, "two", "copy");
+            store.AddSlip(queue, "one", "copy");
+            store.AddSlip(queue, "two", "copy");
 
-            AssertTrue(store.TryPeekNextReplayNote(queue, out var first), "Replay bucket should expose its first slip.");
+            AssertTrue(store.TryPeekNextReplaySlip(queue, out var first), "Replay bucket should expose its first slip.");
             AssertEqual("one", first?.Text, "Replay should start with the oldest current-session slip.");
-            AssertTrue(store.TryConsumeReplayNote(queue, first!.Id), "Replay should consume the first slip.");
+            AssertTrue(store.TryConsumeReplaySlip(queue, first!.Id), "Replay should consume the first slip.");
 
             var reloaded = new ZetlStateStore(temp.Path, "new-session");
             var loadedQueue = reloaded.State.Projects.Single().Buckets.Single(bucket => bucket.Name == "Queue");
-            AssertTrue(reloaded.TryPeekNextReplayNote(loadedQueue, out var second), "Replay should resume a visible queued slip after restart.");
+            AssertTrue(reloaded.TryPeekNextReplaySlip(loadedQueue, out var second), "Replay should resume a visible queued slip after restart.");
             AssertEqual("two", second?.Text, "Replay should resume at the first unconsumed slip.");
-            AssertTrue(reloaded.TryConsumeReplayNote(loadedQueue, second!.Id), "Replay should consume a prior-session slip.");
-            AssertFalse(reloaded.TryPeekNextReplayNote(loadedQueue, out _), "Replay should be empty after its last slip is consumed.");
+            AssertTrue(reloaded.TryConsumeReplaySlip(loadedQueue, second!.Id), "Replay should consume a prior-session slip.");
+            AssertFalse(reloaded.TryPeekNextReplaySlip(loadedQueue, out _), "Replay should be empty after its last slip is consumed.");
             AssertEqual(0, loadedQueue.Slips.Count, "Consumed Replay slips should stay consumed.");
         }
 
@@ -1794,10 +1794,10 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "posted", "copy");
+            store.AddSlip(queue, "posted", "copy");
 
-            AssertTrue(store.TryPeekNextReplayNote(queue, out var note), "Replay bucket should expose a slip.");
-            AssertTrue(store.TryConsumeReplayNoteToReview(project, queue, note!.Id, out var reviewBucket), "Replay should consume into review.");
+            AssertTrue(store.TryPeekNextReplaySlip(queue, out var note), "Replay bucket should expose a slip.");
+            AssertTrue(store.TryConsumeReplaySlipToReview(project, queue, note!.Id, out var reviewBucket), "Replay should consume into review.");
 
             AssertTrue(reviewBucket is not null, "Replay consume should create a review bucket.");
             AssertEqual(queue.Id, project.ActiveBucketId, "Review archive should not steal the active bucket.");
@@ -1805,11 +1805,11 @@ public class PortableSelfTests
             AssertEqual("Standard", reviewBucket.Settings.Kind, "Review bucket should stay standard.");
             AssertEqual("posted", reviewBucket.Slips.Single().Text, "Review bucket should keep consumed text.");
             AssertEqual("replay", reviewBucket.Slips.Single().Source, "Review note should be tagged as replay.");
-            AssertFalse(store.TryPeekNextReplayNote(queue, out _), "Consumed Replay slip should leave the queue.");
+            AssertFalse(store.TryPeekNextReplaySlip(queue, out _), "Consumed Replay slip should leave the queue.");
 
-            store.AddNote(queue, "posted again", "copy");
-            AssertTrue(store.TryPeekNextReplayNote(queue, out var second), "Replay bucket should expose another slip.");
-            AssertTrue(store.TryConsumeReplayNoteToReview(project, queue, second!.Id, out var sameReviewBucket), "Replay should consume into the same review bucket.");
+            store.AddSlip(queue, "posted again", "copy");
+            AssertTrue(store.TryPeekNextReplaySlip(queue, out var second), "Replay bucket should expose another slip.");
+            AssertTrue(store.TryConsumeReplaySlipToReview(project, queue, second!.Id, out var sameReviewBucket), "Replay should consume into the same review bucket.");
             AssertTrue(sameReviewBucket is not null, "Replay consume should return the reused review bucket.");
             AssertEqual(reviewBucket.Id, sameReviewBucket!.Id, "Review bucket should be reused.");
             AssertEqual(2, sameReviewBucket.Slips.Count, "Review bucket should accumulate consumed Replay slips.");
@@ -1822,18 +1822,18 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "posted", "copy");
+            store.AddSlip(queue, "posted", "copy");
 
-            AssertTrue(store.TryPeekNextReplayNote(queue, out var note), "Replay bucket should expose a slip.");
+            AssertTrue(store.TryPeekNextReplaySlip(queue, out var note), "Replay bucket should expose a slip.");
             AssertTrue(
-                store.TryConsumeReplayNoteToReview(project, queue, note!.Id, out var reviewBucket, out var consumedNote, out var reviewNote),
+                store.TryConsumeReplaySlipToReview(project, queue, note!.Id, out var reviewBucket, out var consumedNote, out var reviewNote),
                 "Replay should consume with undo details.");
             AssertTrue(consumedNote is not null, "Replay consume should return the consumed slip.");
             AssertTrue(reviewBucket is not null, "Replay consume should return the review bucket.");
             AssertTrue(reviewNote is not null, "Replay consume should return the review slip.");
 
             store.SetBucketKind(queue, "Standard");
-            store.RestoreReplayConsumedNote(queue, consumedNote!, reviewBucket, reviewNote?.Id);
+            store.RestoreReplayConsumedSlip(queue, consumedNote!, reviewBucket, reviewNote?.Id);
 
             AssertTrue(ZetlStateStore.IsReplayBucket(queue), "Replay undo should restore Replay kind.");
             AssertEqual("posted", queue.Slips.Single().Text, "Replay undo should restore the consumed slip.");
@@ -1890,7 +1890,7 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.ActiveBucket!;
-            var note = store.AddNote(bucket, "round trip", "copy");
+            var note = store.AddSlip(bucket, "round trip", "copy");
 
             var loaded = new ZetlStateStore(temp.Path);
             AssertEqual(project.Id, loaded.ActiveProject?.Id, "Active project id should round-trip.");
@@ -2129,7 +2129,7 @@ public class PortableSelfTests
             store.CreateProject("Work", ["Inbox"], "Inbox");
             var activeBefore = store.State.ActiveProjectId;
 
-            store.AppendLogNotes(["[09:00:00] one", "[09:00:01] two"], maxDayBuckets: 14, maxNotesPerBucket: 1000);
+            store.AppendLogSlips(["[09:00:00] one", "[09:00:01] two"], maxDayBuckets: 14, maxNotesPerBucket: 1000);
 
             var logProject = store.State.Projects.Single(project => project.Name == ZetlStateStore.LogProjectName);
             AssertEqual(activeBefore, store.State.ActiveProjectId, "Logging should not change the active project.");
@@ -2138,7 +2138,7 @@ public class PortableSelfTests
             AssertEqual(2, dayBucket.Slips.Count, "Both log lines should be stored as notes.");
             AssertEqual("log", dayBucket.Slips[0].Source, "Log notes should use the log source.");
 
-            store.AppendLogNotes(["a", "b", "c", "d", "e"], maxDayBuckets: 14, maxNotesPerBucket: 3);
+            store.AppendLogSlips(["a", "b", "c", "d", "e"], maxDayBuckets: 14, maxNotesPerBucket: 3);
             AssertEqual(3, logProject.Buckets.Single(bucket => bucket.Name == today).Slips.Count, "Day bucket should be capped to maxNotesPerBucket.");
             AssertEqual("e", logProject.Buckets.Single(bucket => bucket.Name == today).Slips[^1].Text, "Capping should keep the newest notes.");
 
@@ -2936,7 +2936,7 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.GetActiveBucket()!;
-            store.AddImageNote(
+            store.AddImageSlip(
                 project,
                 bucket,
                 new ZetlClipboardImage([9, 9, 9], 4, 4),
@@ -2967,7 +2967,7 @@ public class PortableSelfTests
             var bucket = store.GetActiveBucket()!;
             store.SetBucketPopMode(bucket, true);
             var bytes = new byte[] { 3, 1, 4 };
-            store.AddImageNote(
+            store.AddImageSlip(
                 project,
                 bucket,
                 new ZetlClipboardImage(bytes, 3, 1),
@@ -3000,7 +3000,7 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddImageNote(
+            store.AddImageSlip(
                 project,
                 queue,
                 new ZetlClipboardImage([5, 5, 5], 2, 2),
@@ -3390,7 +3390,7 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var coordinator = CreateShortcutCoordinator(
                 store,
@@ -3532,8 +3532,8 @@ public class PortableSelfTests
             firstSession.CreateProject("Demo", ["Queue"], "Queue");
             var originalQueue = firstSession.GetActiveBucket()!;
             firstSession.SetBucketKind(originalQueue, "Replay");
-            firstSession.AddNote(originalQueue, "first queued value", "copy");
-            firstSession.AddNote(originalQueue, "second queued value", "copy");
+            firstSession.AddSlip(originalQueue, "first queued value", "copy");
+            firstSession.AddSlip(originalQueue, "second queued value", "copy");
 
             var store = new ZetlStateStore(temp.Path, "restarted-session");
             var queue = store.GetActiveBucket()!;
@@ -3562,8 +3562,8 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "first queued value", "copy");
-            store.AddNote(queue, "second queued value", "copy");
+            store.AddSlip(queue, "first queued value", "copy");
+            store.AddSlip(queue, "second queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var notifications = new FakeNotificationSink();
             var coordinator = CreateShortcutCoordinator(
@@ -3600,11 +3600,11 @@ public class PortableSelfTests
             store.CreateProject("Main", ["Queue"], "Queue");
             var mainQueue = store.GetActiveBucket()!;
             store.SetBucketKind(mainQueue, "Replay");
-            store.AddNote(mainQueue, "main queued value", "copy");
+            store.AddSlip(mainQueue, "main queued value", "copy");
             store.CreateProject("Alternate", ["Queue"], "Queue", shifted: true);
             var shiftQueue = store.GetActiveBucket(true)!;
             store.SetBucketKind(shiftQueue, "Replay");
-            store.AddNote(shiftQueue, "alternate queued value", "copy");
+            store.AddSlip(shiftQueue, "alternate queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var notifications = new FakeNotificationSink();
             var coordinator = CreateShortcutCoordinator(
@@ -3645,7 +3645,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "final queued value", "copy");
+            store.AddSlip(queue, "final queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var dispatcher = new QueuingDispatcher();
             var restoreDelay = new ManualDelay();
@@ -3697,11 +3697,11 @@ public class PortableSelfTests
             store.CreateProject("Main", ["Queue"], "Queue");
             var mainQueue = store.GetActiveBucket()!;
             store.SetBucketKind(mainQueue, "Replay");
-            store.AddNote(mainQueue, "main final value", "copy");
+            store.AddSlip(mainQueue, "main final value", "copy");
             store.CreateProject("Alternate", ["Queue"], "Queue", shifted: true);
             var alternateQueue = store.GetActiveBucket(true)!;
             store.SetBucketKind(alternateQueue, "Replay");
-            store.AddNote(alternateQueue, "alternate final value", "copy");
+            store.AddSlip(alternateQueue, "alternate final value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var dispatcher = new QueuingDispatcher();
             var restoreDelay = new FirstWaitManualDelay();
@@ -3757,7 +3757,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "final queued value", "copy");
+            store.AddSlip(queue, "final queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var dispatcher = new QueuingDispatcher();
             var restoreDelay = new ManualDelay();
@@ -3806,7 +3806,7 @@ public class PortableSelfTests
             store.CreateProject("Demo Shift", ["Queue"], "Queue", shifted: true);
             var queue = store.GetActiveBucket(true)!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var coordinator = CreateShortcutCoordinator(
                 store,
@@ -3832,7 +3832,7 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var coordinator = CreateShortcutCoordinator(
                 store,
@@ -3855,7 +3855,7 @@ public class PortableSelfTests
             var project = store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var coordinator = CreateShortcutCoordinator(
                 store,
@@ -3878,7 +3878,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var userImage = new ZetlClipboardImage([1, 2, 3, 4], 2, 2);
             var clipboard = new FakeClipboard(null, changeToken: 1);
             clipboard.SetMixedState(
@@ -3916,7 +3916,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1)
             {
                 BackupFailureReason = "CF_BITMAP cannot be restored safely"
@@ -3950,7 +3950,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1)
             {
                 WriteResultOverride = new(
@@ -3984,7 +3984,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("original clipboard", changeToken: 1);
             var dispatcher = new QueuingDispatcher();
             var restoreDelay = new ManualDelay();
@@ -4040,7 +4040,7 @@ public class PortableSelfTests
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
             var queuedBytes = new byte[] { 4, 5, 6 };
-            store.AddImageNote(
+            store.AddImageSlip(
                 project,
                 queue,
                 new ZetlClipboardImage(queuedBytes, 3, 2),
@@ -4154,7 +4154,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var coordinator = CreateShortcutCoordinator(
                 store,
@@ -4181,7 +4181,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddNote(queue, "queued value", "copy");
+            store.AddSlip(queue, "queued value", "copy");
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
             var dispatcher = new QueuingDispatcher();
             var notifications = new FakeNotificationSink();
@@ -4221,7 +4221,7 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.GetActiveBucket()!;
             store.SetBucketPopMode(bucket, true);
-            store.AddNote(bucket, "paste once", "copy");
+            store.AddSlip(bucket, "paste once", "copy");
             var clipboard = new FakeClipboard("paste once", changeToken: 1);
             var notifications = new FakeNotificationSink();
             var coordinator = CreateShortcutCoordinator(
@@ -4254,7 +4254,7 @@ public class PortableSelfTests
             var bucket = store.GetActiveBucket()!;
             store.SetBucketPopMode(bucket, true);
             var bytes = new byte[] { 3, 1, 4, 1, 5 };
-            store.AddImageNote(
+            store.AddImageSlip(
                 project,
                 bucket,
                 new ZetlClipboardImage(bytes, 5, 1),
@@ -4443,7 +4443,7 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             store.SetActiveProject(project.Id, shifted: false);
-            store.AddNote(project.Buckets.First(), "a note", "copy");
+            store.AddSlip(project.Buckets.First(), "a note", "copy");
             var coordinator = CreateShortcutCoordinator(
                 store,
                 new FakeClipboard(null, changeToken: 1),
@@ -4824,7 +4824,7 @@ public class PortableSelfTests
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var source = store.CreateProject("Source", ["Inbox"], "Inbox");
-            store.AddNote(store.GetActiveBucket()!, "source note", "copy");
+            store.AddSlip(store.GetActiveBucket()!, "source note", "copy");
             var destination = store.CreateProject("Destination", ["Output"], "Output");
             store.SetActiveProject(source.Id);
             var notifications = new FakeNotificationSink();
@@ -4947,7 +4947,7 @@ public class PortableSelfTests
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var source = store.CreateProject("Source", ["Inbox"], "Inbox");
-            var task = store.AddNote(source.Buckets.First(), "compiled task", "copy", blockKind: ZetlBlockKinds.Task);
+            var task = store.AddSlip(source.Buckets.First(), "compiled task", "copy", blockKind: ZetlBlockKinds.Task);
             var selected = store.GetSlipDisplayItems(source)
                 .Where(item => item.Slip.Id == task.Id)
                 .ToList();
@@ -4971,7 +4971,7 @@ public class PortableSelfTests
                     Flatten: false,
                     SelectedNoteTexts: ["compiled task"],
                     PasteNow: false,
-                    CompiledHtml: store.CompileHtmlFromNotes(source, selected)));
+                    CompiledHtml: store.CompileHtmlFromSlips(source, selected)));
 
             AssertEqual(ZetlCompileOutcome.RestoreTarget, outcome, "Rich copy should restore the target.");
             AssertEqual("Source\r\n\r\nInbox\r\n\tcompiled task", clipboard.Text, "Rich copy should keep the plain fallback.");

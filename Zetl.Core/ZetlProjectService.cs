@@ -863,7 +863,7 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "slip_source_required", "A slip source is required.");
         }
 
-        var note = store.AddNote(
+        var note = store.AddSlip(
             bucket,
             payload.Text,
             payload.Source,
@@ -922,7 +922,7 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "slip_content_required", "A slip title or note is required.");
         }
 
-        store.UpdateNote(
+        store.UpdateSlip(
             note, payload.Text, payload.Title, payload.ExcludedFromViews,
             payload.Align, payload.BlockKind, payload.IgnoreBucketRenderKind,
             payload.Checked, payload.InlineStyles,
@@ -983,7 +983,7 @@ internal sealed class ZetlProjectService
                 "The picture must be normalized PNG content.");
         }
 
-        store.SetNoteImage(
+        store.SetSlipImage(
             project,
             note,
             new ZetlClipboardImage(payload.Bytes, payload.Width, payload.Height));
@@ -1028,7 +1028,7 @@ internal sealed class ZetlProjectService
                 "Add text or a title before removing the picture.");
         }
 
-        store.RemoveNoteImage(project, note);
+        store.RemoveSlipImage(project, note);
         var snapshot = ZetlProjectSnapshotMapper.ToSnapshot(bucket, note);
         Publish(project, ZetlChangeKind.Updated, ZetlEntityKind.Slip, note.Id, note.Revision);
         return Success(command, project, snapshot);
@@ -1062,7 +1062,7 @@ internal sealed class ZetlProjectService
             return NotFound(command, ZetlEntityKind.Bucket, payload.DestinationBucketId);
         }
 
-        if (!store.MoveNote(project, note, destination))
+        if (!store.MoveSlip(project, note, destination))
         {
             return ValidationError(
                 command,
@@ -1105,7 +1105,7 @@ internal sealed class ZetlProjectService
                 "The reorder anchor must be another slip in the same bucket.");
         }
 
-        if (!store.ReorderNote(project, note, payload.BeforeSlipId))
+        if (!store.ReorderSlip(project, note, payload.BeforeSlipId))
         {
             return ValidationError(
                 command,
@@ -1147,7 +1147,7 @@ internal sealed class ZetlProjectService
         }
 
         var deleted = store.GetDeletedBucket(project);
-        if (!store.MoveNote(project, note, deleted))
+        if (!store.MoveSlip(project, note, deleted))
         {
             return ValidationError(
                 command,

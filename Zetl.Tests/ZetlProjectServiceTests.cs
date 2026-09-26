@@ -32,7 +32,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "original", "copy");
+        var note = store.AddSlip(bucket, "original", "copy");
         var service = new ZetlProjectService(store);
 
         var firstEdit = ZetlCommandEnvelope.Create(
@@ -133,7 +133,7 @@ public class ZetlProjectServiceTests
             {
                 for (var index = 0; index < 20; index++)
                 {
-                    store.AddNote(bucket, $"direct {index:D2}", "copy");
+                    store.AddSlip(bucket, $"direct {index:D2}", "copy");
                 }
             },
             () =>
@@ -340,10 +340,10 @@ public class ZetlProjectServiceTests
         var source = store.CreateProject("Archived Source", ["Queue"], "Queue");
         var queue = source.Buckets.Single(bucket => bucket.Name == "Queue");
         store.SetBucketKind(queue, "Replay");
-        var first = store.AddNote(queue, "first", "copy");
-        store.AddNote(queue, "second", "copy");
+        var first = store.AddSlip(queue, "first", "copy");
+        store.AddSlip(queue, "second", "copy");
         AssertTrue(
-            store.TryConsumeReplayNoteToReview(source, queue, first.Id, out var reviewBucket),
+            store.TryConsumeReplaySlipToReview(source, queue, first.Id, out var reviewBucket),
             "Replay consume should create a review bucket.");
         store.SetBucketKind(queue, "Standard");
         store.SetProjectStatus(source, ZetlStateStore.ArchivedStatus);
@@ -402,7 +402,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "keepable", "copy");
+        var note = store.AddSlip(bucket, "keepable", "copy");
         var service = new ZetlProjectService(store);
 
         var exclude = service.Execute(ZetlCommandEnvelope.Create(
@@ -448,7 +448,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "centerable", "copy");
+        var note = store.AddSlip(bucket, "centerable", "copy");
         var service = new ZetlProjectService(store);
 
         var center = service.Execute(ZetlCommandEnvelope.Create(
@@ -494,7 +494,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "todo", "copy");
+        var note = store.AddSlip(bucket, "todo", "copy");
         var service = new ZetlProjectService(store);
 
         ZetlSlipSnapshot Update(string id, UpdateSlipCommand command, long revision) =>
@@ -546,7 +546,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "hello world", "copy");
+        var note = store.AddSlip(bucket, "hello world", "copy");
         var service = new ZetlProjectService(store);
 
         ZetlSlipSnapshot Update(string id, UpdateSlipCommand command, long revision) =>
@@ -598,7 +598,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "styled note", "copy");
+        var note = store.AddSlip(bucket, "styled note", "copy");
         var service = new ZetlProjectService(store);
 
         ZetlSlipSnapshot Update(string id, UpdateSlipCommand command, long revision) =>
@@ -633,7 +633,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "styled note", "copy");
+        var note = store.AddSlip(bucket, "styled note", "copy");
         var service = new ZetlProjectService(store);
 
         ZetlSlipSnapshot Update(string id, UpdateSlipCommand command, long revision) =>
@@ -749,12 +749,12 @@ public class ZetlProjectServiceTests
         store.SetActiveProject(project.Id);
         store.SetActiveBucket(project, bucket.Id);
         store.SetBucketPopMode(bucket, true);
-        var note = store.AddNote(bucket, "value", "copy");
-        store.AddNote(bucket, "", "copy", blockKind: "divider");
+        var note = store.AddSlip(bucket, "value", "copy");
+        store.AddSlip(bucket, "", "copy", blockKind: "divider");
 
         // A trailing divider must not block popping the content note above it (Pop only
         // looks at the last note, so a structural one would otherwise shadow it).
-        var popped = store.TryPopLastMatchingActiveNote("value", shifted: false, out _, out var poppedNote);
+        var popped = store.TryPopLastMatchingActiveSlip("value", shifted: false, out _, out var poppedNote);
         AssertTrue(popped, "A trailing divider should not block Pop of the note above it.");
         AssertEqual(note.Id, poppedNote?.Id, "Pop should remove the content note, not the divider.");
     }
@@ -829,7 +829,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var inbox);
-        var note = store.AddNote(inbox, "keep me live", "copy");
+        var note = store.AddSlip(inbox, "keep me live", "copy");
         var service = new ZetlProjectService(store);
 
         var response = service.Execute(ZetlCommandEnvelope.Create(
@@ -906,8 +906,8 @@ public class ZetlProjectServiceTests
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var queue);
         store.SetBucketKind(queue, "Replay");
-        var source = store.AddNote(queue, "A1\tB1", "copy");
-        store.SetNoteImage(project, source, new ZetlClipboardImage([1, 2, 3], 3, 1));
+        var source = store.AddSlip(queue, "A1\tB1", "copy");
+        store.SetSlipImage(project, source, new ZetlClipboardImage([1, 2, 3], 3, 1));
         source.Type = ZetlSlipType.Picture;
         source.Title = "Copied title";
         source.RichHtml = "<b>A1</b>";
@@ -932,7 +932,7 @@ public class ZetlProjectServiceTests
         };
 
         AssertTrue(
-            store.TryConsumeReplayNoteToReview(project, queue, source.Id, out _, out _, out var copy)
+            store.TryConsumeReplaySlipToReview(project, queue, source.Id, out _, out _, out var copy)
                 && copy is not null,
             "Replay should produce a review copy.");
 
@@ -1180,8 +1180,8 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "first", "copy");
-        store.UpdateNote(note, "second");
+        var note = store.AddSlip(bucket, "first", "copy");
+        store.UpdateSlip(note, "second");
         store.UpdateBucketName(bucket, "Renamed Bucket");
         store.UpdateProjectName(project, "Renamed Project");
 
@@ -1223,7 +1223,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "original", "copy");
+        var note = store.AddSlip(bucket, "original", "copy");
         var service = new ZetlProjectService(store);
         var events = new List<ZetlProjectChangedEvent>();
         service.ProjectChanged += (_, change) => events.Add(change);
@@ -1274,7 +1274,7 @@ public class ZetlProjectServiceTests
         var changes = new List<ZetlProjectChangedEvent>();
         service.ProjectChanged += (_, change) => changes.Add(change);
 
-        store.AddNote(bucket, "direct capture", "copy");
+        store.AddSlip(bucket, "direct capture", "copy");
 
         AssertEqual(1, changes.Count, "Direct store capture should publish one project change.");
         AssertEqual(
@@ -1291,12 +1291,12 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var first = store.AddNote(bucket, "first visible note", "copy");
+        var first = store.AddSlip(bucket, "first visible note", "copy");
         first.CreatedAtUtc = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
-        var second = store.AddNote(bucket, "second visible note", "copy");
+        var second = store.AddSlip(bucket, "second visible note", "copy");
         second.CreatedAtUtc = new DateTimeOffset(2026, 6, 16, 12, 0, 0, TimeSpan.Zero);
         var deletedBucket = store.GetDeletedBucket(project);
-        var deleted = store.AddNote(deletedBucket, "deleted should stay out", "copy");
+        var deleted = store.AddSlip(deletedBucket, "deleted should stay out", "copy");
         deleted.CreatedAtUtc = new DateTimeOffset(2026, 6, 17, 12, 0, 0, TimeSpan.Zero);
         var service = new ZetlProjectService(store);
 
@@ -1368,10 +1368,10 @@ public class ZetlProjectServiceTests
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var inbox);
         var drafts = store.AddBucket(project, "Drafts");
-        var first = store.AddNote(inbox, "first", "copy");
-        var second = store.AddNote(inbox, "second", "copy");
-        var third = store.AddNote(inbox, "third", "copy");
-        var elsewhere = store.AddNote(drafts, "elsewhere", "copy");
+        var first = store.AddSlip(inbox, "first", "copy");
+        var second = store.AddSlip(inbox, "second", "copy");
+        var third = store.AddSlip(inbox, "third", "copy");
+        var elsewhere = store.AddSlip(drafts, "elsewhere", "copy");
         var service = new ZetlProjectService(store);
 
         // Move the last slip ahead of the first: first, second, third -> third, first, second.
@@ -1420,13 +1420,13 @@ public class ZetlProjectServiceTests
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
         var imageBytes = new byte[] { 1, 2, 3, 4, 5 };
-        var picture = store.AddImageNote(
+        var picture = store.AddImageSlip(
             project,
             bucket,
             new ZetlClipboardImage(imageBytes, 20, 10),
             "copy",
             caption: "Diagram");
-        var text = store.AddNote(bucket, "ordinary", "copy");
+        var text = store.AddSlip(bucket, "ordinary", "copy");
         var service = new ZetlProjectService(store);
         var changes = new List<ZetlProjectChangedEvent>();
         service.ProjectChanged += (_, change) => changes.Add(change);
@@ -1718,7 +1718,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddImageNote(
+        var note = store.AddImageSlip(
             project,
             bucket,
             new ZetlClipboardImage([1, 2, 3], 2, 2),
@@ -1760,7 +1760,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "plain text", "copy");
+        var note = store.AddSlip(bucket, "plain text", "copy");
         var service = new ZetlProjectService(store);
 
         var response = service.Execute(ZetlCommandEnvelope.Create(
@@ -1779,7 +1779,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddImageNote(
+        var note = store.AddImageSlip(
             project,
             bucket,
             new ZetlClipboardImage([1, 2, 3], 2, 2),
@@ -1805,7 +1805,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "A1\tB1", "copy");
+        var note = store.AddSlip(bucket, "A1\tB1", "copy");
         var service = new ZetlProjectService(store);
 
         var response = service.Execute(ZetlCommandEnvelope.Create(
@@ -1827,7 +1827,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "content", "copy");
+        var note = store.AddSlip(bucket, "content", "copy");
         var service = new ZetlProjectService(store);
 
         var first = service.Execute(ZetlCommandEnvelope.Create(
@@ -1858,7 +1858,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddNote(bucket, "content", "copy");
+        var note = store.AddSlip(bucket, "content", "copy");
         var service = new ZetlProjectService(store);
 
         var response = service.Execute(ZetlCommandEnvelope.Create(
@@ -1877,7 +1877,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddImageNote(
+        var note = store.AddImageSlip(
             project,
             bucket,
             new ZetlClipboardImage(FakePngBytes(1), 3, 2),
@@ -1904,7 +1904,7 @@ public class ZetlProjectServiceTests
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
-        var note = store.AddImageNote(
+        var note = store.AddImageSlip(
             project,
             bucket,
             new ZetlClipboardImage(FakePngBytes(1), 3, 2),

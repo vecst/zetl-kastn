@@ -823,7 +823,7 @@ public class ZetlUITests : IDisposable
                 System.IO.Path.Combine(directory, "state.json"),
                 "kastn-ui");
             var project = store.CreateProject("Recovery", ["Inbox"], "Inbox");
-            var slip = store.AddNote(project.Buckets[0], "baseline", "copy");
+            var slip = store.AddSlip(project.Buckets[0], "baseline", "copy");
             var pipeName = $"kastn-ui-{Guid.NewGuid():N}";
             using var server = new ZetlIpcServer(new ZetlProjectService(store), pipeName);
             server.Start();
@@ -891,7 +891,7 @@ public class ZetlUITests : IDisposable
                 System.IO.Path.Combine(directory, "state.json"),
                 "kastn-ui");
             var project = store.CreateProject("Close Save", ["Inbox"], "Inbox");
-            var slip = store.AddNote(project.Buckets[0], "before close", "copy");
+            var slip = store.AddSlip(project.Buckets[0], "before close", "copy");
             var pipeName = $"kastn-ui-{Guid.NewGuid():N}";
             using var server = new ZetlIpcServer(new ZetlProjectService(store), pipeName);
             server.Start();
