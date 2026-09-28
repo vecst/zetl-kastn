@@ -2928,7 +2928,7 @@ internal sealed class ZetlStateStore
             .Where(name => !IsDeletedBucketName(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        return names.Count == 0 ? ["Inbox"] : names;
+        return names.Count == 0 ? [JournalCaptureBucketName] : names;
     }
 
     private static string NormalizeName(string? value, string fallback)

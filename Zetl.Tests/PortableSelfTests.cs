@@ -2061,6 +2061,32 @@ public class PortableSelfTests
             AssertTrue(loaded.Settings.HasSeenFirstRun, "First-run flag should round-trip.");
         }
 
+        [Fact(DisplayName = "Zetl app settings default to Capture and Quick Note buckets")]
+        public static void AppSettingsDefaultToCaptureAndQuickNoteBuckets()
+        {
+            using var temp = new TempStateFile();
+            var settingsPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "settings.json");
+            var store = new ZetlAppSettingsStore(settingsPath);
+            AssertEqual(
+                "Capture|Quick Note",
+                string.Join("|", store.Settings.DefaultProjectBuckets),
+                "New projects default to the same pair as a journal day.");
+
+            store.Settings.DefaultProjectBuckets = ["Inbox", "Scratch"];
+            store.Save();
+            AssertEqual(
+                "Capture|Quick Note",
+                string.Join("|", new ZetlAppSettingsStore(settingsPath).Settings.DefaultProjectBuckets),
+                "The old untouched Inbox/Scratch default moves to the new default on load.");
+
+            store.Settings.DefaultProjectBuckets = ["Inbox", "Ideas", "Scratch"];
+            store.Save();
+            AssertEqual(
+                "Inbox|Ideas|Scratch",
+                string.Join("|", new ZetlAppSettingsStore(settingsPath).Settings.DefaultProjectBuckets),
+                "A customized bucket list is left alone.");
+        }
+
         [Fact(DisplayName = "Zetl app settings round-trip configurable fields")]
         public static void AppSettingsRoundTripFields()
         {
@@ -2576,8 +2602,8 @@ public class PortableSelfTests
 
             ZetlRuntimeSettings.ApplyTo(store, settings);
 
-            AssertEqual("Inbox", store.Defaults.ProjectBuckets[0], "Empty settings should use Inbox.");
-            AssertEqual("Scratch", store.Defaults.ProjectBuckets[1], "Empty settings should use Scratch.");
+            AssertEqual("Capture", store.Defaults.ProjectBuckets[0], "Empty settings should use Capture.");
+            AssertEqual("Quick Note", store.Defaults.ProjectBuckets[1], "Empty settings should use Quick Note.");
             AssertEqual("TSV", store.Defaults.CompileMode, "Compile mode should flow into state defaults.");
             AssertEqual(4, store.Defaults.TsvRowLength, "TSV row length should flow into state defaults.");
         }
@@ -4940,13 +4966,17 @@ public class PortableSelfTests
                     StartProject: true,
                     CreateNewProject: true,
                     ProjectName: "Fresh",
-                    SelectedBucketName: "Inbox",
+                    SelectedBucketName: "Capture",
                     SelectedBucket: null!,
                     SelectedProject: null));
 
             var fresh = store.State.Projects.SingleOrDefault(project => project.Name == "Fresh");
             AssertTrue(fresh is not null, "Choosing New project should create the named project.");
-            AssertEqual("fresh note", fresh!.Buckets.Single(bucket => bucket.Name == "Inbox").Slips.Single().Text, "The note should land in the chosen bucket of the new project.");
+            AssertEqual("fresh note", fresh!.Buckets.Single(bucket => bucket.Name == "Capture").Slips.Single().Text, "The note should land in the chosen bucket of the new project.");
+            AssertEqual(
+                "Capture|Quick Note|Scratch",
+                string.Join("|", fresh.Buckets.Select(bucket => bucket.Name)),
+                "A new project gets the default Capture / Quick Note pair plus its protected Scratch.");
             AssertEqual(fresh.Id, store.GetActiveProject()?.Id, "A new project created with Activate on should become active.");
         }
 

@@ -339,9 +339,14 @@ internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, 
 
     public string JournalInterval { get; init; } = "Weekly";
 
-    public static ZetlBucketDefaults Standard { get; } = new(new[] { "Inbox", ZetlStateStore.ScratchBucketName }, "Formatted", 5);
+    // New projects start with the same Capture / Quick Note pair as a journal day,
+    // plus the protected Scratch bucket every project gets.
+    public static ZetlBucketDefaults Standard { get; } = new(
+        new[] { ZetlStateStore.JournalCaptureBucketName, ZetlStateStore.JournalQuickNoteBucketName },
+        "Formatted",
+        5);
 
-    // The configured project buckets, or the built-in Inbox/Scratch fallback
+    // The configured project buckets, or the built-in Capture/Quick Note fallback
     // when none are set. Centralizes the fallback several call sites inlined.
     public static IReadOnlyList<string> ResolveProjectBuckets(IReadOnlyList<string>? buckets)
     {

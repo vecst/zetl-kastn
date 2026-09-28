@@ -8,7 +8,7 @@ internal sealed class ZetlAppSettings
     public bool QuickNoteToClipboard { get; set; }
     public bool ReplayResumeClipboard { get; set; } = true;
     public string CaptureOriginDetail { get; set; } = ZetlCaptureOriginDetail.ApplicationAndWindowTitle;
-    public List<string> DefaultProjectBuckets { get; set; } = new() { "Inbox", "Scratch" };
+    public List<string> DefaultProjectBuckets { get; set; } = ZetlBucketDefaults.Standard.ProjectBuckets.ToList();
     public string DefaultCompileMode { get; set; } = "Formatted";
     public int DefaultTsvRowLength { get; set; } = 5;
     // Hour (0-23, local) at which a new journal day begins, so late-night captures
@@ -63,6 +63,19 @@ internal sealed class ZetlAppSettings
     public string LaneLabel(bool shifted) => ZetlLaneLabels.Resolve(
         shifted ? KastnAlternateLaneLabel : KastnMainLaneLabel,
         shifted);
+
+    // The Settings window saves the bucket list whether or not it was edited, so
+    // an untouched install carries the old Inbox/Scratch default forever. Move
+    // that exact list to the current default.
+    public void MigrateLegacyDefaults()
+    {
+        if (DefaultProjectBuckets is { Count: 2 } buckets
+            && string.Equals(buckets[0].Trim(), "Inbox", StringComparison.OrdinalIgnoreCase)
+            && ZetlStateStore.IsScratchBucketName(buckets[1]))
+        {
+            DefaultProjectBuckets = ZetlBucketDefaults.Standard.ProjectBuckets.ToList();
+        }
+    }
 }
 
 internal static class ZetlLaneLabels
@@ -172,6 +185,8 @@ internal sealed class ZetlAppSettingsStore
 
     private ZetlAppSettings Load()
     {
-        return JsonFile.ReadOrQuarantine<ZetlAppSettings>(settingsPath, log) ?? new ZetlAppSettings();
+        var settings = JsonFile.ReadOrQuarantine<ZetlAppSettings>(settingsPath, log) ?? new ZetlAppSettings();
+        settings.MigrateLegacyDefaults();
+        return settings;
     }
 }
