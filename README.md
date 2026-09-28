@@ -98,11 +98,18 @@ A slip may contain text, a picture, or both, plus optional metadata:
 - originating application and window title
 - picture dimensions, content hash, and asset information
 
-The normal and Shift lanes each have their own active project. When no deliberate
-project has been started or activated, Zetl falls back to the rolling Journal
-as the always-present default capture home (`Journal` and `Journal Shift`). The
-Journal organizes captured slips into day buckets named for the weekday and date
-(e.g. `Mon 07-06`).
+The normal and Shift lanes each have their own active project, or none. Held
+captures with no active project file to the rolling Journal, the always-present
+default capture home (`Journal` and `Journal Shift`). The Journal organizes
+captured slips into day buckets named for the weekday and date (e.g.
+`Mon 07-06`).
+
+Filing to the Journal does not make it active. A project becomes active only
+when you choose it: saving a capture dialog with **Activate** on (on by default
+for a held copy; on for a quick note only when its project is already active),
+activating it from the Board, or `Ctrl+J`. Dismissing a dialog with `Esc` never
+changes the active project. The tray icon is green while a project is active and
+grey when none is.
 
 The whole period's day buckets are seeded up front — the full Mon–Sun week for a
 weekly Journal, or every day of the month for a monthly one — so a note can be
@@ -112,9 +119,13 @@ that day arrives. Each day is a small nested structure: copy captures land in a
 first time that gesture fires on the day. The day boundary is the `DayStartHour`
 setting.
 
-Finishing a deliberate project sets it aside, clears it from its lane, and
-automatically returns the lane back to the rolling Journal. Setting a project
-aside does not delete or lock it; it can be reactivated later.
+Finishing a deliberate project sets it aside and clears it from its lane.
+Setting a project aside does not delete or lock it; it can be reactivated later.
+
+**Deactivate a quiet project after** (hours, off by default) switches a
+deliberate project off once it has gone that long without a capture, so a
+forgotten project never traps captures. Every capture, including tapped copies,
+counts as activity.
 
 ## Capture
 
@@ -122,6 +133,16 @@ aside does not delete or lock it; it can be reactivated later.
 
 Tap `Ctrl+C` to copy normally. When auto-capture is enabled and a project is
 active, changed clipboard content is added to the active bucket.
+
+With no project active, the **When no project is active** setting decides what a
+tapped copy does:
+
+- **Don't capture copies** (default): copy and paste behave exactly as they
+  would without Zetl.
+- **Capture copies to the Journal**: every copy is captured into today's
+  Journal `Capture` bucket, all day, without activating the Journal.
+
+The grey tray icon's tooltip names the current choice.
 
 Zetl captures:
 
@@ -158,7 +179,7 @@ there is no copied content, the held gesture opens project management instead.
 Hold `Ctrl+X` to open a quick note. The dialog uses cut text when available and
 otherwise starts empty.
 
-When the rolling Journal is active, the note goes to today's `Quick Note` child,
+When the note is filed to the Journal, it goes to today's `Quick Note` child,
 while copy captures go to today's `Capture` child.
 
 When a deliberate project is active, quick notes default to its protected

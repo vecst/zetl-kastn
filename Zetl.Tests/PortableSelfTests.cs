@@ -917,10 +917,14 @@ public class PortableSelfTests
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            var project = store.GetOrCreateDefaultProject();
+            var project = store.GetCaptureHome();
             AssertEqual(store.DefaultProjectName(), project.Name, "The default capture home is the Journal.");
             AssertTrue(project.JournalMode, "The default home is journal-mode.");
-            AssertEqual(ZetlStateStore.JournalBucketName(DateTime.Now, 0), store.ActiveBucket?.Name, "The journal highlights today's day bucket.");
+            AssertEqual(
+                ZetlStateStore.JournalBucketName(DateTime.Now, 0),
+                project.Buckets.Single(bucket => bucket.Id == project.ActiveBucketId).Name,
+                "The journal highlights today's day bucket.");
+            AssertTrue(store.GetActiveProject() is null, "Looking up the capture home activates nothing.");
 
             // A fresh weekly journal seeds the whole Mon–Sun week up front as empty
             // day-parent slots (children stay lazy), so future days are ready to hold
@@ -946,7 +950,7 @@ public class PortableSelfTests
             store.UpdateProjectName(project, "Renamed");
             AssertEqual("Renamed", store.CompilePlainTextFromSlips(project, []).Split(Environment.NewLine)[0], "Compile should use the updated project name.");
             store.ClearActiveProject();
-            AssertEqual(project.Id, store.GetOrCreateDefaultProject().Id, "The renamed journal is still the default home.");
+            AssertEqual(project.Id, store.GetCaptureHome().Id, "The renamed journal is still the default home.");
         }
 
         [Fact(DisplayName = "Zetl state configures and rolls journal intervals")]
@@ -986,19 +990,19 @@ public class PortableSelfTests
 
             // 5. Verify rolling on interval change / rollover
             store.Defaults = store.Defaults with { JournalInterval = "Daily", DayStartHour = 0 };
-            var dailyProject = store.GetOrCreateDefaultProject();
+            var dailyProject = store.GetCaptureHome();
             AssertEqual(store.DefaultProjectName(), dailyProject.Name, "Daily project has correct name");
 
             // Change interval to weekly. Next default project call should roll to a new project because the expected name doesn't match daily project's name.
             store.Defaults = store.Defaults with { JournalInterval = "Weekly", DayStartHour = 0 };
-            var weeklyProject = store.GetOrCreateDefaultProject();
+            var weeklyProject = store.GetCaptureHome();
             AssertTrue(dailyProject.Id != weeklyProject.Id, "Changing interval rolls to a new default project");
             AssertEqual(store.DefaultProjectName(), weeklyProject.Name, "Weekly project has correct name");
 
             // Verify rolling via manual name change (simulating a calendar rollover)
             // Rename active weekly project to simulate an older week
             store.UpdateProjectName(weeklyProject, "Journal Week 01 2020");
-            var rolledProject = store.GetOrCreateDefaultProject();
+            var rolledProject = store.GetCaptureHome();
             AssertTrue(weeklyProject.Id != rolledProject.Id, "Old journal project name triggers rollover and mints fresh project");
             AssertEqual(store.DefaultProjectName(), rolledProject.Name, "Rolled project has current week's name");
         }
@@ -1024,8 +1028,10 @@ public class PortableSelfTests
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            var normal = store.GetOrCreateDefaultProject();
-            var shifted = store.GetOrCreateDefaultProject(shifted: true);
+            var normal = store.GetCaptureHome();
+            var shifted = store.GetCaptureHome(shifted: true);
+            store.SetActiveProject(normal.Id);
+            store.SetActiveProject(shifted.Id, shifted: true);
 
             AssertFalse(normal.Id == shifted.Id, "Normal and Shift lanes should use different default projects.");
             AssertEqual(normal.Id, store.GetActiveProject()?.Id, "Normal lane should keep its active project.");
@@ -1075,9 +1081,9 @@ public class PortableSelfTests
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            var first = store.GetOrCreateDefaultProject();
+            var first = store.GetCaptureHome();
             store.ClearActiveProject();
-            var second = store.GetOrCreateDefaultProject();
+            var second = store.GetCaptureHome();
 
             AssertEqual(first.Id, second.Id, "Default project should be reused after it is cleared inactive.");
             AssertEqual(1, store.State.Projects.Count, "Default project reuse should not create duplicates.");
@@ -1089,7 +1095,7 @@ public class PortableSelfTests
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
 
-            var first = store.GetOrCreateDefaultProject();
+            var first = store.GetCaptureHome();
             AssertTrue(first.JournalMode, "The default home is the Journal.");
 
             var finished = store.FinishProject(first.Id);
@@ -1099,7 +1105,7 @@ public class PortableSelfTests
 
             // The Journal is never reopened once sealed (a non-Active project is never
             // lane-active); capture mints a fresh journal instead.
-            var second = store.GetOrCreateDefaultProject();
+            var second = store.GetCaptureHome();
             AssertTrue(second.Id != first.Id, "Capture after finishing the journal starts a fresh one.");
             AssertTrue(second.JournalMode, "The fresh journal is journal-mode.");
             AssertEqual("Active", second.Status, "The fresh journal starts Active.");
@@ -1113,7 +1119,7 @@ public class PortableSelfTests
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            store.GetOrCreateDefaultProject();
+            store.GetCaptureHome();
 
             var parentId = Guid.NewGuid().ToString("N");
             var childId = Guid.NewGuid().ToString("N");
@@ -1242,7 +1248,7 @@ public class PortableSelfTests
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            var project = store.GetOrCreateDefaultProject();
+            var project = store.GetCaptureHome();
             var scratch = store.GetScratchBucket(project);
             store.AddSlip(scratch, "scratch note", "cut");
             store.ClearActiveProject();
@@ -2399,9 +2405,9 @@ public class PortableSelfTests
             // The default capture home is the rolling Journal (its buckets are days),
             // so the configured project-bucket names apply to deliberately created
             // projects, not here. Today's bucket still takes the compile defaults.
-            var project = store.GetOrCreateDefaultProject();
+            var project = store.GetCaptureHome();
             AssertTrue(project.JournalMode, "The default capture home is journal-mode.");
-            var today = store.ActiveBucket!;
+            var today = project.Buckets.Single(bucket => bucket.Id == project.ActiveBucketId);
             AssertEqual("TSV", today.Settings.DefaultCompileMode, "Today's bucket should take the default compile mode.");
             AssertEqual(4, today.Settings.DefaultTsvRowLength, "Today's bucket should take the default TSV row length.");
 
@@ -2468,13 +2474,13 @@ public class PortableSelfTests
 
             var work = store.CreateProject("Work", new[] { "Notes" }, "Notes");
             AssertEqual(work.Id, store.GetActiveProject()?.Id, "A new deliberate project is active.");
-            AssertEqual(work.Id, store.GetOrCreateDefaultProject().Id, "A fresh active project keeps capture.");
+            AssertEqual(work.Id, store.GetCaptureHome().Id, "A fresh active project keeps capture.");
 
             // Simulate the project going quiet past the window.
             work.LastActiveUtc = DateTime.UtcNow.AddHours(-3);
-            var resolved = store.GetOrCreateDefaultProject();
-            AssertTrue(resolved.JournalMode, "A quiet deliberate project auto-returns capture to the Journal.");
-            AssertEqual(resolved.Id, store.GetActiveProject()?.Id, "The Journal becomes the active project.");
+            var resolved = store.GetCaptureHome();
+            AssertTrue(resolved.JournalMode, "A quiet deliberate project hands held captures back to the Journal.");
+            AssertTrue(store.GetActiveProject() is null, "Auto-return leaves the lane with no active project.");
             AssertTrue(resolved.Id != work.Id, "Capture left the quiet deliberate project.");
         }
 
@@ -2488,7 +2494,7 @@ public class PortableSelfTests
             work.LastActiveUtc = DateTime.UtcNow.AddHours(-10);
             AssertEqual(
                 work.Id,
-                store.GetOrCreateDefaultProject().Id,
+                store.GetCaptureHome().Id,
                 "With auto-return off, even a long-quiet project keeps capture.");
         }
 
@@ -2499,7 +2505,7 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
 
             // The Journal is the home, with no deliberate project used yet.
-            store.GetOrCreateDefaultProject();
+            store.GetCaptureHome();
             AssertEqual(
                 ZetlProjectToggleOutcome.NoProjectToActivate,
                 store.ToggleActiveProject().Outcome,
@@ -2642,6 +2648,193 @@ public class PortableSelfTests
                 "Auto-capture should report its destination.");
             AssertEqual(project.Id, store.GetActiveProject()!.Id, "Auto-capture should keep the active project.");
         }
+
+        [Fact(DisplayName = "Runtime tapped copy with no project saves nothing when idle capture is off")]
+        public static async Task RuntimeTappedCopyWithIdleCaptureOffSavesNothing()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("copied text", changeToken: 2),
+                notifications,
+                out _,
+                out _);
+
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                captureOrigin: null);
+
+            AssertEqual(
+                0,
+                store.State.Projects.Sum(project => project.Buckets.Sum(bucket => bucket.Slips.Count)),
+                "With idle capture off, a tapped copy with no active project saves nothing.");
+            AssertFalse(notifications.Messages.Any(), "A plain copy should not toast.");
+            AssertTrue(store.GetActiveProject() is null, "A plain copy activates nothing.");
+        }
+
+        [Fact(DisplayName = "Runtime tapped copy with no project captures to the Journal when set")]
+        public static async Task RuntimeTappedCopyWithIdleCaptureJournalCapturesToJournal()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path)
+            {
+                Defaults = ZetlBucketDefaults.Standard with { IdleCopyCapture = ZetlIdleCopyCapture.Journal }
+            };
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("copied text", changeToken: 2),
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                captureOrigin: null);
+
+            var journal = store.State.Projects.Single(project => project.JournalMode);
+            var capture = journal.Buckets.Single(bucket =>
+                bucket.Name == ZetlStateStore.JournalCaptureBucketName);
+            AssertEqual("copied text", capture.Slips.Single().Text, "The copy lands in today's Journal Capture bucket.");
+            AssertTrue(store.GetActiveProject() is null, "Capturing to the Journal while idle does not activate it.");
+        }
+
+        [Fact(DisplayName = "Runtime tapped copies count as activity and auto-return still applies")]
+        public static async Task RuntimeTappedCopiesCountTowardAutoReturn()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path)
+            {
+                Defaults = ZetlBucketDefaults.Standard with { JournalAutoReturnHours = 2 }
+            };
+            var work = store.CreateProject("Work", ["Inbox"], "Inbox");
+            var clipboard = new FakeClipboard("first", changeToken: 2);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            work.LastActiveUtc = DateTime.UtcNow.AddHours(-1);
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                captureOrigin: null);
+            AssertTrue(
+                DateTime.UtcNow - work.LastActiveUtc < TimeSpan.FromMinutes(1),
+                "A tapped capture refreshes the project's auto-return window.");
+            AssertEqual(work.Id, store.GetActiveProject()?.Id, "An active project inside its window keeps capture.");
+
+            work.LastActiveUtc = DateTime.UtcNow.AddHours(-3);
+            clipboard.SetState("second", changeToken: 4);
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 3),
+                captureOrigin: null);
+            AssertTrue(store.GetActiveProject() is null, "A tapped copy past the quiet window switches the project off.");
+            AssertEqual(
+                1,
+                work.Buckets.Sum(bucket => bucket.Slips.Count),
+                "The late copy is not filed into the quiet project.");
+        }
+
+        [Fact(DisplayName = "Runtime Esc on an empty held copy leaves the lane idle for a quick note")]
+        public static async Task RuntimeEmptyHeldCopyThenQuickNoteLeavesLaneIdle()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+
+            var board = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1));
+            AssertTrue(board is ZetlBoardRequest, "A held copy with nothing selected opens the Board.");
+            AssertTrue(store.GetActiveProject() is null, "Opening the Board from a held copy activates nothing.");
+
+            var quick = (ZetlNoteCaptureRequest)(await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_X, clipboardSequenceNumber: 1)))!;
+            AssertFalse(quick.ProjectWasActive, "The quick note sees no active project.");
+            coordinator.CompleteNoteCapture(quick, SavedNote(quick, "jot", startProject: false));
+            AssertTrue(store.GetActiveProject() is null, "The quick note leaves the lane idle.");
+        }
+
+        [Fact(DisplayName = "Runtime held copy saved with Activate keeps the Journal active through a quick note")]
+        public static async Task RuntimeHeldCopySaveKeepsJournalActiveThroughQuickNote()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard("copied", changeToken: 2),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+
+            var copy = (ZetlNoteCaptureRequest)(await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1)))!;
+            AssertTrue(copy.Project.JournalMode, "With nothing active, a held copy files to the Journal.");
+            AssertFalse(copy.ProjectWasActive, "The Journal was not active when the gesture began.");
+            AssertTrue(copy.StartProjectDefault, "A held copy starts with Activate on.");
+            AssertTrue(store.GetActiveProject() is null, "Opening the capture dialog activates nothing.");
+
+            coordinator.CompleteNoteCapture(copy, SavedNote(copy, "copied", startProject: true));
+            AssertEqual(copy.Project.Id, store.GetActiveProject()?.Id, "Saving with Activate on activates the Journal.");
+
+            var discarded = (ZetlNoteCaptureRequest)(await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_X, clipboardSequenceNumber: 3)))!;
+            coordinator.CompleteNoteCapture(
+                discarded,
+                SavedNote(discarded, "", startProject: false) with { Committed = false });
+            AssertEqual(copy.Project.Id, store.GetActiveProject()?.Id, "Esc on a quick note changes nothing.");
+
+            var quick = (ZetlNoteCaptureRequest)(await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_X, clipboardSequenceNumber: 3)))!;
+            AssertTrue(quick.ProjectWasActive, "The quick note sees the Journal active, so its toggle starts on.");
+            coordinator.CompleteNoteCapture(quick, SavedNote(quick, "jot", startProject: true));
+            AssertEqual(copy.Project.Id, store.GetActiveProject()?.Id, "The quick note keeps the Journal active.");
+        }
+
+        [Fact(DisplayName = "Runtime quick note keeps the active project active")]
+        public static async Task RuntimeQuickNoteKeepsActiveProject()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var work = store.CreateProject("Work", ["Inbox"], "Inbox");
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                new FakeNotificationSink(),
+                out _,
+                out _,
+                quickNoteToClipboard: false);
+
+            var quick = (ZetlNoteCaptureRequest)(await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_X, clipboardSequenceNumber: 1)))!;
+            AssertEqual(work.Id, quick.Project.Id, "A quick note files to the active project.");
+            AssertTrue(quick.ProjectWasActive, "The quick note's Activate toggle starts on.");
+            coordinator.CompleteNoteCapture(quick, SavedNote(quick, "jot", startProject: true));
+            AssertEqual(work.Id, store.GetActiveProject()?.Id, "The quick note keeps the project active.");
+        }
+
+        // A committed save of <request> into its own project and preferred bucket.
+        private static ZetlNoteCaptureResult SavedNote(
+            ZetlNoteCaptureRequest request,
+            string text,
+            bool startProject) => new(
+                Committed: true,
+                NoteText: text,
+                StartProject: startProject,
+                CreateNewProject: false,
+                ProjectName: request.Project.Name,
+                SelectedBucketName: request.PreferredBucket!.Name,
+                SelectedBucket: request.PreferredBucket!,
+                SelectedProject: request.Project);
 
         [Fact(DisplayName = "Runtime auto-captures and replays rich text")]
         public static async Task RuntimeAutoCapturesAndReplaysRichText()
@@ -4248,7 +4441,7 @@ public class PortableSelfTests
             var note = (ZetlNoteCaptureRequest)request!;
             AssertEqual("copied", note.Text, "Copy request should contain trimmed clipboard text.");
             AssertEqual("copy", note.Source, "Copy request should preserve its source.");
-            AssertTrue(note.ShowStartProjectToggle, "First copy hold (no active project) should offer project activation.");
+            AssertFalse(note.ProjectWasActive, "First copy hold sees no active project.");
             AssertTrue(note.StartProjectDefault, "Held copy should activate the project by default.");
         }
 
@@ -4295,7 +4488,7 @@ public class PortableSelfTests
                 ZetlStateStore.JournalBucketName(DateTime.Now, 0),
                 note.Project.Buckets.Single(bucket => bucket.Id == note.PreferredBucket!.ParentBucketId).Name,
                 "The Quick Note child sits under today's day parent.");
-            AssertTrue(note.ShowStartProjectToggle, "First quick note should offer project activation.");
+            AssertFalse(note.ProjectWasActive, "First quick note sees no active project.");
             AssertFalse(note.StartProjectDefault, "Quick note should not activate the project by default.");
         }
 
@@ -4449,7 +4642,7 @@ public class PortableSelfTests
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            var project = store.GetOrCreateDefaultProject();
+            var project = store.GetCaptureHome();
             var scratch = store.GetScratchBucket(project);
             var clipboard = new FakeClipboard("keep me", changeToken: 1);
             var coordinator = CreateShortcutCoordinator(
@@ -4465,12 +4658,8 @@ public class PortableSelfTests
                 scratch,
                 Text: "",
                 Source: "cut",
-                ShowStartProjectToggle: true,
+                ProjectWasActive: false,
                 StartProjectDefault: false,
-                ScratchOnlyUntilProjectStarted: true,
-                CreateNewProjectToggle: false,
-                ProjectToggleText: null,
-                ProjectNameDefault: null,
                 CaptureOrigin: ZetlCaptureOrigin.Create(
                     "Editor",
                     "editor",
@@ -4502,7 +4691,7 @@ public class PortableSelfTests
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            var project = store.GetOrCreateDefaultProject();
+            var project = store.GetCaptureHome();
             var scratch = store.GetScratchBucket(project);
             var coordinator = CreateShortcutCoordinator(
                 store,
@@ -4518,12 +4707,8 @@ public class PortableSelfTests
                 scratch,
                 Text: text,
                 Source: "cut",
-                ShowStartProjectToggle: true,
-                StartProjectDefault: false,
-                ScratchOnlyUntilProjectStarted: true,
-                CreateNewProjectToggle: false,
-                ProjectToggleText: null,
-                ProjectNameDefault: null);
+                ProjectWasActive: false,
+                StartProjectDefault: false);
 
             ZetlNoteCaptureResult Cancelled() => new(
                 Committed: false,
@@ -4574,12 +4759,8 @@ public class PortableSelfTests
                 store.GetQuickNoteBucket(source),
                 Text: "",
                 Source: "cut",
-                ShowStartProjectToggle: false,
-                StartProjectDefault: false,
-                ScratchOnlyUntilProjectStarted: false,
-                CreateNewProjectToggle: false,
-                ProjectToggleText: null,
-                ProjectNameDefault: null);
+                ProjectWasActive: true,
+                StartProjectDefault: false);
 
             coordinator.CompleteNoteCapture(
                 request,
@@ -4607,7 +4788,7 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var other = store.CreateProject("Other", ["Notes"], "Notes");
             store.ClearActiveProject();
-            var dated = store.GetOrCreateDefaultProject();
+            var dated = store.GetCaptureHome();
             var otherBucket = other.Buckets.First(bucket => bucket.Name == "Notes");
             var coordinator = CreateShortcutCoordinator(
                 store,
@@ -4623,12 +4804,8 @@ public class PortableSelfTests
                 store.GetScratchBucket(dated),
                 Text: "",
                 Source: "cut",
-                ShowStartProjectToggle: true,
-                StartProjectDefault: false,
-                ScratchOnlyUntilProjectStarted: true,
-                CreateNewProjectToggle: false,
-                ProjectToggleText: null,
-                ProjectNameDefault: null);
+                ProjectWasActive: false,
+                StartProjectDefault: false);
 
             coordinator.CompleteNoteCapture(
                 request,
@@ -4656,7 +4833,7 @@ public class PortableSelfTests
             var store = new ZetlStateStore(temp.Path);
             var other = store.CreateProject("Other", ["Notes"], "Notes");
             store.ClearActiveProject();
-            var dated = store.GetOrCreateDefaultProject();
+            var dated = store.GetCaptureHome();
             var otherBucket = other.Buckets.First(bucket => bucket.Name == "Notes");
             var coordinator = CreateShortcutCoordinator(
                 store,
@@ -4672,12 +4849,8 @@ public class PortableSelfTests
                 store.GetScratchBucket(dated),
                 Text: "",
                 Source: "cut",
-                ShowStartProjectToggle: true,
-                StartProjectDefault: false,
-                ScratchOnlyUntilProjectStarted: true,
-                CreateNewProjectToggle: false,
-                ProjectToggleText: null,
-                ProjectNameDefault: null);
+                ProjectWasActive: false,
+                StartProjectDefault: false);
 
             coordinator.CompleteNoteCapture(
                 request,
@@ -4717,12 +4890,8 @@ public class PortableSelfTests
                 bucket,
                 Text: "copied",
                 Source: "copy",
-                ShowStartProjectToggle: false,
-                StartProjectDefault: true,
-                ScratchOnlyUntilProjectStarted: false,
-                CreateNewProjectToggle: false,
-                ProjectToggleText: null,
-                ProjectNameDefault: null);
+                ProjectWasActive: true,
+                StartProjectDefault: true);
 
             coordinator.CompleteNoteCapture(
                 request,
@@ -4745,7 +4914,7 @@ public class PortableSelfTests
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            var origin = store.GetOrCreateDefaultProject();
+            var origin = store.GetCaptureHome();
             var coordinator = CreateShortcutCoordinator(
                 store,
                 new FakeClipboard("copied", changeToken: 1),
@@ -4760,12 +4929,8 @@ public class PortableSelfTests
                 store.GetScratchBucket(origin),
                 Text: "copied",
                 Source: "copy",
-                ShowStartProjectToggle: false,
-                StartProjectDefault: true,
-                ScratchOnlyUntilProjectStarted: false,
-                CreateNewProjectToggle: false,
-                ProjectToggleText: null,
-                ProjectNameDefault: null);
+                ProjectWasActive: true,
+                StartProjectDefault: true);
 
             coordinator.CompleteNoteCapture(
                 request,

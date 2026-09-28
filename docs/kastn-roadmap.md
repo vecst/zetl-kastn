@@ -336,8 +336,8 @@ The detailed lifecycle is in
 
 ## Priority 5: Project Lifecycle Polish
 
-The durable lifecycle model is implemented, including lane clearing and auto-return
-to the rolling Journal.
+The durable lifecycle model is implemented, including lane clearing and
+switching a quiet project off after the configured idle window.
 
 Remaining:
 

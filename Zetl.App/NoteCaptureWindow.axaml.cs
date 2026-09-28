@@ -43,7 +43,7 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
         ZetlProject project,
         ZetlBucket? preferredBucket,
         string text,
-        bool noActiveProject = false,
+        bool projectWasActive = true,
         bool activateByDefault = false,
         ZetlClipboardImage? image = null)
     {
@@ -53,7 +53,7 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
         this.image = image;
         lastFullProjectBucket = preferredBucket;
         selectedProject = project;
-        preDialogActiveProjectId = noActiveProject ? null : project.Id;
+        preDialogActiveProjectId = projectWasActive ? project.Id : null;
 
         InitializeComponent();
 

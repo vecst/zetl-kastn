@@ -361,14 +361,15 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         }
 
         var state = ComputeTrayState();
-        if (state == currentTrayState)
+        var tooltip = TrayTooltip(state);
+        if (state == currentTrayState && tooltip == trayIcon.ToolTipText)
         {
             return;
         }
 
         currentTrayState = state;
         trayIcon.Icon = TrayIconForState(state);
-        trayIcon.ToolTipText = TrayTooltip(state);
+        trayIcon.ToolTipText = tooltip;
     }
 
     private WindowIcon TrayIconForState(TrayIconState state)
@@ -388,14 +389,18 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         return icon;
     }
 
-    private static string TrayTooltip(TrayIconState state)
+    // Grey means no project is armed; the idle-copy setting says whether tapped
+    // copies are still being captured (to the Journal) or left alone.
+    private string TrayTooltip(TrayIconState state)
     {
         return state switch
         {
             TrayIconState.Active => "Zetl — project active",
             TrayIconState.Replay => "Zetl — replay mode",
             TrayIconState.Pop => "Zetl — pop mode",
-            _ => "Zetl"
+            _ => ZetlIdleCopyCapture.CapturesToJournal(store.Defaults.IdleCopyCapture)
+                ? "Zetl — capturing copies to the Journal"
+                : "Zetl — not capturing copies"
         };
     }
 
@@ -669,7 +674,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             request.Project,
             request.PreferredBucket,
             request.Text,
-            noActiveProject: request.ShowStartProjectToggle,
+            projectWasActive: request.ProjectWasActive,
             activateByDefault: request.StartProjectDefault,
             image: request.Image)
         {
@@ -925,6 +930,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.DefaultTsvRowLength = window.DefaultTsvRowLength;
         settings.DayStartHour = window.DayStartHour;
         settings.JournalAutoReturnHours = window.JournalAutoReturnHours;
+        settings.IdleCopyCapture = window.IdleCopyCapture;
         settings.JournalInterval = window.JournalInterval;
         settings.KastnAutosave = window.KastnAutosave;
         settings.KastnStartup = window.KastnStartup;
@@ -956,6 +962,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
         settingsStore.Save();
         ApplySettings();
+        // The idle tooltip names the idle-copy setting, which may have just changed.
+        UpdateTrayIcon();
         notifications.Show("Settings saved.");
     }
 

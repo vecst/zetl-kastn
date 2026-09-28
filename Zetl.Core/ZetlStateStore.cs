@@ -204,60 +204,72 @@ internal sealed class ZetlStateStore
         return project;
     }
 
+    // Where a held capture gesture (Ctrl+C, Ctrl+X, Ctrl+A) files by default: the
+    // lane's active project, or the Journal when none is active. Looking this up
+    // never changes which project is active; activation is only ever the user's
+    // decision (a dialog saved with its Activate toggle on, the Board, Ctrl+J).
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public ZetlProject GetOrCreateDefaultProject(bool shifted = false)
+    public ZetlProject GetCaptureHome(bool shifted = false)
     {
-        var project = ResolveDefaultProject(shifted);
-        // A journal-mode project always has today's day bucket present and highlighted
-        // before the capture path resolves a target. Its Capture / Quick Note children
-        // stay lazy — whichever gesture fires (copy vs. quick note) creates its own.
+        var project = ResolveActiveCaptureProject(shifted)
+            ?? GetOrCreateJournalProject(shifted, activate: false);
+        // A journal always has today's day bucket present and highlighted before the
+        // capture path resolves a target. Its Capture / Quick Note children stay lazy.
         EnsureJournalDayBucket(project, DateTime.Now, setActive: true);
-        // This capture counts as activity for the auto-return window.
-        TouchProjectActivity(project);
         return project;
     }
 
-    private ZetlProject ResolveDefaultProject(bool shifted)
+    // Where a tapped Ctrl+C is auto-captured: the lane's active project, else the
+    // Journal when the idle-copy setting captures there, else nowhere (null).
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public ZetlProject? GetTapCaptureProject(bool shifted = false)
     {
-        if (GetActiveProject(shifted) is { } activeProject)
-        {
-            if (activeProject.JournalMode)
-            {
-                var expectedName = ExpectedJournalProjectName(DateTime.Now, shifted);
-                if (IsFormattedJournalName(activeProject.Name, shifted) && !string.Equals(activeProject.Name, expectedName, StringComparison.OrdinalIgnoreCase))
-                {
-                    SetActiveProjectId(null, shifted);
-                    PersistWorkspace();
-                    DisposeInactiveTemporaryProjects(persistWorkspace: true);
-                }
-                else
-                {
-                    return activeProject;
-                }
-            }
-            else if (!ShouldAutoReturnToJournal(activeProject))
-            {
-                return activeProject;
-            }
-            else
-            {
-                // The active deliberate project has gone quiet past the configured window:
-                // hand capture back to the Journal so a forgotten project never traps notes.
-                SetActiveProjectId(null, shifted);
-                PersistWorkspace();
-                DisposeInactiveTemporaryProjects(persistWorkspace: true);
-            }
-        }
-
-        // No deliberate project is active: fall to the Journal, the always-present
-        // default capture home. Starting a new project is the only deliberate act;
-        // the Journal is never something the user has to activate by hand.
-        return GetOrCreateJournalProject(shifted);
+        return ResolveActiveCaptureProject(shifted)
+            ?? (ZetlIdleCopyCapture.CapturesToJournal(Defaults.IdleCopyCapture)
+                ? GetOrCreateJournalProject(shifted, activate: false)
+                : null);
     }
 
-    // True when a deliberate project should hand capture back to the Journal: the
-    // auto-return window is on and it has had no activity for at least that long.
-    private bool ShouldAutoReturnToJournal(ZetlProject active)
+    // Count a capture into <project> as activity for the auto-return window. Call
+    // before the capture's own write so the timestamp persists with it.
+    public void RecordCaptureActivity(ZetlProject project) => TouchProjectActivity(project);
+
+    // The lane's active project as capture should see it. A journal from a period
+    // that has rolled over hands its activation to the current journal, and a
+    // deliberate project quiet past the auto-return window is switched off.
+    private ZetlProject? ResolveActiveCaptureProject(bool shifted)
+    {
+        if (GetActiveProject(shifted) is not { } active)
+        {
+            return null;
+        }
+
+        if (active.JournalMode)
+        {
+            var expectedName = ExpectedJournalProjectName(DateTime.Now, shifted);
+            return IsFormattedJournalName(active.Name, shifted)
+                && !string.Equals(active.Name, expectedName, StringComparison.OrdinalIgnoreCase)
+                    ? GetOrCreateJournalProject(shifted, activate: true)
+                    : active;
+        }
+
+        if (!IsQuietPastAutoReturn(active))
+        {
+            return active;
+        }
+
+        // Quiet past the configured window: return the lane to no project, so a
+        // forgotten project never traps captures. The idle-copy setting then decides
+        // whether tapped copies go to the Journal.
+        SetActiveProjectId(null, shifted);
+        PersistWorkspace();
+        DisposeInactiveTemporaryProjects(persistWorkspace: true);
+        return null;
+    }
+
+    // True when a deliberate project should be switched off: the auto-return
+    // window is on and it has had no capture for at least that long.
+    private bool IsQuietPastAutoReturn(ZetlProject active)
     {
         if (active.JournalMode || active.LastActiveUtc == default)
         {
@@ -279,10 +291,9 @@ internal sealed class ZetlStateStore
     }
 
     // The lane's default journal, created on first use and tracked by id (so a rename
-    // never loses it). Made active per Option 1, so the Board and capture dialog show
-    // the Journal as the current home. Bucketless at creation — the daily roll adds
-    // its first dated bucket, keeping the journal a clean set of day buckets.
-    private ZetlProject GetOrCreateJournalProject(bool shifted)
+    // never loses it). Activated only when the caller asks (Ctrl+J, a rolled-over
+    // journal that was active); capture lookups use it without activating it.
+    private ZetlProject GetOrCreateJournalProject(bool shifted, bool activate)
     {
         var pointerId = shifted ? State.ShiftDefaultJournalProjectId : State.DefaultJournalProjectId;
         var expectedName = ExpectedJournalProjectName(DateTime.Now, shifted);
@@ -293,9 +304,13 @@ internal sealed class ZetlStateStore
             && IsActiveStatus(existing)
             && (!IsFormattedJournalName(existing.Name, shifted) || string.Equals(existing.Name, expectedName, StringComparison.OrdinalIgnoreCase)))
         {
-            SetActiveProjectId(existing.Id, shifted);
-            PersistWorkspace();
-            DisposeInactiveTemporaryProjects(persistWorkspace: true);
+            if (activate)
+            {
+                SetActiveProjectId(existing.Id, shifted);
+                PersistWorkspace();
+                DisposeInactiveTemporaryProjects(persistWorkspace: true);
+            }
+
             return existing;
         }
 
@@ -319,23 +334,15 @@ internal sealed class ZetlStateStore
         // ready as reminder slots, then highlight today.
         SeedJournalDayBuckets(journal);
         EnsureJournalDayBucket(journal, DateTime.Now, setActive: true);
-        SetActiveProjectId(journal.Id, shifted);
+        if (activate)
+        {
+            SetActiveProjectId(journal.Id, shifted);
+        }
+
         PersistProject(journal, workspace: true);
         DisposeInactiveTemporaryProjects(persistWorkspace: true);
         return journal;
     }
-
-    // True when <project> is the lane's default Journal. Used to keep the "Start a
-    // project?" capture toggle visible while on the Journal even though it is active.
-    public bool IsDefaultJournalProject(ZetlProject project, bool shifted = false) =>
-        string.Equals(
-            project.Id,
-            shifted ? State.ShiftDefaultJournalProjectId : State.DefaultJournalProjectId,
-            StringComparison.Ordinal);
-
-    // A deliberately-started project is active (i.e. not the default Journal).
-    public bool HasDeliberateActiveProject(bool shifted = false) =>
-        GetActiveProject(shifted) is { } active && !IsDefaultJournalProject(active, shifted);
 
     // Held Ctrl+J toggles the lane between the Journal and the last-used deliberate
     // project: on a deliberate project it returns to the Journal; on the Journal it
@@ -347,7 +354,7 @@ internal sealed class ZetlStateStore
         {
             // The deactivated project stays recorded as the last deliberate project
             // (set when it was activated), so the next toggle brings it back.
-            var journal = GetOrCreateJournalProject(shifted);
+            var journal = GetOrCreateJournalProject(shifted, activate: true);
             return (ZetlProjectToggleOutcome.ReturnedToJournal, journal.Name);
         }
 

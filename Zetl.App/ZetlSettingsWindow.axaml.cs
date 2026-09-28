@@ -76,6 +76,13 @@ internal partial class ZetlSettingsWindow : Window
         tsvRowLengthBox.Value = Clamp(settings.DefaultTsvRowLength, 1, 50);
         dayStartHourBox.Value = Clamp(settings.DayStartHour, 0, 23);
         autoReturnHoursBox.Value = Clamp(settings.JournalAutoReturnHours, 0, 168);
+        idleCopyCaptureBox.ItemsSource = new[]
+        {
+            "Don't capture copies",
+            "Capture copies to the Journal"
+        };
+        idleCopyCaptureBox.SelectedIndex =
+            ZetlIdleCopyCapture.CapturesToJournal(settings.IdleCopyCapture) ? 1 : 0;
         journalIntervalBox.ItemsSource = new[] { "Daily", "Weekly", "Monthly" };
         journalIntervalBox.SelectedItem = ZetlJournalInterval.Normalize(settings.JournalInterval);
 
@@ -254,6 +261,9 @@ internal partial class ZetlSettingsWindow : Window
     public int DefaultTsvRowLength => (int)(tsvRowLengthBox.Value ?? 5);
     public int DayStartHour => (int)(dayStartHourBox.Value ?? 0);
     public int JournalAutoReturnHours => (int)(autoReturnHoursBox.Value ?? 0);
+    public string IdleCopyCapture => idleCopyCaptureBox.SelectedIndex == 1
+        ? ZetlIdleCopyCapture.Journal
+        : ZetlIdleCopyCapture.Off;
     public string JournalInterval => journalIntervalBox.SelectedItem as string ?? "Weekly";
 
     // Zetl Advanced getters

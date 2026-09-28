@@ -160,8 +160,8 @@ it is running or launch it when it is not.
 ## The project lifecycle ties it together
 
 The Compile window's `Finish Project` action is the **seam** between the two
-apps: it sets the project aside, clears its lane, and automatically returns the lane
-to the rolling Journal. Finishing is reversible—set aside, not locked. Combining finish
+apps: it sets the project aside and clears its lane, so held captures file to the
+rolling Journal again. Finishing is reversible—set aside, not locked. Combining finish
 with a default copy/fire output remains an open workflow decision.
 
 ## Groundwork already in place

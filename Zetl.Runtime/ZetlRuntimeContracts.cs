@@ -52,12 +52,11 @@ internal sealed record ZetlNoteCaptureRequest(
     ZetlBucket? PreferredBucket,
     string Text,
     string Source,
-    bool ShowStartProjectToggle,
+    // Project was already the lane's active project when the gesture began, so
+    // the dialog's Activate toggle starts on and saving keeps it active.
+    bool ProjectWasActive,
+    // Turn the toggle on for Project even when it was not active (held copy).
     bool StartProjectDefault,
-    bool ScratchOnlyUntilProjectStarted,
-    bool CreateNewProjectToggle,
-    string? ProjectToggleText,
-    string? ProjectNameDefault,
     ZetlCaptureOrigin? CaptureOrigin = null,
     ZetlClipboardImage? Image = null,
     string? ImageSourceUrl = null,

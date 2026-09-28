@@ -159,11 +159,8 @@ internal sealed class ZetlShortcutCoordinator
         if (!result.Committed
             || (request.Image is null && string.IsNullOrWhiteSpace(result.NoteText)))
         {
-            if (request.ShowStartProjectToggle && !request.CreateNewProjectToggle)
-            {
-                store.ClearActiveProject(request.Shifted);
-            }
-
+            // Esc (or an empty save) changes nothing: the lane keeps whatever
+            // project was active before the gesture.
             // A held Ctrl+X already performed the physical cut before the dialog
             // opened, so discarding the note leaves the source missing its text.
             // Signal the host to paste the still-on-clipboard cut text back.
@@ -205,6 +202,8 @@ internal sealed class ZetlShortcutCoordinator
         {
             store.SetQuickNoteBucket(noteProject, bucket.Id);
         }
+
+        store.RecordCaptureActivity(noteProject);
 
         // A request carrying both clipboard text and a picture is a dual
         // capture: the (possibly edited) text is the content and the slip
@@ -252,16 +251,14 @@ internal sealed class ZetlShortcutCoordinator
                 : $"Saved note to {bucket.Name}, but copying it failed and the original clipboard could not be restored completely.");
         }
 
-        // The Activate toggle decides the lane's active project. When off, undo
-        // the dated default's auto-activation (nothing was active before) and
-        // deactivate the chosen project if it is the one currently active;
-        // otherwise leave the prior active project untouched.
+        // The Activate toggle decides the lane's active project. When off, the
+        // chosen project is deactivated if it is the one currently active;
+        // otherwise the prior active project (or none) is left untouched.
         if (result.StartProject)
         {
             store.SetActiveProject(noteProject.Id, request.Shifted);
         }
-        else if (request.ShowStartProjectToggle
-            || store.GetActiveProject(request.Shifted)?.Id == noteProject.Id)
+        else if (store.GetActiveProject(request.Shifted)?.Id == noteProject.Id)
         {
             store.ClearActiveProject(request.Shifted);
         }
@@ -436,10 +433,8 @@ internal sealed class ZetlShortcutCoordinator
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
-        // "Deliberate" so the Start-a-project toggle still shows while on the Journal,
-        // which (per Option 1) is itself the active project when nothing else is.
-        var hadActiveProject = store.HasDeliberateActiveProject(context.ShiftLane);
-        var project = store.GetOrCreateDefaultProject(context.ShiftLane);
+        var project = store.GetCaptureHome(context.ShiftLane);
+        var projectWasActive = store.GetActiveProject(context.ShiftLane)?.Id == project.Id;
         var clipboardContent = ResolveHoldClipboardContent(context, pending);
         var pendingImage = clipboardContent?.Image;
         if (pendingImage is { } image)
@@ -455,12 +450,8 @@ internal sealed class ZetlShortcutCoordinator
                 imageBucket,
                 clipboardContent?.Text ?? "",
                 "copy",
-                ShowStartProjectToggle: !hadActiveProject,
+                ProjectWasActive: projectWasActive,
                 StartProjectDefault: true,
-                ScratchOnlyUntilProjectStarted: false,
-                CreateNewProjectToggle: false,
-                ProjectToggleText: null,
-                ProjectNameDefault: null,
                 CaptureOrigin: pending?.CaptureOrigin,
                 Image: image,
                 RichHtml: clipboardContent?.Html,
@@ -483,12 +474,8 @@ internal sealed class ZetlShortcutCoordinator
                 imageBucket,
                 "",
                 "copy",
-                ShowStartProjectToggle: !hadActiveProject,
+                ProjectWasActive: projectWasActive,
                 StartProjectDefault: true,
-                ScratchOnlyUntilProjectStarted: false,
-                CreateNewProjectToggle: false,
-                ProjectToggleText: null,
-                ProjectNameDefault: null,
                 CaptureOrigin: pending?.CaptureOrigin,
                 Image: resolvedUrl.Image,
                 ImageSourceUrl: resolvedUrl.SourceUrl);
@@ -506,12 +493,8 @@ internal sealed class ZetlShortcutCoordinator
             preferredBucket,
             text,
             "copy",
-            ShowStartProjectToggle: !hadActiveProject,
+            ProjectWasActive: projectWasActive,
             StartProjectDefault: true,
-            ScratchOnlyUntilProjectStarted: false,
-            CreateNewProjectToggle: false,
-            ProjectToggleText: null,
-            ProjectNameDefault: null,
             CaptureOrigin: pending?.CaptureOrigin,
             RichHtml: clipboardContent?.Html,
             ReplayFormats: clipboardContent?.ReplayFormats);
@@ -521,12 +504,13 @@ internal sealed class ZetlShortcutCoordinator
         ChordlEventContext context,
         ZetlPendingShortcut? pending)
     {
-        // "Deliberate" so the Start-a-project toggle still shows while on the Journal,
-        // which (per Option 1) is itself the active project when nothing else is.
-        var hadActiveProject = store.HasDeliberateActiveProject(context.ShiftLane);
-        var project = store.GetOrCreateDefaultProject(context.ShiftLane);
-        var scratch = store.GetScratchBucket(project);
-        var preferredBucket = hadActiveProject ? store.GetQuickNoteBucket(project) : scratch;
+        var project = store.GetCaptureHome(context.ShiftLane);
+        var projectWasActive = store.GetActiveProject(context.ShiftLane)?.Id == project.Id;
+        // A journal takes quick notes in today's Quick Note child; a project in the
+        // bucket its last quick note went to.
+        var preferredBucket = project.JournalMode
+            ? store.GetScratchBucket(project)
+            : store.GetQuickNoteBucket(project);
         var clipboardContent = ResolveHoldClipboardContent(context, pending);
         var text = clipboardContent?.Text ?? "";
         return new ZetlNoteCaptureRequest(
@@ -535,12 +519,8 @@ internal sealed class ZetlShortcutCoordinator
             preferredBucket,
             text,
             "cut",
-            ShowStartProjectToggle: !hadActiveProject,
+            ProjectWasActive: projectWasActive,
             StartProjectDefault: false,
-            ScratchOnlyUntilProjectStarted: !hadActiveProject,
-            CreateNewProjectToggle: false,
-            ProjectToggleText: null,
-            ProjectNameDefault: null,
             CaptureOrigin: pending?.CaptureOrigin,
             RichHtml: clipboardContent?.Html,
             ReplayFormats: clipboardContent?.ReplayFormats);
@@ -785,7 +765,9 @@ internal sealed class ZetlShortcutCoordinator
                 return;
             }
 
-            var project = store.GetActiveProject(pending.ShiftLane);
+            // The active project, or the Journal when the idle-copy setting
+            // captures there; with neither, copy behaves like a plain copy.
+            var project = store.GetTapCaptureProject(pending.ShiftLane);
             if (project is null)
             {
                 return;
@@ -801,6 +783,8 @@ internal sealed class ZetlShortcutCoordinator
             {
                 return;
             }
+
+            store.RecordCaptureActivity(project);
 
             // Both formats present (e.g. spreadsheet cells): keep both on one
             // slip, presenting as text. The picture rides along so Kastn can

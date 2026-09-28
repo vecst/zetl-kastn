@@ -17,6 +17,9 @@ internal sealed class ZetlAppSettings
     // Hours of no capture after which an active deliberate project hands capture back
     // to the Journal, so a forgotten project never traps notes. 0 = off.
     public int JournalAutoReturnHours { get; set; }
+    // What a tapped Ctrl+C does when no project is active in its lane: Off leaves
+    // copy and paste working like normal; Journal captures every copy all day.
+    public string IdleCopyCapture { get; set; } = ZetlIdleCopyCapture.Off;
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
     public string ThemeVariant { get; set; } = "System";
     public string JournalInterval { get; set; } = ZetlJournalInterval.Weekly;
@@ -104,6 +107,17 @@ internal static class ZetlKastnTemplateLaneDefault
         var lane = ZetlStateStore.CanonicalTemporaryLane(value);
         return lane ?? Ask;
     }
+}
+
+internal static class ZetlIdleCopyCapture
+{
+    public const string Off = "Off";
+    public const string Journal = "Journal";
+
+    public static string Normalize(string? value) =>
+        string.Equals(value?.Trim(), Journal, StringComparison.OrdinalIgnoreCase) ? Journal : Off;
+
+    public static bool CapturesToJournal(string? value) => Normalize(value) == Journal;
 }
 
 internal static class ZetlJournalInterval

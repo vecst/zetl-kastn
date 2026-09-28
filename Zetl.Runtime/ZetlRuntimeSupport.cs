@@ -12,7 +12,8 @@ internal static class ZetlRuntimeSettings
         {
             DayStartHour = settings.DayStartHour,
             JournalAutoReturnHours = settings.JournalAutoReturnHours,
-            JournalInterval = settings.JournalInterval
+            JournalInterval = settings.JournalInterval,
+            IdleCopyCapture = ZetlIdleCopyCapture.Normalize(settings.IdleCopyCapture)
         };
     }
 }

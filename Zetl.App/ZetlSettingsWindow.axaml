@@ -29,7 +29,7 @@
         <ScrollViewer x:Name="zetlSettingsPanel" IsVisible="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="20" Margin="0,0,12,0">
             <TextBlock Text="Zetl General Settings" Classes="heading" />
-            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
               <TextBlock Grid.Row="0" Grid.Column="0"
                          Text="Toast display time (ms)"
                          VerticalAlignment="Center" />
@@ -100,7 +100,7 @@
                              Minimum="0" Maximum="23" Increment="1" />
 
               <TextBlock Grid.Row="9" Grid.Column="0"
-                         Text="Auto-return to Journal after (hours, 0 = off)"
+                         Text="Deactivate a quiet project after (hours, 0 = off)"
                          Margin="0,12,10,0"
                          VerticalAlignment="Center"
                          TextWrapping="Wrap" />
@@ -109,10 +109,17 @@
                              Minimum="0" Maximum="168" Increment="1" />
 
               <TextBlock Grid.Row="10" Grid.Column="0"
+                         Text="When no project is active"
+                         Margin="0,12,0,0"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Row="10" Grid.Column="1" x:Name="idleCopyCaptureBox"
+                        Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+
+              <TextBlock Grid.Row="11" Grid.Column="0"
                          Text="Journal interval"
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
-              <ComboBox Grid.Row="10" Grid.Column="1" x:Name="journalIntervalBox"
+              <ComboBox Grid.Row="11" Grid.Column="1" x:Name="journalIntervalBox"
                         Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
             </Grid>
 

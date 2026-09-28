@@ -334,6 +334,9 @@ internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, 
     // the Journal. 0 = off.
     public int JournalAutoReturnHours { get; init; }
 
+    // Where a tapped copy goes with no project active: nowhere (Off) or the Journal.
+    public string IdleCopyCapture { get; init; } = ZetlIdleCopyCapture.Off;
+
     public string JournalInterval { get; init; } = "Weekly";
 
     public static ZetlBucketDefaults Standard { get; } = new(new[] { "Inbox", ZetlStateStore.ScratchBucketName }, "Formatted", 5);
