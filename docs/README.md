@@ -38,6 +38,8 @@ These are the authoritative places to answer “what remains?”
 
 - [`coldkey-ideas-discussion.md`](coldkey-ideas-discussion.md) — post-RC
   Coldkey and portable text-interaction ideas; discussion only
+- [`hold-routing-discussion.md`](hold-routing-discussion.md) — routing held
+  gestures by context, file-reference slips, and move tracking; discussion only
 - [`kastn-compile-split.md`](kastn-compile-split.md) — historical product
   rationale for the Zetl, Compile, and Kastn boundary
 - [`kastn-ui-roadmap.md`](kastn-ui-roadmap.md) — Kastn UI work already landed
