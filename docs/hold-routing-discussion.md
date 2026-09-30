@@ -32,6 +32,63 @@ can share the hold syntax and each know what to act on.
 - **Capture stays decision-free.** Routing chooses the handler from context;
   the user never picks one mid-gesture.
 
+## Layering: Chordl → router → handlers
+
+The router is the missing layer between Chordl and Zetl:
+
+- **Chordl** turns physical keys into gestures: taps, holds, and the per-key
+  dispatch mode. It knows nothing about apps, files, or notes.
+- **The router** takes each gesture plus a context snapshot, matches the
+  rules, and picks a handler.
+- **Handlers** do the work: Zetl's features in-process, other programs over
+  IPC.
+
+Today that middle layer exists only in pieces: the host's `OnHoldDetected`,
+the `switch` in `HandleClaimedHoldAsync`, `OnTapDispatched`, and the
+file-view check. Carving it out is mostly moving code, not adding a hop:
+Chordl, the router, and Zetl's handlers all stay in the one Zetl process.
+
+## Latency
+
+The router must not add perceptible latency, and it does not need to. Each
+path has its own budget:
+
+| Path | What happens | Budget | Router cost |
+| --- | --- | --- | --- |
+| Key down | Chordl passes the key through or holds it back, per its dispatch mode | must return in microseconds; Windows drops hooks that stall | none; the router is not consulted |
+| Tap | native action, or Zetl's tap behavior (Replay, Pop) | instant for `None`/`Immediate` keys; `TapOnly` keys already wait for key-up | an in-memory rule match plus cheap window checks, microseconds |
+| Hold | the 353 ms threshold passes, then a handler runs | the user is already waiting 353 ms | rule match microseconds; in-process call, or one local pipe message (sub-millisecond) |
+
+The latency Zetl has today comes from Chordl's dispatch modes, not routing: a
+`TapOnly` key (`Ctrl+V`, `Ctrl+B`, …) is held back until release so a hold can
+be told apart from a tap. That stays exactly as it is.
+
+Rules that keep it that way:
+
+1. **No IPC on the key path.** External programs register their rules ahead
+   of time; the router matches locally and only then notifies the program.
+   Nothing waits for another process to decide.
+2. **Programs claim holds, not taps.** Tap behavior stays with Zetl's
+   built-ins. A program claiming a tap would force its key into `TapOnly`
+   and delay every ordinary press of it.
+3. **Arming a key is visible.** Adding a rule for a new held key means Chordl
+   must arm that key. Settings shows the dispatch mode it will use, since
+   `TapOnly` delays that key's taps until release.
+4. **Snapshot cheaply, then lazily.** Window and focus are read at keydown
+   (microseconds, already done). Process name, clipboard kinds, and the shell
+   folder are gathered off the hook thread during the hold wait, and only
+   when a rule for that key needs them.
+5. **A hung program costs one timeout, once.** Dispatch expects an
+   acknowledgment within about 100 ms; with no answer, the next rule runs
+   and the program is marked unhealthy, so later gestures skip it without
+   waiting.
+
+**Measure it.** Before carving out the router, record the keyboard-hook
+callback time and the hold-to-handler time, sampled into the diagnostics
+log, so the change can be shown to be latency-neutral rather than assumed.
+The existing `ZetlActionLatencyProbe` covers Kastn's IPC round trips, not the
+key path.
+
 ## Context snapshot
 
 Zetl already records the target window and process at keydown (the
