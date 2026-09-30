@@ -65,8 +65,23 @@ snapshot and waits a bounded time for the handler to accept; no answer means
 the default runs. The program never sees raw keystrokes, only resolved
 gestures.
 
-**Who writes the rules.** Open question: built-in claims first, then
-user-editable rules in Settings ("in file views, held `Ctrl+X` goes to…").
+**Who writes the rules: the user, in Settings.** Routing is a list of rules,
+each *gesture + condition → action*:
+
+- gesture: a held key (`Ctrl+X`, `Ctrl+Shift+V`, …);
+- condition: focus kind (file view, text field), target application, clipboard
+  kind (text, picture, files, pending file cut), or any;
+- action: a Zetl built-in or a program registered over IPC.
+
+Zetl's own behavior ships as default rules the user can see, reorder, and
+reset, so nothing is hidden behind the list. A rule whose program is not
+running, or does not answer in time, is skipped and the next matching rule
+runs, ending at Zetl's default.
+
+**The wider idea.** This turns Zetl into a host for hold actions over the
+operating system's own interface: a separate program can extend File Explorer
+or any other app with held gestures without owning a keyboard hook. Zetl's
+note-taking is the first set of actions; others plug in beside it.
 
 ## File references
 
@@ -102,8 +117,7 @@ rather than intervenes:
    thread.
 3. Confirm by identity: resolve the recorded file ID. A same-volume move keeps
    the ID, so the new path comes back directly. A cross-volume move is a copy
-   plus delete (new ID), so fall back to destination folder + file name, then
-   size and modified time.
+   plus delete (new ID), so fall back to destination folder + file name.
 4. Append `{from, to, when}` to the slip's move history.
 
 If the user saves the note and never pastes, the cut simply expires; the note
@@ -134,15 +148,21 @@ Windows. The options that do survive moves:
 | Shell shortcut (`.lnk`) resolve | Yes, often across volumes | uses Windows' Distributed Link Tracking service, which Explorer shortcuts already rely on; NTFS only, best effort |
 | Content hash | Finds copies anywhere | needs a search to find the file again; changes whenever the file is edited |
 
-**Proposal:** store a layered identity and resolve in order —
+**Resolve in order:**
 
-1. the recorded path (fast path);
+1. the saved path — looking the file up by name in its last folder;
 2. the NTFS file ID on the recorded volume (same-volume moves and renames);
-3. a serialized shell link, resolved without UI (Windows' own move tracking);
-4. name + size + modified time near the last known folder (last resort);
+3. a serialized shell link, resolved without UI (Windows' own move tracking,
+   the only layer that follows cross-volume moves);
 
-— and mark the reference **stale** in Kastn when none of these finds it,
-instead of guessing. A stale file shows an **Update link** button that opens a
+and mark the reference **stale** in Kastn when none of these finds it,
+instead of guessing. A search of neighboring folders by name, size, and date
+was considered and dropped: it overlaps the saved path, and Update link covers
+the remaining cases better than a guess would.
+
+When the saved path resolves but the file ID has changed, the file was most
+likely saved by an editor that writes a new file and swaps it in; keep the
+reference and refresh the stored ID. A stale file shows an **Update link** button that opens a
 file picker; choosing the file re-captures its identity and records the relink
 in the move history. Stale and relink are per file, so one missing file in a
 multi-file slip does not mark the others.
@@ -151,9 +171,8 @@ multi-file slip does not mark the others.
 
 A reference points at the user's file; it does not copy it into the project
 the way pictures are stored. Copying would survive anything but duplicates
-data and silently diverges from the real file. Open question: an explicit
-"snapshot this file into the project" action in Kastn for when a copy is
-wanted.
+data and silently diverges from the real file. An explicit "copy this file
+into the project" action in Kastn is **benched** for now.
 
 ### Slip shape (sketch)
 
@@ -175,19 +194,20 @@ Compile outputs the path by default (so a TSV row can reference files).
 Replay pastes the path as text into text targets; in a file view it could
 paste the file itself (a later handler).
 
-## The file tool (later)
+## The file tool (a separate program)
 
 The other idea — cut a file, paste it with a new name — is a different job:
-a file-manager action, not note-taking. It becomes the first handler that is
-not Zetl's default:
+a file-manager action, not note-taking, so it is **a separate program**, not
+part of Zetl. It is one example of extending the OS's interface with hold
+actions, and the first external handler:
 
 - claim: held `Ctrl+V` in a file view while the clipboard holds a pending cut;
 - behavior: a small dialog prefilled with the file name; on confirm, move the
   file to the window's folder under the new name, then record the move on any
   reference slip that tracks that file.
 
-Whether it lives inside Zetl or as a separate program registered over IPC is
-open. It is a good test of the external-handler path either way.
+It registers its rule over IPC like any external program; Zetl owns the key,
+the program owns the file operation.
 
 ## Decisions
 
@@ -200,14 +220,22 @@ Made 2026-09-30:
 - **Several files make one slip** listing them all, with one note.
 - **Stale references get an Update link button** (file picker, per file);
   layered identity resolves first, stale is shown instead of guessing.
+- **Identity layers:** saved path, file ID, shell link. The name/size/date
+  search is dropped as redundant with the saved path.
+- **Routing rules are user-editable in Settings**, with Zetl's defaults
+  visible and resettable.
+- **Rename-on-paste is a separate program**, an OS-level hold action
+  registered over IPC, not part of Zetl.
 
-## Open decisions
+## Benched
 
-1. Identity layers: all four from the start, or path + file ID first and the
-   shell link later.
-2. Reference-only, or also an explicit snapshot-into-project action.
-3. Routing rules: built-in only at first, or user-editable in Settings.
-4. File tool: part of Zetl, or a separate program over IPC.
+- Copy a referenced file into the project (a Kastn action).
+
+## Still open
+
+- Build the shell-link layer with the first slice, or add it once
+  cross-volume moves actually show up stale. Recommendation: later; Update
+  link covers it meanwhile.
 
 ## Suggested order
 
@@ -216,7 +244,9 @@ Made 2026-09-30:
 2. File reference slip: capture from `CF_HDROP` (one slip per selection), path
    + file ID identity, Kastn display with per-file stale marking and Update
    link.
-3. Held `Ctrl+X` on files: note seeded with the reference, cut undone on
+3. Routing rules in Settings over the handler table (defaults visible and
+   resettable).
+4. Held `Ctrl+X` on files: note seeded with the reference, cut undone on
    dismiss, movement tracking (destination folder + file ID resolve).
-4. The file tool as the first non-default handler, then external handlers
-   over IPC.
+5. External handlers over IPC, proven by the separate rename-on-paste
+   program.
