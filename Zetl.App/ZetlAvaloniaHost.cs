@@ -572,8 +572,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     {
         if (context.KeyCode is ChordlKeys.VK_C or ChordlKeys.VK_X)
         {
-            var captureOrigin = captureOriginProvider.Capture(
-                settingsStore.Settings.CaptureOriginDetail);
+            // Only cheap facts are read here on the hook thread; the origin's
+            // application name resolves later, when a capture first needs it.
+            var detail = settingsStore.Settings.CaptureOriginDetail;
+            var originTarget = captureOriginProvider.CaptureTarget(detail);
+            var captureOrigin = new Lazy<ZetlCaptureOrigin?>(() => originTarget is null
+                ? null
+                : captureOriginProvider.Describe(originTarget, detail));
             var target = ZetlForegroundService.CaptureTarget();
             lock (shortcutTargetsGate)
             {

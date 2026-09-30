@@ -40,6 +40,39 @@ internal static class ZetlWindowsSelfTests
                 && System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(
                     bmp.AsSpan(10, 4)) == 54);
 
+            // The capture target is read on the keyboard hook thread for every
+            // Ctrl+C and Ctrl+X, so it must stay cheap and still name the app.
+            var originProvider = new WindowsCaptureOriginProvider();
+            var titleDetail = ZetlCaptureOriginDetail.ApplicationAndWindowTitle;
+            if (originProvider.CaptureTarget(titleDetail) is not { } originTarget)
+            {
+                Console.WriteLine("SKIP capture target checks: no readable foreground window.");
+            }
+            else
+            {
+                using var foregroundProcess = System.Diagnostics.Process.GetProcessById((int)originTarget.ProcessId);
+                failures += Check(
+                    "capture target names the foreground process",
+                    string.Equals(
+                        Path.GetFileNameWithoutExtension(originTarget.ImagePath),
+                        foregroundProcess.ProcessName,
+                        StringComparison.OrdinalIgnoreCase));
+                failures += Check(
+                    "capture origin describes the foreground application",
+                    originProvider.Describe(originTarget, titleDetail) is { ProcessName.Length: > 0, ApplicationName.Length: > 0 });
+
+                const int calls = 200;
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                for (var i = 0; i < calls; i++)
+                {
+                    originProvider.CaptureTarget(titleDetail);
+                }
+
+                var perCallMs = stopwatch.Elapsed.TotalMilliseconds / calls;
+                Console.WriteLine($"  capture target: {perCallMs:0.000} ms per call");
+                failures += Check("capture target stays under a millisecond per call", perCallMs < 1);
+            }
+
             var png = Convert.FromBase64String(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
             var outputDib = AvaloniaWindowsClipboard.CreateDib(png);

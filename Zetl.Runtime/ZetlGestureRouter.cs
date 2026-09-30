@@ -89,7 +89,7 @@ internal sealed class ZetlGestureRouter
 {
     private readonly IReadOnlyList<ZetlGestureRule> rules;
     private readonly Func<bool> isFileViewFocused;
-    private readonly Dictionary<string, Func<ChordlEventContext, ZetlCaptureOrigin?, Task>> pressActions =
+    private readonly Dictionary<string, Func<ChordlEventContext, Lazy<ZetlCaptureOrigin?>?, Task>> pressActions =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, Func<ChordlEventContext, bool>> tapActions =
         new(StringComparer.Ordinal);
@@ -104,7 +104,7 @@ internal sealed class ZetlGestureRouter
         this.isFileViewFocused = isFileViewFocused ?? (() => false);
     }
 
-    public void RegisterPress(string actionId, Func<ChordlEventContext, ZetlCaptureOrigin?, Task> action) =>
+    public void RegisterPress(string actionId, Func<ChordlEventContext, Lazy<ZetlCaptureOrigin?>?, Task> action) =>
         pressActions.Add(actionId, action);
 
     public void RegisterTap(string actionId, Func<ChordlEventContext, bool> action) =>
@@ -139,7 +139,9 @@ internal sealed class ZetlGestureRouter
         return ZetlGestureActions.Native;
     }
 
-    public Task OnPressAsync(ChordlEventContext context, ZetlCaptureOrigin? captureOrigin = null) =>
+    // The capture origin is deferred: the hook thread records only cheap facts,
+    // and the slower metadata resolves when a capture first needs it.
+    public Task OnPressAsync(ChordlEventContext context, Lazy<ZetlCaptureOrigin?>? captureOrigin = null) =>
         pressActions.TryGetValue(Resolve(ZetlGestureKind.Press, context.KeyCode), out var action)
             ? action(context, captureOrigin)
             : Task.CompletedTask;

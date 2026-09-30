@@ -92,9 +92,23 @@ internal sealed class ZetlCaptureOrigin
     private static string? NullIfEmpty(string value) => value.Length == 0 ? null : value;
 }
 
+// Facts about the window a gesture targeted, read on the keyboard hook thread at
+// keydown. Cheap by design; anything slower is derived later from these.
+internal sealed record ZetlGestureTarget(
+    nint Window,
+    uint ProcessId,
+    string ImagePath,
+    string? WindowTitle);
+
 internal interface ICaptureOriginProvider
 {
-    ZetlCaptureOrigin? Capture(string detail);
+    // Runs on the keyboard hook thread, so it only reads cheap facts. Null when
+    // the detail setting records no origin or the window cannot be read.
+    ZetlGestureTarget? CaptureTarget(string detail);
+
+    // Runs later, off the hook thread: the slower metadata (the application's
+    // display name) derived from a captured target.
+    ZetlCaptureOrigin? Describe(ZetlGestureTarget target, string detail);
 }
 
 internal static class ZetlProjectExportSnapshot

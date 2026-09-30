@@ -94,14 +94,14 @@ internal sealed class ZetlShortcutCoordinator
     // put on the clipboard, and (for a copy) auto-capture it.
     private async Task ObservePressAsync(
         ChordlEventContext context,
-        ZetlCaptureOrigin? captureOrigin,
+        Lazy<ZetlCaptureOrigin?>? captureOrigin,
         bool autoCapture)
     {
         var pending = pendingShortcuts.Register(
             context.KeyCode,
             context.ShiftLane,
             context.ClipboardSequenceNumber,
-            captureOrigin);
+            deferredCaptureOrigin: captureOrigin ?? new Lazy<ZetlCaptureOrigin?>((ZetlCaptureOrigin?)null));
 
         var observeTask = ObserveClipboardChangeAsync(pending);
         var autoCaptureTask = autoCapture

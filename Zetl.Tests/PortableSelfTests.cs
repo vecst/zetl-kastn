@@ -5405,7 +5405,7 @@ public class PortableSelfTests
             public Task OnPhysicalShortcutPassedThroughAsync(
                 ChordlEventContext context,
                 ZetlCaptureOrigin? captureOrigin = null) =>
-                router.OnPressAsync(context, captureOrigin);
+                router.OnPressAsync(context, new Lazy<ZetlCaptureOrigin?>(() => captureOrigin));
 
             public bool OnTapDispatched(ChordlEventContext context) => router.OnTap(context);
 

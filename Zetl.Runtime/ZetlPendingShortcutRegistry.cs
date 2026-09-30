@@ -13,13 +13,24 @@ internal sealed class ZetlPendingShortcutRegistry
         int keyCode,
         bool shifted,
         uint clipboardSequenceNumber,
-        ZetlCaptureOrigin? captureOrigin = null)
+        ZetlCaptureOrigin? captureOrigin = null) =>
+        Register(
+            keyCode,
+            shifted,
+            clipboardSequenceNumber,
+            deferredCaptureOrigin: new Lazy<ZetlCaptureOrigin?>(() => captureOrigin));
+
+    public ZetlPendingShortcut Register(
+        int keyCode,
+        bool shifted,
+        uint clipboardSequenceNumber,
+        Lazy<ZetlCaptureOrigin?> deferredCaptureOrigin)
     {
         var shortcut = new ZetlPendingShortcut(
             keyCode,
             shifted,
             clipboardSequenceNumber,
-            captureOrigin);
+            deferredCaptureOrigin: deferredCaptureOrigin);
         lock (gate)
         {
             pending[(keyCode, shifted)] = shortcut;
@@ -48,17 +59,32 @@ internal sealed class ZetlPendingShortcut
     private readonly object gate = new();
     private ZetlClipboardCaptureSnapshot? observedClipboardContent;
     private bool cancelled;
+    private readonly Lazy<ZetlCaptureOrigin?> captureOrigin;
 
     public ZetlPendingShortcut(
         int keyCode,
         bool shiftLane,
         uint clipboardSequenceNumber,
         ZetlCaptureOrigin? captureOrigin = null)
+        : this(
+            keyCode,
+            shiftLane,
+            clipboardSequenceNumber,
+            deferredCaptureOrigin: new Lazy<ZetlCaptureOrigin?>(() => captureOrigin))
+    {
+    }
+
+    // The origin is resolved on first use, off the keyboard hook thread.
+    public ZetlPendingShortcut(
+        int keyCode,
+        bool shiftLane,
+        uint clipboardSequenceNumber,
+        Lazy<ZetlCaptureOrigin?> deferredCaptureOrigin)
     {
         KeyCode = keyCode;
         ShiftLane = shiftLane;
         ClipboardSequenceNumber = clipboardSequenceNumber;
-        CaptureOrigin = captureOrigin;
+        captureOrigin = deferredCaptureOrigin;
     }
 
     public int KeyCode { get; }
@@ -67,7 +93,7 @@ internal sealed class ZetlPendingShortcut
 
     public uint ClipboardSequenceNumber { get; }
 
-    public ZetlCaptureOrigin? CaptureOrigin { get; }
+    public ZetlCaptureOrigin? CaptureOrigin => captureOrigin.Value;
 
     public string? ObservedClipboardText
     {
