@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -17,6 +18,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private const int LogFlushIntervalMs = 5000;
     private const int LogRetentionDays = 14;
     private const int LogMaxNotesPerDay = 2000;
+    // A key event slower than this is logged on its own, not just summarized.
+    private const double SlowKeyEventMs = 2;
+    private static readonly TimeSpan LatencySummaryInterval = TimeSpan.FromMinutes(10);
 
     private readonly IClassicDesktopStyleApplicationLifetime desktop;
     private readonly ZetlStateStore store;
@@ -29,6 +33,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly AvaloniaNotificationService notifications;
     private readonly ZetlUndoStack undoStack = new(MaxUndoActions);
     private readonly DispatcherTimer logFlushTimer;
+    // Baseline timings for the key path and the hold path, summarized into the
+    // diagnostics log (see docs/hold-routing-discussion.md, Latency).
+    private readonly ZetlLatencyStats keyEventLatency = new("key event");
+    private readonly ZetlLatencyStats holdLatency = new("hold to popup");
+    private readonly DispatcherTimer latencySummaryTimer;
     private readonly IKeyboardBackend keyboard;
     private readonly IClipboard clipboard;
     private readonly IImageUrlResolver imageUrlResolver;
@@ -167,8 +176,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         };
         logFlushTimer.Tick += (_, _) => FlushLogNotes();
         logFlushTimer.Start();
+        latencySummaryTimer = new DispatcherTimer { Interval = LatencySummaryInterval };
+        latencySummaryTimer.Tick += (_, _) => LogLatencySummaries();
+        latencySummaryTimer.Start();
         ipcServer.Start();
 
+        // The log's per-line stamps carry no date, so mark each start with one.
+        Log($"Zetl started {DateTime.Now:yyyy-MM-dd HH:mm:ss}.");
         Log(configMessage);
         if (allowInjectedInputForTesting)
         {
@@ -183,7 +197,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 + "--data-dir.");
         }
 
-        if (!keyboard.Start(processor.HandleKeyEvent))
+        if (!keyboard.Start(TimedHandleKeyEvent))
         {
             notifications.Show(OperatingSystem.IsWindows()
                 ? "Failed to install the global keyboard hook."
@@ -223,6 +237,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         ipcServer.Dispose();
         clickAwayWatcher.Stop();
         logFlushTimer.Stop();
+        latencySummaryTimer.Stop();
+        LogLatencySummaries();
         FlushLogNotes();
         foreach (var board in boards.Values.ToList())
         {
@@ -503,14 +519,48 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         desktop.Shutdown();
     }
 
+    // The keyboard hook's call into Chordl, timed. This is the path that must
+    // stay instant, so recording is a few interlocked operations and only an
+    // unusually slow event is logged individually.
+    private bool TimedHandleKeyEvent(int virtualKey, bool keyDown, bool keyUp, bool isRepeat)
+    {
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            return processor!.HandleKeyEvent(virtualKey, keyDown, keyUp, isRepeat);
+        }
+        finally
+        {
+            var elapsed = Stopwatch.GetTimestamp() - started;
+            keyEventLatency.Record(elapsed);
+            var milliseconds = ZetlLatencyStats.ToMilliseconds(elapsed);
+            if (milliseconds >= SlowKeyEventMs)
+            {
+                Log($"Slow key event: {milliseconds:0.00} ms (vk=0x{virtualKey:X2}, {(keyDown ? "down" : "up")}).");
+            }
+        }
+    }
+
+    private void LogLatencySummaries()
+    {
+        foreach (var stats in new[] { keyEventLatency, holdLatency })
+        {
+            if (stats.TakeSummary() is { } summary)
+            {
+                Log($"Latency {DateTime.Now:yyyy-MM-dd} {summary}.");
+            }
+        }
+    }
+
     private void OnHoldDetected(ChordlEventContext context)
     {
+        var holdStarted = Stopwatch.GetTimestamp();
         var pending = coordinator.ClaimPendingForHold(context);
         var target = TakeShortcutTarget(context.KeyCode)
             ?? ZetlForegroundService.CaptureTarget();
         Log($"{context.Name} hold target: {ZetlForegroundService.DescribeTarget(target)}.");
         Dispatcher.UIThread.Post(() => ZetlAsync.RunLogged(
-            () => HandleHoldAsync(context, target, pending),
+            () => HandleHoldAsync(context, target, pending, holdStarted),
             "hold action",
             Log));
     }
@@ -559,7 +609,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private async Task HandleHoldAsync(
         ChordlEventContext context,
         object? target,
-        ZetlPendingShortcut? pending)
+        ZetlPendingShortcut? pending,
+        long holdStarted)
     {
         var request = await coordinator.HandleClaimedHoldAsync(
             context,
@@ -579,6 +630,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 ShowTemplatePicker(picker, target);
                 break;
         }
+
+        holdLatency.Record(Stopwatch.GetTimestamp() - holdStarted);
     }
 
     // Zetl's quick template access: a held Ctrl+T (or a held Ctrl+V with no active
