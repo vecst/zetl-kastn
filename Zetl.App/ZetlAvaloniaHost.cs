@@ -128,7 +128,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             undoStack,
             () => settingsStore.Settings,
             Log,
-            imageUrlResolver);
+            imageUrlResolver,
+            ZetlShellFileView.HasFocus);
 
         ApplySettings();
         store.ConsolidateDefaultProject();

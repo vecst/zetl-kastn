@@ -3599,6 +3599,44 @@ public class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
+        [Fact(DisplayName = "Runtime Replay and Pop let a paste into a file view through")]
+        public static void RuntimeReplayAndPopPassThroughIntoFileView()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            store.AddSlip(queue, "queued value", "copy");
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var fileViewFocused = true;
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _,
+                isFileViewFocused: () => fileViewFocused);
+
+            AssertFalse(
+                coordinator.OnTapDispatched(ShortcutContext(VK_V)),
+                "Pasting into File Explorer should paste the user's files, not a Replay item.");
+            AssertEqual(0, keyboard.PasteCount, "Replay sends nothing into a file view.");
+            AssertEqual("queued value", queue.Slips.Single().Text, "The Replay item waits for a text target.");
+
+            store.SetBucketKind(queue, "Standard");
+            store.SetBucketPopMode(queue, true);
+            clipboard.SetState("queued value", changeToken: 2);
+            AssertFalse(coordinator.OnTapDispatched(ShortcutContext(VK_V)), "Pop passes the paste through.");
+            AssertEqual(1, queue.Slips.Count, "Pop does not consume an item that was not pasted as text.");
+
+            store.SetBucketPopMode(queue, false);
+            store.SetBucketKind(queue, "Replay");
+            fileViewFocused = false;
+            AssertTrue(coordinator.OnTapDispatched(ShortcutContext(VK_V)), "Back in a text target, Replay takes the paste.");
+            AssertEqual(1, keyboard.PasteCount, "Replay pastes its item into the text target.");
+        }
+
         [Fact(DisplayName = "Runtime Replay clipboard session reports restore outcomes")]
         public static void RuntimeReplayClipboardSessionReportsRestoreOutcomes()
         {
@@ -5327,7 +5365,8 @@ public class PortableSelfTests
             bool replayResumeClipboard = true,
             IZetlDispatcher? dispatcher = null,
             IImageUrlResolver? imageUrlResolver = null,
-            Action<string>? log = null)
+            Action<string>? log = null,
+            Func<bool>? isFileViewFocused = null)
         {
             keyboard = new FakeKeyboardBackend();
             undo = new ZetlUndoStack(100);
@@ -5348,7 +5387,8 @@ public class PortableSelfTests
                 undo,
                 () => settings,
                 log ?? (_ => { }),
-                imageUrlResolver);
+                imageUrlResolver,
+                isFileViewFocused);
         }
 
         private static ChordlEventContext ShortcutContext(

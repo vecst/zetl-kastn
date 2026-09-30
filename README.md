@@ -230,7 +230,9 @@ of clipboard formats, including rich HTML/RTF, spreadsheet payloads, file lists,
 images, and their fallback representations. Some clipboards cannot be backed
 up — a file copied in File Explorer, for example, carries its contents as a
 stream Windows will not hand over. Replay still pastes in that case and says
-the previous clipboard can't be restored; it never blocks paste. A clipboard
+the previous clipboard can't be restored; it never blocks paste. Pasting into a
+file list — File Explorer, the desktop, or an Open/Save dialog — always pastes
+your files normally; Replay and Pop stay out of it. A clipboard
 changed by the user during Replay's restore delay is never overwritten. Captured text slips prefer a stored native rich representation
 when supported, then HTML, with plain text available for applications that do
 not accept either. Text and picture slips are both supported.

@@ -20,6 +20,7 @@ internal sealed class ZetlShortcutCoordinator
     private readonly Func<ZetlAppSettings> getSettings;
     private readonly Action<string> log;
     private readonly IImageUrlResolver? imageUrlResolver;
+    private readonly Func<bool> isFileViewFocused;
 
     private bool autoCaptureOnCopy() => getSettings().AutoCaptureOnCopy;
     private bool quickNoteToClipboard() => getSettings().QuickNoteToClipboard;
@@ -42,7 +43,8 @@ internal sealed class ZetlShortcutCoordinator
         ZetlUndoStack undoStack,
         Func<ZetlAppSettings> getSettings,
         Action<string> log,
-        IImageUrlResolver? imageUrlResolver = null)
+        IImageUrlResolver? imageUrlResolver = null,
+        Func<bool>? isFileViewFocused = null)
     {
         this.store = store;
         this.keyboard = keyboard;
@@ -55,6 +57,7 @@ internal sealed class ZetlShortcutCoordinator
         this.getSettings = getSettings;
         this.log = log;
         this.imageUrlResolver = imageUrlResolver;
+        this.isFileViewFocused = isFileViewFocused ?? (() => false);
     }
 
     public async Task OnPhysicalShortcutPassedThroughAsync(
@@ -95,6 +98,14 @@ internal sealed class ZetlShortcutCoordinator
         // Both V chords are paste coldkeys; the lane comes from ShiftLane, not
         // from ReplayShift, which only describes the pass-through replay chord.
         if (context.KeyCode != VK_V)
+        {
+            return false;
+        }
+
+        // A paste into a file view (File Explorer, the desktop, a file dialog's
+        // list) pastes files. Replay and Pop work on text and pictures, so they
+        // stay out of the way and the physical paste goes through untouched.
+        if (isFileViewFocused())
         {
             return false;
         }
