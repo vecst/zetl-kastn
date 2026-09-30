@@ -926,6 +926,7 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         var resumeClipboard = replayResumeClipboard();
+        string? backupWarning = null;
         await replayClipboardGate.WaitAsync();
         bool clipboardStaged = false;
         bool pasted = false;
@@ -936,12 +937,15 @@ internal sealed class ZetlShortcutCoordinator
             // thread. Marshal staging back to the dispatcher before injection.
             await RunOnDispatcherAsync(() =>
             {
+                // A clipboard Zetl cannot back up must not block Replay: the
+                // physical paste is already suppressed, so refusing here would
+                // leave paste dead until the user copied something else.
                 if (resumeClipboard
-                    && !replayClipboard.TryPreserveUserClipboard(shifted, out var backupFailure))
+                    && replayClipboard.PreserveUserClipboard(shifted, out var backupFailure)
+                        == ZetlReplayBackupOutcome.Unavailable)
                 {
-                    notifications.Show(
-                        $"Replay paused; Zetl could not safely preserve every clipboard format ({backupFailure}). {bucketName} item kept.");
-                    return;
+                    log($"Replay could not back up the clipboard ({backupFailure}); pasting without restoring it.");
+                    backupWarning = "your previous clipboard can't be restored afterwards";
                 }
                 var stageResult = replayClipboard.Stage(
                     shifted,
@@ -1032,7 +1036,9 @@ internal sealed class ZetlShortcutCoordinator
 
             if (!replayComplete)
             {
-                notifications.Show($"Pasted next item from {bucketName}.");
+                notifications.Show(backupWarning is null
+                    ? $"Pasted next item from {bucketName}."
+                    : $"Pasted next item from {bucketName}; {backupWarning}.");
             }
 
             return new ReplayPasteResult(Pasted: true, replayComplete);

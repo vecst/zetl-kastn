@@ -213,9 +213,13 @@ internal sealed class ZetlStateStore
     {
         var project = ResolveActiveCaptureProject(shifted)
             ?? GetOrCreateJournalProject(shifted, activate: false);
-        // A journal always has today's day bucket present and highlighted before the
-        // capture path resolves a target. Its Capture / Quick Note children stay lazy.
-        EnsureJournalDayBucket(project, DateTime.Now, setActive: true);
+        // A journal always has today's day bucket present before the capture path
+        // resolves a target, highlighted unless the user picked a bucket of their
+        // own. Its Capture / Quick Note children stay lazy.
+        EnsureJournalDayBucket(
+            project,
+            DateTime.Now,
+            setActive: UserSelectedJournalBucket(project) is null);
         return project;
     }
 
@@ -387,9 +391,10 @@ internal sealed class ZetlStateStore
         return GetOrCreateChildBucket(project, null, JournalBucketName(localNow, Defaults.DayStartHour), setActive);
     }
 
-    // The copy-capture target for a journal: today's day parent's "Capture" child,
-    // created on first use and made the active bucket. No-op (null) for a non-journal
-    // project. Named RollJournalBucket because it also advances the active day.
+    // The copy-capture target for a journal: a bucket the user selected, else
+    // today's day parent's "Capture" child, created on first use and made the
+    // active bucket. No-op (null) for a non-journal project. Named RollJournalBucket
+    // because it also advances the active day.
     [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlBucket? RollJournalBucket(ZetlProject project, DateTime localNow)
     {
@@ -398,9 +403,40 @@ internal sealed class ZetlStateStore
             return null;
         }
 
+        if (UserSelectedJournalBucket(project) is { } selected)
+        {
+            return selected;
+        }
+
         var day = EnsureJournalDayBucket(project, localNow)!;
         return GetOrCreateChildBucket(project, day.Id, JournalCaptureBucketName, setActive: true);
     }
+
+    // The journal's active bucket when the user chose it: anything other than the
+    // day buckets Zetl manages (a dated day, or its Capture / Quick Note child),
+    // which roll forward with the calendar instead.
+    private static ZetlBucket? UserSelectedJournalBucket(ZetlProject project)
+    {
+        if (!project.JournalMode
+            || project.Buckets.FirstOrDefault(bucket => bucket.Id == project.ActiveBucketId) is not { } active
+            || IsDeletedBucket(active)
+            || IsReservedBucketName(active.Name)
+            || IsJournalDayBucket(active))
+        {
+            return null;
+        }
+
+        var isManagedDayChild = active.ParentBucketId is { } parentId
+            && project.Buckets.Any(parent => parent.Id == parentId && IsJournalDayBucket(parent))
+            && (string.Equals(active.Name, JournalCaptureBucketName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(active.Name, JournalQuickNoteBucketName, StringComparison.OrdinalIgnoreCase));
+        return isManagedDayChild ? null : active;
+    }
+
+    // A top-level dated day bucket, named like JournalBucketName ("Mon 07-06").
+    private static bool IsJournalDayBucket(ZetlBucket bucket) =>
+        bucket.ParentBucketId is null
+        && System.Text.RegularExpressions.Regex.IsMatch(bucket.Name, @"^[A-Z][a-z]{2} \d{2}-\d{2}$");
 
     // The quick-note target for a journal: today's day parent's "Quick Note" child,
     // created on first use. Does not steal the active bucket from the copy target.

@@ -116,6 +116,40 @@ public class ZetlClipboardTransactionTests
         AssertEqual("original", clipboard[1], "The original clipboard should remain untouched.");
     }
 
+    [Fact] public void WriteWithoutBackupSucceedsAndReportsUncertainFailure()
+    {
+        // An original clipboard that could not be backed up (null rollback) must
+        // not block the write; only a failed write is reported as uncertain.
+        var clipboard = new Dictionary<uint, string> { [1] = "unreadable original" };
+        var result = ZetlNativeClipboardTransaction.Execute(
+            Stage((10u, "new")),
+            rollback: null,
+            () =>
+            {
+                clipboard.Clear();
+                return true;
+            },
+            (format, payload) =>
+            {
+                clipboard[format] = payload;
+                return true;
+            });
+
+        AssertEqual(ZetlClipboardWriteStatus.Success, result.Status, "A write without a backup should still succeed.");
+        AssertEqual("new", clipboard[10], "The requested content should be written.");
+
+        var failed = ZetlNativeClipboardTransaction.Execute(
+            Stage((10u, "new"), (11u, "new-rich")),
+            rollback: null,
+            () => true,
+            (format, _) => format != 11);
+        AssertEqual(
+            ZetlClipboardWriteStatus.WriteFailedRestoreFailed,
+            failed.Status,
+            "A failed write with no backup cannot claim the original was restored.");
+        AssertTrue(!failed.ClipboardPreserved, "A failed write with no backup leaves the clipboard uncertain.");
+    }
+
     [Fact] public void SuccessfulTransactionRequiresEveryTargetFormat()
     {
         var clipboard = new Dictionary<uint, string> { [1] = "original" };

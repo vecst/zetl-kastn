@@ -119,6 +119,10 @@ that day arrives. Each day is a small nested structure: copy captures land in a
 first time that gesture fires on the day. The day boundary is the `DayStartHour`
 setting.
 
+Selecting a bucket of your own in the Journal (one that isn't a day or a day's
+`Capture` / `Quick Note`) keeps copies going there until you select a day
+bucket again.
+
 Finishing a deliberate project sets it aside and clears it from its lane.
 Setting a project aside does not delete or lock it; it can be reactivated later.
 
@@ -223,10 +227,11 @@ For each paste, Zetl temporarily places the next slip on the clipboard, sends
 the paste, archives the consumed slip into a review bucket, and restores the
 user's previous clipboard. On Windows, restoration preserves the complete set
 of clipboard formats, including rich HTML/RTF, spreadsheet payloads, file lists,
-images, and their fallback representations. If a format cannot be backed up
-faithfully, Replay pauses before changing the clipboard and keeps the queued
-slip. A clipboard changed by the user during Replay's restore delay is never
-overwritten. Captured text slips prefer a stored native rich representation
+images, and their fallback representations. Some clipboards cannot be backed
+up — a file copied in File Explorer, for example, carries its contents as a
+stream Windows will not hand over. Replay still pastes in that case and says
+the previous clipboard can't be restored; it never blocks paste. A clipboard
+changed by the user during Replay's restore delay is never overwritten. Captured text slips prefer a stored native rich representation
 when supported, then HTML, with plain text available for applications that do
 not accept either. Text and picture slips are both supported.
 

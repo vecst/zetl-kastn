@@ -571,22 +571,28 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
                 FailureReason: "no clipboard owner window is available");
         }
 
+        // Back up the current clipboard so a failed write can be rolled back. When
+        // it holds something that cannot be backed up (a browser's virtual-file
+        // image, delay-rendered data), write anyway: every caller is replacing the
+        // clipboard on purpose, and refusing would block every later write until
+        // the user happened to copy something else.
         var original = CaptureBackup();
-        if (!original.IsComplete || original.RawFormats is null)
+        var originalFormats = original.IsComplete ? original.RawFormats : null;
+        if (originalFormats is null)
         {
-            var reason = original.FailureReason
-                ?? "the current clipboard could not be backed up completely";
-            log($"{operation} refused: {reason}; clipboard left intact.");
-            return new(ZetlClipboardWriteStatus.BackupIncomplete, FailureReason: reason);
+            log($"{operation}: {original.FailureReason ?? "the current clipboard could not be backed up completely"}; writing without a rollback.");
         }
 
         var target = new List<ZetlStagedClipboardFormat<NativeClipboardPayload>>();
-        var rollback = new List<ZetlStagedClipboardFormat<NativeClipboardPayload>>();
+        var rollback = originalFormats is null
+            ? null
+            : new List<ZetlStagedClipboardFormat<NativeClipboardPayload>>();
         var opened = false;
         try
         {
             if (!TryStageFormats(targetFormats, target, out var failedFormat, out var failureReason)
-                || !TryStageFormats(original.RawFormats, rollback, out failedFormat, out failureReason))
+                || (rollback is not null
+                    && !TryStageFormats(originalFormats!, rollback, out failedFormat, out failureReason)))
             {
                 log($"{operation} staging failed: {failureReason}; clipboard left intact.");
                 return new(
@@ -629,7 +635,10 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         finally
         {
             ReleaseOwnedPayloads(target);
-            ReleaseOwnedPayloads(rollback);
+            if (rollback is not null)
+            {
+                ReleaseOwnedPayloads(rollback);
+            }
             if (opened)
             {
                 CloseClipboard();
@@ -1111,6 +1120,34 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         try
         {
             return EmptyClipboard();
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
+    // Self-test only: advertise a delay-rendered format that is never supplied,
+    // like a browser's virtual-file image (FileContents). Reading it fails, so
+    // the clipboard cannot be backed up. Returns false if it could not be placed.
+    public bool PlaceUnreadableFormatForSelfTest(string formatName)
+    {
+        if (!EnsureOwnerWindow() || !TryOpen())
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!EmptyClipboard())
+            {
+                return false;
+            }
+
+            // Delayed rendering returns NULL on success too; the error code decides.
+            Marshal.SetLastPInvokeError(0);
+            SetClipboardData(RegisterClipboardFormat(formatName), IntPtr.Zero);
+            return Marshal.GetLastPInvokeError() == 0;
         }
         finally
         {

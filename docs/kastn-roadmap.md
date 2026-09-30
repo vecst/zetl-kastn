@@ -97,8 +97,9 @@ leverage.
 - [x] Resume visible durable Replay queue items across Zetl restarts instead of
       treating prior-session slips as an empty queue and passing through paste.
 - [x] Preserve the complete multi-format Windows clipboard across Replay,
-      refuse replacement when any format cannot be restored faithfully, and
-      bind delayed restoration to the exact staged clipboard change token.
+      write anyway (without restoring) when the clipboard cannot be backed up
+      so paste never blocks, and bind delayed restoration to the exact staged
+      clipboard change token.
 - [x] Replay captured text slips with allowlisted native Calc formats so cell
       styling survives without HTML import adding wrap or alignment rules.
 - [x] Preserve undo/redo entries until inverse commands are confirmed; retry

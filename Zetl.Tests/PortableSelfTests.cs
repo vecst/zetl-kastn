@@ -2848,6 +2848,48 @@ public class PortableSelfTests
             AssertEqual(work.Id, store.GetActiveProject()?.Id, "The quick note keeps the project active.");
         }
 
+        [Fact(DisplayName = "Runtime tapped copies into a journal keep a user-selected bucket")]
+        public static async Task RuntimeTappedCopiesKeepUserSelectedJournalBucket()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path)
+            {
+                Defaults = ZetlBucketDefaults.Standard with { IdleCopyCapture = ZetlIdleCopyCapture.Journal }
+            };
+            var journal = store.GetCaptureHome();
+            var math = store.AddBucket(journal, "Math");
+            store.SetActiveBucket(journal, math.Id);
+            var clipboard = new FakeClipboard("first", changeToken: 2);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out _,
+                out _);
+
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                captureOrigin: null);
+            AssertEqual("first", math.Slips.Single().Text, "A copy lands in the bucket the user selected.");
+
+            // A held gesture looks up the capture home; it must not reset the choice.
+            store.GetCaptureHome();
+            clipboard.SetState("second", changeToken: 4);
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 3),
+                captureOrigin: null);
+            AssertEqual(2, math.Slips.Count, "The selected bucket is remembered across captures.");
+            AssertEqual(math.Id, journal.ActiveBucketId, "The selection stays active.");
+
+            // Selecting one of today's managed buckets goes back to the daily roll.
+            var today = store.EnsureJournalDayBucket(journal, DateTime.Now)!;
+            store.SetActiveBucket(journal, today.Id);
+            AssertEqual(
+                ZetlStateStore.JournalCaptureBucketName,
+                store.RollJournalBucket(journal, DateTime.Now)!.Name,
+                "Choosing a day bucket returns copies to today's Capture.");
+        }
+
         // A committed save of <request> into its own project and preferred bucket.
         private static ZetlNoteCaptureResult SavedNote(
             ZetlNoteCaptureRequest request,
@@ -3569,7 +3611,7 @@ public class PortableSelfTests
                 session.RestoreOriginalIfOwned(shifted: false),
                 "A fresh Replay lane should report that it has no user backup.");
             AssertTrue(
-                session.TryPreserveUserClipboard(shifted: false, out var failureReason),
+                session.PreserveUserClipboard(shifted: false, out var failureReason) == ZetlReplayBackupOutcome.Preserved,
                 $"Replay should preserve the initial clipboard: {failureReason}");
             AssertTrue(
                 session.TryStage(shifted: false, item, out var injectedToken),
@@ -3600,7 +3642,7 @@ public class PortableSelfTests
 
             session.Reset(shifted: false);
             AssertTrue(
-                session.TryPreserveUserClipboard(shifted: false, out failureReason),
+                session.PreserveUserClipboard(shifted: false, out failureReason) == ZetlReplayBackupOutcome.Preserved,
                 $"Replay should preserve the newer user clipboard: {failureReason}");
             AssertTrue(
                 session.TryStage(shifted: false, item, out injectedToken),
@@ -3615,7 +3657,7 @@ public class PortableSelfTests
             clipboard.WriteResultOverride = null;
             session.Reset(shifted: false);
             AssertTrue(
-                session.TryPreserveUserClipboard(shifted: false, out failureReason),
+                session.PreserveUserClipboard(shifted: false, out failureReason) == ZetlReplayBackupOutcome.Preserved,
                 $"Replay should preserve before testing an uncertain rollback: {failureReason}");
             AssertTrue(
                 session.TryStage(shifted: false, item, out injectedToken),
@@ -4067,18 +4109,21 @@ public class PortableSelfTests
             AssertEqual(0, queue.Slips.Count, "A successfully restored Replay should consume its item.");
         }
 
-        [Fact(DisplayName = "Runtime Replay refuses a lossy clipboard replacement")]
-        public static void RuntimeReplayRefusesLossyClipboardReplacement()
+        [Fact(DisplayName = "Runtime Replay still pastes when the clipboard can't be backed up")]
+        public static void RuntimeReplayPastesWhenClipboardCannotBeBackedUp()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.GetActiveBucket()!;
             store.SetBucketKind(queue, "Replay");
-            store.AddSlip(queue, "queued value", "copy");
+            store.AddSlip(queue, "first value", "copy");
+            store.AddSlip(queue, "second value", "copy");
+            // A browser image copy can carry a virtual-file format Windows will
+            // not hand over, so the user's clipboard cannot be backed up.
             var clipboard = new FakeClipboard("user clipboard", changeToken: 1)
             {
-                BackupFailureReason = "CF_BITMAP cannot be restored safely"
+                BackupFailureReason = "clipboard format FileContents could not be read"
             };
             var notifications = new FakeNotificationSink();
             var coordinator = CreateShortcutCoordinator(
@@ -4086,20 +4131,20 @@ public class PortableSelfTests
                 clipboard,
                 notifications,
                 out var keyboard,
-                out var undo);
+                out _);
 
-            var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
-
-            AssertTrue(handled, "Replay tap should remain handled when safe backup is impossible.");
-            AssertEqual(0, keyboard.PasteCount, "Replay must not paste after an incomplete clipboard backup.");
-            AssertEqual("user clipboard", clipboard.Text, "Replay must leave the user's clipboard untouched.");
-            AssertEqual(1, queue.Slips.Count, "Replay must keep the queued item after refusing replacement.");
-            AssertFalse(undo.TryPop(false, out _), "A refused Replay must not create an undo entry.");
+            AssertTrue(coordinator.OnTapDispatched(ShortcutContext(VK_V)), "The Replay tap replaces the physical paste.");
+            AssertEqual(1, keyboard.PasteCount, "Replay must still paste its item when the backup is impossible.");
+            AssertEqual("first value", clipboard.Text, "The pasted item stays on the clipboard; there is nothing to restore.");
+            AssertEqual("second value", queue.Slips.Single().Text, "The pasted item is consumed.");
             AssertTrue(
-                notifications.Messages.Exists(message =>
-                    message.Contains("Replay paused", StringComparison.OrdinalIgnoreCase)
-                    && message.Contains("item kept", StringComparison.OrdinalIgnoreCase)),
-                "Replay should explain that it paused to avoid a lossy clipboard replacement.");
+                notifications.Messages.Last().Contains("can't be restored", StringComparison.OrdinalIgnoreCase),
+                "Replay says the previous clipboard won't come back.");
+
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            AssertEqual(2, keyboard.PasteCount, "Later taps keep pasting.");
+            AssertEqual(0, queue.Slips.Count, "The queue drains normally.");
+            AssertEqual("second value", clipboard.Text, "The last item is left on the clipboard.");
         }
 
         [Fact(DisplayName = "Runtime Replay does not paste after transactional staging fails")]

@@ -14,40 +14,61 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
         lanes[ZetlLanes.Index(shifted)] = new ReplayLaneState();
     }
 
-    public bool TryPreserveUserClipboard(bool shifted, out string failureReason)
+    // Back up the user's clipboard before Replay stages over it, so it can be
+    // restored afterwards. When the clipboard holds something that cannot be
+    // backed up, Replay still pastes; the lane just skips restoration until the
+    // user copies something new.
+    public ZetlReplayBackupOutcome PreserveUserClipboard(bool shifted, out string failureReason)
     {
         var index = ZetlLanes.Index(shifted);
         var lane = lanes[index];
         var current = ReadSnapshot();
-        if (lane.UserBackup is not null && MatchesTracked(lane, current))
+        if (MatchesTracked(lane, current))
         {
-            failureReason = "";
-            return true;
+            // The clipboard still holds what this lane staged, so the decision
+            // made when Replay first replaced the user's clipboard stands.
+            if (lane.UserBackup is not null)
+            {
+                failureReason = "";
+                return ZetlReplayBackupOutcome.Preserved;
+            }
+
+            if (lane.BackupFailure is { } earlierFailure)
+            {
+                failureReason = earlierFailure;
+                return ZetlReplayBackupOutcome.StillUnavailable;
+            }
         }
 
         var otherLane = lanes[index == 0 ? 1 : 0];
-        if (otherLane.UserBackup is { } otherBackup
-            && MatchesTracked(otherLane, current))
+        if (MatchesTracked(otherLane, current)
+            && (otherLane.UserBackup is not null || otherLane.BackupFailure is not null))
         {
             // The other Replay lane owns the current clipboard. Carry its
-            // original user snapshot forward instead of treating its staged
-            // Replay item as user content.
-            lane.UserBackup = otherBackup;
-            failureReason = "";
-            return true;
+            // original user snapshot (or its lack of one) forward instead of
+            // treating its staged Replay item as user content.
+            lane.UserBackup = otherLane.UserBackup;
+            lane.BackupFailure = otherLane.BackupFailure;
+            failureReason = lane.BackupFailure ?? "";
+            return lane.UserBackup is not null
+                ? ZetlReplayBackupOutcome.Preserved
+                : ZetlReplayBackupOutcome.StillUnavailable;
         }
 
         var backup = clipboard.CaptureBackup();
         if (!backup.IsComplete)
         {
-            failureReason = backup.FailureReason
+            lane.UserBackup = null;
+            lane.BackupFailure = backup.FailureReason
                 ?? "the clipboard could not be backed up completely";
-            return false;
+            failureReason = lane.BackupFailure;
+            return ZetlReplayBackupOutcome.Unavailable;
         }
 
         lane.UserBackup = backup;
+        lane.BackupFailure = null;
         failureReason = "";
-        return true;
+        return ZetlReplayBackupOutcome.Preserved;
     }
 
     public bool TryStage(
@@ -165,10 +186,22 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
     {
         public ZetlClipboardBackup? UserBackup { get; set; }
 
+        // Why the user's clipboard could not be backed up, while Replay owns it.
+        public string? BackupFailure { get; set; }
+
         public ZetlClipboardSnapshot? Injected { get; set; }
 
         public uint? InjectedToken { get; set; }
     }
+}
+
+internal enum ZetlReplayBackupOutcome
+{
+    Preserved,
+    // The user's clipboard could not be backed up just now.
+    Unavailable,
+    // Replay still owns a clipboard it could not back up on an earlier tap.
+    StillUnavailable
 }
 
 internal enum ZetlClipboardRestoreOutcome

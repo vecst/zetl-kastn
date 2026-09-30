@@ -3,13 +3,15 @@ namespace ZETL;
 /// <summary>
 /// Executes a fully staged native clipboard replacement. Payload allocation and
 /// release remain platform-owned; this component owns destructive write and
-/// compensating-restore ordering.
+/// compensating-restore ordering. A null rollback means the original clipboard
+/// could not be backed up; the write still proceeds (the caller is replacing the
+/// clipboard on purpose), and a failed write then reports an uncertain clipboard.
 /// </summary>
 internal static class ZetlNativeClipboardTransaction
 {
     public static ZetlClipboardWriteResult Execute<TPayload>(
         IReadOnlyList<ZetlStagedClipboardFormat<TPayload>> target,
-        IReadOnlyList<ZetlStagedClipboardFormat<TPayload>> rollback,
+        IReadOnlyList<ZetlStagedClipboardFormat<TPayload>>? rollback,
         Func<bool> emptyClipboard,
         Func<uint, TPayload, bool> transfer)
     {
@@ -39,10 +41,18 @@ internal static class ZetlNativeClipboardTransaction
 
     private static ZetlClipboardWriteResult RollBack<TPayload>(
         uint failedFormat,
-        IReadOnlyList<ZetlStagedClipboardFormat<TPayload>> rollback,
+        IReadOnlyList<ZetlStagedClipboardFormat<TPayload>>? rollback,
         Func<bool> emptyClipboard,
         Func<uint, TPayload, bool> transfer)
     {
+        if (rollback is null)
+        {
+            return new(
+                ZetlClipboardWriteStatus.WriteFailedRestoreFailed,
+                failedFormat,
+                "the target write failed and the original clipboard had no restorable backup");
+        }
+
         if (!emptyClipboard())
         {
             return new(

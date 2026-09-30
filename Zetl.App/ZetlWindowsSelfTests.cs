@@ -328,6 +328,23 @@ internal static class ZetlWindowsSelfTests
                 {
                     noOwner.Dispose();
                 }
+
+                // A clipboard holding a format Windows will not hand over (a
+                // browser's virtual-file image) cannot be backed up. Writes must
+                // still replace it rather than refusing until the user copies
+                // something else.
+                failures += Check(
+                    "clipboard places an unreadable delay-rendered format",
+                    clipboard.PlaceUnreadableFormatForSelfTest("Zetl Self-Test Unreadable"));
+                failures += Check(
+                    "an unreadable clipboard cannot be backed up",
+                    !clipboard.CaptureBackup().IsComplete);
+                failures += Check(
+                    "a write over an unreadable clipboard still succeeds",
+                    clipboard.SetText("written over unreadable"));
+                failures += Check(
+                    "the write replaced the unreadable clipboard",
+                    clipboard.TryGetText() == "written over unreadable");
             }
             else
             {
