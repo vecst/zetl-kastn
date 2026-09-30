@@ -1,8 +1,8 @@
 # Hold Routing and File References — Discussion
 
 > Status: discussion only. Nothing here is built except the file-view paste
-> pass-through that prompted it (557dd98). Decisions still open are collected
-> at the end.
+> pass-through that prompted it (557dd98). Decisions made so far and those
+> still open are collected at the end.
 
 ## How this came up
 
@@ -80,7 +80,9 @@ with no extra UI.
 
 ### Gestures
 
-Both keys can take a file, with different weight:
+Both keys can take a file, with different weight. Selecting several files
+makes **one** slip listing all of them, with one note, never a prompt per
+file:
 
 - **Held `Ctrl+C` on a file** → a *reference slip*: the captured thing is the
   file. Copy never marks the file for moving, so nothing else changes.
@@ -104,10 +106,19 @@ rather than intervenes:
    size and modified time.
 4. Append `{from, to, when}` to the slip's move history.
 
-If the user never pastes, the cut simply expires; the note still holds the
-original reference. Undecided: whether Zetl should cancel the pending move
-(put the same files back on the clipboard as a *copy*) when the note is
-dismissed, so the file is not left greyed out in Explorer.
+If the user saves the note and never pastes, the cut simply expires; the note
+still holds the original reference.
+
+**Dismissing the note undoes the cut**, mirroring text: a discarded held text
+cut pastes the text back, so a discarded held file cut cancels the pending
+move. Explorer's cut removes nothing until the paste, so undoing it means
+replacing the clipboard with the same file list marked as a *copy*
+(`Preferred DropEffect` = copy). Explorer then stops showing the files as cut,
+and the files stay on the clipboard the same way cut text does after a
+paste-back. Guard it like text paste-back: only when the clipboard still holds
+exactly that cut (unchanged change token), so a newer copy is never clobbered.
+To confirm during implementation: that Explorer clears the greyed-out state on
+that clipboard change.
 
 ### Why a symbolic link won't track moves
 
@@ -131,7 +142,10 @@ Windows. The options that do survive moves:
 4. name + size + modified time near the last known folder (last resort);
 
 — and mark the reference **stale** in Kastn when none of these finds it,
-instead of guessing.
+instead of guessing. A stale file shows an **Update link** button that opens a
+file picker; choosing the file re-captures its identity and records the relink
+in the move history. Stale and relink are per file, so one missing file in a
+multi-file slip does not mark the others.
 
 ### Link or copy
 
@@ -146,14 +160,14 @@ wanted.
 A file reference joins text, picture, and dual slips as a representation:
 
 ```
-FileReference
+Files[]             one entry per selected file, in selection order
   Path              last resolved full path
   Name              file name at capture
   Size, ModifiedUtc at capture
   VolumeSerial      volume the file ID belongs to
   FileId            NTFS 128-bit file ID
   ShellLink         serialized shell link (optional)
-  Moves[]           { From, To, AtUtc }
+  Moves[]           { From, To, AtUtc, Kind: moved | relinked }
   Stale             true when resolution failed
 ```
 
@@ -175,24 +189,34 @@ not Zetl's default:
 Whether it lives inside Zetl or as a separate program registered over IPC is
 open. It is a good test of the external-handler path either way.
 
+## Decisions
+
+Made 2026-09-30:
+
+- **Both keys take files.** Held `Ctrl+C` makes a reference slip; held `Ctrl+X`
+  makes a note seeded with the reference and tracks where the cut files land.
+- **Dismissing a file note undoes the cut**, like a discarded text cut
+  (re-mark the files as a copy; guarded by the change token).
+- **Several files make one slip** listing them all, with one note.
+- **Stale references get an Update link button** (file picker, per file);
+  layered identity resolves first, stale is shown instead of guessing.
+
 ## Open decisions
 
-1. Which key makes a plain file reference: `Ctrl+C`, `Ctrl+X`, or both with
-   the meanings above.
-2. On a dismissed file note, cancel the pending cut (re-mark as copy) or leave
-   Explorer's state alone.
-3. Identity layers: all four, or start with path + file ID.
-4. Reference-only, or also an explicit snapshot-into-project action.
-5. Routing rules: built-in only at first, or user-editable in Settings.
-6. File tool: part of Zetl, or a separate program over IPC.
-7. Multiple files selected: one slip per file, or one slip listing them.
+1. Identity layers: all four from the start, or path + file ID first and the
+   shell link later.
+2. Reference-only, or also an explicit snapshot-into-project action.
+3. Routing rules: built-in only at first, or user-editable in Settings.
+4. File tool: part of Zetl, or a separate program over IPC.
 
 ## Suggested order
 
 1. Context snapshot plus handler table with today's behavior (no visible
    change).
-2. File reference slip: capture from `CF_HDROP`, path + file ID identity, Kastn
-   display with stale marking.
-3. Movement tracking for held `Ctrl+X` (destination folder + file ID resolve).
+2. File reference slip: capture from `CF_HDROP` (one slip per selection), path
+   + file ID identity, Kastn display with per-file stale marking and Update
+   link.
+3. Held `Ctrl+X` on files: note seeded with the reference, cut undone on
+   dismiss, movement tracking (destination folder + file ID resolve).
 4. The file tool as the first non-default handler, then external handlers
    over IPC.
