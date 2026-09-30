@@ -48,6 +48,15 @@ the `switch` in `HandleClaimedHoldAsync`, `OnTapDispatched`, and the
 file-view check. Carving it out is mostly moving code, not adding a hop:
 Chordl, the router, and Zetl's handlers all stay in the one Zetl process.
 
+**Built (branch `router`):** `ZetlGestureRouter` in `Zetl.Runtime`. Chordl's
+three callbacks (press passed through, tap, hold) go to the router; it
+resolves a `ZetlGestureRule` (kind + key + focus condition → action id) and
+runs the action registered under that id. `ZetlGestureRules.Defaults` holds
+today's behavior as data, including the file-view paste rule, and the
+coordinator registers Zetl's behavior as named actions. The context snapshot
+is still only the focus check plus the host's existing target and origin
+bookkeeping for copy and cut.
+
 ## Latency
 
 The router must not add perceptible latency, and it does not need to. Each

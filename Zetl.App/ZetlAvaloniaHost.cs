@@ -42,6 +42,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly IClipboard clipboard;
     private readonly IImageUrlResolver imageUrlResolver;
     private readonly ZetlShortcutCoordinator coordinator;
+    // Between Chordl and Zetl: turns each press, tap, and hold into an action.
+    private readonly ZetlGestureRouter router;
     private readonly ChordlProcessor? processor;
     private readonly TrayIcon trayIcon;
     private readonly ZetlThemeManager themeManager;
@@ -137,8 +139,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             undoStack,
             () => settingsStore.Settings,
             Log,
-            imageUrlResolver,
-            ZetlShellFileView.HasFocus);
+            imageUrlResolver);
+        router = new ZetlGestureRouter(ZetlGestureRules.Defaults, ZetlShellFileView.HasFocus);
+        coordinator.RegisterActions(router);
 
         ApplySettings();
         store.ConsolidateDefaultProject();
@@ -156,7 +159,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             holdDelay,
             DispatchOriginalAction,
             OnPhysicalShortcutPassedThrough,
-            coordinator.OnTapDispatched,
+            router.OnTap,
             OnHoldDetected,
             Log,
             clipboard.GetChangeToken);
@@ -579,16 +582,14 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
             Log($"{context.Name} keydown target: {ZetlForegroundService.DescribeTarget(target)}.");
             ZetlAsync.RunLogged(
-                () => coordinator.OnPhysicalShortcutPassedThroughAsync(
-                    context,
-                    captureOrigin),
+                () => router.OnPressAsync(context, captureOrigin),
                 "physical shortcut pass-through",
                 Log);
             return;
         }
 
         ZetlAsync.RunLogged(
-            () => coordinator.OnPhysicalShortcutPassedThroughAsync(context),
+            () => router.OnPressAsync(context),
             "physical shortcut pass-through",
             Log);
     }
@@ -612,9 +613,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         ZetlPendingShortcut? pending,
         long holdStarted)
     {
-        var request = await coordinator.HandleClaimedHoldAsync(
-            context,
-            pending);
+        var request = await router.OnHoldAsync(context, pending);
         switch (request)
         {
             case ZetlBoardRequest board:

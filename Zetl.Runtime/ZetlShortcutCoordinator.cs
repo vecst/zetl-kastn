@@ -20,7 +20,6 @@ internal sealed class ZetlShortcutCoordinator
     private readonly Func<ZetlAppSettings> getSettings;
     private readonly Action<string> log;
     private readonly IImageUrlResolver? imageUrlResolver;
-    private readonly Func<bool> isFileViewFocused;
 
     private bool autoCaptureOnCopy() => getSettings().AutoCaptureOnCopy;
     private bool quickNoteToClipboard() => getSettings().QuickNoteToClipboard;
@@ -43,8 +42,7 @@ internal sealed class ZetlShortcutCoordinator
         ZetlUndoStack undoStack,
         Func<ZetlAppSettings> getSettings,
         Action<string> log,
-        IImageUrlResolver? imageUrlResolver = null,
-        Func<bool>? isFileViewFocused = null)
+        IImageUrlResolver? imageUrlResolver = null)
     {
         this.store = store;
         this.keyboard = keyboard;
@@ -57,18 +55,48 @@ internal sealed class ZetlShortcutCoordinator
         this.getSettings = getSettings;
         this.log = log;
         this.imageUrlResolver = imageUrlResolver;
-        this.isFileViewFocused = isFileViewFocused ?? (() => false);
     }
 
-    public async Task OnPhysicalShortcutPassedThroughAsync(
-        ChordlEventContext context,
-        ZetlCaptureOrigin? captureOrigin = null)
+    // Zetl's gesture behavior, registered under the ids the routing rules name.
+    // Which key and focus lead to each action is the router's decision.
+    public void RegisterActions(ZetlGestureRouter router)
     {
-        if (context.KeyCode is not (VK_C or VK_X))
-        {
-            return;
-        }
+        router.RegisterPress(ZetlGestureActions.ObserveCopy, (context, origin) =>
+            ObservePressAsync(context, origin, autoCapture: autoCaptureOnCopy()));
+        router.RegisterPress(ZetlGestureActions.ObserveCut, (context, origin) =>
+            ObservePressAsync(context, origin, autoCapture: false));
 
+        router.RegisterTap(ZetlGestureActions.PasteQueue, HandlePasteTap);
+
+        router.RegisterHold(ZetlGestureActions.CaptureSelectAll, (context, _) =>
+            CreateSelectAllCaptureRequestAsync(context));
+        router.RegisterHold(ZetlGestureActions.ToggleProject, (context, _) =>
+            Task.FromResult(HandleProjectToggle(context.ShiftLane)));
+        router.RegisterHold(ZetlGestureActions.Board, (context, _) =>
+            Task.FromResult<ZetlShortcutRequest?>(new ZetlBoardRequest(context.ShiftLane)));
+        router.RegisterHold(ZetlGestureActions.CaptureCopy, CreateCopyHoldRequestAsync);
+        router.RegisterHold(ZetlGestureActions.TogglePop, (context, _) =>
+            Task.FromResult(HandlePopToggle(context.ShiftLane)));
+        router.RegisterHold(ZetlGestureActions.ToggleReplay, (context, _) =>
+            Task.FromResult(HandleReplayToggle(context.ShiftLane)));
+        router.RegisterHold(ZetlGestureActions.TemplatePicker, (context, _) =>
+            Task.FromResult<ZetlShortcutRequest?>(
+                new ZetlTemplatePickerRequest(context.ShiftLane, FromCompileFallback: false)));
+        router.RegisterHold(ZetlGestureActions.QuickNote, (context, pending) =>
+            Task.FromResult<ZetlShortcutRequest?>(CreateCutHoldRequest(context, pending)));
+        router.RegisterHold(ZetlGestureActions.Compile, (context, _) =>
+            Task.FromResult(CreateCompileRequest(context.ShiftLane)));
+        router.RegisterHold(ZetlGestureActions.Undo, (context, _) =>
+            Task.FromResult(HandleUndo(context.ShiftLane)));
+    }
+
+    // A copy or cut went through natively: remember it so a hold can use what it
+    // put on the clipboard, and (for a copy) auto-capture it.
+    private async Task ObservePressAsync(
+        ChordlEventContext context,
+        ZetlCaptureOrigin? captureOrigin,
+        bool autoCapture)
+    {
         var pending = pendingShortcuts.Register(
             context.KeyCode,
             context.ShiftLane,
@@ -76,7 +104,7 @@ internal sealed class ZetlShortcutCoordinator
             captureOrigin);
 
         var observeTask = ObserveClipboardChangeAsync(pending);
-        var autoCaptureTask = context.KeyCode == VK_C && autoCaptureOnCopy()
+        var autoCaptureTask = autoCapture
             ? AutoCaptureCopyAsync(pending)
             : Task.CompletedTask;
         await Task.WhenAll(observeTask, autoCaptureTask);
@@ -93,23 +121,12 @@ internal sealed class ZetlShortcutCoordinator
         return CancelPending(context.KeyCode, context.ShiftLane);
     }
 
-    public bool OnTapDispatched(ChordlEventContext context)
+    // A tapped paste: Replay pastes the next queued item instead, Pop lets the
+    // paste through and removes the matching item. Both paste chords share it;
+    // the lane comes from ShiftLane, not from ReplayShift, which only describes
+    // the pass-through replay chord.
+    private bool HandlePasteTap(ChordlEventContext context)
     {
-        // Both V chords are paste coldkeys; the lane comes from ShiftLane, not
-        // from ReplayShift, which only describes the pass-through replay chord.
-        if (context.KeyCode != VK_V)
-        {
-            return false;
-        }
-
-        // A paste into a file view (File Explorer, the desktop, a file dialog's
-        // list) pastes files. Replay and Pop work on text and pictures, so they
-        // stay out of the way and the physical paste goes through untouched.
-        if (isFileViewFocused())
-        {
-            return false;
-        }
-
         var shiftLane = context.ShiftLane;
         if (replayLanes.IsRestoring(shiftLane))
         {
@@ -134,33 +151,6 @@ internal sealed class ZetlShortcutCoordinator
 
         ZetlAsync.RunLogged(() => HandlePopTapAsync(context.ShiftLane), "pop tap", log);
         return false;
-    }
-
-    public Task<ZetlShortcutRequest?> HandleHoldAsync(ChordlEventContext context)
-    {
-        return HandleClaimedHoldAsync(
-            context,
-            ClaimPendingForHold(context));
-    }
-
-    public async Task<ZetlShortcutRequest?> HandleClaimedHoldAsync(
-        ChordlEventContext context,
-        ZetlPendingShortcut? pending)
-    {
-        return context.KeyCode switch
-        {
-            VK_A => await CreateSelectAllCaptureRequestAsync(context),
-            VK_J => HandleProjectToggle(context.ShiftLane),
-            VK_B => new ZetlBoardRequest(context.ShiftLane),
-            VK_C => await CreateCopyHoldRequestAsync(context, pending),
-            VK_P => HandlePopToggle(context.ShiftLane),
-            VK_R => HandleReplayToggle(context.ShiftLane),
-            VK_T => new ZetlTemplatePickerRequest(context.ShiftLane, FromCompileFallback: false),
-            VK_X => CreateCutHoldRequest(context, pending),
-            VK_V => CreateCompileRequest(context.ShiftLane),
-            VK_Z => HandleUndo(context.ShiftLane),
-            _ => null
-        };
     }
 
     public ZetlNoteCaptureOutcome CompleteNoteCapture(

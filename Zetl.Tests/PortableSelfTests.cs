@@ -5354,7 +5354,7 @@ public class PortableSelfTests
                 "Parity scenario should persist the Shift lane project.");
         }
 
-        private static ZetlShortcutCoordinator CreateShortcutCoordinator(
+        private static RoutedCoordinator CreateShortcutCoordinator(
             ZetlStateStore store,
             IClipboard clipboard,
             FakeNotificationSink notifications,
@@ -5377,7 +5377,7 @@ public class PortableSelfTests
                 ReplayResumeClipboard = replayResumeClipboard,
                 HoldDelayMs = 60
             };
-            return new ZetlShortcutCoordinator(
+            var coordinator = new ZetlShortcutCoordinator(
                 store,
                 keyboard,
                 clipboard,
@@ -5387,8 +5387,53 @@ public class PortableSelfTests
                 undo,
                 () => settings,
                 log ?? (_ => { }),
-                imageUrlResolver,
-                isFileViewFocused);
+                imageUrlResolver);
+            var router = new ZetlGestureRouter(ZetlGestureRules.Defaults, isFileViewFocused);
+            coordinator.RegisterActions(router);
+            return new RoutedCoordinator(coordinator, router);
+        }
+
+        // The coordinator reached the way the app reaches it: every press, tap,
+        // and hold goes through the router with Zetl's default rules, exactly as
+        // Chordl delivers it. Dialog completions go straight to the coordinator.
+        private sealed class RoutedCoordinator(
+            ZetlShortcutCoordinator coordinator,
+            ZetlGestureRouter router)
+        {
+            public ZetlGestureRouter Router => router;
+
+            public Task OnPhysicalShortcutPassedThroughAsync(
+                ChordlEventContext context,
+                ZetlCaptureOrigin? captureOrigin = null) =>
+                router.OnPressAsync(context, captureOrigin);
+
+            public bool OnTapDispatched(ChordlEventContext context) => router.OnTap(context);
+
+            public Task<ZetlShortcutRequest?> HandleHoldAsync(ChordlEventContext context) =>
+                router.OnHoldAsync(context, coordinator.ClaimPendingForHold(context));
+
+            public Task<ZetlShortcutRequest?> HandleClaimedHoldAsync(
+                ChordlEventContext context,
+                ZetlPendingShortcut? pending) =>
+                router.OnHoldAsync(context, pending);
+
+            public ZetlPendingShortcut? ClaimPendingForHold(ChordlEventContext context) =>
+                coordinator.ClaimPendingForHold(context);
+
+            public ZetlPendingShortcut? CancelPending(int keyCode, bool shifted) =>
+                coordinator.CancelPending(keyCode, shifted);
+
+            public ZetlNoteCaptureOutcome CompleteNoteCapture(
+                ZetlNoteCaptureRequest request,
+                ZetlNoteCaptureResult result) =>
+                coordinator.CompleteNoteCapture(request, result);
+
+            public ZetlCompileOutcome CompleteCompile(
+                ZetlCompileRequest request,
+                ZetlCompileResult result) =>
+                coordinator.CompleteCompile(request, result);
+
+            public Task PasteCompiledTextAsync() => coordinator.PasteCompiledTextAsync();
         }
 
         private static ChordlEventContext ShortcutContext(
