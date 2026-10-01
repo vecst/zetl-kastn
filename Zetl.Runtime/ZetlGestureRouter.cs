@@ -21,7 +21,18 @@ internal enum ZetlGestureFocus
 {
     Any,
     // A shell file list: File Explorer, the desktop, an Open/Save dialog.
-    FileView
+    FileView,
+    // One of Zetl's or Kastn's own windows.
+    ZetlWindow
+}
+
+// Whether the foreground window is one of Zetl's or Kastn's, and if so whether
+// it is a Zetl popup (quick note, capture, Compile, the Board, templates).
+internal enum ZetlOwnWindow
+{
+    None,
+    Window,
+    Popup
 }
 
 // One routing rule: a gesture on a key, under a focus condition, runs the action
@@ -42,7 +53,8 @@ internal static class ZetlGestureActions
     public sealed record Choice(string Id, string Label);
 
     public const string ObserveCopy = "zetl.observe-copy";
-    public const string ObserveCut = "zetl.observe-cut";
+    // Remember a copy or cut for a hold, without auto-capturing it.
+    public const string Observe = "zetl.observe";
     public const string PasteQueue = "zetl.paste-queue";
     public const string CaptureSelectAll = "zetl.capture-select-all";
     public const string ToggleProject = "zetl.toggle-project";
@@ -91,16 +103,22 @@ internal static class ZetlGestureActions
 internal static class ZetlGestureRules
 {
     // Zetl's own behavior, in the order the Hold Actions page lists it. Order
-    // does not affect routing: a file-list rule beats an anywhere rule for the
-    // same gesture wherever it sits.
+    // does not affect routing: a file-list rule beats a Zetl-window rule, which
+    // beats an anywhere rule, for the same gesture wherever it sits.
     public static IReadOnlyList<ZetlGestureRule> Defaults { get; } =
     [
         new(ZetlGestureKind.Press, VK_C, ZetlGestureActions.ObserveCopy),
-        new(ZetlGestureKind.Press, VK_X, ZetlGestureActions.ObserveCut),
+        // A copy inside Zetl or Kastn copies your own notes: a hold can still
+        // use it, but auto-capture would only file a duplicate.
+        new(ZetlGestureKind.Press, VK_C, ZetlGestureActions.Observe, ZetlGestureFocus.ZetlWindow),
+        new(ZetlGestureKind.Press, VK_X, ZetlGestureActions.Observe),
 
         // A paste into a file list pastes files; Replay and Pop work on text and
         // pictures, so the physical paste goes through untouched.
         new(ZetlGestureKind.Tap, VK_V, ZetlGestureActions.Native, ZetlGestureFocus.FileView),
+        // A paste inside Zetl or Kastn is editing a slip; Replay and Pop are
+        // for other apps, and would consume a queued slip into the editor.
+        new(ZetlGestureKind.Tap, VK_V, ZetlGestureActions.Native, ZetlGestureFocus.ZetlWindow),
         new(ZetlGestureKind.Tap, VK_V, ZetlGestureActions.PasteQueue),
 
         new(ZetlGestureKind.Hold, VK_A, ZetlGestureActions.CaptureSelectAll),
@@ -159,6 +177,7 @@ internal static class ZetlGestureRules
     public static string FocusLabel(ZetlGestureFocus focus) => focus switch
     {
         ZetlGestureFocus.FileView => "In a file list",
+        ZetlGestureFocus.ZetlWindow => "In Zetl or Kastn",
         _ => "Anywhere"
     };
 
@@ -177,14 +196,16 @@ internal static class ZetlGestureRules
 // Sits between Chordl and the programs that act on gestures. Chordl reports a
 // press, tap, or hold; the router matches it against the rules and runs the
 // action registered under the winning rule's id. When several rules match, the
-// more specific one wins (a file-list rule over an anywhere rule), so the
+// more specific one wins (file list, then Zetl window, then anywhere), so the
 // order of the list never changes behavior. No matching rule, or an id with no
 // registered action, means Native: the key behaves as if Zetl were not there.
-// Actions are registered once at startup; rules can be replaced at any time.
+// Inside a Zetl popup every hold is Native, so popups never open over each
+// other. Actions are registered once at startup; rules can be replaced at any time.
 internal sealed class ZetlGestureRouter
 {
     private IReadOnlyList<ZetlGestureRule> rules;
     private readonly Func<bool> isFileViewFocused;
+    private readonly Func<ZetlOwnWindow> readOwnWindow;
     private readonly Dictionary<string, Func<ChordlEventContext, Lazy<ZetlCaptureOrigin?>?, Task>> pressActions =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, Func<ChordlEventContext, bool>> tapActions =
@@ -194,10 +215,12 @@ internal sealed class ZetlGestureRouter
 
     public ZetlGestureRouter(
         IReadOnlyList<ZetlGestureRule> rules,
-        Func<bool>? isFileViewFocused = null)
+        Func<bool>? isFileViewFocused = null,
+        Func<ZetlOwnWindow>? readOwnWindow = null)
     {
         this.rules = rules;
         this.isFileViewFocused = isFileViewFocused ?? (() => false);
+        this.readOwnWindow = readOwnWindow ?? (() => ZetlOwnWindow.None);
     }
 
     // Swap in an edited rule list. The keyboard hook reads the reference once
@@ -216,12 +239,21 @@ internal sealed class ZetlGestureRouter
         Func<ChordlEventContext, ZetlPendingShortcut?, Task<ZetlShortcutRequest?>> action) =>
         holdActions.Add(actionId, action);
 
-    // The action a gesture resolves to. Focus is looked up only when a rule for
-    // this key asks for it, and at most once per gesture.
+    // The action a gesture resolves to. Each kind of focus is looked up only
+    // when a rule for this key (or the popup check for a hold) asks for it, and
+    // at most once per gesture.
     public string Resolve(ZetlGestureKind kind, int keyCode)
     {
         bool? fileViewFocused = null;
-        string? anywhere = null;
+        ZetlOwnWindow? ownWindow = null;
+        if (kind == ZetlGestureKind.Hold
+            && (ownWindow ??= readOwnWindow()) == ZetlOwnWindow.Popup)
+        {
+            return ZetlGestureActions.Native;
+        }
+
+        string? winner = null;
+        var winnerRank = -1;
         foreach (var rule in Volatile.Read(ref rules))
         {
             if (rule.Kind != kind || rule.KeyCode != keyCode)
@@ -229,20 +261,34 @@ internal sealed class ZetlGestureRouter
                 continue;
             }
 
-            if (rule.Focus == ZetlGestureFocus.Any)
+            var rank = Specificity(rule.Focus);
+            if (rank <= winnerRank)
             {
-                anywhere ??= rule.ActionId;
                 continue;
             }
 
-            if (fileViewFocused ??= isFileViewFocused())
+            var applies = rule.Focus switch
             {
-                return rule.ActionId;
+                ZetlGestureFocus.FileView => fileViewFocused ??= isFileViewFocused(),
+                ZetlGestureFocus.ZetlWindow => (ownWindow ??= readOwnWindow()) != ZetlOwnWindow.None,
+                _ => true
+            };
+            if (applies)
+            {
+                winner = rule.ActionId;
+                winnerRank = rank;
             }
         }
 
-        return anywhere ?? ZetlGestureActions.Native;
+        return winner ?? ZetlGestureActions.Native;
     }
+
+    private static int Specificity(ZetlGestureFocus focus) => focus switch
+    {
+        ZetlGestureFocus.FileView => 2,
+        ZetlGestureFocus.ZetlWindow => 1,
+        _ => 0
+    };
 
     // The capture origin is deferred: the hook thread records only cheap facts,
     // and the slower metadata resolves when a capture first needs it.

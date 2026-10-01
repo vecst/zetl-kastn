@@ -84,7 +84,11 @@ in Settings.
 **Changing what a hold does.** Settings → **Hold Actions** lists every tap and
 hold rule with a menu of the actions it can run, including *Normal key
 behavior*. A rule for file lists (File Explorer, the desktop, Open/Save
-dialogs) wins there over the rule for anywhere. **Reset to defaults** puts
+dialogs), or for Zetl's and Kastn's own windows, wins there over the rule for
+anywhere. Inside Zetl and Kastn, a tapped `Ctrl+V` is an ordinary paste (never
+Replay or Pop), and copies aren't auto-captured. Inside Zetl's popups (quick
+notes, captures, Compile, the Board) every hold is the normal key, so popups
+never open on top of each other. **Reset to defaults** puts
 everything back.
 
 **Hold indicator settings** are at the bottom of the Hold Actions page:

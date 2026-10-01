@@ -21,6 +21,9 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        // Lets Zetl's keyboard hook recognise Kastn's windows, so pasting into
+        // a slip editor here is an ordinary paste, never a Replay.
+        ZetlWindowTag.TagAllWindows(_ => false);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;

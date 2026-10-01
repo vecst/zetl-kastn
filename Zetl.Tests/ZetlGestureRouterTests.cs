@@ -18,7 +18,7 @@ public class ZetlGestureRouterTests
         var expected = new (ZetlGestureKind Kind, int Key, string Action)[]
         {
             (ZetlGestureKind.Press, VK_C, ZetlGestureActions.ObserveCopy),
-            (ZetlGestureKind.Press, VK_X, ZetlGestureActions.ObserveCut),
+            (ZetlGestureKind.Press, VK_X, ZetlGestureActions.Observe),
             (ZetlGestureKind.Tap, VK_V, ZetlGestureActions.PasteQueue),
             (ZetlGestureKind.Hold, VK_A, ZetlGestureActions.CaptureSelectAll),
             (ZetlGestureKind.Hold, VK_B, ZetlGestureActions.Board),
@@ -63,6 +63,55 @@ public class ZetlGestureRouterTests
         router.Resolve(ZetlGestureKind.Hold, VK_C);
         router.Resolve(ZetlGestureKind.Press, VK_X);
         AssertEqual(2, checks, "Gestures with no focus rule never look up focus.");
+    }
+
+    [Fact] public void InsideZetlAndKastnTapsAndCopiesAreOrdinary()
+    {
+        var own = ZetlOwnWindow.Window;
+        var router = new ZetlGestureRouter(ZetlGestureRules.Defaults, () => false, () => own);
+
+        AssertEqual(ZetlGestureActions.Native, router.Resolve(ZetlGestureKind.Tap, VK_V), "A paste into a slip editor is a plain paste, never Replay.");
+        AssertEqual(ZetlGestureActions.Observe, router.Resolve(ZetlGestureKind.Press, VK_C), "A copy is remembered for a hold but not auto-captured.");
+        AssertEqual(ZetlGestureActions.QuickNote, router.Resolve(ZetlGestureKind.Hold, VK_X), "Holds still work in Zetl's windows and Kastn.");
+
+        own = ZetlOwnWindow.None;
+        AssertEqual(ZetlGestureActions.PasteQueue, router.Resolve(ZetlGestureKind.Tap, VK_V), "Other apps still get Replay and Pop.");
+        AssertEqual(ZetlGestureActions.ObserveCopy, router.Resolve(ZetlGestureKind.Press, VK_C), "Other apps' copies can still be auto-captured.");
+    }
+
+    [Fact] public void InsideAZetlPopupEveryHoldIsTheNormalKey()
+    {
+        var reads = 0;
+        var router = new ZetlGestureRouter(
+            ZetlGestureRules.Defaults,
+            () => false,
+            () =>
+            {
+                reads++;
+                return ZetlOwnWindow.Popup;
+            });
+
+        foreach (var key in new[] { VK_A, VK_B, VK_C, VK_J, VK_P, VK_R, VK_T, VK_V, VK_X, VK_Z })
+        {
+            AssertEqual(ZetlGestureActions.Native, router.Resolve(ZetlGestureKind.Hold, key), $"Hold {(char)key} in a popup.");
+        }
+
+        AssertEqual(10, reads, "The window is looked up once per hold.");
+        AssertEqual(ZetlGestureActions.Native, router.Resolve(ZetlGestureKind.Tap, VK_V), "A popup is a Zetl window, so its pastes are plain too.");
+    }
+
+    [Fact] public void AFileListBeatsAZetlWindowRule()
+    {
+        var router = new ZetlGestureRouter(
+            [
+                new(ZetlGestureKind.Hold, VK_X, "anywhere"),
+                new(ZetlGestureKind.Hold, VK_X, "zetl", ZetlGestureFocus.ZetlWindow),
+                new(ZetlGestureKind.Hold, VK_X, "files", ZetlGestureFocus.FileView),
+            ],
+            () => true,
+            () => ZetlOwnWindow.Window);
+
+        AssertEqual("files", router.Resolve(ZetlGestureKind.Hold, VK_X), "The most specific place wins whatever the order.");
     }
 
     [Fact] public async Task MoreSpecificRuleRunsItsRegisteredActionWhateverTheOrder()

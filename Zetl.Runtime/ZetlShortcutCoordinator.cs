@@ -63,7 +63,7 @@ internal sealed class ZetlShortcutCoordinator
     {
         router.RegisterPress(ZetlGestureActions.ObserveCopy, (context, origin) =>
             ObservePressAsync(context, origin, autoCapture: autoCaptureOnCopy()));
-        router.RegisterPress(ZetlGestureActions.ObserveCut, (context, origin) =>
+        router.RegisterPress(ZetlGestureActions.Observe, (context, origin) =>
             ObservePressAsync(context, origin, autoCapture: false));
 
         router.RegisterTap(ZetlGestureActions.PasteQueue, HandlePasteTap);

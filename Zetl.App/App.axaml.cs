@@ -20,6 +20,9 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        // Zetl's keyboard hook treats its own windows, and Kastn's, differently
+        // from other apps; popups also stop holds from opening another popup.
+        ZetlWindowTag.TagAllWindows(window => window is ZetlPopupWindow);
         var themeArgument = Program.StartupArgs
             .FirstOrDefault(arg => arg.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase))
             ?["--theme=".Length..]

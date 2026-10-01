@@ -150,7 +150,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             () => settingsStore.Settings,
             Log,
             imageUrlResolver);
-        router = new ZetlGestureRouter(ZetlGestureRules.Defaults, ZetlShellFileView.HasFocus);
+        router = new ZetlGestureRouter(
+            ZetlGestureRules.Defaults,
+            ZetlShellFileView.HasFocus,
+            () => (ZetlOwnWindow)ZetlWindowTag.ReadForeground());
         coordinator.RegisterActions(router);
 
         ApplySettings();

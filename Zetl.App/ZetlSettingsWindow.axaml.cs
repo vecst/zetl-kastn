@@ -314,7 +314,8 @@ internal partial class ZetlSettingsWindow : Window
         holdActionsIntro.Text =
             $"Choose what each tap and hold does. Every rule applies with and without Shift "
             + $"(the {settings.LaneLabel(false)} and {settings.LaneLabel(true)} lanes). "
-            + "When a key has a rule for file lists, it wins there over the rule for anywhere.";
+            + "A rule for file lists, or for Zetl and Kastn, wins there over the rule for anywhere. "
+            + "Inside Zetl's own popups (quick notes, captures, Compile, the Board) every hold is the normal key.";
 
         var rules = ZetlGestureRules.Apply(settings.HoldActionRules)
             .Where(ZetlGestureRules.IsEditable)
