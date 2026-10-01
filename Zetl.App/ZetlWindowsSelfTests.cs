@@ -371,6 +371,36 @@ internal static class ZetlWindowsSelfTests
                     noOwner.Dispose();
                 }
 
+                // Password managers mark copies private; Zetl must see the mark
+                // and read nothing. CanIncludeInClipboardHistory = 1 is not private.
+                var secret = System.Text.Encoding.Unicode.GetBytes("not-a-real-password\0");
+                failures += Check(
+                    "clipboard stages a copy marked ExcludeClipboardContentFromMonitorProcessing",
+                    clipboard.RestoreBackup(ZetlClipboardBackup.FromRaw(
+                    [
+                        new ZetlClipboardFormatData(13, secret),
+                        new ZetlClipboardFormatData(0, [0, 0, 0, 0], "ExcludeClipboardContentFromMonitorProcessing")
+                    ])));
+                failures += Check(
+                    "a copy excluded from monitoring is captured as private with no text",
+                    clipboard.TryCaptureContent() is { Private: true, Text: null });
+                clipboard.RestoreBackup(ZetlClipboardBackup.FromRaw(
+                [
+                    new ZetlClipboardFormatData(13, secret),
+                    new ZetlClipboardFormatData(0, [0, 0, 0, 0], "CanIncludeInClipboardHistory")
+                ]));
+                failures += Check(
+                    "a copy kept out of clipboard history is captured as private",
+                    clipboard.TryCaptureContent() is { Private: true, Text: null });
+                clipboard.RestoreBackup(ZetlClipboardBackup.FromRaw(
+                [
+                    new ZetlClipboardFormatData(13, secret),
+                    new ZetlClipboardFormatData(0, [1, 0, 0, 0], "CanIncludeInClipboardHistory")
+                ]));
+                failures += Check(
+                    "a copy allowed in clipboard history is captured normally",
+                    clipboard.TryCaptureContent() is { Private: false, Text: "not-a-real-password" });
+
                 // A clipboard holding a format Windows will not hand over (a
                 // browser's virtual-file image) cannot be backed up. Writes must
                 // still replace it rather than refusing until the user copies

@@ -94,7 +94,9 @@ unless Zetl is run as administrator too.
 ## Your notes stay on your computer
 
 Zetl has no account and no cloud. Everything you save lives in readable files
-under `%AppData%\Zetl` on your own machine. The only time Zetl goes online is
+under `%AppData%\Zetl` on your own machine. Copies that a password manager
+marks as private are never read or saved, even while a project is collecting
+your copies. The only time Zetl goes online is
 when you copy a link to an image: it downloads that image so it can save the
 picture. When you export a project to share, a clean copy leaves out which apps
 and windows your notes came from.

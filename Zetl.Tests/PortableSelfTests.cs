@@ -2904,6 +2904,35 @@ public class PortableSelfTests
                 SelectedBucket: request.PreferredBucket!,
                 SelectedProject: request.Project);
 
+        [Fact(DisplayName = "Runtime never captures a copy marked private by its app")]
+        public static async Task RuntimeNeverCapturesPrivateCopies()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var project = store.CreateProject("Research", ["Inbox"], "Inbox");
+            var clipboard = new FakeClipboard("hunter2", changeToken: 2) { MarkedPrivate = true };
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out _,
+                out _);
+
+            await coordinator.OnPhysicalShortcutPassedThroughAsync(
+                ShortcutContext(VK_C, clipboardSequenceNumber: 1),
+                captureOrigin: null);
+            AssertEqual(0, project.Buckets.Sum(bucket => bucket.Slips.Count), "A tapped copy of a password is not captured.");
+            AssertFalse(notifications.Messages.Any(), "A skipped private copy stays silent, like Windows' clipboard history.");
+
+            var held = await coordinator.HandleHoldAsync(ShortcutContext(VK_C, clipboardSequenceNumber: 3));
+            AssertTrue(held is null, "Holding Ctrl+C on a private copy opens nothing.");
+            AssertTrue(
+                notifications.Messages.Single().Contains("marked private", StringComparison.Ordinal),
+                "A held copy explains why nothing was captured.");
+            AssertEqual(0, project.Buckets.Sum(bucket => bucket.Slips.Count), "Nothing is saved either way.");
+        }
+
         [Fact(DisplayName = "Runtime auto-captures and replays rich text")]
         public static async Task RuntimeAutoCapturesAndReplaysRichText()
         {
@@ -5772,6 +5801,11 @@ public class PortableSelfTests
             public ZetlClipboardWriteResult? WriteResultOverride { get; set; }
 
             public string? BackupFailureReason { get; set; }
+
+            // The source app marked the content private (a password manager).
+            public bool MarkedPrivate { get; set; }
+
+            public bool IsMarkedPrivate() => MarkedPrivate;
 
             public string? TryGetText()
             {

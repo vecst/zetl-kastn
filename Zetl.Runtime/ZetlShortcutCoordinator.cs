@@ -437,6 +437,12 @@ internal sealed class ZetlShortcutCoordinator
         var project = store.GetCaptureHome(context.ShiftLane);
         var projectWasActive = store.GetActiveProject(context.ShiftLane)?.Id == project.Id;
         var clipboardContent = ResolveHoldClipboardContent(context, pending);
+        if (clipboardContent is { Private: true })
+        {
+            notifications.Show("That copy was marked private by the app it came from, so Zetl didn't read it.");
+            return null;
+        }
+
         var pendingImage = clipboardContent?.Image;
         if (pendingImage is { } image)
         {
@@ -671,6 +677,11 @@ internal sealed class ZetlShortcutCoordinator
                 return null;
             }
 
+            if (content.Private)
+            {
+                return content;
+            }
+
             var text = string.IsNullOrWhiteSpace(content.Text)
                 ? null
                 : content.Text.Trim();
@@ -704,8 +715,9 @@ internal sealed class ZetlShortcutCoordinator
             {
                 // Spreadsheets can carry text, HTML, a native Replay bundle,
                 // and a bitmap rendering. The backend returns all of them from
-                // the same generation or no snapshot at all.
-                if (content.Image is not null || content.Text is not null)
+                // the same generation or no snapshot at all. A private copy is
+                // final too: there is nothing to wait for.
+                if (content.Private || content.Image is not null || content.Text is not null)
                 {
                     pending.SetObservedClipboardContent(content);
                     return;
@@ -727,6 +739,12 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         var observed = pending.GetObservedClipboardContent();
+        if (observed is { Private: true })
+        {
+            // Marked private by its app (a password manager): never captured.
+            return;
+        }
+
         if (observed is null)
         {
             await ObserveClipboardContentAsync(pending, AutoCaptureClipboardTimeout);

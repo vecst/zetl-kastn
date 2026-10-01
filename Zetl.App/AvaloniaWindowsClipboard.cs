@@ -40,6 +40,12 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     private IntPtr ownerWindow;
     private static readonly uint Png = RegisterClipboardFormat("PNG");
     private static readonly uint Html = RegisterClipboardFormat("HTML Format");
+    private static readonly uint ExcludeFromMonitoring =
+        RegisterClipboardFormat("ExcludeClipboardContentFromMonitorProcessing");
+    private static readonly uint CanIncludeInHistory =
+        RegisterClipboardFormat("CanIncludeInClipboardHistory");
+    private static readonly uint ClipboardViewerIgnore =
+        RegisterClipboardFormat("Clipboard Viewer Ignore");
     private static readonly uint EnterpriseDataProtection =
         RegisterClipboardFormat("EnterpriseDataProtectionId");
     private static readonly HashSet<string> NativeReplayFormatNames = new(
@@ -743,6 +749,13 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             // clipboard between these reads. The recorded sequence therefore
             // identifies the generation shared by every returned format.
             var changeToken = GetClipboardSequenceNumber();
+            if (IsPrivateOnOpenClipboard())
+            {
+                // Checked before any content format is read, so a password is
+                // never pulled into Zetl's memory at all.
+                return ZetlClipboardCaptureSnapshot.PrivateContent(changeToken);
+            }
+
             ZetlTrace.Write("clipboard capture: text");
             var text = ReadTextFromOpenClipboard();
             ZetlTrace.Write("clipboard capture: html");
@@ -889,6 +902,40 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         return registeredName is not null
             ? $"clipboard format {registeredName}"
             : $"clipboard format {format}";
+    }
+
+    public bool IsMarkedPrivate()
+    {
+        if (!TryOpen())
+        {
+            return false;
+        }
+
+        try
+        {
+            return IsPrivateOnOpenClipboard();
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
+    // The conventions password managers and other apps use to keep a copy out
+    // of clipboard monitors and history: Windows' own clipboard history honors
+    // ExcludeClipboardContentFromMonitorProcessing and a zero
+    // CanIncludeInClipboardHistory; older tools set Clipboard Viewer Ignore.
+    private static bool IsPrivateOnOpenClipboard()
+    {
+        if (IsClipboardFormatAvailable(ExcludeFromMonitoring)
+            || IsClipboardFormatAvailable(ClipboardViewerIgnore))
+        {
+            return true;
+        }
+
+        return IsClipboardFormatAvailable(CanIncludeInHistory)
+            && ReadClipboardBytes(CanIncludeInHistory) is { Length: >= 4 } allowed
+            && BitConverter.ToUInt32(allowed, 0) == 0;
     }
 
     private static string? GetRegisteredFormatName(uint format)
@@ -1250,6 +1297,10 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetClipboardData(uint format, IntPtr memory);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsClipboardFormatAvailable(uint format);
 
     [DllImport("user32.dll")]
     private static extern uint GetClipboardSequenceNumber();

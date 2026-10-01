@@ -27,6 +27,13 @@ internal interface IClipboard
     ZetlClipboardImage? TryGetImage();
 
     /// <summary>
+    /// True when the app that put this content on the clipboard marked it as
+    /// private (a password manager, typically), asking clipboard monitors and
+    /// history not to read or keep it. Zetl then captures nothing.
+    /// </summary>
+    bool IsMarkedPrivate() => false;
+
+    /// <summary>
     /// Capture every format used by Zetl from one clipboard generation. Native
     /// backends should override this with one platform read transaction. The
     /// compatibility implementation retries when the change token advances
@@ -38,6 +45,11 @@ internal interface IClipboard
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
             var before = GetChangeToken();
+            if (IsMarkedPrivate())
+            {
+                return ZetlClipboardCaptureSnapshot.PrivateContent(before);
+            }
+
             var text = TryGetText();
             var html = TryGetHtml();
             var replayFormats = TryGetReplayFormats();
@@ -117,7 +129,13 @@ internal sealed record ZetlClipboardCaptureSnapshot(
     string? Text,
     string? Html,
     IReadOnlyList<ZetlClipboardFormatData>? ReplayFormats,
-    ZetlClipboardImage? Image);
+    ZetlClipboardImage? Image,
+    // The source app marked the content private; nothing of it was read.
+    bool Private = false)
+{
+    public static ZetlClipboardCaptureSnapshot PrivateContent(uint changeToken) =>
+        new(changeToken, null, null, null, null, Private: true);
+}
 
 /// <summary>An opaque clipboard format payload. Contents must never be logged.</summary>
 internal sealed record ZetlClipboardFormatData(

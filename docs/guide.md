@@ -172,6 +172,13 @@ a tapped copy does:
 
 The grey tray icon's tooltip names the current choice.
 
+**Private copies are never captured.** Password managers and some other apps
+mark a copy as private using the same signals Windows' own clipboard history
+respects (`ExcludeClipboardContentFromMonitorProcessing`, a zero
+`CanIncludeInClipboardHistory`, or `Clipboard Viewer Ignore`). Zetl checks for
+them before reading anything: a tapped copy is skipped silently, and holding
+`Ctrl+C` on one shows a short notice instead of a capture.
+
 Hold `Ctrl+C` to review and route the copy before saving it. If nothing new
 was copied, the hold opens the Board instead.
 
