@@ -276,7 +276,8 @@ Replay and Pop exclude each other; turning one on turns the other off.
 ## Compile
 
 Hold `Ctrl+V` to open Compile. It starts on the active project, or, with none
-active, on the project you last added to. The project list puts recent
+active, on the project you last added to, skipping consumable projects (those
+with a Replay bucket). The project list puts recent
 projects first, and picking another changes neither lane.
 
 Compile can:

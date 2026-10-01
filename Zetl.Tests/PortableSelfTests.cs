@@ -1270,6 +1270,13 @@ public class PortableSelfTests
             store.AddSlip(dividers.Buckets.First(), "", "kastn", blockKind: ZetlBlockKinds.Divider);
             AssertEqual("Dividers", store.GetProjectsByRecentWrite()[0].Name, "Any note counts as a write.");
             AssertEqual("Newer", store.GetMostRecentCompilableProject()?.Name, "Only text that compiles counts for Compile.");
+
+            // So is a newer consumable project: its Replay queue is pasted out,
+            // not compiled.
+            var form = store.CreateProject("Personal info", ["Fields"], "Fields");
+            store.SetBucketKind(form.Buckets.First(), "Replay");
+            store.AddSlip(form.Buckets.First(), "Full name", "template");
+            AssertEqual("Newer", store.GetMostRecentCompilableProject()?.Name, "Consumable projects are passed over.");
         }
 
         [Fact(DisplayName = "Zetl state supports child buckets")]

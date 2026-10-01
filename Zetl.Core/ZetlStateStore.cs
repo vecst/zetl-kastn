@@ -2114,13 +2114,22 @@ internal sealed class ZetlStateStore
     }
 
     // The project a held Ctrl+V compiles when no project is active: the most
-    // recently written one that has text to compile.
+    // recently written one that has text to compile. Consumable projects are
+    // queues to paste out one at a time, not notes to compile, so they only
+    // compile from here while active.
     public ZetlProject? GetMostRecentCompilableProject()
     {
         return ProjectsByLatestWrite()
             .Where(item => item.Latest is not null)
             .Select(item => item.Project)
-            .FirstOrDefault(project => HasCompilableSlips(project));
+            .FirstOrDefault(project => !IsConsumableProject(project) && HasCompilableSlips(project));
+    }
+
+    // A project made from a consumable template: one with a Replay bucket. Kept
+    // consumables are Standard projects, so the bucket is the only marker.
+    public static bool IsConsumableProject(ZetlProject project)
+    {
+        return IsTemporaryConsumableProject(project) || project.Buckets.Any(IsReplayBucket);
     }
 
     // Every project, most recently written first. Projects without notes, and
