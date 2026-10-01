@@ -9,6 +9,7 @@ implementation context.
 - [`guide.md`](guide.md) — the user guide: every Zetl and Kastn feature
 - [`building.md`](building.md) — running from source, tests, publishing,
   previews, and diagnostics
+- [`releases/`](releases/) — release notes, one file per release
 
 ## Current Roadmaps
 

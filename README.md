@@ -1,38 +1,53 @@
 # Zetl
 
-**Hold the shortcuts you already know.**
+**Tap your shortcuts like always. Hold them, and Zetl keeps what you're working on.**
 
-Tap `Ctrl+C` and you copy, like always. Hold it for a third of a second and Zetl
-saves what you copied as a note, without you leaving what you are doing.
+Zetl isn't a notes app, and it isn't a clipboard manager. It lives inside the
+shortcuts your hands already know. Tap `Ctrl+C` and you copy, the way you always
+have. Hold it a moment longer and what you copied is saved: a quote, a number,
+a picture, a passing thought, all without leaving the window you're in. Later,
+hold `Ctrl+V`, and everything you gathered comes back out as one piece of
+writing, a list, or rows for a spreadsheet.
+
+Capture takes a second. Composing takes a minute. Nothing in between asks you to
+stop what you're doing.
 
 <!-- Demo GIF goes here once recorded: a full-screen video playing, a held
      Ctrl+X with a key overlay and a timer showing the hold, a quick note
      typed, Ctrl+Enter, and back to the video. Suggested path:
      docs/media/hold-demo.gif -->
 
-## What it's for
-
-- **Collecting while you read, watch, or research.** Quotes, links, numbers,
-  and pictures, saved in the moment without switching windows.
-- **Catching a thought** the second you have it, before it's gone.
-- **Turning what you collected into something:** a tidy list, a document, or
-  rows for a spreadsheet.
-- **Pasting a prepared list back in order**, one `Ctrl+V` at a time, for filling
-  in forms or entering data.
-
 ## How it feels
 
 - You're watching a video full screen and an idea hits. Hold `Ctrl+X`, type
   it, press `Ctrl+Enter`. The video never stopped.
 - You're reading an article. Select a paragraph and hold `Ctrl+C`. It's saved,
-  along with which page it came from.
-- At the end of the day, hold `Ctrl+V`. Everything you collected is ready to
-  paste as notes or as table rows.
+  along with the app and page it came from.
+- You've collected a column of figures. Click into a spreadsheet, hold
+  `Ctrl+V`, choose TSV, and they land in a grid of cells. No import dialog.
+- At the end of the day, hold `Ctrl+V` anywhere. Everything you collected is
+  ready to paste as notes, a list, or table rows.
 
-Tapping these shortcuts still does what it always did. Zetl steps in when you
-hold, or when you've switched on something that asks it to, like Replay. A small
-ring in the corner of the screen fills as you hold and shows how long you held,
-so you can feel exactly where a tap ends and a hold begins.
+## Why holding
+
+There's nothing new to learn and nothing new to remember. Every shortcut still
+does exactly what it did; Zetl only answers when you hold one, so it works the
+same in every app you use.
+
+The first time you run it, a short tour measures how long your own taps and
+holds take and sets the timing to fit your hands. A small ring in the corner of
+the screen fills while you hold and shows how long you held, so you can feel
+exactly where a tap ends and a hold begins.
+
+## What it's for
+
+- **Collecting while you read, watch, or research.** Quotes, links, numbers,
+  and pictures, saved in the moment without switching windows.
+- **Catching a thought** the second you have it, before it's gone.
+- **Composing what you collected** into a tidy list, a document, or rows for a
+  spreadsheet, ready to paste anywhere.
+- **Pasting a prepared list back in order**, one `Ctrl+V` at a time, for filling
+  in forms or entering data.
 
 ## The shortcuts
 
@@ -41,7 +56,7 @@ so you can feel exactly where a tap ends and a hold begins.
 | `Ctrl+C` | Save what you copied, with a chance to edit it first |
 | `Ctrl+X` | Write a quick note |
 | `Ctrl+A` | Select everything and save it |
-| `Ctrl+V` | Compose: turn your notes into text to paste |
+| `Ctrl+V` | Compose: gather your notes into text, a list, or table rows, and paste |
 | `Ctrl+B` | Open the Board, where your projects live |
 | `Ctrl+T` | Start a new project from a template |
 | `Ctrl+J` | Switch between your Journal and your last project |
@@ -69,11 +84,11 @@ Zetl in Settings to save every copy to your Journal.
 
 Zetl comes in two parts:
 
-- **Zetl** is the small part that runs quietly in the notification area by the
-  clock. It's the capturing: quick, out of the way, gone as soon as you're done.
+- **Zetl** runs quietly in the notification area by the clock. It does the
+  catching: quick, out of the way, gone as soon as you're done.
 - **Kastn** is the workbench you open when you want to sit down with what you
   collected: browse it, organize it, edit it, link notes together, and export
-  to Markdown, HTML, or PDF. Open it from Zetl's tray menu.
+  it to Markdown, HTML, or PDF. Open it from Zetl's tray menu.
 
 ## Install
 
@@ -81,8 +96,7 @@ Zetl comes in two parts:
    [Releases page](https://github.com/vecst/zetl-kastn/releases/latest).
 2. Extract the whole zip into a folder and keep its files together.
 3. Run `Zetl.exe`. Its icon appears in the notification area by the clock,
-   and a short tour opens: it measures how long your taps and holds take, then
-   has you try each hold for real. It's in the tray menu if you want it again.
+   and the tour opens. It's in the tray menu if you want it again.
 
 There's nothing else to install. Zetl is new and not yet code-signed, so
 Windows may show a SmartScreen warning the first time: choose **More info →
@@ -97,12 +111,11 @@ unless Zetl is run as administrator too.
 ## Your notes stay on your computer
 
 Zetl has no account and no cloud. Everything you save lives in readable files
-under `%AppData%\Zetl` on your own machine. Copies that a password manager
-marks as private are never read or saved, even while a project is collecting
-your copies. The only time Zetl goes online is
-when you copy a link to an image: it downloads that image so it can save the
-picture. When you export a project to share, a clean copy leaves out which apps
-and windows your notes came from.
+under `%AppData%\Zetl` on your own machine. Copies that a password manager marks
+as private are never read or saved, even while a project is collecting your
+copies. The only time Zetl goes online is when you copy a link to an image: it
+downloads that image so it can save the picture. When you export a project to
+share, a clean copy leaves out which apps and windows your notes came from.
 
 ## Learn more
 

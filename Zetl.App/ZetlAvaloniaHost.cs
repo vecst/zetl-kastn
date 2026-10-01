@@ -205,7 +205,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         ipcServer.Start();
 
         // The log's per-line stamps carry no date, so mark each start with one.
-        Log($"Zetl started {DateTime.Now:yyyy-MM-dd HH:mm:ss}.");
+        // The build's version, with its commit, so a log or crash report names
+        // exactly which build it came from.
+        var version = typeof(ZetlAvaloniaHost).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .FirstOrDefault()?.InformationalVersion ?? "unknown";
+        Log($"Zetl {version} started {DateTime.Now:yyyy-MM-dd HH:mm:ss}.");
         Log(configMessage);
         if (allowInjectedInputForTesting)
         {
