@@ -48,7 +48,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly HashSet<int> configuredKeyCodes = [];
     // While the hold lab is open Zetl stands down and Ctrl+C presses are timed.
     // Written on the UI thread, read on the keyboard hook thread.
-    private volatile ZetlHoldLabWindow? holdLab;
+    // Set while the hold lab or the tutorial is measuring the user's presses:
+    // Zetl stands down and each plain Ctrl+C press is timed for it instead.
+    private volatile IZetlPressMeasurer? measurer;
+    private ZetlHoldLabWindow? holdLab;
+    private ZetlTutorialWindow? tutorial;
     // The combo in progress, stamped on the hook thread when it starts.
     private long comboStartedAt;
     private ChordlEventContext? comboContext;
@@ -173,7 +177,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             DispatchOriginalAction,
             OnPhysicalShortcutPassedThrough,
             // While the hold lab measures, taps go through untouched.
-            context => holdLab is null && router.OnTap(context),
+            context => measurer is null && router.OnTap(context),
             OnHoldDetected,
             Log,
             clipboard.GetChangeToken,
@@ -315,6 +319,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         menu.Items.Add(Item("Open Board", () => ShowBoard(shifted: false)));
         menu.Items.Add(Item("Open Shift Board", () => ShowBoard(shifted: true)));
         menu.Items.Add(Item("New Project", () => _ = ShowProjectSetupAsync()));
+        menu.Items.Add(Item("Take the Tour", () => _ = ShowTutorialAsync()));
         menu.Items.Add(Item("How Zetl Works", () => _ = ShowFirstRunGuideAsync(markSeen: false)));
         menu.Items.Add(Item("Measure My Taps and Holds", () => _ = ShowHoldLabAsync()));
         menu.Items.Add(Item("Notification History", notifications.ShowHistory));
@@ -592,7 +597,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         var started = Stopwatch.GetTimestamp();
         comboStartedAt = started;
         comboContext = context;
-        if (holdLab is not null)
+        if (measurer is not null)
         {
             // The indicator would nudge measured holds toward the threshold.
             return;
@@ -607,13 +612,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     private void OnComboEnded(bool held)
     {
-        if (holdLab is { } lab)
+        if (measurer is { } timing)
         {
-            // Time plain Ctrl+C presses, key down to release, for the lab.
+            // Time plain Ctrl+C presses, key down to release, for the measurer.
             if (comboContext is { KeyCode: ChordlKeys.VK_C, ShiftLane: false })
             {
                 var pressed = Stopwatch.GetElapsedTime(comboStartedAt).TotalMilliseconds;
-                Dispatcher.UIThread.Post(() => lab.RecordPress(pressed));
+                Dispatcher.UIThread.Post(() => timing.RecordPress(pressed));
             }
 
             return;
@@ -632,17 +637,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             return;
         }
 
-        var lab = new ZetlHoldLabWindow(
-            settingsStore.Settings.HoldDelayMs,
-            milliseconds =>
-            {
-                settingsStore.Settings.HoldDelayMs = milliseconds;
-                settingsStore.Save();
-                ApplySettings();
-                notifications.Show($"Hold threshold set to {milliseconds} ms.");
-            },
-            Log);
+        var lab = new ZetlHoldLabWindow(settingsStore.Settings.HoldDelayMs, ApplyHoldDelay, Log);
         holdLab = lab;
+        measurer = lab.Panel;
         try
         {
             await ShowUntilClosedAsync(lab);
@@ -650,8 +647,50 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         finally
         {
             holdLab = null;
+            if (measurer == lab.Panel)
+            {
+                measurer = null;
+            }
         }
     }
+
+    private void ApplyHoldDelay(int milliseconds)
+    {
+        settingsStore.Settings.HoldDelayMs = milliseconds;
+        settingsStore.Save();
+        ApplySettings();
+        notifications.Show($"Hold threshold set to {milliseconds} ms.");
+    }
+
+    // The guided tour. It measures through the same stand-down as the lab and
+    // hears about saved notes, pasted-back cuts, and the like from TellTutorial.
+    private async Task ShowTutorialAsync()
+    {
+        if (tutorial is { } open)
+        {
+            ZetlWindowActivation.Show(open);
+            return;
+        }
+
+        var window = new ZetlTutorialWindow(
+            settingsStore.Settings.HoldDelayMs,
+            ApplyHoldDelay,
+            panel => measurer = panel,
+            Log);
+        tutorial = window;
+        try
+        {
+            await ShowUntilClosedAsync(window);
+        }
+        finally
+        {
+            tutorial = null;
+            measurer = null;
+        }
+    }
+
+    private void TellTutorial(ZetlTutorialSignal signal) =>
+        Dispatcher.UIThread.Post(() => tutorial?.OnSignal(signal));
 
     // What holding this chord would do, or null when it would do nothing.
     private string? HoldActionLabel(ChordlEventContext context)
@@ -665,7 +704,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     private void OnHoldDetected(ChordlEventContext context)
     {
-        if (holdLab is not null)
+        if (measurer is not null)
         {
             // Measuring: cancel the copy's pending auto-capture, open nothing.
             coordinator.ClaimPendingForHold(context);
@@ -686,7 +725,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     private void OnPhysicalShortcutPassedThrough(ChordlEventContext context)
     {
-        if (holdLab is not null)
+        if (measurer is not null)
         {
             // Measuring: the copy goes through natively and is never captured.
             return;
@@ -825,6 +864,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         board.DismissOnDeactivate = target is not null;
         board.ShowActiveProject();
         PositionAndActivate(board, target);
+        TellTutorial(ZetlTutorialSignal.BoardOpened);
     }
 
     private void OpenInKastn(string projectId)
@@ -874,12 +914,26 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                     window.SelectedBucketName,
                     window.SelectedBucket,
                     window.SelectedProject));
+            if (window.Saved)
+            {
+                TellTutorial(string.Equals(request.Source, "cut", StringComparison.OrdinalIgnoreCase)
+                    ? ZetlTutorialSignal.QuickNoteSaved
+                    : ZetlTutorialSignal.CaptureSaved);
+            }
+
             if (!window.ClosedByDeactivate)
             {
                 ZetlForegroundService.RestoreTarget(target, Log);
                 if (outcome == ZetlNoteCaptureOutcome.PasteCutBack)
                 {
-                    ZetlAsync.RunLogged(coordinator.PasteCutBackAsync, "paste cut back", Log);
+                    ZetlAsync.RunLogged(
+                        async () =>
+                        {
+                            await coordinator.PasteCutBackAsync();
+                            TellTutorial(ZetlTutorialSignal.CutPastedBack);
+                        },
+                        "paste cut back",
+                        Log);
                 }
             }
         });
@@ -918,7 +972,14 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             if (outcome == ZetlCompileOutcome.PasteNow)
             {
                 ZetlForegroundService.RestoreTarget(target, Log);
-                ZetlAsync.RunLogged(coordinator.PasteCompiledTextAsync, "paste compiled text", Log);
+                ZetlAsync.RunLogged(
+                    async () =>
+                    {
+                        await coordinator.PasteCompiledTextAsync();
+                        TellTutorial(ZetlTutorialSignal.CompilePasted);
+                    },
+                    "paste compiled text",
+                    Log);
             }
             else if (!window.ClosedByDeactivate)
             {

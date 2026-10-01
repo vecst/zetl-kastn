@@ -276,6 +276,7 @@ public partial class App : Application
                         defaultTab: "theme"),
                     "hold-indicator" => CreateHoldIndicatorPreview(),
                     "hold-lab" => CreateHoldLabPreview(),
+                    "tutorial" => CreateTutorialPreview(),
                     "hold-actions" => new ZetlSettingsWindow(
                         settingsStore.Settings,
                         themeManager,
@@ -384,6 +385,23 @@ public partial class App : Application
                 Children = { hold, tap, slow, stress, detailed }
             }
         };
+    }
+
+    // The tutorial without the keyboard hook: --tutorial-step=N opens on a
+    // step, to check its layout.
+    private static Window CreateTutorialPreview()
+    {
+        var tutorial = new ZetlTutorialWindow(
+            353,
+            _ => { },
+            _ => { },
+            message => Console.Error.WriteLine(message));
+        if (int.TryParse(PreviewArgument("--tutorial-step="), out var step))
+        {
+            tutorial.ShowStep(step);
+        }
+
+        return tutorial;
     }
 
     // The hold lab filled with simulated presses (the real one is timed by the
