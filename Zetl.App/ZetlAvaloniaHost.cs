@@ -989,6 +989,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.DayStartHour = window.DayStartHour;
         settings.JournalAutoReturnHours = window.JournalAutoReturnHours;
         settings.IdleCopyCapture = window.IdleCopyCapture;
+        settings.HoldActionRules = window.HoldActionRules;
         settings.JournalInterval = window.JournalInterval;
         settings.KastnAutosave = window.KastnAutosave;
         settings.KastnStartup = window.KastnStartup;
@@ -1077,6 +1078,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     {
         notifications.DisplayMilliseconds = settingsStore.Settings.ToastDisplayMs;
         ZetlRuntimeSettings.ApplyTo(store, settingsStore.Settings);
+        router.SetRules(ZetlGestureRules.Apply(settingsStore.Settings.HoldActionRules));
         if (logFlushTimer is not null)
         {
             logFlushTimer.Interval = TimeSpan.FromMilliseconds(settingsStore.Settings.LogFlushIntervalMs);

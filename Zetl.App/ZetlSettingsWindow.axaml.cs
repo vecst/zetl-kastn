@@ -47,7 +47,8 @@ internal partial class ZetlSettingsWindow : Window
             zetlSettingsPanel.IsVisible = index == 0;
             kastnSettingsPanel.IsVisible = index == 1;
             chordlSettingsPanel.IsVisible = index == 2;
-            themeEditorPanel.IsVisible = index == 3;
+            holdActionsPanel.IsVisible = index == 3;
+            themeEditorPanel.IsVisible = index == 4;
         };
 
         // Zetl General Settings binding
@@ -76,6 +77,7 @@ internal partial class ZetlSettingsWindow : Window
         tsvRowLengthBox.Value = Clamp(settings.DefaultTsvRowLength, 1, 50);
         dayStartHourBox.Value = Clamp(settings.DayStartHour, 0, 23);
         autoReturnHoursBox.Value = Clamp(settings.JournalAutoReturnHours, 0, 168);
+        BuildHoldActions(settings);
         idleCopyCaptureBox.ItemsSource = new[]
         {
             "Don't capture copies",
@@ -220,9 +222,13 @@ internal partial class ZetlSettingsWindow : Window
         }
 
         // Apply default navigation tab
-        if (defaultTab == "theme" && settingsTabList.Items.Count > 3)
+        if (defaultTab == "theme")
         {
-            settingsTabList.SelectedIndex = 3;
+            settingsTabList.SelectedItem = themeTab;
+        }
+        else if (defaultTab == "hold-actions")
+        {
+            settingsTabList.SelectedItem = holdActionsTab;
         }
         else
         {
@@ -261,6 +267,81 @@ internal partial class ZetlSettingsWindow : Window
     public int DefaultTsvRowLength => (int)(tsvRowLengthBox.Value ?? 5);
     public int DayStartHour => (int)(dayStartHourBox.Value ?? 0);
     public int JournalAutoReturnHours => (int)(autoReturnHoursBox.Value ?? 0);
+    // The Hold Actions page as saved settings: only rules changed from the default.
+    public List<ZetlGestureRuleSetting> HoldActionRules =>
+        ZetlGestureRules.Overrides(holdActionRows.Select(row => row.Rule with
+        {
+            ActionId = row.Choices[Math.Max(row.Box.SelectedIndex, 0)].Id
+        }));
+
+    private readonly List<HoldActionRow> holdActionRows = [];
+
+    private sealed record HoldActionRow(
+        ZetlGestureRule Rule,
+        IReadOnlyList<ZetlGestureActions.Choice> Choices,
+        ComboBox Box);
+
+    // One row per editable rule: the gesture, where it applies, and a menu of
+    // the actions that gesture can run.
+    private void BuildHoldActions(ZetlAppSettings settings)
+    {
+        holdActionsIntro.Text =
+            $"Choose what each tap and hold does. Every rule applies with and without Shift "
+            + $"(the {settings.LaneLabel(false)} and {settings.LaneLabel(true)} lanes). "
+            + "When a key has a rule for file lists, it wins there over the rule for anywhere.";
+
+        var rules = ZetlGestureRules.Apply(settings.HoldActionRules)
+            .Where(ZetlGestureRules.IsEditable)
+            .ToList();
+        foreach (var rule in rules)
+        {
+            var row = holdActionsGrid.RowDefinitions.Count;
+            holdActionsGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+
+            var gesture = new TextBlock { Text = ZetlGestureRules.GestureLabel(rule), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+            var focus = new TextBlock { Text = ZetlGestureRules.FocusLabel(rule.Focus), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+            var choices = ZetlGestureActions.ChoicesFor(rule.Kind);
+            var box = new ComboBox
+            {
+                ItemsSource = choices.Select(choice => choice.Label).ToList(),
+                Width = 260,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left
+            };
+            SelectAction(box, choices, rule.ActionId);
+
+            Grid.SetRow(gesture, row);
+            Grid.SetRow(focus, row);
+            Grid.SetRow(box, row);
+            Grid.SetColumn(focus, 1);
+            Grid.SetColumn(box, 2);
+            holdActionsGrid.Children.Add(gesture);
+            holdActionsGrid.Children.Add(focus);
+            holdActionsGrid.Children.Add(box);
+            holdActionRows.Add(new HoldActionRow(rule, choices, box));
+        }
+
+        holdActionsResetButton.Click += (_, _) =>
+        {
+            foreach (var row in holdActionRows)
+            {
+                var standard = ZetlGestureRules.Defaults.First(rule =>
+                    rule.Kind == row.Rule.Kind
+                    && rule.KeyCode == row.Rule.KeyCode
+                    && rule.Focus == row.Rule.Focus);
+                SelectAction(row.Box, row.Choices, standard.ActionId);
+            }
+        };
+    }
+
+    private static void SelectAction(
+        ComboBox box,
+        IReadOnlyList<ZetlGestureActions.Choice> choices,
+        string actionId)
+    {
+        var index = choices.ToList().FindIndex(choice => choice.Id == actionId);
+        box.SelectedIndex = Math.Max(index, 0);
+    }
+
     public string IdleCopyCapture => idleCopyCaptureBox.SelectedIndex == 1
         ? ZetlIdleCopyCapture.Journal
         : ZetlIdleCopyCapture.Off;

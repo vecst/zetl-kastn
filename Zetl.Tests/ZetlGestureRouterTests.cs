@@ -65,13 +65,13 @@ public class ZetlGestureRouterTests
         AssertEqual(2, checks, "Gestures with no focus rule never look up focus.");
     }
 
-    [Fact] public async Task FirstMatchingRuleRunsItsRegisteredAction()
+    [Fact] public async Task MoreSpecificRuleRunsItsRegisteredActionWhateverTheOrder()
     {
         var calls = new List<string>();
         var router = new ZetlGestureRouter(
             [
-                new(ZetlGestureKind.Hold, VK_X, "files.note", ZetlGestureFocus.FileView),
                 new(ZetlGestureKind.Hold, VK_X, "text.note"),
+                new(ZetlGestureKind.Hold, VK_X, "files.note", ZetlGestureFocus.FileView),
             ],
             () => true);
         router.RegisterHold("files.note", (context, _) =>
@@ -87,8 +87,60 @@ public class ZetlGestureRouterTests
 
         var request = await router.OnHoldAsync(Chord(VK_X, shifted: true), pending: null);
 
-        AssertEqual("files:True", string.Join(",", calls), "The narrower rule wins and gets the lane.");
+        AssertEqual("files:True", string.Join(",", calls), "The file-list rule wins even listed second, and gets the lane.");
         AssertTrue(request is ZetlBoardRequest { Shifted: true }, "The action's request comes back to the host.");
+    }
+
+    [Fact] public void SavedChoicesApplyOnlyToKnownRulesAndAllowedActions()
+    {
+        var rules = ZetlGestureRules.Apply(
+        [
+            new() { Kind = "Hold", Key = "B", Focus = "Any", Action = ZetlGestureActions.Compile },
+            new() { Kind = "tap", Key = "v", Focus = "fileview", Action = ZetlGestureActions.PasteQueue },
+            // Ignored: a key Zetl does not watch, an action a hold cannot run,
+            // and the internal press rules.
+            new() { Kind = "Hold", Key = "Q", Focus = "Any", Action = ZetlGestureActions.Board },
+            new() { Kind = "Hold", Key = "Z", Focus = "Any", Action = ZetlGestureActions.PasteQueue },
+            new() { Kind = "Press", Key = "C", Focus = "Any", Action = ZetlGestureActions.Native },
+        ]);
+        var router = new ZetlGestureRouter(rules, () => true);
+
+        AssertEqual(ZetlGestureActions.Compile, router.Resolve(ZetlGestureKind.Hold, VK_B), "A saved choice replaces the default action.");
+        AssertEqual(ZetlGestureActions.PasteQueue, router.Resolve(ZetlGestureKind.Tap, VK_V), "Names match regardless of case.");
+        AssertEqual(ZetlGestureActions.Native, router.Resolve(ZetlGestureKind.Hold, (int)'Q'), "No rule is added for an unwatched key.");
+        AssertEqual(ZetlGestureActions.Undo, router.Resolve(ZetlGestureKind.Hold, VK_Z), "An action the gesture cannot take is ignored.");
+        AssertEqual(ZetlGestureActions.ObserveCopy, router.Resolve(ZetlGestureKind.Press, VK_C), "Press rules cannot be changed.");
+        AssertEqual(ZetlGestureRules.Defaults.Count, rules.Count, "Applying settings never adds or removes rules.");
+    }
+
+    [Fact] public void OnlyChangedRulesAreSavedAndTheyRoundTrip()
+    {
+        AssertEqual(0, ZetlGestureRules.Overrides(ZetlGestureRules.Defaults).Count, "Untouched defaults save nothing.");
+
+        var edited = ZetlGestureRules.Defaults
+            .Select(rule => rule.Kind == ZetlGestureKind.Hold && rule.KeyCode == VK_J
+                ? rule with { ActionId = ZetlGestureActions.Native }
+                : rule)
+            .ToList();
+        var saved = ZetlGestureRules.Overrides(edited);
+
+        AssertEqual(1, saved.Count, "Only the changed rule is saved.");
+        AssertEqual("Hold/J/Any/native", $"{saved[0].Kind}/{saved[0].Key}/{saved[0].Focus}/{saved[0].Action}", "It is saved by name.");
+        AssertEqual(
+            ZetlGestureActions.Native,
+            new ZetlGestureRouter(ZetlGestureRules.Apply(saved)).Resolve(ZetlGestureKind.Hold, VK_J),
+            "Loading the saved choice restores it.");
+    }
+
+    [Fact] public void ReplacedRulesTakeEffectForTheNextGesture()
+    {
+        var router = new ZetlGestureRouter(ZetlGestureRules.Defaults);
+        router.SetRules(ZetlGestureRules.Apply(
+        [
+            new() { Kind = "Hold", Key = "T", Focus = "Any", Action = ZetlGestureActions.Board }
+        ]));
+
+        AssertEqual(ZetlGestureActions.Board, router.Resolve(ZetlGestureKind.Hold, VK_T), "Saving settings swaps the rules in place.");
     }
 
     [Fact] public async Task ARuleWithoutARegisteredActionBehavesNatively()

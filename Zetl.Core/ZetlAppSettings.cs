@@ -20,6 +20,9 @@ internal sealed class ZetlAppSettings
     // What a tapped Ctrl+C does when no project is active in its lane: Off leaves
     // copy and paste working like normal; Journal captures every copy all day.
     public string IdleCopyCapture { get; set; } = ZetlIdleCopyCapture.Off;
+    // Hold Actions page: the rules whose action differs from Zetl's default.
+    // Empty means every gesture does what Zetl does out of the box.
+    public List<ZetlGestureRuleSetting> HoldActionRules { get; set; } = new();
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
     public string ThemeVariant { get; set; } = "System";
     public string JournalInterval { get; set; } = ZetlJournalInterval.Weekly;
@@ -76,6 +79,16 @@ internal sealed class ZetlAppSettings
             DefaultProjectBuckets = ZetlBucketDefaults.Standard.ProjectBuckets.ToList();
         }
     }
+}
+
+// A saved Hold Actions choice: the rule is named by kind ("Tap"/"Hold"), key
+// letter, and focus ("Any"/"FileView"); Action is the action id it runs.
+internal sealed class ZetlGestureRuleSetting
+{
+    public string Kind { get; set; } = "";
+    public string Key { get; set; } = "";
+    public string Focus { get; set; } = "Any";
+    public string Action { get; set; } = "";
 }
 
 internal static class ZetlLaneLabels

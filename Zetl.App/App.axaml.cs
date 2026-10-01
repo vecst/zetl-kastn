@@ -259,6 +259,12 @@ public partial class App : Application
                         themeStore,
                         settingsStore,
                         defaultTab: "theme"),
+                    "hold-actions" => new ZetlSettingsWindow(
+                        settingsStore.Settings,
+                        themeManager,
+                        themeStore,
+                        settingsStore,
+                        defaultTab: "hold-actions"),
                     _ => new NoteCaptureWindow(store, project, bucket, "sample copied text")
                 };
                 AttachPreviewResult(desktop.MainWindow);

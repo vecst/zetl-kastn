@@ -18,7 +18,8 @@
             <ListBoxItem Content="Zetl Settings" Padding="12,10" CornerRadius="4" Margin="0,2" />
             <ListBoxItem Content="Kastn Settings" Padding="12,10" CornerRadius="4" Margin="0,2" />
             <ListBoxItem Content="Chordl Settings" Padding="12,10" CornerRadius="4" Margin="0,2" />
-            <ListBoxItem Content="Theme Settings" Padding="12,10" CornerRadius="4" Margin="0,2" />
+            <ListBoxItem x:Name="holdActionsTab" Content="Hold Actions" Padding="12,10" CornerRadius="4" Margin="0,2" />
+            <ListBoxItem x:Name="themeTab" Content="Theme Settings" Padding="12,10" CornerRadius="4" Margin="0,2" />
           </ListBox>
         </Grid>
       </Border>
@@ -295,6 +296,7 @@
                 <TextBlock Text="•  Hold Ctrl+V / Ctrl+P / Ctrl+R: Compiles bucket slips, or toggles Pop and Replay modes." Margin="10,0,0,0" TextWrapping="Wrap" />
                 <TextBlock Text="•  Hold Ctrl+B / Ctrl+T / Ctrl+Z: Opens the Board, picks templates, or undos the last Zetl action." Margin="10,0,0,0" TextWrapping="Wrap" />
                 <TextBlock Text="•  Adding Shift (e.g. Ctrl+Shift+C): Executes the same action targeting your second (Shift-lane) project." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="Change what each tap and hold does on the Hold Actions page." Margin="0,6,0,0" TextWrapping="Wrap" />
               </StackPanel>
             </Border>
 
@@ -318,7 +320,19 @@
           </StackPanel>
         </ScrollViewer>
 
-        <!-- Panel 4: Theme Settings -->
+        <!-- Panel 4: Hold Actions -->
+        <ScrollViewer x:Name="holdActionsPanel" IsVisible="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="20" Margin="0,0,12,0">
+            <TextBlock Text="Hold Actions" Classes="heading" />
+            <TextBlock x:Name="holdActionsIntro" TextWrapping="Wrap" />
+            <Border Classes="surface" BorderThickness="1" Padding="14">
+              <Grid x:Name="holdActionsGrid" ColumnDefinitions="150,150,*" RowSpacing="10" ColumnSpacing="12" />
+            </Border>
+            <Button x:Name="holdActionsResetButton" Content="Reset to defaults" HorizontalAlignment="Left" />
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Panel 5: Theme Settings -->
         <Grid x:Name="themeEditorPanel" IsVisible="False" ColumnDefinitions="250,*" ColumnSpacing="14">
           <!-- Left Column of Theme Editor -->
           <Grid Grid.Column="0" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
