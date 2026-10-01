@@ -471,6 +471,106 @@ public class PortableSelfTests
                 "A temporary project that is not active in its assigned lane should be disposed on load.");
         }
 
+        [Fact(DisplayName = "Zetl state returns to the previous project when a temporary consumable finishes")]
+        public static void StateReturnsToPreviousProjectWhenTemporaryConsumableFinishes()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var work = store.CreateProject("Work", ["Inbox"], "Inbox");
+            var form = store.CreateProject(
+                "Personal info",
+                ["Fields"],
+                "Fields",
+                kind: ZetlStateStore.TemporaryConsumableProjectKind,
+                sourceTemplateId: "personal-info",
+                temporaryLane: ZetlStateStore.NormalLane);
+            var fields = form.Buckets.First(bucket => bucket.Name == "Fields");
+            store.SetBucketKind(fields, "Replay");
+
+            AssertTrue(form.Consumable, "Temporary projects are consumable.");
+            AssertEqual(work.Id, form.ReturnProjectId, "Starting it records the project it replaced.");
+
+            var finish = store.FinishReplayBucket(fields, shifted: false);
+
+            AssertTrue(finish.Deleted, "A temporary consumable is deleted on finish.");
+            AssertEqual("Work", finish.ReturnedTo, "The notice can name where the lane went.");
+            AssertEqual(work.Id, store.ActiveProject?.Id, "The lane goes back to Work.");
+            AssertFalse(store.State.Projects.Any(item => item.Id == form.Id), "The consumable is gone.");
+
+            store.ToggleActiveProject();
+            store.ToggleActiveProject();
+            AssertEqual(work.Id, store.ActiveProject?.Id, "Ctrl+J's last project is still Work.");
+        }
+
+        [Fact(DisplayName = "Zetl state returns from a kept consumable and keeps it")]
+        public static void StateReturnsFromKeptConsumable()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var work = store.CreateProject("Work", ["Inbox"], "Inbox");
+            store.ClearActiveProject();
+            var form = store.CreateProject("Personal info", ["Fields"], "Fields", consumable: true);
+            var fields = form.Buckets.First(bucket => bucket.Name == "Fields");
+            store.SetBucketKind(fields, "Replay");
+
+            AssertEqual<string?>(null, form.ReturnProjectId, "Nothing was active when it started.");
+            AssertEqual(work.Id, store.State.LastDeliberateProjectId, "Starting a consumable leaves Ctrl+J's last project alone.");
+
+            var finish = store.FinishReplayBucket(fields, shifted: false);
+
+            AssertFalse(finish.Deleted, "A kept consumable stays.");
+            AssertEqual<string?>(null, finish.ReturnedTo, "There was nothing to go back to.");
+            AssertEqual<ZetlProject?>(null, store.ActiveProject, "The lane goes back to no project.");
+            AssertFalse(ZetlStateStore.IsReplayBucket(fields), "Its emptied bucket turns Standard.");
+            AssertTrue(store.State.Projects.Any(item => item.Id == form.Id), "The kept project stays for review.");
+
+            var reloaded = new ZetlStateStore(temp.Path);
+            AssertTrue(
+                reloaded.State.Projects.First(item => item.Id == form.Id).Consumable,
+                "The marker survives a reload.");
+        }
+
+        [Fact(DisplayName = "Zetl state finishes a consumable on the shift lane without touching the normal lane")]
+        public static void StateFinishesShiftLaneConsumable()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var work = store.CreateProject("Work", ["Inbox"], "Inbox");
+            var side = store.CreateProject("Side", ["Inbox"], "Inbox", shifted: true);
+            var form = store.CreateProject(
+                "Form",
+                ["Fields"],
+                "Fields",
+                shifted: true,
+                kind: ZetlStateStore.TemporaryConsumableProjectKind,
+                temporaryLane: ZetlStateStore.ShiftLane);
+            var fields = form.Buckets.First(bucket => bucket.Name == "Fields");
+            store.SetBucketKind(fields, "Replay");
+
+            AssertEqual(side.Id, form.ReturnProjectId, "It records the shift lane's project.");
+
+            store.FinishReplayBucket(fields, shifted: true);
+
+            AssertEqual(side.Id, store.GetActiveProject(shifted: true)?.Id, "The shift lane goes back to Side.");
+            AssertEqual(work.Id, store.GetActiveProject(shifted: false)?.Id, "The normal lane never moved.");
+        }
+
+        [Fact(DisplayName = "Zetl state finishing a plain Replay bucket keeps the project active")]
+        public static void StateFinishingPlainReplayBucketKeepsProject()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var work = store.CreateProject("Work", ["Inbox", "Queue"], "Queue");
+            var queue = work.Buckets.First(bucket => bucket.Name == "Queue");
+            store.SetBucketKind(queue, "Replay");
+
+            var finish = store.FinishReplayBucket(queue, shifted: false);
+
+            AssertEqual<string?>(null, finish.ReturnedTo, "An ordinary project has nowhere to return to.");
+            AssertEqual(work.Id, store.ActiveProject?.Id, "It stays active.");
+            AssertFalse(ZetlStateStore.IsReplayBucket(queue), "The bucket turns Standard.");
+        }
+
         [Fact(DisplayName = "Zetl state pop mode removes matching last note")]
         public static void StatePopModeRemovesLastMatchingNote()
         {

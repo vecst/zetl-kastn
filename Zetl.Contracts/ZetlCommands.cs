@@ -15,6 +15,8 @@ public sealed record CreateProjectCommand
     public string? SourceTemplateId { get; init; }
     public string? TemporaryLane { get; init; }
     public bool ActivateShifted { get; init; }
+    // Made from a consumable template; temporary projects always are.
+    public bool Consumable { get; init; }
     public IReadOnlyList<CreateBucketDefinition> Buckets { get; init; } = [];
 }
 

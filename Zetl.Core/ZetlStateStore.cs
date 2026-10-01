@@ -146,7 +146,8 @@ internal sealed class ZetlStateStore
         bool shifted = false,
         string? kind = null,
         string? sourceTemplateId = null,
-        string? temporaryLane = null)
+        string? temporaryLane = null,
+        bool consumable = false)
     {
         var normalizedName = NormalizeName(name, "Untitled Project");
         if (string.Equals(normalizedName, DefaultProjectName(shifted), StringComparison.OrdinalIgnoreCase))
@@ -195,6 +196,12 @@ internal sealed class ZetlStateStore
         {
             project.SourceTemplateId = null;
             project.TemporaryLane = null;
+        }
+
+        project.Consumable = consumable || IsTemporaryConsumableProject(project);
+        if (project.Consumable)
+        {
+            project.ReturnProjectId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
         }
 
         State.Projects.Add(project);
@@ -366,7 +373,7 @@ internal sealed class ZetlStateStore
         var last = lastId is null
             ? null
             : State.Projects.FirstOrDefault(project =>
-                project.Id == lastId && !project.JournalMode && IsActiveStatus(project));
+                project.Id == lastId && IsDeliberateProject(project));
         if (last is null)
         {
             return (ZetlProjectToggleOutcome.NoProjectToActivate, null);
@@ -518,17 +525,6 @@ internal sealed class ZetlStateStore
         project.JournalMode = journalMode;
         project.MetadataRevision++;
         PersistProject(project);
-    }
-
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public void MarkTemporaryConsumableProject(ZetlProject project, string? sourceTemplateId, bool shifted = false)
-    {
-        project.Kind = TemporaryConsumableProjectKind;
-        project.SourceTemplateId = string.IsNullOrWhiteSpace(sourceTemplateId) ? null : sourceTemplateId.Trim();
-        project.TemporaryLane = shifted ? ShiftLane : NormalLane;
-        project.MetadataRevision++;
-        PersistProject(project, workspace: true);
-        DisposeInactiveTemporaryProjects(persistWorkspace: true);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -754,32 +750,46 @@ internal sealed class ZetlStateStore
         persistence.CommitProjectRemoval(projectId);
     }
 
+    // A Replay bucket ran out. When it belongs to the consumable occupying this
+    // lane, the lane goes back to the project active before the consumable
+    // started (or to none), and a temporary consumable is deleted. Any other
+    // Replay bucket just turns back into a Standard bucket.
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryDisposeTemporaryReplayProject(ZetlBucket activeBucket, bool shifted, out string projectName)
+    public ZetlReplayFinish FinishReplayBucket(ZetlBucket activeBucket, bool shifted)
     {
-        projectName = "";
         var project = OwnerProject(activeBucket);
-        if (project is null || !IsTemporaryConsumableProject(project))
-        {
-            return false;
-        }
-
-        var lane = shifted ? ShiftLane : NormalLane;
-        if (!string.Equals(project.TemporaryLane, lane, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
         var activeProjectId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
-        if (!string.Equals(activeProjectId, project.Id, StringComparison.Ordinal))
+        var occupiesLane = project is not null
+            && IsConsumableProject(project)
+            && string.Equals(activeProjectId, project.Id, StringComparison.Ordinal);
+        if (occupiesLane
+            && IsTemporaryConsumableProject(project!)
+            && string.Equals(project!.TemporaryLane, shifted ? ShiftLane : NormalLane, StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            var returnedTo = ReturnFromConsumable(project, shifted);
+            DisposeInactiveTemporaryProjects(persistWorkspace: true);
+            return new ZetlReplayFinish(project.Name, Deleted: true, returnedTo);
         }
 
-        projectName = project.Name;
-        SetActiveProjectId(null, shifted);
-        DisposeInactiveTemporaryProjects(persistWorkspace: true);
-        return true;
+        SetBucketKind(activeBucket, "Standard");
+        if (occupiesLane)
+        {
+            var returnedTo = ReturnFromConsumable(project!, shifted);
+            PersistWorkspace();
+            return new ZetlReplayFinish(activeBucket.Name, Deleted: false, returnedTo);
+        }
+
+        return new ZetlReplayFinish(activeBucket.Name, Deleted: false, ReturnedTo: null);
+    }
+
+    private string? ReturnFromConsumable(ZetlProject consumable, bool shifted)
+    {
+        var previous = State.Projects.FirstOrDefault(project =>
+            project.Id == consumable.ReturnProjectId
+            && project.Id != consumable.Id
+            && IsActiveStatus(project));
+        SetActiveProjectId(previous?.Id, shifted);
+        return previous?.Name;
     }
 
     // setActive controls whether the new/found bucket becomes the project's
@@ -2122,14 +2132,17 @@ internal sealed class ZetlStateStore
         return ProjectsByLatestWrite()
             .Where(item => item.Latest is not null)
             .Select(item => item.Project)
-            .FirstOrDefault(project => !IsConsumableProject(project) && HasCompilableSlips(project));
+            .FirstOrDefault(project =>
+                !IsConsumableProject(project)
+                // Consumables kept before projects were marked show only
+                // through their Replay bucket.
+                && !project.Buckets.Any(IsReplayBucket)
+                && HasCompilableSlips(project));
     }
 
-    // A project made from a consumable template: one with a Replay bucket. Kept
-    // consumables are Standard projects, so the bucket is the only marker.
     public static bool IsConsumableProject(ZetlProject project)
     {
-        return IsTemporaryConsumableProject(project) || project.Buckets.Any(IsReplayBucket);
+        return project.Consumable || IsTemporaryConsumableProject(project);
     }
 
     // Every project, most recently written first. Projects without notes, and
@@ -2435,6 +2448,11 @@ internal sealed class ZetlStateStore
             project.SourceTemplateId = null;
             project.TemporaryLane = null;
         }
+        project.Consumable |= IsTemporaryConsumableProject(project);
+        if (!project.Consumable)
+        {
+            project.ReturnProjectId = null;
+        }
         project.Views ??= [];
         foreach (var view in project.Views)
         {
@@ -2596,12 +2614,17 @@ internal sealed class ZetlStateStore
         }
     }
 
+    // A project Ctrl+J can return to: not the Journal, not a consumable queue,
+    // and not finished or archived.
+    private static bool IsDeliberateProject(ZetlProject project) =>
+        !project.JournalMode && !IsConsumableProject(project) && IsActiveStatus(project);
+
     private void NormalizeLastDeliberatePointer(bool shifted)
     {
         var pointer = shifted ? State.ShiftLastDeliberateProjectId : State.LastDeliberateProjectId;
         var valid = pointer is not null
             && State.Projects.Any(project =>
-                project.Id == pointer && !project.JournalMode && IsActiveStatus(project));
+                project.Id == pointer && IsDeliberateProject(project));
         if (!valid)
         {
             pointer = null;
@@ -2611,7 +2634,7 @@ internal sealed class ZetlStateStore
         {
             var activeId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
             pointer = State.Projects.FirstOrDefault(project =>
-                project.Id == activeId && !project.JournalMode && IsActiveStatus(project))?.Id;
+                project.Id == activeId && IsDeliberateProject(project))?.Id;
         }
 
         if (shifted)
@@ -2976,7 +2999,7 @@ internal sealed class ZetlStateStore
             && State.Projects.FirstOrDefault(project => project.Id == projectId) is { } activated)
         {
             TouchProjectActivity(activated);
-            if (!activated.JournalMode && !IsTemporaryConsumableProject(activated))
+            if (!activated.JournalMode && !IsConsumableProject(activated))
             {
                 if (shifted)
                 {

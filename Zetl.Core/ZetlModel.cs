@@ -41,6 +41,11 @@ internal sealed class ZetlProject
     public string Kind { get; set; } = ZetlStateStore.StandardProjectKind;
     public string? SourceTemplateId { get; set; }
     public string? TemporaryLane { get; set; }
+    // Made from a consumable template: a queue to paste out rather than notes to
+    // keep. ReturnProjectId is the project its lane had active when it started
+    // (null for none); finishing the queue hands the lane back to it.
+    public bool Consumable { get; set; }
+    public string? ReturnProjectId { get; set; }
     // Journal mode: one rolling project whose buckets are the days of the period
     // (pre-seeded, named e.g. "Mon 07-06"). Capture routes into today's day parent —
     // copy into its "Capture" child, quick notes into its "Quick Note" child — so the
@@ -70,6 +75,10 @@ internal sealed class ZetlProject
             ? Name
             : $"{Name}  ·  {Status}";
 }
+
+// How a finished Replay bucket left its lane: Name is the finished bucket, or
+// the deleted temporary project; ReturnedTo is the project the lane went back to.
+internal sealed record ZetlReplayFinish(string Name, bool Deleted, string? ReturnedTo);
 
 internal sealed class ZetlBucketSettings
 {

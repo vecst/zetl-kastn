@@ -33,6 +33,8 @@ internal sealed class ZetlAppSettings
     public bool ShowHoldProgress { get; set; } = true;
     public string HoldIndicatorPosition { get; set; } = ZetlHoldIndicatorPosition.FollowPopups;
     public bool HoldIndicatorDemo { get; set; }
+    // The template last started, highlighted when the template picker opens.
+    public string? LastTemplateId { get; set; }
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
     public string ThemeVariant { get; set; } = "System";
     public string JournalInterval { get; set; } = ZetlJournalInterval.Weekly;

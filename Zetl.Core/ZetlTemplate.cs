@@ -75,6 +75,7 @@ internal sealed class ZetlTemplateDocument
                 : ZetlStateStore.StandardProjectKind,
             SourceTemplateId = shouldCreateTemporary ? Id : null,
             TemporaryLane = shouldCreateTemporary ? lane : null,
+            Consumable = IsConsumable,
             Buckets = Buckets
                 .Select(bucket => new CreateBucketDefinition
                 {

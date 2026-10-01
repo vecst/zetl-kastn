@@ -175,16 +175,17 @@ internal sealed class ZetlProjectService
 
     private string UnderlyingLaneFor(string projectId)
     {
+        // The project a consumable will hand its lane back to when it finishes.
         if (store.GetActiveProject() is { } main
-            && ZetlStateStore.IsTemporaryConsumableProject(main)
-            && string.Equals(store.State.LastDeliberateProjectId, projectId, StringComparison.Ordinal))
+            && ZetlStateStore.IsConsumableProject(main)
+            && string.Equals(main.ReturnProjectId, projectId, StringComparison.Ordinal))
         {
             return ZetlStateStore.NormalLane;
         }
 
         if (store.GetActiveProject(shifted: true) is { } alternate
-            && ZetlStateStore.IsTemporaryConsumableProject(alternate)
-            && string.Equals(store.State.ShiftLastDeliberateProjectId, projectId, StringComparison.Ordinal))
+            && ZetlStateStore.IsConsumableProject(alternate)
+            && string.Equals(alternate.ReturnProjectId, projectId, StringComparison.Ordinal))
         {
             return ZetlStateStore.ShiftLane;
         }
@@ -280,7 +281,8 @@ internal sealed class ZetlProjectService
             payload.ActivateShifted,
             kind: kind,
             sourceTemplateId: payload.SourceTemplateId,
-            temporaryLane: temporaryLane);
+            temporaryLane: temporaryLane,
+            consumable: payload.Consumable);
         foreach (var definition in definitions)
         {
             var bucket = project.Buckets.FirstOrDefault(item =>

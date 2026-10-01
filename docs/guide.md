@@ -312,9 +312,13 @@ When Kastn starts a consumable template, its Temporary setting becomes a
 per-use default: the new project can be kept, or deleted automatically when it
 leaves its lane.
 
-Hold `Ctrl+T` to open the template picker. Kastn creates, duplicates, and
-deletes templates; Zetl uses the same catalog and can start a template in
-either lane.
+When a consumable's queue runs out, its lane goes back to the project that was
+active before it started, and a temporary one is deleted. Starting a consumable
+doesn't change the project a held `Ctrl+J` returns to.
+
+Hold `Ctrl+T` to open the template picker. It opens on the template you last
+started, so `Enter` runs it again. Kastn creates, duplicates, and deletes
+templates; Zetl uses the same catalog and can start a template in either lane.
 
 A **creation type** pairs a template with a default output view, so a project
 starts with both an input structure and an intended result.

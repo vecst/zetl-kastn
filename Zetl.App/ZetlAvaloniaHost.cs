@@ -773,7 +773,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             return;
         }
 
-        var window = new TemplatePickerWindow(templates)
+        var window = new TemplatePickerWindow(templates, settingsStore.Settings.LastTemplateId)
         {
             ShowInTaskbar = false,
             DismissOnDeactivate = target is not null
@@ -1006,15 +1006,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         string name,
         bool shifted = false)
     {
-        // The service activates the new project in the normal lane. For the Shift
-        // lane, remember the normal lane's prior active project so we can restore it
-        // after moving activation to the Shift lane.
-        var priorNormalActiveId = shifted ? store.GetActiveProject(shifted: false)?.Id : null;
-
+        var lane = shifted ? ZetlStateStore.ShiftLane : ZetlStateStore.NormalLane;
         var response = projectService.Execute(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.CreateProject,
-            template.ToCreateProjectCommand(name)));
+            template.ToCreateProjectCommand(name, lane) with { ActivateShifted = shifted }));
         if (response.Status != ZetlResponseStatus.Success)
         {
             notifications.Show($"Could not create '{name}' from the {template.Name} template.");
@@ -1056,26 +1052,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             }
         }
 
-        if (shifted)
-        {
-            // Move activation to the Shift lane and undo the normal-lane side effect.
-            store.SetActiveProject(snapshot.Id, shifted: true);
-            if (priorNormalActiveId is not null)
-            {
-                store.SetActiveProject(priorNormalActiveId, shifted: false);
-            }
-            else
-            {
-                store.ClearActiveProject(shifted: false);
-            }
-        }
-
-        if (template.Temporary && template.IsConsumable
-            && store.State.Projects.FirstOrDefault(project => project.Id == snapshot.Id) is { } created)
-        {
-            store.MarkTemporaryConsumableProject(created, template.Id, shifted);
-        }
-
+        settingsStore.Settings.LastTemplateId = template.Id;
+        settingsStore.Save();
         return store.State.Projects.FirstOrDefault(project => project.Id == snapshot.Id);
     }
 
