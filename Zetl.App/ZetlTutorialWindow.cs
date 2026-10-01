@@ -16,11 +16,23 @@ internal enum ZetlTutorialSignal
     CompilePasted
 }
 
+// What the tour needs from the host: the current settings it shows, and the
+// changes it can make.
+internal sealed record ZetlTutorialHost(
+    int HoldDelayMs,
+    string IndicatorStyle,
+    Action<int> ApplyHoldDelay,
+    Action<string> ApplyIndicatorStyle,
+    Action<IZetlPressMeasurer?> SetMeasurer,
+    Action Completed,
+    Action<string> Log);
+
 // The guided first run: the user measures their own taps and holds, then feels
-// each core hold for real while this window watches for it to land. It sits at
-// the bottom centre of the screen, clear of the indicator in the top right and
-// the popups near the top. Every step moves on when the action happens, and
-// every step can be skipped.
+// each core hold for real while this window watches for it to land: a quick
+// note, a capture, a cut taken back, the Board, and Compile. It sits at the
+// bottom centre of the screen, clear of the indicator in the top right and the
+// popups near the top. Every step moves on when its action happens, and every
+// step can be skipped. Finishing Compile, the last hold, completes the tour.
 internal sealed class ZetlTutorialWindow : Window
 {
     private const int TapsWanted = 10;
@@ -43,28 +55,31 @@ internal sealed class ZetlTutorialWindow : Window
         QuickNote,
         Copy,
         Cut,
+        Board,
+        Compile,
+        Indicator,
         Finish
     }
 
     private static readonly (Step Step, string Label)[] Chapters =
     [
-        (Step.Measure, "Your timing"),
-        (Step.QuickNote, "Quick note"),
+        (Step.Measure, "Timing"),
+        (Step.QuickNote, "Note"),
         (Step.Copy, "Copy"),
         (Step.Cut, "Cut"),
-        (Step.Finish, "Done")
+        (Step.Board, "Board"),
+        (Step.Compile, "Compile"),
+        (Step.Indicator, "Indicator")
     ];
 
-    private readonly int holdDelayMs;
-    private readonly Action<int> applyThreshold;
-    private readonly Action<IZetlPressMeasurer?> setMeasurer;
-    private readonly Action<string> log;
+    private readonly ZetlTutorialHost host;
     private readonly StackPanel chapterRow = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
     private readonly TextBlock stepTitle = new() { FontSize = 20, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
     private readonly ContentControl body = new();
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold, IsVisible = false };
     private readonly Button nextButton = new() { Classes = { "primary" }, MinWidth = 110 };
     private readonly Button skipStepButton = new() { Content = "Skip this step" };
+    private readonly Button skipTour = new() { Content = "Skip the tour", HorizontalAlignment = HorizontalAlignment.Right };
     private readonly TextBox practice = new()
     {
         Text = Paragraph,
@@ -74,23 +89,29 @@ internal sealed class ZetlTutorialWindow : Window
         Padding = new Thickness(12, 10),
         MinHeight = 96
     };
+    private readonly TextBox pasteTarget = new()
+    {
+        Watermark = "Click here, then hold Ctrl+V",
+        TextWrapping = TextWrapping.Wrap,
+        AcceptsReturn = true,
+        FontSize = 15,
+        Padding = new Thickness(12, 10),
+        MinHeight = 110,
+        MaxHeight = 220
+    };
 
     private Step step = Step.Welcome;
     private bool stepDone;
+    private bool compilePasted;
+    private string indicatorStyle;
 
-    public ZetlTutorialWindow(
-        int holdDelayMs,
-        Action<int> applyThreshold,
-        Action<IZetlPressMeasurer?> setMeasurer,
-        Action<string> log)
+    public ZetlTutorialWindow(ZetlTutorialHost host)
     {
-        this.holdDelayMs = holdDelayMs;
-        this.applyThreshold = applyThreshold;
-        this.setMeasurer = setMeasurer;
-        this.log = log;
+        this.host = host;
+        indicatorStyle = ZetlHoldIndicatorStyle.Normalize(host.IndicatorStyle);
 
         Title = "Getting to know Zetl";
-        Width = 660;
+        Width = 720;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.Manual;
@@ -98,13 +119,12 @@ internal sealed class ZetlTutorialWindow : Window
         nextButton.Click += (_, _) => GoTo(step + 1);
         skipStepButton.Click += (_, _) =>
         {
-            log($"Tutorial: skipped {step}.");
+            host.Log($"Tutorial: skipped {step}.");
             GoTo(step + 1);
         };
-        var skipTour = new Button { Content = "Skip the tour", HorizontalAlignment = HorizontalAlignment.Right };
         skipTour.Click += (_, _) =>
         {
-            log($"Tutorial: left at {step}.");
+            host.Log($"Tutorial: left at {step}.");
             Close();
         };
 
@@ -129,10 +149,11 @@ internal sealed class ZetlTutorialWindow : Window
         };
 
         practice.TextChanged += (_, _) => OnPracticeTextChanged();
+        pasteTarget.TextChanged += (_, _) => CheckCompilePaste();
         Activated += (_, _) => SelectPracticeSentence();
         SizeChanged += (_, _) => PlaceAtBottomCentre();
         Opened += (_, _) => PlaceAtBottomCentre();
-        Closed += (_, _) => setMeasurer(null);
+        Closed += (_, _) => host.SetMeasurer(null);
 
         GoTo(Step.Welcome);
     }
@@ -162,6 +183,13 @@ internal sealed class ZetlTutorialWindow : Window
                 SelectPracticeSentence();
                 Hint("You saved it as a note, which works too. Try once more, and press Esc this time.");
                 break;
+            case (Step.Board, ZetlTutorialSignal.BoardOpened):
+                Done("That's the Board. Press Esc or click back here when you've had a look.");
+                break;
+            case (Step.Compile, ZetlTutorialSignal.CompilePasted):
+                compilePasted = true;
+                CheckCompilePaste();
+                break;
         }
     }
 
@@ -182,16 +210,17 @@ internal sealed class ZetlTutorialWindow : Window
             return;
         }
 
-        setMeasurer(null);
+        host.SetMeasurer(null);
         step = next;
         stepDone = false;
         status.IsVisible = false;
-        log($"Tutorial: {step}.");
+        host.Log($"Tutorial: {step}.");
         BuildChapterRow();
 
-        skipStepButton.IsVisible = step is not (Step.Welcome or Step.Finish);
+        skipStepButton.IsVisible = step is not (Step.Welcome or Step.Indicator or Step.Finish);
+        skipTour.IsVisible = step != Step.Finish;
         nextButton.IsVisible = true;
-        nextButton.IsEnabled = step is Step.Welcome or Step.Finish;
+        nextButton.IsEnabled = step is Step.Welcome or Step.Indicator or Step.Finish;
         nextButton.Content = step switch
         {
             Step.Welcome => "Start",
@@ -213,7 +242,7 @@ internal sealed class ZetlTutorialWindow : Window
                 stepTitle.Text = "First, how long is a tap for you?";
                 nextButton.IsVisible = false;
                 var panel = new ZetlHoldMeasurePanel(
-                    holdDelayMs,
+                    host.HoldDelayMs,
                     TapsWanted,
                     HoldsWanted,
                     forNewUser: true,
@@ -221,14 +250,14 @@ internal sealed class ZetlTutorialWindow : Window
                     {
                         if (milliseconds is { } chosen)
                         {
-                            applyThreshold(chosen);
+                            host.ApplyHoldDelay(chosen);
                         }
 
                         GoTo(Step.QuickNote);
                     },
-                    log);
+                    host.Log);
                 body.Content = panel;
-                setMeasurer(panel);
+                host.SetMeasurer(panel);
                 break;
 
             case Step.QuickNote:
@@ -256,12 +285,45 @@ internal sealed class ZetlTutorialWindow : Window
                     + "quick note. Then press Esc: the note goes away and the sentence comes back.");
                 break;
 
-            case Step.Finish:
-                stepTitle.Text = "That's the heart of Zetl";
+            case Step.Board:
+                stepTitle.Text = "Where your notes went";
                 body.Content = Text(
-                    "Tap for the shortcut you know, hold for Zetl. Everything you saved is in "
-                    + "today's Journal.\n\nNext in the tour: the Board, where your notes go, and "
-                    + "Compile, which brings them back out. Those steps aren't built yet.");
+                    "Hold Ctrl+B to open the Board. It shows today's page in your Journal, with "
+                    + "the note and the capture you just made.\n\n"
+                    + "The Journal is where everything goes until you start a project of your "
+                    + "own. The Board is where you rename, move, and tidy what you've collected.");
+                nextButton.Focus();
+                break;
+
+            case Step.Compile:
+                stepTitle.Text = "Bring your notes back out";
+                compilePasted = false;
+                pasteTarget.Text = "";
+                body.Content = new StackPanel
+                {
+                    Spacing = 10,
+                    Children =
+                    {
+                        Text("Click in the box below, then hold Ctrl+V. Compile opens on your "
+                            + "Journal. Tick what you want in it (Select All works), then press "
+                            + "Paste Now, and your notes land in the box as one piece of text."),
+                        pasteTarget
+                    }
+                };
+                Dispatcher.UIThread.Post(() => pasteTarget.Focus());
+                break;
+
+            case Step.Indicator:
+                stepTitle.Text = "How much should the indicator show?";
+                body.Content = IndicatorChoices();
+                break;
+
+            case Step.Finish:
+                stepTitle.Text = "You're set";
+                body.Content = Text(
+                    "Tap for the shortcut you know, hold for Zetl. That's all there is to it.\n\n"
+                    + "Zetl keeps running in the tray, by the clock. Right-click its icon for "
+                    + "Settings, to measure your taps and holds again, or to take this tour again.");
                 break;
         }
     }
@@ -273,7 +335,11 @@ internal sealed class ZetlTutorialWindow : Window
         status.IsVisible = true;
         nextButton.IsEnabled = true;
         nextButton.Focus();
-        log($"Tutorial: {step} done.");
+        host.Log($"Tutorial: {step} done.");
+        if (step == Step.Compile)
+        {
+            host.Completed();
+        }
     }
 
     private void Hint(string message)
@@ -288,6 +354,18 @@ internal sealed class ZetlTutorialWindow : Window
             && practice.Text?.Contains(CutSentence, StringComparison.Ordinal) == false)
         {
             Hint("It's in the note now. Press Esc to bring it back.");
+        }
+    }
+
+    // Compile's paste lands a moment after the host reports it, or the other
+    // way round; the step is done once both have happened.
+    private void CheckCompilePaste()
+    {
+        if (step == Step.Compile && !stepDone && compilePasted
+            && !string.IsNullOrWhiteSpace(pasteTarget.Text))
+        {
+            Done("There they are. Compile gathers notes from any project into one piece of "
+                + "text, ready to paste anywhere.");
         }
     }
 
@@ -340,10 +418,74 @@ internal sealed class ZetlTutorialWindow : Window
         };
     }
 
+    // The three indicator styles as buttons; choosing one applies it at once,
+    // so the next hold shows the difference.
+    private Control IndicatorChoices()
+    {
+        var descriptions = new Dictionary<string, string>
+        {
+            [ZetlHoldIndicatorStyle.Detailed] =
+                "The ring, plus the keys and how long you held them, on every press. Good while your hands learn the timing.",
+            [ZetlHoldIndicatorStyle.Ring] =
+                "Just the ring, and only once a press is clearly a hold. Quiet once the timing is second nature.",
+            [ZetlHoldIndicatorStyle.Off] =
+                "Nothing. The popup itself tells you the hold landed."
+        };
+        var buttons = new List<(string Id, Button Button)>();
+        var list = new StackPanel { Spacing = 8 };
+        foreach (var (id, label) in ZetlHoldIndicatorStyle.Choices)
+        {
+            var button = new Button
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Padding = new Thickness(14, 10),
+                Content = new StackPanel
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        new TextBlock { Text = id == ZetlHoldIndicatorStyle.Detailed ? "Detailed" : label, FontWeight = FontWeight.SemiBold },
+                        new TextBlock { Text = descriptions[id], TextWrapping = TextWrapping.Wrap, FontSize = 13 }
+                    }
+                }
+            };
+            var choice = id;
+            button.Click += (_, _) =>
+            {
+                indicatorStyle = choice;
+                host.ApplyIndicatorStyle(choice);
+                Highlight();
+                Hint("Try a hold now to see it. You can change this any time in Settings → Hold Actions.");
+            };
+            buttons.Add((id, button));
+            list.Children.Add(button);
+        }
+
+        void Highlight()
+        {
+            foreach (var (id, button) in buttons)
+            {
+                button.Classes.Set("primary", id == indicatorStyle);
+            }
+        }
+
+        Highlight();
+        return new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                Text("You've been watching the detailed overlay. Pick what you'd like from now on."),
+                list
+            }
+        };
+    }
+
     private void BuildChapterRow()
     {
         chapterRow.Children.Clear();
-        if (step == Step.Welcome)
+        if (step is Step.Welcome or Step.Finish)
         {
             return;
         }

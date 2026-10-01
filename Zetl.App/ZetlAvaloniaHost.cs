@@ -320,7 +320,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         menu.Items.Add(Item("Open Shift Board", () => ShowBoard(shifted: true)));
         menu.Items.Add(Item("New Project", () => _ = ShowProjectSetupAsync()));
         menu.Items.Add(Item("Take the Tour", () => _ = ShowTutorialAsync()));
-        menu.Items.Add(Item("How Zetl Works", () => _ = ShowFirstRunGuideAsync(markSeen: false)));
         menu.Items.Add(Item("Measure My Taps and Holds", () => _ = ShowHoldLabAsync()));
         menu.Items.Add(Item("Notification History", notifications.ShowHistory));
         menu.Items.Add(Item("Clear Notification History", notifications.ClearHistory));
@@ -672,11 +671,23 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             return;
         }
 
-        var window = new ZetlTutorialWindow(
+        var window = new ZetlTutorialWindow(new ZetlTutorialHost(
             settingsStore.Settings.HoldDelayMs,
+            settingsStore.Settings.HoldIndicatorStyle,
             ApplyHoldDelay,
+            style =>
+            {
+                settingsStore.Settings.HoldIndicatorStyle = style;
+                settingsStore.Save();
+                ApplySettings();
+            },
             panel => measurer = panel,
-            Log);
+            () =>
+            {
+                settingsStore.Settings.TutorialState = ZetlTutorialState.Completed;
+                settingsStore.Save();
+            },
+            Log));
         tutorial = window;
         try
         {
@@ -686,6 +697,15 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             tutorial = null;
             measurer = null;
+            // Closing before the last hold counts as skipping, unless an
+            // earlier run already completed it. Either way first run is over.
+            if (settingsStore.Settings.TutorialState != ZetlTutorialState.Completed)
+            {
+                settingsStore.Settings.TutorialState = ZetlTutorialState.Skipped;
+            }
+
+            Log($"Tutorial closed: {settingsStore.Settings.TutorialState}.");
+            settingsStore.MarkFirstRunSeen();
         }
     }
 
@@ -1188,26 +1208,12 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         notifications.Show("Settings saved.");
     }
 
+    // A new install opens the tour; it stays in the tray menu afterwards.
     private void ShowFirstRunIfNeeded()
     {
         if (!settingsStore.Settings.HasSeenFirstRun)
         {
-            ZetlAsync.RunLogged(() => ShowFirstRunGuideAsync(markSeen: true), "first-run guide", Log);
-        }
-    }
-
-    private async Task ShowFirstRunGuideAsync(bool markSeen)
-    {
-        var window = new FirstRunWindow();
-        await ShowUntilClosedAsync(window);
-        if (markSeen)
-        {
-            settingsStore.MarkFirstRunSeen();
-        }
-
-        if (window.OpenBoardRequested)
-        {
-            ShowBoard(shifted: false);
+            ZetlAsync.RunLogged(ShowTutorialAsync, "first-run tour", Log);
         }
     }
 

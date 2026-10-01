@@ -80,7 +80,9 @@ Zetl comes in two parts:
 1. Download the latest `Zetl-…-win-x64.zip` from the
    [Releases page](https://github.com/vecst/zetl-kastn/releases/latest).
 2. Extract the whole zip into a folder and keep its files together.
-3. Run `Zetl.exe`. Its icon appears in the notification area by the clock.
+3. Run `Zetl.exe`. Its icon appears in the notification area by the clock,
+   and a short tour opens: it measures how long your taps and holds take, then
+   has you try each hold for real. It's in the tray menu if you want it again.
 
 There's nothing else to install. Zetl is new and not yet code-signed, so
 Windows may show a SmartScreen warning the first time: choose **More info →

@@ -44,7 +44,10 @@ Zetl lives in the Windows notification area. Its tray menu provides:
 
 - `Open Board` and `Open Shift Board`
 - `New Project`
-- `How Zetl Works`
+- `Take the Tour`, which opens by itself on first launch: it measures your taps
+  and holds, then walks through a quick note, a capture, a cut taken back with
+  `Esc`, the Board, Compile, and the indicator style
+- `Measure My Taps and Holds`
 - `Notification History` and `Clear Notification History`
 - `Toggle Active Bucket Pop Mode`
 - `Settings`

@@ -5,6 +5,9 @@ namespace ZETL;
 internal sealed class ZetlAppSettings
 {
     public bool HasSeenFirstRun { get; set; }
+    // The guided tour: empty until it has been closed once, then Completed (the
+    // user finished its last hold) or Skipped (closed before that).
+    public string TutorialState { get; set; } = "";
     public int ToastDisplayMs { get; set; } = 950;
     public bool AutoCaptureOnCopy { get; set; } = true;
     public bool QuickNoteToClipboard { get; set; }
@@ -170,6 +173,12 @@ internal static class ZetlKastnTemplateLaneDefault
         var lane = ZetlStateStore.CanonicalTemporaryLane(value);
         return lane ?? Ask;
     }
+}
+
+internal static class ZetlTutorialState
+{
+    public const string Completed = "Completed";
+    public const string Skipped = "Skipped";
 }
 
 internal static class ZetlIdleCopyCapture

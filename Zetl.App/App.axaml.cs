@@ -244,7 +244,6 @@ public partial class App : Application
                         settingsStore),
                     "bucket" => new BucketSettingsWindow(bucket, store),
                     "prompt" => new TextPromptWindow("New Bucket", "Bucket name"),
-                    "first-run" => new FirstRunWindow(),
                     "notifications" => new NotificationHistoryWindow(notifications),
                     "toast" => CreateToastPreview(),
                     "board" => new BoardWindow(
@@ -391,11 +390,14 @@ public partial class App : Application
     // step, to check its layout.
     private static Window CreateTutorialPreview()
     {
-        var tutorial = new ZetlTutorialWindow(
+        var tutorial = new ZetlTutorialWindow(new ZetlTutorialHost(
             353,
+            ZetlHoldIndicatorStyle.Detailed,
             _ => { },
             _ => { },
-            message => Console.Error.WriteLine(message));
+            _ => { },
+            () => { },
+            message => Console.Error.WriteLine(message)));
         if (int.TryParse(PreviewArgument("--tutorial-step="), out var step))
         {
             tutorial.ShowStep(step);

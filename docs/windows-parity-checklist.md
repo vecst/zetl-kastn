@@ -43,7 +43,7 @@ recursive shortcut handling.
 
 ## Startup And Tray
 
-- [x] First launch shows `How Zetl Works`; closing it leaves Zetl in the tray.
+- [ ] First launch opens the tour (`Take the Tour`); closing it leaves Zetl in the tray.
 - [x] A tray-icon double-click opens the normal Board; a single click is inert.
 - [ ] **TODO:** Fresh-profile startup should initialize and activate the normal
       and Shift Journal projects. Even after a Shift Journal exists and is saved
