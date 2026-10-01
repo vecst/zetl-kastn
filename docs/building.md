@@ -79,7 +79,9 @@ dotnet run --project Zetl.App -- --preview=note-image
 ```
 
 `--preview=hold-indicator` drives the hold indicator through a simulated hold,
-tap, and slow tap, with a demo-overlay toggle. Any popup preview also takes
+tap, and slow tap, with a detailed-overlay toggle (`--detailed` turns it on at
+start). `--stress` and `--stress-fast` run hundreds or thousands of simulated
+presses, for chasing show/hide problems. Any popup preview also takes
 `--popup-position=` (`TopCenter`, `Center`, `TopRight`, `TopLeft`,
 `BottomRight`, `BottomLeft`, `Pointer`) and `--popup-opacity=` (60-100).
 

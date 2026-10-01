@@ -1343,6 +1343,42 @@ public class PortableSelfTests
             AssertTrue(store.HasCompilableSlips(project), "A project with a note should be compilable.");
         }
 
+        [Fact(DisplayName = "Zetl settings give new installs the detailed indicator in the top right")]
+        public static void SettingsDefaultToDetailedIndicatorTopRight()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlAppSettingsStore(temp.Path + ".settings.json");
+
+            AssertEqual(ZetlHoldIndicatorStyle.Detailed, store.Settings.HoldIndicatorStyle, "New installs see the detailed overlay.");
+            AssertEqual(ZetlScreenAnchor.TopRight, store.Settings.HoldIndicatorPosition, "It sits in the top right, away from popups.");
+        }
+
+        [Fact(DisplayName = "Zetl settings carry an older indicator choice forward")]
+        public static void SettingsCarryOlderIndicatorChoiceForward()
+        {
+            using var temp = new TempStateFile();
+            string Migrated(string json)
+            {
+                var path = temp.Path + ".settings.json";
+                File.WriteAllText(path, json);
+                return new ZetlAppSettingsStore(path).Settings.HoldIndicatorStyle;
+            }
+
+            AssertEqual(ZetlHoldIndicatorStyle.Detailed, Migrated("""{ "showHoldProgress": true, "holdIndicatorDemo": true }"""), "The demo overlay becomes Detailed.");
+            AssertEqual(ZetlHoldIndicatorStyle.Ring, Migrated("""{ "showHoldProgress": true, "holdIndicatorDemo": false }"""), "A plain ring stays a ring.");
+            AssertEqual(ZetlHoldIndicatorStyle.Off, Migrated("""{ "showHoldProgress": false }"""), "A hidden indicator stays off.");
+            AssertEqual(ZetlHoldIndicatorStyle.Ring, Migrated("""{ "holdIndicatorStyle": "Ring" }"""), "A saved style is kept.");
+
+            var path = temp.Path + ".settings.json";
+            File.WriteAllText(path, """{ "showHoldProgress": false, "holdIndicatorPosition": "Popups" }""");
+            var store = new ZetlAppSettingsStore(path);
+            store.Save();
+            var saved = File.ReadAllText(path);
+            AssertFalse(saved.Contains("showHoldProgress", StringComparison.Ordinal), "The old setting is dropped on save.");
+            AssertEqual(ZetlHoldIndicatorStyle.Off, new ZetlAppSettingsStore(path).Settings.HoldIndicatorStyle, "The migrated style survives a save.");
+            AssertEqual(ZetlHoldIndicatorPosition.FollowPopups, store.Settings.HoldIndicatorPosition, "An existing position choice is kept.");
+        }
+
         [Fact(DisplayName = "Zetl state orders projects by their latest note")]
         public static void StateOrdersProjectsByLatestNote()
         {

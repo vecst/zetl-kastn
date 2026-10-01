@@ -24,10 +24,12 @@ Zetl turns familiar keyboard shortcuts into two gestures:
 - **Hold** it (about a third of a second) and Zetl opens a capture, project,
   Replay, or compile action.
 
-While you hold, a small **hold indicator** ring fills and completes the moment
-the hold fires. It only appears once a press has lasted longer than a tap, so
-ordinary copies and pastes never show it, and it can't take focus from the app
-you're in. Keys whose hold does nothing never show it.
+While you hold, a small **hold indicator** in the top right of the screen
+fills and completes the moment the hold fires. By default it's the detailed
+overlay, which also shows the keys and how long you've held them on every
+press, so you can see where a tap ends and a hold begins. Switched to the ring
+alone, it only appears once a press is clearly a hold, so ordinary copies and
+pastes never show it. Either way it can't take focus from the app you're in.
 
 The system has three parts:
 
@@ -93,13 +95,13 @@ everything back.
 
 **Hold indicator settings** are at the bottom of the Hold Actions page:
 
-- **Show hold progress** (on by default).
-- **Indicator position:** where popups open, at the mouse pointer, centered, or
-  a corner. The pointer position is read once per press, so this works over a
-  full-screen video too.
-- **Demo overlay:** adds the key name, a millisecond timer that stops when the
-  action fires, and the action's name, and shows taps as well. Made for
-  recording demos.
+- **Indicator:** *Detailed* (the default) shows the ring with the key name, a
+  millisecond timer that stops when the action fires, and the action's name,
+  on taps as well as holds. *Ring only* shows just the ring, from halfway
+  through the hold delay. *Off* hides it.
+- **Indicator position:** top right by default; also where popups open, at the
+  mouse pointer, centered, or another corner. The pointer position is read once
+  per press, so this works over a full-screen video too.
 
 The hold threshold defaults to `353 ms`; it and the repeat suppression delay
 are in Settings → Chordl Settings. The keys Chordl watches are defined in

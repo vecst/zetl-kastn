@@ -302,8 +302,8 @@ public partial class App : Application
     {
         var indicator = new ZetlHoldIndicator { Anchor = ZetlWindowPlacement.PopupPosition };
         var holdDelay = TimeSpan.FromMilliseconds(353);
-        var demo = new CheckBox { Content = "Demo overlay" };
-        demo.IsCheckedChanged += (_, _) => indicator.Demo = demo.IsChecked == true;
+        var detailed = new CheckBox { Content = "Detailed overlay" };
+        detailed.IsCheckedChanged += (_, _) => indicator.Detailed = detailed.IsChecked == true;
 
         async void Simulate(TimeSpan pressFor)
         {
@@ -356,10 +356,10 @@ public partial class App : Application
         var stress = new Button { Content = "Stress: 300 slow taps" };
         stress.Click += async (_, _) => await Stress();
         var previewArgs = Program.StartupArgs;
-        if (previewArgs.Contains("--demo", StringComparer.OrdinalIgnoreCase))
+        if (previewArgs.Contains("--detailed", StringComparer.OrdinalIgnoreCase))
         {
-            demo.IsChecked = true;
-            indicator.Demo = true;
+            detailed.IsChecked = true;
+            indicator.Detailed = true;
         }
 
         if (previewArgs.Contains("--stress", StringComparer.OrdinalIgnoreCase))
@@ -381,7 +381,7 @@ public partial class App : Application
             {
                 Margin = new Thickness(16),
                 Spacing = 10,
-                Children = { hold, tap, slow, stress, demo }
+                Children = { hold, tap, slow, stress, detailed }
             }
         };
     }

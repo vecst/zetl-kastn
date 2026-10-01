@@ -9,26 +9,29 @@ using Avalonia.Threading;
 namespace ZETL;
 
 // The hold indicator: a ring that fills while a shortcut is held and completes
-// when its hold action fires. A quick tap never shows it, because the ring only
-// appears once a press has lasted longer than a tap. Demo mode adds the key,
-// a millisecond timer, and the action's name, and shows taps too, for
-// recording. Every method runs on the UI thread; the keyboard hook only posts.
+// when its hold action fires. On its own the ring appears only once a press has
+// clearly outlasted a tap, so ordinary copies and pastes stay invisible. The
+// detailed overlay adds the key, a millisecond timer, and the action's name,
+// and shows taps too, so the line between a tap and a hold can be seen.
+// Every method runs on the UI thread; the keyboard hook only posts.
 internal sealed class ZetlHoldIndicator
 {
-    // Longer than an ordinary tap, so plain copies and pastes stay invisible.
-    private static readonly TimeSpan ShowAfter = TimeSpan.FromMilliseconds(120);
+    // The ring alone appears this far into the hold delay: past even a slow
+    // tap, which the hold delay is set well clear of, so it never flashes on
+    // an ordinary copy, yet early enough to watch the hold fill.
+    private const double ShowAfterFraction = 0.5;
     private static readonly TimeSpan FadeOut = TimeSpan.FromMilliseconds(180);
-    private static readonly TimeSpan DemoLinger = TimeSpan.FromMilliseconds(900);
+    private static readonly TimeSpan DetailedLinger = TimeSpan.FromMilliseconds(900);
     private const double RingSize = 44;
     private const double NormalWidth = 56;
-    private const double DemoWidth = 300;
+    private const double DetailedWidth = 300;
     private const double WindowHeight = 56;
 
     private readonly DispatcherTimer frameTimer;
     private Window? window;
     private Arc progress = null!;
     private Ellipse track = null!;
-    private StackPanel demoPanel = null!;
+    private StackPanel detailPanel = null!;
     private TextBlock keyText = null!;
     private TextBlock timerText = null!;
     private TextBlock actionText = null!;
@@ -50,7 +53,7 @@ internal sealed class ZetlHoldIndicator
 
     public bool Enabled { get; set; } = true;
 
-    public bool Demo { get; set; }
+    public bool Detailed { get; set; }
 
     // The anchor id the indicator is placed at (already resolved from settings).
     public string Anchor { get; set; } = ZetlScreenAnchor.TopCenter;
@@ -65,11 +68,11 @@ internal sealed class ZetlHoldIndicator
     }
 
     // A configured chord went down. actionLabel is the hold's action, or null
-    // when holding it would do nothing; then only demo mode shows anything.
+    // when holding it would do nothing; then only the detailed overlay shows.
     public void Start(string comboName, long timestamp, TimeSpan delay, string? holdActionLabel)
     {
         ZetlTrace.Write($"indicator: start {comboName}");
-        if (!Enabled || (holdActionLabel is null && !Demo))
+        if (!Enabled || (holdActionLabel is null && !Detailed))
         {
             Hide();
             return;
@@ -113,7 +116,7 @@ internal sealed class ZetlHoldIndicator
         if (phase == Phase.Holding)
         {
             frozenElapsed = Stopwatch.GetElapsedTime(startedAt);
-            if (!Demo)
+            if (!Detailed)
             {
                 // A released press never completes the ring; it just goes.
                 Hide();
@@ -126,7 +129,7 @@ internal sealed class ZetlHoldIndicator
             actionText.Text = held ? "" : "tap";
             ShowAt();
         }
-        else if (phase == Phase.Completed && !Demo)
+        else if (phase == Phase.Completed && !Detailed)
         {
             phase = Phase.Fading;
             settledAt = Stopwatch.GetTimestamp();
@@ -139,7 +142,7 @@ internal sealed class ZetlHoldIndicator
         switch (phase)
         {
             case Phase.Holding:
-                if (!window!.IsVisible && (Demo || elapsed >= ShowAfter))
+                if (!window!.IsVisible && (Detailed || elapsed >= holdDelay * ShowAfterFraction))
                 {
                     ShowAt();
                 }
@@ -152,9 +155,9 @@ internal sealed class ZetlHoldIndicator
 
             case Phase.Completed:
             case Phase.Released:
-                // Normal mode lets a completed ring linger briefly; demo mode
-                // keeps the result readable for the recording.
-                var linger = Demo ? DemoLinger : FadeOut;
+                // The ring alone lingers briefly; the detailed overlay keeps
+                // the result up long enough to read.
+                var linger = Detailed ? DetailedLinger : FadeOut;
                 if (Stopwatch.GetElapsedTime(settledAt) >= linger)
                 {
                     phase = Phase.Fading;
@@ -190,10 +193,10 @@ internal sealed class ZetlHoldIndicator
             return;
         }
 
-        var width = Demo ? DemoWidth : NormalWidth;
+        var width = Detailed ? DetailedWidth : NormalWidth;
         ZetlTrace.Write("indicator: show begin");
         window.Width = width;
-        demoPanel.IsVisible = Demo;
+        detailPanel.IsVisible = Detailed;
         ZetlWindowPlacement.PlaceOverlay(window, width, WindowHeight, Anchor);
         ZetlTrace.Write("indicator: placed");
         if (!window.IsVisible)
@@ -256,7 +259,7 @@ internal sealed class ZetlHoldIndicator
         keyText = new TextBlock { FontWeight = FontWeight.Bold, FontSize = 16 };
         timerText = new TextBlock { FontSize = 14, MinWidth = 64 };
         actionText = new TextBlock { FontSize = 14 };
-        demoPanel = new StackPanel
+        detailPanel = new StackPanel
         {
             Orientation = Orientation.Vertical,
             VerticalAlignment = VerticalAlignment.Center,
@@ -280,7 +283,7 @@ internal sealed class ZetlHoldIndicator
             Child = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Children = { ring, demoPanel }
+                Children = { ring, detailPanel }
             }
         };
         content.Bind(Border.BackgroundProperty, content.GetResourceObservable("ZetlSurfaceBrush"));

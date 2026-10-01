@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ZETL;
 
 internal sealed class ZetlAppSettings
@@ -27,12 +29,20 @@ internal sealed class ZetlAppSettings
     // and how opaque they are. Ordinary dialogs keep the top-center default.
     public string PopupPosition { get; set; } = ZetlScreenAnchor.TopCenter;
     public int PopupOpacityPercent { get; set; } = ZetlPopupOpacity.Maximum;
-    // Hold indicator: a ring that fills while a shortcut is held, shown only
-    // once a press has lasted longer than a tap. Demo mode adds the key name and
-    // a millisecond timer, for recording.
-    public bool ShowHoldProgress { get; set; } = true;
-    public string HoldIndicatorPosition { get; set; } = ZetlHoldIndicatorPosition.FollowPopups;
-    public bool HoldIndicatorDemo { get; set; }
+    // Hold indicator: a ring that fills while a shortcut is held. Detailed adds
+    // the keys, a millisecond timer, and the action on every press, so a new
+    // user can see where a tap ends and a hold begins. It sits in the top right,
+    // away from the popups, so the action is seen happening without hiding them.
+    public string HoldIndicatorStyle { get; set; } = ZetlHoldIndicatorStyle.Detailed;
+    public string HoldIndicatorPosition { get; set; } = ZetlScreenAnchor.TopRight;
+
+    // The two settings HoldIndicatorStyle replaced, read from older files only.
+    [JsonPropertyName("showHoldProgress")]
+    public bool? LegacyShowHoldProgress { set => legacyShowHoldProgress = value; }
+    [JsonPropertyName("holdIndicatorDemo")]
+    public bool? LegacyHoldIndicatorDemo { set => legacyHoldIndicatorDemo = value; }
+    private bool? legacyShowHoldProgress;
+    private bool? legacyHoldIndicatorDemo;
     // The template last started, highlighted when the template picker opens.
     public string? LastTemplateId { get; set; }
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
@@ -90,6 +100,21 @@ internal sealed class ZetlAppSettings
         {
             DefaultProjectBuckets = ZetlBucketDefaults.Standard.ProjectBuckets.ToList();
         }
+
+        // An install from before the style setting keeps the indicator it had:
+        // the demo overlay became Detailed, a plain ring stays a plain ring.
+        if (legacyShowHoldProgress is not null || legacyHoldIndicatorDemo is not null)
+        {
+            HoldIndicatorStyle = legacyHoldIndicatorDemo == true
+                ? ZetlHoldIndicatorStyle.Detailed
+                : legacyShowHoldProgress == false
+                    ? ZetlHoldIndicatorStyle.Off
+                    : ZetlHoldIndicatorStyle.Ring;
+            legacyShowHoldProgress = null;
+            legacyHoldIndicatorDemo = null;
+        }
+
+        HoldIndicatorStyle = ZetlHoldIndicatorStyle.Normalize(HoldIndicatorStyle);
     }
 }
 

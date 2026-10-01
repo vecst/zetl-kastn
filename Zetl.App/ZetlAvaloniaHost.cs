@@ -1089,9 +1089,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.HoldActionRules = window.HoldActionRules;
         settings.PopupPosition = window.PopupPosition;
         settings.PopupOpacityPercent = window.PopupOpacityPercent;
-        settings.ShowHoldProgress = window.ShowHoldProgress;
+        settings.HoldIndicatorStyle = window.HoldIndicatorStyle;
         settings.HoldIndicatorPosition = window.HoldIndicatorPosition;
-        settings.HoldIndicatorDemo = window.HoldIndicatorDemo;
         settings.JournalInterval = window.JournalInterval;
         settings.KastnAutosave = window.KastnAutosave;
         settings.KastnStartup = window.KastnStartup;
@@ -1186,8 +1185,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         router.SetRules(ZetlGestureRules.Apply(settingsStore.Settings.HoldActionRules));
         ZetlWindowPlacement.PopupPosition = ZetlScreenAnchor.Normalize(settingsStore.Settings.PopupPosition);
         ZetlWindowPlacement.PopupOpacityPercent = ZetlPopupOpacity.Clamp(settingsStore.Settings.PopupOpacityPercent);
-        holdIndicator.Enabled = settingsStore.Settings.ShowHoldProgress || settingsStore.Settings.HoldIndicatorDemo;
-        holdIndicator.Demo = settingsStore.Settings.HoldIndicatorDemo;
+        var indicatorStyle = ZetlHoldIndicatorStyle.Normalize(settingsStore.Settings.HoldIndicatorStyle);
+        holdIndicator.Enabled = indicatorStyle != ZetlHoldIndicatorStyle.Off;
+        holdIndicator.Detailed = indicatorStyle == ZetlHoldIndicatorStyle.Detailed;
         holdIndicator.Anchor = ZetlHoldIndicatorPosition.Resolve(
             settingsStore.Settings.HoldIndicatorPosition,
             settingsStore.Settings.PopupPosition);

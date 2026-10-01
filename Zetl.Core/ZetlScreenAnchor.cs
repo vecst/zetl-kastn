@@ -53,6 +53,28 @@ internal static class ZetlHoldIndicatorPosition
             : position;
 }
 
+// How much the hold indicator shows.
+internal static class ZetlHoldIndicatorStyle
+{
+    // The ring with the keys, a millisecond timer, and the action, on every press.
+    public const string Detailed = "Detailed";
+    // Only the ring, once a press has clearly outlasted a tap.
+    public const string Ring = "Ring";
+    public const string Off = "Off";
+
+    public static IReadOnlyList<(string Id, string Label)> Choices { get; } =
+    [
+        (Detailed, "Detailed: ring, keys, and hold time"),
+        (Ring, "Ring only"),
+        (Off, "Off")
+    ];
+
+    public static string Normalize(string? value) =>
+        Choices.FirstOrDefault(choice =>
+            string.Equals(choice.Id, value?.Trim(), StringComparison.OrdinalIgnoreCase)).Id
+        ?? Detailed;
+}
+
 // Popup appearance settings, kept in one place so popups and the hold
 // indicator read them the same way.
 internal static class ZetlPopupOpacity
