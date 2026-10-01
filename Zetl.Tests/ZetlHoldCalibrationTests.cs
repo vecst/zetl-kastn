@@ -66,6 +66,21 @@ public class ZetlHoldCalibrationTests
         AssertEqual(290.0, second.SuggestedMs, "Second run.");
     }
 
+    [Fact] public void SlowerPressesGetALongerThreshold()
+    {
+        // Someone whose ordinary copy takes up to 320 ms (a motor difficulty, a
+        // stiff keyboard) needs protection for their taps, not their holds: a
+        // threshold short enough for a fast typist would turn their copies into
+        // popups.
+        var result = ZetlHoldCalibration.Analyze(
+            [150, 210, 260, 300, 320],
+            [600, 680, 750, 900],
+            353);
+
+        AssertEqual(2, result.CurrentTapsTooLong, "The default 353 would misread their slowest taps.");
+        AssertEqual(515.0, result.SuggestedMs, "70% of the way from 320 to 600.");
+    }
+
     [Fact] public void TheSuggestionKeepsAMarginBelowTheQuickestHold()
     {
         // A narrow gap: 70% of the way would sit 9 ms from the quickest hold.
