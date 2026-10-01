@@ -112,9 +112,9 @@ internal partial class CompileWindow : ZetlPopupWindow
 
     private void PopulateProjectSelectors()
     {
-        var projects = store.State.Projects
-            .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        // Most recently written first, so the projects worth compiling sit at
+        // the top of both pickers.
+        var projects = store.GetProjectsByRecentWrite();
         sourceProjectBox.ItemsSource = projects;
         destinationProjectBox.ItemsSource = projects;
         sourceProjectBox.SelectedItem = projects.First(item => item.Id == sourceProject.Id);

@@ -275,8 +275,9 @@ Replay and Pop exclude each other; turning one on turns the other off.
 
 ## Compile
 
-Hold `Ctrl+V` to open Compile. It starts on the active project, but you can
-pick another without changing either lane.
+Hold `Ctrl+V` to open Compile. It starts on the active project, or, with none
+active, on the project you last added to. The project list puts recent
+projects first, and picking another changes neither lane.
 
 Compile can:
 
@@ -296,9 +297,6 @@ active project or bucket.
 Compile in Zetl is text-only and doesn't list picture slips. Kastn's text views
 keep readable picture markers, and its Markdown, HTML, and PDF output can embed
 the pictures.
-
-With no active project and nothing to compile, a held `Ctrl+V` opens the
-template picker instead.
 
 ## Templates And Creation Types
 

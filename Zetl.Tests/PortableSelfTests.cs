@@ -1243,20 +1243,33 @@ public class PortableSelfTests
             AssertTrue(store.HasCompilableSlips(project), "A project with a note should be compilable.");
         }
 
-        [Fact(DisplayName = "Zetl state finds inactive scratch notes for compile")]
-        public static void StateFindsInactiveScratchCompileTarget()
+        [Fact(DisplayName = "Zetl state orders projects by their latest note")]
+        public static void StateOrdersProjectsByLatestNote()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
-            var project = store.GetCaptureHome();
-            var scratch = store.GetScratchBucket(project);
-            store.AddSlip(scratch, "scratch note", "cut");
-            store.ClearActiveProject();
+            var older = store.CreateProject("Older", ["Inbox"], "Inbox");
+            var newer = store.CreateProject("Newer", ["Inbox"], "Inbox");
+            store.CreateProject("Blank", ["Inbox"], "Inbox");
+            store.AddSlip(older.Buckets.First(), "old", "copy").CreatedAtUtc =
+                new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            store.AddSlip(newer.Buckets.First(), "new", "copy").CreatedAtUtc =
+                new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
+            store.AppendLogSlips(["log line"], maxDayBuckets: 14, maxNotesPerBucket: 2000);
 
-            AssertTrue(store.TryGetScratchCompileTarget(out var compileProject, out var compileBucket), "Inactive scratch note should be compilable.");
-            AssertEqual(project.Id, compileProject?.Id, "Scratch compile should use the project that owns Scratch.");
-            AssertEqual(scratch.Id, compileBucket?.Id, "Scratch compile should return the Scratch bucket.");
-            AssertEqual<ZetlProject?>(null, store.ActiveProject, "Scratch compile lookup should not activate the project.");
+            var names = store.GetProjectsByRecentWrite().Select(project => project.Name).ToList();
+            AssertEqual("Newer", names[0], "The latest note leads.");
+            AssertEqual("Older", names[1], "Older notes follow.");
+            AssertTrue(
+                names.IndexOf("Blank") > 1 && names.IndexOf(ZetlStateStore.LogProjectName) > 1,
+                $"Projects without notes, and the logs, come after written ones (got {string.Join(", ", names)}).");
+            AssertEqual("Newer", store.GetMostRecentCompilableProject()?.Name, "The latest written project compiles.");
+
+            // A newer project holding nothing compilable is passed over.
+            var dividers = store.CreateProject("Dividers", ["Inbox"], "Inbox");
+            store.AddSlip(dividers.Buckets.First(), "", "kastn", blockKind: ZetlBlockKinds.Divider);
+            AssertEqual("Dividers", store.GetProjectsByRecentWrite()[0].Name, "Any note counts as a write.");
+            AssertEqual("Newer", store.GetMostRecentCompilableProject()?.Name, "Only text that compiles counts for Compile.");
         }
 
         [Fact(DisplayName = "Zetl state supports child buckets")]
@@ -4698,16 +4711,20 @@ public class PortableSelfTests
                 ShortcutContext(VK_T));
 
             AssertTrue(request is ZetlTemplatePickerRequest, "Held Ctrl+T should request the template picker.");
-            AssertFalse(
-                ((ZetlTemplatePickerRequest)request!).FromCompileFallback,
-                "A held Ctrl+T picker request is not a compile fallback.");
         }
 
-        [Fact(DisplayName = "Runtime compile hold without a project requests the picker")]
-        public static async Task RuntimeCompileHoldWithoutProjectRequestsPicker()
+        [Fact(DisplayName = "Runtime compile hold without a project opens the latest project")]
+        public static async Task RuntimeCompileHoldWithoutProjectOpensLatestProject()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
+            var older = store.CreateProject("Older", ["Inbox"], "Inbox");
+            var newer = store.CreateProject("Newer", ["Inbox"], "Inbox");
+            store.AddSlip(older.Buckets.First(), "old", "copy").CreatedAtUtc =
+                new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            store.AddSlip(newer.Buckets.First(), "new", "copy").CreatedAtUtc =
+                new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
+            store.ClearActiveProject();
             var coordinator = CreateShortcutCoordinator(
                 store,
                 new FakeClipboard(null, changeToken: 1),
@@ -4715,14 +4732,36 @@ public class PortableSelfTests
                 out _,
                 out _);
 
-            // No active project and nothing in Scratch to compile: held Ctrl+V should
-            // offer the template picker (flagged as the compile fallback).
             var request = await coordinator.HandleHoldAsync(
                 ShortcutContext(VK_V));
 
+            AssertEqual(
+                "Newer",
+                (request as ZetlCompileRequest)?.Project.Name,
+                "Held Ctrl+V with no active project should compile the project last written to.");
+            AssertEqual<ZetlProject?>(null, store.ActiveProject, "Opening Compile should not activate it.");
+        }
+
+        [Fact(DisplayName = "Runtime compile hold with nothing anywhere says so")]
+        public static async Task RuntimeCompileHoldWithNothingAnywhereSaysSo()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                new FakeClipboard(null, changeToken: 1),
+                notifications,
+                out _,
+                out _);
+
+            var request = await coordinator.HandleHoldAsync(
+                ShortcutContext(VK_V));
+
+            AssertEqual<ZetlShortcutRequest?>(null, request, "There is nothing to open.");
             AssertTrue(
-                request is ZetlTemplatePickerRequest { FromCompileFallback: true },
-                "Held Ctrl+V with nothing to compile should request the template picker as a fallback.");
+                notifications.Messages.Contains("No Zetl notes to compile yet."),
+                "The user hears why nothing opened.");
         }
 
         [Fact(DisplayName = "Runtime compile hold with an active project stays compile")]

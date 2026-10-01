@@ -7,9 +7,8 @@ using Avalonia.Media;
 namespace ZETL;
 
 // Zetl's quick template picker: a small popup listing templates with a
-// Capture/Consumable switcher, so a held Ctrl+T (defaulting to Capture) or a held
-// Ctrl+V with no active project and nothing to compile (defaulting to Consumable)
-// can start a fresh project from one. Arrow keys move the selection, Ctrl+Enter
+// Capture/Consumable switcher (opening on Capture), so a held Ctrl+T can start a
+// fresh project from one. Arrow keys move the selection, Ctrl+Enter
 // starts the highlighted template, and Escape cancels. Choosing a template sets
 // SelectedTemplate and the host creates the project.
 internal sealed class TemplatePickerWindow : ZetlPopupWindow
@@ -22,12 +21,9 @@ internal sealed class TemplatePickerWindow : ZetlPopupWindow
     private bool showConsumable;
     private bool completionDecided;
 
-    public TemplatePickerWindow(
-        IReadOnlyList<ZetlTemplateDocument> templates,
-        bool initialConsumable)
+    public TemplatePickerWindow(IReadOnlyList<ZetlTemplateDocument> templates)
     {
         this.templates = templates;
-        showConsumable = initialConsumable;
 
         Title = "Start a template";
         Width = 460;

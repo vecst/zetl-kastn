@@ -81,7 +81,7 @@ internal sealed class ZetlShortcutCoordinator
             Task.FromResult(HandleReplayToggle(context.ShiftLane)));
         router.RegisterHold(ZetlGestureActions.TemplatePicker, (context, _) =>
             Task.FromResult<ZetlShortcutRequest?>(
-                new ZetlTemplatePickerRequest(context.ShiftLane, FromCompileFallback: false)));
+                new ZetlTemplatePickerRequest(context.ShiftLane)));
         router.RegisterHold(ZetlGestureActions.QuickNote, (context, pending) =>
             Task.FromResult<ZetlShortcutRequest?>(CreateCutHoldRequest(context, pending)));
         router.RegisterHold(ZetlGestureActions.Compile, (context, _) =>
@@ -547,24 +547,12 @@ internal sealed class ZetlShortcutCoordinator
 
     private ZetlShortcutRequest? CreateCompileRequest(bool shifted)
     {
-        var project = store.GetActiveProject(shifted);
-        if (project is null)
-        {
-            if (!store.TryGetScratchCompileTarget(
-                    out project,
-                    out var scratchBucket,
-                    shifted)
-                || project is null
-                || scratchBucket is null)
-            {
-                // No active project and nothing in Scratch to compile: offer Zetl's
-                // quick template picker instead. The host decides whether any
-                // consumable templates exist, falling back to the original
-                // "nothing to compile" message when none do.
-                return new ZetlTemplatePickerRequest(shifted, FromCompileFallback: true);
-            }
-        }
-        else if (!store.HasCompilableSlips(project))
+        // With no active project, Compile opens on the project last written to.
+        // Its source picker lists the other recent projects first, and opening
+        // it activates nothing.
+        var project = store.GetActiveProject(shifted)
+            ?? store.GetMostRecentCompilableProject();
+        if (project is null || !store.HasCompilableSlips(project))
         {
             notifications.Show("No Zetl notes to compile yet.");
             return null;

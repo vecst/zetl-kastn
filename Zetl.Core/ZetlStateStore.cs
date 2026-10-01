@@ -2107,72 +2107,44 @@ internal sealed class ZetlStateStore
     // active.
     public ZetlProject? GetMostRecentlyWrittenProject()
     {
-        return State.Projects
-            .Where(project => !string.Equals(project.Name, LogProjectName, StringComparison.OrdinalIgnoreCase))
-            .Select(project => new
-            {
-                project,
-                latest = project.Buckets
-                    .Where(bucket => !IsDeletedBucket(bucket))
-                    .SelectMany(bucket => bucket.Slips)
-                    .Select(note => (DateTimeOffset?)note.CreatedAtUtc)
-                    .Max()
-            })
-            .Where(item => item.latest is not null)
-            .OrderByDescending(item => item.latest)
-            .Select(item => item.project)
+        return ProjectsByLatestWrite()
+            .Where(item => item.Latest is not null)
+            .Select(item => item.Project)
             .FirstOrDefault();
     }
 
-    public bool TryGetScratchCompileTarget(out ZetlProject? project, out ZetlBucket? scratchBucket, bool shifted = false)
+    // The project a held Ctrl+V compiles when no project is active: the most
+    // recently written one that has text to compile.
+    public ZetlProject? GetMostRecentCompilableProject()
     {
-        var defaultName = DefaultProjectName(shifted);
-        var candidates = State.Projects
-            .OrderByDescending(item => string.Equals(item.Name, defaultName, StringComparison.OrdinalIgnoreCase))
-            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase);
+        return ProjectsByLatestWrite()
+            .Where(item => item.Latest is not null)
+            .Select(item => item.Project)
+            .FirstOrDefault(project => HasCompilableSlips(project));
+    }
 
-        foreach (var candidate in candidates)
-        {
-            if (candidate.JournalMode)
-            {
-                // A journal's "scratch" for quick compile is today's capture stream: the
-                // Capture / Quick Note children under today's day parent. Pick the first
-                // child holding current-session text.
-                var dayName = JournalBucketName(DateTime.Now, Defaults.DayStartHour);
-                var day = candidate.Buckets.FirstOrDefault(bucket =>
-                    bucket.ParentBucketId is null
-                    && string.Equals(bucket.Name, dayName, StringComparison.OrdinalIgnoreCase));
-                var journalScratch = day is null
+    // Every project, most recently written first. Projects without notes, and
+    // Zetl Logs, follow by name.
+    public IReadOnlyList<ZetlProject> GetProjectsByRecentWrite()
+    {
+        return ProjectsByLatestWrite().Select(item => item.Project).ToList();
+    }
+
+    private IEnumerable<(ZetlProject Project, DateTimeOffset? Latest)> ProjectsByLatestWrite()
+    {
+        return State.Projects
+            .Select(project => (
+                Project: project,
+                Latest: string.Equals(project.Name, LogProjectName, StringComparison.OrdinalIgnoreCase)
                     ? null
-                    : candidate.Buckets.FirstOrDefault(bucket =>
-                        string.Equals(bucket.ParentBucketId, day.Id, StringComparison.Ordinal)
-                        && !IsDeletedBucket(bucket)
-                        && bucket.Slips.Any(note => IsCurrentSessionSlip(note) && !string.IsNullOrWhiteSpace(note.Text)));
-                if (journalScratch is not null)
-                {
-                    project = candidate;
-                    scratchBucket = journalScratch;
-                    return true;
-                }
-
-                continue;
-            }
-
-            // A normal project's scratch is the bucket literally named Scratch.
-            var scratch = candidate.Buckets.FirstOrDefault(bucket =>
-                IsScratchBucket(bucket)
-                && bucket.Slips.Any(note => IsCurrentSessionSlip(note) && !string.IsNullOrWhiteSpace(note.Text)));
-            if (scratch is not null)
-            {
-                project = candidate;
-                scratchBucket = scratch;
-                return true;
-            }
-        }
-
-        project = null;
-        scratchBucket = null;
-        return false;
+                    : project.Buckets
+                        .Where(bucket => !IsDeletedBucket(bucket))
+                        .SelectMany(bucket => bucket.Slips)
+                        .Select(note => (DateTimeOffset?)note.CreatedAtUtc)
+                        .Max()))
+            .OrderByDescending(item => item.Latest is not null)
+            .ThenByDescending(item => item.Latest)
+            .ThenBy(item => item.Project.Name, StringComparer.OrdinalIgnoreCase);
     }
 
     // Persist a single project's file, optionally rewriting the workspace

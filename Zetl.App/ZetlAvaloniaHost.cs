@@ -760,27 +760,20 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         holdLatency.Record(Stopwatch.GetTimestamp() - holdStarted);
     }
 
-    // Zetl's quick template access: a held Ctrl+T (or a held Ctrl+V with no active
-    // project and nothing to compile) lets the user start a fresh project from a
-    // consumable template and immediately replay it. When no consumable templates
-    // exist, fall back to the original behavior/message.
+    // Zetl's quick template access: a held Ctrl+T lets the user start a fresh
+    // project from a template, opening on capture templates with a switcher for
+    // consumable ones.
     private void ShowTemplatePicker(ZetlTemplatePickerRequest request, object? target)
     {
         var templates = templateStore.LoadAll();
         if (templates.Count == 0)
         {
-            // No templates at all (built-ins always ship some, so this is rare):
-            // keep the original message for the compile fallback path.
-            notifications.Show(request.FromCompileFallback
-                ? "No Zetl slips to compile yet."
-                : "No templates yet. Create one in Kastn.");
+            // Built-ins always ship some, so this is rare.
+            notifications.Show("No templates yet. Create one in Kastn.");
             return;
         }
 
-        // A held Ctrl+V fallback defaults to consumable (start replaying); a held
-        // Ctrl+T defaults to capture (start a project). Either way the switcher
-        // exposes both kinds.
-        var window = new TemplatePickerWindow(templates, initialConsumable: request.FromCompileFallback)
+        var window = new TemplatePickerWindow(templates)
         {
             ShowInTaskbar = false,
             DismissOnDeactivate = target is not null
