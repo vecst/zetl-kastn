@@ -439,10 +439,10 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
                     break;
                 }
 
-                // Windows Information Protection exposes this registered format
-                // as system-managed metadata, often with no data handle at all.
-                // Its value must be queried through EdpGetEnterpriseIdForClipboard
-                // rather than GetClipboardData/GlobalLock.
+                // Windows Information Protection marks managed content with
+                // this format, as system metadata that often has no data handle.
+                // It can't be read or put back like ordinary data, so its
+                // presence alone makes the backup incomplete (below).
                 if (format == EnterpriseDataProtection)
                 {
                     hasEnterpriseProtectionMarker = true;
@@ -523,17 +523,14 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             CloseClipboard();
         }
 
+        // Telling protected content from unprotected content needs an
+        // undocumented Windows call whose memory rules are unknown, and freeing
+        // its result the wrong way corrupts the heap. A marked clipboard is
+        // treated as protected instead; writes still go ahead, without a backup.
         if (hasEnterpriseProtectionMarker)
         {
-            if (!TryGetClipboardEnterpriseId(out var enterpriseId, out var failureReason))
-            {
-                return ZetlClipboardBackup.Incomplete(failureReason);
-            }
-            if (!string.IsNullOrEmpty(enterpriseId))
-            {
-                return ZetlClipboardBackup.Incomplete(
-                    "the clipboard contains Windows-protected enterprise data");
-            }
+            return ZetlClipboardBackup.Incomplete(
+                "the clipboard is marked by Windows enterprise data protection");
         }
 
         var unsupportedFormat = nonMemoryFormats.FirstOrDefault(format =>
@@ -960,42 +957,6 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             : null;
     }
 
-    private static bool TryGetClipboardEnterpriseId(
-        out string? enterpriseId,
-        out string failureReason)
-    {
-        enterpriseId = null;
-        failureReason = "";
-        IntPtr value = IntPtr.Zero;
-        try
-        {
-            var result = EdpGetEnterpriseIdForClipboard(out value);
-            if (result < 0)
-            {
-                failureReason =
-                    $"Windows clipboard protection metadata could not be verified (HRESULT 0x{result:X8})";
-                return false;
-            }
-
-            enterpriseId = value == IntPtr.Zero
-                ? null
-                : Marshal.PtrToStringUni(value);
-            return true;
-        }
-        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
-        {
-            failureReason = "Windows clipboard protection metadata APIs are unavailable";
-            return false;
-        }
-        finally
-        {
-            if (value != IntPtr.Zero)
-            {
-                HeapFree(GetProcessHeap(), 0, value);
-            }
-        }
-    }
-
     public bool SetText(string text)
     {
         return ReplaceText(text).Succeeded;
@@ -1338,9 +1299,6 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint RegisterClipboardFormat(string format);
 
-    [DllImport("edputil.dll")]
-    private static extern int EdpGetEnterpriseIdForClipboard(out IntPtr enterpriseId);
-
     [DllImport("gdi32.dll", SetLastError = true)]
     private static extern uint GetEnhMetaFileBits(
         IntPtr enhancedMetafile,
@@ -1358,12 +1316,6 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
     [DllImport("gdi32.dll", SetLastError = true)]
     private static extern bool DeleteEnhMetaFile(IntPtr enhancedMetafile);
-
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr GetProcessHeap();
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool HeapFree(IntPtr heap, uint flags, IntPtr memory);
 
     [DllImport("kernel32.dll")]
     private static extern IntPtr GlobalFree(IntPtr memory);
