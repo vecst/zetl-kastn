@@ -5,7 +5,8 @@ using Avalonia.Media;
 
 namespace ZETL;
 
-// Compile workflow window. Completion properties form its host-facing result.
+// The Compose window (held Ctrl+V): gathers slips into one piece of text to
+// paste, copy, or save. Completion properties form its host-facing result.
 internal partial class CompileWindow : ZetlPopupWindow
 {
     private readonly ZetlStateStore store = null!;
@@ -23,13 +24,19 @@ internal partial class CompileWindow : ZetlPopupWindow
     internal CompileWindow(
         ZetlStateStore store,
         ZetlProject project,
-        IReadOnlyList<ZetlBucket>? bucketScope = null)
+        IReadOnlyList<ZetlBucket>? bucketScope = null,
+        bool ctrlEnterPastes = true,
+        bool headings = true)
     {
         this.store = store;
         sourceProject = project;
         sourceScope = bucketScope;
 
         InitializeComponent();
+        headingsCheck.IsChecked = headings;
+        headingsCheck.IsCheckedChanged += (_, _) => RefreshPreview();
+        // The button Ctrl+Enter presses is the one drawn as primary.
+        (ctrlEnterPastes ? pasteButton : copyButton).Classes.Add("primary");
         compileModeBox.ItemsSource = new[] { "Formatted", "Plain", "TSV" };
 
         PopulateProjectSelectors();
@@ -59,7 +66,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         cancelButton.Click += (_, _) => Cancel();
         ZetlWindowShortcuts.Enable(
             this,
-            () => Complete(pasteNow: false, saveToBucket: false),
+            () => Complete(pasteNow: ctrlEnterPastes, saveToBucket: false),
             Cancel);
 
         UpdateCompileModeControls();
@@ -86,6 +93,10 @@ internal partial class CompileWindow : ZetlPopupWindow
         destinationBucketBox.Text?.Trim() ?? "";
 
     public bool Flatten => flattenCheck.IsChecked == true;
+
+    // Whether Formatted output carries the project and bucket headings; the
+    // host remembers it for the next Compose.
+    public bool Headings => headingsCheck.IsChecked == true;
 
     public IReadOnlyList<string> SelectedNoteTexts => SelectedNotes
         .Select(item => item.Slip.Text.Trim())
@@ -275,14 +286,20 @@ internal partial class CompileWindow : ZetlPopupWindow
         {
             "Plain" => store.CompileUnformattedFromSlips(selected),
             "TSV" => store.CompileTsvFromSlips(sourceProject, selected, TsvRowLength),
+            _ when !Headings => store.CompileUnformattedFromSlips(selected),
             _ => store.CompilePlainTextFromSlips(sourceProject, selected)
         };
     }
 
+    // The rich form of the result: Formatted as styled HTML, and TSV as an HTML
+    // table so spreadsheets paste it into cells.
     private string? BuildCompiledHtml(IReadOnlyList<SlipDisplayItem> selected) =>
-        string.Equals(SelectedCompileMode, "Formatted", StringComparison.OrdinalIgnoreCase)
-            ? store.CompileHtmlFromSlips(sourceProject, selected)
-            : null;
+        SelectedCompileMode switch
+        {
+            "Formatted" => store.CompileHtmlFromSlips(sourceProject, selected, Headings),
+            "TSV" => ZetlTsv.HtmlTable(store.CompileTsvLinesFromSlips(selected, TsvRowLength)),
+            _ => null
+        };
 
     private void UpdateCompileModeControls()
     {
@@ -292,6 +309,8 @@ internal partial class CompileWindow : ZetlPopupWindow
             StringComparison.OrdinalIgnoreCase);
         tsvRowLengthLabel.IsEnabled = tsvSelected;
         tsvRowLengthBox.IsEnabled = tsvSelected;
+        // Plain and TSV never carry headings; a TSV is just the table.
+        headingsCheck.IsEnabled = string.Equals(SelectedCompileMode, "Formatted", StringComparison.OrdinalIgnoreCase);
     }
 
     private void ApplyBucketCompileDefaults()
@@ -335,7 +354,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         var selected = SelectedNotes;
         if (selected.Count == 0)
         {
-            ShowValidation("Select at least one slip to compile.");
+            ShowValidation("Select at least one slip to compose.");
             return;
         }
 

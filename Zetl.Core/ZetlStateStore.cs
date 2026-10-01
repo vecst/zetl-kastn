@@ -1972,7 +1972,12 @@ internal sealed class ZetlStateStore
         return string.Join(Environment.NewLine, parts).TrimEnd();
     }
 
-    public string CompileHtmlFromSlips(ZetlProject project, IEnumerable<SlipDisplayItem> selectedNotes)
+    // headings=false leaves out the project title and bucket headings, for
+    // pasting slips into something that already has its own.
+    public string CompileHtmlFromSlips(
+        ZetlProject project,
+        IEnumerable<SlipDisplayItem> selectedNotes,
+        bool headings = true)
     {
         var selected = selectedNotes
             .Where(item => !item.Slip.IsImage)
@@ -1985,8 +1990,10 @@ internal sealed class ZetlStateStore
             {
                 Id = "compile-formatted-html",
                 Name = "Formatted",
-                Kind = ZetlViewKinds.Html
-            });
+                Kind = ZetlViewKinds.Html,
+                ShowTitle = headings
+            },
+            headings: headings);
         return PrintableTaskBoxes(html);
     }
 
@@ -2006,26 +2013,17 @@ internal sealed class ZetlStateStore
                 .Where(text => text.Length > 0));
     }
 
-    public string CompileTsvFromSlips(ZetlProject project, IEnumerable<SlipDisplayItem> selectedNotes, int rowLength)
-    {
-        var normalizedRowLength = Math.Max(1, rowLength);
-        var parts = new List<string> { project.Name.Trim() };
-        foreach (var group in selectedNotes.GroupBy(item => item.Bucket))
-        {
-            parts.Add(group.Key.Name.Trim());
-            var headers = ZetlTsv.HeaderCells(group.Key.Settings.DefaultStartingText);
-            if (headers.Count > 0)
-            {
-                parts.Add(string.Join('\t', headers));
-            }
+    public string CompileTsvFromSlips(ZetlProject project, IEnumerable<SlipDisplayItem> selectedNotes, int rowLength) =>
+        string.Join(Environment.NewLine, CompileTsvLinesFromSlips(selectedNotes, rowLength));
 
-            parts.AddRange(ZetlTsv.Rows(group.Select(item => item.Slip.Text), normalizedRowLength));
-
-            parts.Add("");
-        }
-
-        return string.Join(Environment.NewLine, parts).TrimEnd();
-    }
+    // The rows of a TSV compose, for the text and the HTML table alike.
+    public List<string> CompileTsvLinesFromSlips(IEnumerable<SlipDisplayItem> selectedNotes, int rowLength) =>
+        ZetlTsv.Table(selectedNotes
+            .GroupBy(item => item.Bucket)
+            .Select(group => (
+                ZetlTsv.HeaderCells(group.Key.Settings.DefaultStartingText),
+                group.Select(item => item.Slip.Text),
+                rowLength)));
 
     public int GetBucketTsvRowLength(ZetlBucket bucket)
     {

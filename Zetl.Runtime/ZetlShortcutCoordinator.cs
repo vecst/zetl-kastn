@@ -317,7 +317,7 @@ internal sealed class ZetlShortcutCoordinator
                 var note = store.AddSlip(destination, result.CompiledText, "compile");
                 undoStack.Push(
                     request.Shifted,
-                    $"Undid compile to {destination.Name}.",
+                    $"Undid compose into {destination.Name}.",
                     () => store.DeleteSlip(destination, note.Id));
                 savedSummary = $"to {destinationLabel}";
             }
@@ -326,7 +326,7 @@ internal sealed class ZetlShortcutCoordinator
                 var notes = store.AddSlips(destination, result.SelectedNoteTexts, "compile");
                 undoStack.Push(
                     request.Shifted,
-                    $"Undid compile to {destination.Name}.",
+                    $"Undid compose into {destination.Name}.",
                     () =>
                     {
                         foreach (var note in notes)
@@ -337,7 +337,7 @@ internal sealed class ZetlShortcutCoordinator
                 savedSummary = $"{notes.Count} notes to {destinationLabel}";
             }
 
-            notifications.Show($"Compiled {savedSummary}.");
+            notifications.Show($"Composed {savedSummary}.");
             return ZetlCompileOutcome.RestoreTarget;
         }
 
@@ -352,8 +352,8 @@ internal sealed class ZetlShortcutCoordinator
             // copy succeeded. The compiled text can be re-produced by compiling
             // again.
             notifications.Show(clipboardWrite.ClipboardPreserved
-                ? "Couldn't copy the compiled text; your clipboard was left unchanged."
-                : "Couldn't copy the compiled text, and Zetl could not fully restore your previous clipboard.");
+                ? "Couldn't copy the composed text; your clipboard was left unchanged."
+                : "Couldn't copy the composed text, and Zetl could not fully restore your previous clipboard.");
             return ZetlCompileOutcome.RestoreTarget;
         }
 
@@ -362,7 +362,7 @@ internal sealed class ZetlShortcutCoordinator
             return ZetlCompileOutcome.PasteNow;
         }
 
-        notifications.Show("Copied compiled text to clipboard.");
+        notifications.Show("Copied composed text to clipboard.");
         return ZetlCompileOutcome.RestoreTarget;
     }
 
@@ -371,8 +371,8 @@ internal sealed class ZetlShortcutCoordinator
         await delay.WaitAsync(PopClipboardDelay);
         var pasted = await keyboard.SendPaste();
         dispatcher.Post(() => notifications.Show(pasted
-            ? "Pasted compiled text."
-            : "Paste failed; compiled text remains on the clipboard. If the target is elevated, run Zetl elevated too."));
+            ? "Pasted composed text."
+            : "Paste failed; the composed text is still on the clipboard. If the target is elevated, run Zetl elevated too."));
     }
 
     // Re-paste the cut text into the restored foreground target after a held
@@ -554,7 +554,7 @@ internal sealed class ZetlShortcutCoordinator
             ?? store.GetMostRecentCompilableProject();
         if (project is null || !store.HasCompilableSlips(project))
         {
-            notifications.Show("No Zetl notes to compile yet.");
+            notifications.Show("No Zetl notes to compose yet.");
             return null;
         }
 

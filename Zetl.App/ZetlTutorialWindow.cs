@@ -68,7 +68,7 @@ internal sealed class ZetlTutorialWindow : Window
         (Step.Copy, "Copy"),
         (Step.Cut, "Cut"),
         (Step.Board, "Board"),
-        (Step.Compile, "Compile"),
+        (Step.Compile, "Compose"),
         (Step.Indicator, "Indicator")
     ];
 
@@ -304,9 +304,9 @@ internal sealed class ZetlTutorialWindow : Window
                     Spacing = 10,
                     Children =
                     {
-                        Text("Click in the box below, then hold Ctrl+V. Compile opens on your "
+                        Text("Click in the box below, then hold Ctrl+V. Compose opens on your "
                             + "Journal. Tick what you want in it (Select All works), then press "
-                            + "Paste Now, and your notes land in the box as one piece of text."),
+                            + "Paste Now or Ctrl+Enter, and your notes land in the box as one piece of text."),
                         pasteTarget
                     }
                 };
@@ -357,14 +357,14 @@ internal sealed class ZetlTutorialWindow : Window
         }
     }
 
-    // Compile's paste lands a moment after the host reports it, or the other
+    // Compose's paste lands a moment after the host reports it, or the other
     // way round; the step is done once both have happened.
     private void CheckCompilePaste()
     {
         if (step == Step.Compile && !stepDone && compilePasted
             && !string.IsNullOrWhiteSpace(pasteTarget.Text))
         {
-            Done("There they are. Compile gathers notes from any project into one piece of "
+            Done("There they are. Compose gathers notes from any project into one piece of "
                 + "text, ready to paste anywhere.");
         }
     }

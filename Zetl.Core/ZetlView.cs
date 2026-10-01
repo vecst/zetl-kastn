@@ -186,7 +186,7 @@ internal static class ZetlViewDefaults
         {
             Id = "formatted",
             Name = "Formatted",
-            Category = "Compile",
+            Category = "Compose",
             Description = "Group slips under project and bucket headings.",
             Kind = ZetlViewKinds.Formatted
         },
@@ -194,7 +194,7 @@ internal static class ZetlViewDefaults
         {
             Id = "plain",
             Name = "Plain",
-            Category = "Compile",
+            Category = "Compose",
             Description = "One slip per line, without headings.",
             Kind = ZetlViewKinds.Plain
         },
@@ -202,7 +202,7 @@ internal static class ZetlViewDefaults
         {
             Id = "tsv",
             Name = "TSV",
-            Category = "Compile",
+            Category = "Compose",
             Description = "Spreadsheet rows from slips, with optional bucket headers.",
             Kind = ZetlViewKinds.Tsv
         },

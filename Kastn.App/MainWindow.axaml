@@ -1341,7 +1341,7 @@
                         <ComboBox x:Name="templateBucketKindBox" HorizontalAlignment="Stretch" />
                       </StackPanel>
                       <StackPanel Grid.Column="2" Spacing="4">
-                        <TextBlock Text="Compile mode" Classes="muted" FontSize="12" />
+                        <TextBlock Text="Compose format" Classes="muted" FontSize="12" />
                         <ComboBox x:Name="templateBucketCompileBox" HorizontalAlignment="Stretch" />
                       </StackPanel>
                       <StackPanel Grid.Column="4" Spacing="4">
@@ -1403,13 +1403,13 @@
 
                 <StackPanel Spacing="8">
                   <TextBlock Text="Choose an output format" Classes="heading" />
-                  <TextBlock Text="Quick compile keeps captured text literal. Document formats render Markdown and pictures for sharing."
+                  <TextBlock Text="Quick compose keeps captured text literal. Document formats render Markdown and pictures for sharing."
                              Classes="muted" TextWrapping="Wrap" />
 
                   <Border Classes="surface" Padding="12">
                     <Grid ColumnDefinitions="150,*" ColumnSpacing="12">
                       <StackPanel Grid.Column="0" Spacing="3">
-                        <TextBlock Text="Quick compile" FontWeight="SemiBold" />
+                        <TextBlock Text="Quick compose" FontWeight="SemiBold" />
                         <TextBlock Text="Fast, literal output for pasting and data entry."
                                    Classes="muted" FontSize="12" TextWrapping="Wrap" />
                       </StackPanel>

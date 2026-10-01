@@ -15,6 +15,11 @@ internal sealed class ZetlAppSettings
     public string CaptureOriginDetail { get; set; } = ZetlCaptureOriginDetail.ApplicationAndWindowTitle;
     public List<string> DefaultProjectBuckets { get; set; } = ZetlBucketDefaults.Standard.ProjectBuckets.ToList();
     public string DefaultCompileMode { get; set; } = "Formatted";
+    // Compose: whether Ctrl+Enter pastes the result straight into the app the
+    // hold came from (otherwise it copies), and whether Formatted output starts
+    // with the project and bucket headings. The dialog remembers the latter.
+    public bool ComposeCtrlEnterPastes { get; set; } = true;
+    public bool ComposeHeadings { get; set; } = true;
     public int DefaultTsvRowLength { get; set; } = 5;
     // Hour (0-23, local) at which a new journal day begins, so late-night captures
     // land in the right dated bucket. 0 = midnight.

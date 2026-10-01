@@ -75,6 +75,7 @@ internal partial class ZetlSettingsWindow : Window
             ? settings.DefaultCompileMode
             : "Formatted";
         tsvRowLengthBox.Value = Clamp(settings.DefaultTsvRowLength, 1, 50);
+        composeCtrlEnterPastesBox.IsChecked = settings.ComposeCtrlEnterPastes;
         dayStartHourBox.Value = Clamp(settings.DayStartHour, 0, 23);
         autoReturnHoursBox.Value = Clamp(settings.JournalAutoReturnHours, 0, 168);
         BuildHoldActions(settings);
@@ -280,6 +281,8 @@ internal partial class ZetlSettingsWindow : Window
         .Where(line => line.Length > 0)
         .ToList();
     public string DefaultCompileMode => compileModeBox.SelectedItem as string ?? "Formatted";
+
+    public bool ComposeCtrlEnterPastes => composeCtrlEnterPastesBox.IsChecked == true;
     public int DefaultTsvRowLength => (int)(tsvRowLengthBox.Value ?? 5);
     public int DayStartHour => (int)(dayStartHourBox.Value ?? 0);
     public int JournalAutoReturnHours => (int)(autoReturnHoursBox.Value ?? 0);
@@ -318,7 +321,7 @@ internal partial class ZetlSettingsWindow : Window
             $"Choose what each tap and hold does. Every rule applies with and without Shift "
             + $"(the {settings.LaneLabel(false)} and {settings.LaneLabel(true)} lanes). "
             + "A rule for file lists, or for Zetl and Kastn, wins there over the rule for anywhere. "
-            + "Inside Zetl's own popups (quick notes, captures, Compile, the Board) every hold is the normal key.";
+            + "Inside Zetl's own popups (quick notes, captures, Compose, the Board) every hold is the normal key.";
 
         var rules = ZetlGestureRules.Apply(settings.HoldActionRules)
             .Where(ZetlGestureRules.IsEditable)

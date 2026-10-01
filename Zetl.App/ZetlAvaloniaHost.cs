@@ -966,15 +966,23 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         var window = new CompileWindow(
             store,
             request.Project,
-            request.BucketScope)
+            request.BucketScope,
+            settingsStore.Settings.ComposeCtrlEnterPastes,
+            settingsStore.Settings.ComposeHeadings)
         {
             ShowInTaskbar = false,
             DismissOnDeactivate = target is not null
         };
-        ConfigureAndShowPopup(window, target, "Compile", () =>
+        ConfigureAndShowPopup(window, target, "Compose", () =>
         {
+            if (window.Headings != settingsStore.Settings.ComposeHeadings)
+            {
+                settingsStore.Settings.ComposeHeadings = window.Headings;
+                settingsStore.Save();
+            }
+
             Log(
-                "Compile popup closed: "
+                "Compose popup closed: "
                 + $"saved={window.Saved}, "
                 + $"deactivate={window.ClosedByDeactivate}.");
             var outcome = coordinator.CompleteCompile(
@@ -1163,6 +1171,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.DefaultProjectBuckets =
             ZetlBucketDefaults.ResolveProjectBuckets(window.DefaultProjectBuckets).ToList();
         settings.DefaultCompileMode = window.DefaultCompileMode;
+        settings.ComposeCtrlEnterPastes = window.ComposeCtrlEnterPastes;
         settings.DefaultTsvRowLength = window.DefaultTsvRowLength;
         settings.DayStartHour = window.DayStartHour;
         settings.JournalAutoReturnHours = window.JournalAutoReturnHours;

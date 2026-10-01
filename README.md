@@ -41,7 +41,7 @@ so you can feel exactly where a tap ends and a hold begins.
 | `Ctrl+C` | Save what you copied, with a chance to edit it first |
 | `Ctrl+X` | Write a quick note |
 | `Ctrl+A` | Select everything and save it |
-| `Ctrl+V` | Compile: turn your notes into text to paste |
+| `Ctrl+V` | Compose: turn your notes into text to paste |
 | `Ctrl+B` | Open the Board, where your projects live |
 | `Ctrl+T` | Start a new project from a template |
 | `Ctrl+J` | Switch between your Journal and your last project |

@@ -5,13 +5,13 @@
         MinWidth="900" MinHeight="560"
         SystemDecorations="BorderOnly"
         WindowStartupLocation="CenterScreen"
-        Title="Compile Zetl Slips">
+        Title="Compose">
   <Grid Margin="{DynamicResource ZetlWindowPadding}"
         RowDefinitions="Auto,*,Auto,Auto,Auto"
         RowSpacing="10">
     <Grid Grid.Row="0" ColumnDefinitions="Auto,280,Auto,*" ColumnSpacing="8">
       <TextBlock Grid.Column="0"
-                 Text="Compile from"
+                 Text="Compose from"
                  VerticalAlignment="Center" />
       <ComboBox Grid.Column="1"
                 x:Name="sourceProjectBox"
@@ -78,7 +78,7 @@
     </Grid>
 
     <Grid Grid.Row="2"
-          ColumnDefinitions="Auto,160,Auto,100,*"
+          ColumnDefinitions="Auto,160,Auto,100,Auto,*"
           ColumnSpacing="8">
       <TextBlock Grid.Column="0"
                  Text="Format"
@@ -95,13 +95,18 @@
                      Maximum="1000"
                      Increment="1"
                      Value="5" />
+      <CheckBox Grid.Column="4"
+                x:Name="headingsCheck"
+                Content="Project and bucket headings"
+                VerticalAlignment="Center"
+                Margin="12,0,0,0" />
     </Grid>
 
     <Grid Grid.Row="3"
           ColumnDefinitions="Auto,220,260,Auto,*"
           ColumnSpacing="8">
       <TextBlock Grid.Column="0"
-                 Text="Compile to"
+                 Text="Save into"
                  VerticalAlignment="Center" />
       <ComboBox Grid.Column="1"
                 x:Name="destinationProjectBox"
@@ -141,8 +146,6 @@
                 Margin="0,0,8,0" />
         <Button x:Name="copyButton"
                 Content="Copy to Clipboard"
-                IsDefault="True"
-                Classes="primary"
                 Margin="0,0,8,0" />
         <Button x:Name="saveBucketButton"
                 Content="Save to Bucket"

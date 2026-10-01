@@ -89,7 +89,7 @@ internal static class ZetlGestureActions
         new(CaptureCopy, "Capture what was copied"),
         new(QuickNote, "Quick note"),
         new(CaptureSelectAll, "Select all and capture"),
-        new(Compile, "Compile"),
+        new(Compile, "Compose"),
         new(Board, "Open the Board"),
         new(TemplatePicker, "Open templates"),
         new(ToggleProject, "Switch Journal / last project"),

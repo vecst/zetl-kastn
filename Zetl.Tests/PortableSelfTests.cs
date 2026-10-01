@@ -1706,8 +1706,6 @@ public class PortableSelfTests
             var compiled = store.CompileTsvFromSlips(project, store.GetSlipDisplayItems(project), 3);
             var expected = string.Join(Environment.NewLine,
             [
-                "Demo",
-                "Queue",
                 "one\ttwo\tthree",
                 "four line\tfive cell"
             ]);
@@ -1737,14 +1735,33 @@ public class PortableSelfTests
             var compiled = store.CompileTsvFromSlips(project, store.GetSlipDisplayItems(project), store.GetBucketTsvRowLength(vehicles));
             var expected = string.Join(Environment.NewLine,
             [
-                "Demo",
-                "Vehicles",
                 "VIN\tMake\tModel",
                 "vin-1\tford\tf150",
                 "vin-2"
             ]);
 
             AssertEqual(expected, compiled, "TSV compile should include bucket headers before data rows.");
+        }
+
+        [Fact(DisplayName = "Zetl TSV compose is one table across buckets")]
+        public static void TsvComposeIsOneTableAcrossBuckets()
+        {
+            var lines = ZetlTsv.Table(
+            [
+                (["Name", "Number"], ["a", "1"], 2),
+                (["Name", "Number"], ["b", "2"], 2),
+                ([], ["loose", "cells", "here"], 3),
+                (["Other"], ["x"], 1)
+            ]);
+
+            AssertEqual(
+                "Name\tNumber|a\t1|b\t2|loose\tcells\there|Other|x",
+                string.Join("|", lines),
+                "No titles or blank lines; a repeated header row appears once.");
+            AssertEqual(
+                "<table><tr><td>Name</td><td>A &amp; B</td></tr></table>",
+                ZetlTsv.HtmlTable(["Name\tA & B"]),
+                "The HTML table escapes cell text.");
         }
 
         [Fact(DisplayName = "Zetl state finds last active note")]
@@ -4903,7 +4920,7 @@ public class PortableSelfTests
 
             AssertEqual<ZetlShortcutRequest?>(null, request, "There is nothing to open.");
             AssertTrue(
-                notifications.Messages.Contains("No Zetl notes to compile yet."),
+                notifications.Messages.Contains("No Zetl notes to compose yet."),
                 "The user hears why nothing opened.");
         }
 
@@ -5312,7 +5329,7 @@ public class PortableSelfTests
                 "Compile result should save to the selected destination.");
             AssertTrue(undo.TryPop(false, out _), "Saved compile should be undoable.");
             AssertTrue(
-                notifications.Messages.Single().StartsWith("Compiled to Output in Destination."),
+                notifications.Messages.Single().StartsWith("Composed to Output in Destination."),
                 "Compile should report its destination.");
         }
 
@@ -5538,7 +5555,7 @@ public class PortableSelfTests
 
             AssertEqual(1, keyboard.PasteCount, "Compiled paste should be attempted once.");
             AssertTrue(
-                notifications.Messages.Single().Contains("remains on the clipboard", StringComparison.Ordinal),
+                notifications.Messages.Single().Contains("still on the clipboard", StringComparison.Ordinal),
                 "Rejected paste should explain that the compiled text is preserved.");
             AssertTrue(
                 notifications.Messages.Single().Contains("elevated", StringComparison.OrdinalIgnoreCase),

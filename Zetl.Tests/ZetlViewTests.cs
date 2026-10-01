@@ -174,7 +174,7 @@ public class ZetlViewTests
         AssertRender(
             project,
             ZetlViewKinds.Tsv,
-            "Cat\nRows\nName\tNumber\nx\t1\ny\t2");
+            "Name\tNumber\nx\t1\ny\t2");
     }
 
     [Fact] public void StoreLoadsSavesAndDeletesUserViews()
@@ -378,7 +378,7 @@ public class ZetlViewTests
 
         AssertRender(project, ZetlViewKinds.Formatted, "Demo\n\nIdeas\n\tliteral **text**");
         AssertRender(project, ZetlViewKinds.Plain, "literal **text**");
-        AssertRender(project, ZetlViewKinds.Tsv, "Demo\nIdeas\nliteral **text**");
+        AssertRender(project, ZetlViewKinds.Tsv, "literal **text**");
         AssertRender(project, ZetlViewKinds.Markdown, "# Demo\n\n## Ideas\n\nliteral **text**");
     }
 

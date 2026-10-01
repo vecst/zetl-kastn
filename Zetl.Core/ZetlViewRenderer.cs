@@ -296,28 +296,15 @@ internal static class ZetlViewRenderer
     private static string RenderTsv(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlViewGroup> groups,
-        int viewRowLength)
-    {
-        var parts = new List<string> { project.Name.Trim() };
-        foreach (var group in groups)
+        int viewRowLength) =>
+        string.Join(Environment.NewLine, ZetlTsv.Table(groups.Select(group =>
         {
-            parts.Add(group.Heading);
             var headers = group.HeaderBucket is null
                 ? []
                 : ZetlTsv.HeaderCells(group.HeaderBucket.Settings.DefaultStartingText);
-            if (headers.Count > 0)
-            {
-                parts.Add(string.Join('\t', headers));
-            }
-
             var rowLength = headers.Count > 0 ? headers.Count : Math.Max(1, viewRowLength);
-            parts.AddRange(ZetlTsv.Rows(group.Slips.Select(SlipText), rowLength));
-
-            parts.Add("");
-        }
-
-        return string.Join(Environment.NewLine, parts).TrimEnd();
-    }
+            return (headers, group.Slips.Select(SlipText), rowLength);
+        })));
 
     // Heading text, optionally prefixed with the group's cascading outline number.
     // Public so the PDF and on-screen renderers number headings consistently.
@@ -658,23 +645,26 @@ internal static class ZetlViewRenderer
     }
 
     // The document body alone (no <html>/<head>), for surfaces that embed
-    // rendered slips in their own HTML, such as Zetl's rich compile clipboard.
+    // rendered slips in their own HTML, such as Zetl's rich Compose clipboard.
+    // headings=false drops the bucket headings as well as the title.
     public static string RenderHtmlBody(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlSlipSnapshot> slips,
         ZetlViewDocument view,
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures = null,
-        bool preferSlipKindOverBucketKind = false) =>
+        bool preferSlipKindOverBucketKind = false,
+        bool headings = true) =>
         string.Join(
             Environment.NewLine,
-            HtmlBodyParts(project, BuildGroups(project, slips, view), view, pictures, preferSlipKindOverBucketKind));
+            HtmlBodyParts(project, BuildGroups(project, slips, view), view, pictures, preferSlipKindOverBucketKind, headings));
 
     private static List<string> HtmlBodyParts(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlViewGroup> groups,
         ZetlViewDocument view,
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures,
-        bool preferSlipKindOverBucketKind)
+        bool preferSlipKindOverBucketKind,
+        bool headings = true)
     {
         var documentTitle = DocumentTitle(project, view);
         var parts = new List<string>();
@@ -696,7 +686,10 @@ internal static class ZetlViewRenderer
             }
 
             var level = group.EffectiveLevel;
-            parts.Add($"<h{level}{HeadingStyleAttribute(group)}>{ZetlHtml.Escape(HeadingText(group, view))}</h{level}>");
+            if (headings)
+            {
+                parts.Add($"<h{level}{HeadingStyleAttribute(group)}>{ZetlHtml.Escape(HeadingText(group, view))}</h{level}>");
+            }
 
             if (group.Slips.Count == 0)
             {

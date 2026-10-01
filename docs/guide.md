@@ -8,7 +8,7 @@ with the [README](../README.md).
 - [Projects, buckets, and slips](#projects-buckets-and-slips)
 - [Capturing](#capturing)
 - [Replay and Pop](#replay-and-pop)
-- [Compile](#compile)
+- [Compose](#compose)
 - [Templates and creation types](#templates-and-creation-types)
 - [The Board](#the-board)
 - [Kastn](#kastn)
@@ -22,7 +22,7 @@ Zetl turns familiar keyboard shortcuts into two gestures:
 
 - **Tap** the shortcut and the application in front of you behaves normally.
 - **Hold** it (about a third of a second) and Zetl opens a capture, project,
-  Replay, or compile action.
+  Replay, or Compose action.
 
 While you hold, a small **hold indicator** in the top right of the screen
 fills and completes the moment the hold fires. By default it's the detailed
@@ -46,7 +46,7 @@ Zetl lives in the Windows notification area. Its tray menu provides:
 - `New Project`
 - `Take the Tour`, which opens by itself on first launch: it measures your taps
   and holds, then walks through a quick note, a capture, a cut taken back with
-  `Esc`, the Board, Compile, and the indicator style
+  `Esc`, the Board, Compose, and the indicator style
 - `Measure My Taps and Holds`
 - `Notification History` and `Clear Notification History`
 - `Toggle Active Bucket Pop Mode`
@@ -77,7 +77,7 @@ for the Zetl action.
 | `Ctrl+R` | Normal `Ctrl+R` | Toggle Replay mode |
 | `Ctrl+T` | Normal `Ctrl+T` | Start a project from a template |
 | `Ctrl+X` | Normal cut | Open a quick note |
-| `Ctrl+V` | Normal paste, or the next Replay item | Open Compile |
+| `Ctrl+V` | Normal paste, or the next Replay item | Open Compose |
 | `Ctrl+Z` | Normal undo | Undo the latest Zetl action |
 
 **Lanes.** Add `Shift` to use the independent Shift lane: `Ctrl+Shift+C`,
@@ -92,7 +92,7 @@ behavior*. A rule for file lists (File Explorer, the desktop, Open/Save
 dialogs), or for Zetl's and Kastn's own windows, wins there over the rule for
 anywhere. Inside Zetl and Kastn, a tapped `Ctrl+V` is an ordinary paste (never
 Replay or Pop), and copies aren't auto-captured. Inside Zetl's popups (quick
-notes, captures, Compile, the Board) every hold is the normal key, so popups
+notes, captures, Compose, the Board) every hold is the normal key, so popups
 never open on top of each other. **Reset to defaults** puts
 everything back.
 
@@ -204,7 +204,7 @@ reuses the stored file.
 
 Some apps put text and a picture on the clipboard together; copying
 spreadsheet cells is the usual case. Zetl keeps both on one slip, which acts as
-text so compile, Replay, and views see the table, with the picture alongside.
+text so Compose, Replay, and views see the table, with the picture alongside.
 Kastn can switch which one the slip prefers.
 
 For text, Zetl privately keeps the clipboard's HTML when there is any.
@@ -282,36 +282,45 @@ Pop is for throwaway copy and paste:
 
 Replay and Pop exclude each other; turning one on turns the other off.
 
-## Compile
+## Compose
 
-Hold `Ctrl+V` to open Compile. It starts on the active project, or, with none
+Hold `Ctrl+V` to open Compose. It starts on the active project, or, with none
 active, on the project you last added to, skipping consumable projects (those
 with a Replay bucket). The project list puts recent
 projects first, and picking another changes neither lane.
 
-Compile can:
+Compose can:
 
 - select whole buckets or individual slips
 - use the whole project or just the current session
-- output `Formatted`, `Plain`, or `TSV` (spreadsheet rows)
+- output `Formatted` (with or without the project and bucket headings),
+  `Plain`, or `TSV`
 - copy the result, or paste it straight away
 - paste the last copied item
 - paste selected slips without headings
 - save the result into a bucket in any project
-- keep slips separate or flatten them into one compiled slip
+- keep slips separate or flatten them into one slip
 - finish the source project
+
+`Ctrl+Enter` pastes the result straight into the app you held `Ctrl+V` in; a
+setting in Settings → Zetl makes it copy instead.
+
+A `TSV` is just the table: rows of cells, with a bucket's column headers (from
+its starting text) once at the top, and no project or bucket names. It goes on
+the clipboard as tab-separated text and as an HTML table, so Excel and
+LibreOffice Calc paste it straight into cells instead of asking how to split it.
 
 Where you save is independent of the source, and saving doesn't change the
 active project or bucket.
 
-Compile in Zetl is text-only and doesn't list picture slips. Kastn's text views
+Compose in Zetl is text-only and doesn't list picture slips. Kastn's text views
 keep readable picture markers, and its Markdown, HTML, and PDF output can embed
 the pictures.
 
 ## Templates And Creation Types
 
 Zetl and Kastn share a template catalog in `%AppData%\Zetl\templates\`.
-Templates define a project's buckets, behavior, compile defaults, TSV
+Templates define a project's buckets, behavior, Compose defaults, TSV
 settings, and optional starter cards.
 
 - **Capture templates** create projects to collect into.
@@ -339,7 +348,7 @@ The Board is Zetl's quick project workspace. From it you can:
 - create, rename, activate, finish, and delete projects
 - create, nest, rename, and delete buckets
 - change the active bucket
-- set Standard, Replay, Pop, compile, and TSV defaults
+- set Standard, Replay, Pop, Compose, and TSV defaults
 - create, edit, and delete slips
 - view picture thumbnails, previews, and captions
 - export a project
@@ -347,7 +356,7 @@ The Board is Zetl's quick project workspace. From it you can:
 
 `Scratch` and `Deleted` are protected buckets. `Scratch` is the quick-note
 fallback in projects; `Deleted` holds slips deleted in Kastn and stays out of
-capture, compile, Replay, and Pop.
+capture, Compose, Replay, and Pop.
 
 Board shortcuts:
 
@@ -394,7 +403,7 @@ history keeps the latest 100 Zetl actions for the session and covers:
 
 - copy capture
 - held-copy and quick-note saves
-- compile-to-bucket saves
+- Compose saves into a bucket
 - Pop removal
 - Replay pastes and their review copies
 
@@ -409,7 +418,7 @@ Settings live in `%AppData%\Zetl\settings.json` and include:
 - quick-note clipboard behavior
 - popup position (top center by default, centered, a corner, or at the mouse
   pointer); with several monitors, popups open on the screen you're working on
-- default project buckets, compile mode, and TSV row length
+- default project buckets, Compose format and Ctrl+Enter behavior, and TSV row length
 - Journal interval, day start hour, and quiet-project deactivation
 - Hold Actions: what each tap and hold does, and the hold indicator
 - Chordl hold and repeat timings
