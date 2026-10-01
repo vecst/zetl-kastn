@@ -75,9 +75,9 @@ public class ZetlHoldCalibrationTests
         var result = ZetlHoldCalibration.Analyze(
             [150, 210, 260, 300, 320],
             [600, 680, 750, 900],
-            353);
+            currentMs: 290);
 
-        AssertEqual(2, result.CurrentTapsTooLong, "The default 353 would misread their slowest taps.");
+        AssertEqual(2, result.CurrentTapsTooLong, "A fast typist's 290 would turn their two slowest copies into popups.");
         AssertEqual(515.0, result.SuggestedMs, "70% of the way from 320 to 600.");
     }
 
