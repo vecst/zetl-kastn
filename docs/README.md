@@ -4,6 +4,12 @@ The repository documentation is organized by purpose. Roadmaps describe current
 open work; design and contract documents explain stable decisions or preserve
 implementation context.
 
+## Using And Building
+
+- [`guide.md`](guide.md) — the user guide: every Zetl and Kastn feature
+- [`building.md`](building.md) — running from source, tests, publishing,
+  previews, and diagnostics
+
 ## Current Roadmaps
 
 - [`rc-code-health-worklist.md`](rc-code-health-worklist.md) — P1/P2 release
