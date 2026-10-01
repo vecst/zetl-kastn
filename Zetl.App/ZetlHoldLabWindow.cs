@@ -154,7 +154,7 @@ internal sealed class ZetlHoldLabWindow : Window
             : $"At {currentMs:0} ms, {Plural(result.CurrentTapsTooLong, "tap")} would open Zetl "
               + $"and {Plural(result.CurrentHoldsTooShort, "hold")} would be missed.";
         var suggestion = result.Separated
-            ? $"Suggested: {suggestedMs} ms, halfway between your slowest tap and your quickest hold."
+            ? $"Suggested: {suggestedMs} ms, well clear of your slowest tap and just under your quickest hold."
             : $"Your taps and holds overlap, so no threshold separates them all. "
               + $"{suggestedMs} ms misjudges the fewest presses.";
 

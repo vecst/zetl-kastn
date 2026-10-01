@@ -9,6 +9,16 @@ internal static class ZetlHoldCalibration
     public const double MinimumMs = 100;
     public const double MaximumMs = 2000;
 
+    // How far across the gap from the slowest tap to the quickest hold the
+    // suggestion sits. Real taps stretch longer than measured ones when the
+    // user is distracted, and a false popup costs more than a slightly slower
+    // hold, so the threshold leans toward the holds rather than the middle.
+    public const double GapFraction = 0.7;
+
+    // ...but never this close to the quickest hold, so every measured hold
+    // still registers with room to spare.
+    public const double HoldMarginMs = 25;
+
     public sealed record Result(
         int TapCount,
         double TapMedianMs,
@@ -38,9 +48,9 @@ internal static class ZetlHoldCalibration
         var quickestHold = holdMs.Min();
         var separated = slowestTap < quickestHold;
         var suggested = separated
-            // Halfway into the gap leaves equal room for a slower tap and a
-            // quicker hold than any measured.
-            ? (slowestTap + quickestHold) / 2
+            ? Math.Min(
+                slowestTap + GapFraction * (quickestHold - slowestTap),
+                Math.Max(quickestHold - HoldMarginMs, (slowestTap + quickestHold) / 2))
             : LeastMisjudged(tapMs, holdMs);
 
         return new Result(

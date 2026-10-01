@@ -7,7 +7,7 @@ namespace ZETL.Tests;
 
 public class ZetlHoldCalibrationTests
 {
-    [Fact] public void SeparatedPressesSuggestTheMiddleOfTheGap()
+    [Fact] public void SeparatedPressesSuggestAThresholdLeaningTowardTheHolds()
     {
         var result = ZetlHoldCalibration.Analyze(
             tapMs: [80, 95, 110, 120, 180],
@@ -18,7 +18,7 @@ public class ZetlHoldCalibrationTests
         AssertEqual(110.0, result.TapMedianMs, "Median tap.");
         AssertEqual(180.0, result.SlowestTapMs, "Slowest tap.");
         AssertEqual(420.0, result.QuickestHoldMs, "Quickest hold.");
-        AssertEqual(300.0, result.SuggestedMs, "Halfway between 180 and 420.");
+        AssertEqual(350.0, result.SuggestedMs, "70% of the way from 180 to 420.");
         AssertEqual(0, result.CurrentTapsTooLong, "353 lets every tap through.");
         AssertEqual(0, result.CurrentHoldsTooShort, "353 catches every hold.");
     }
@@ -46,6 +46,30 @@ public class ZetlHoldCalibrationTests
         AssertEqual(ZetlHoldCalibration.MinimumMs, quick.SuggestedMs, "Never below the minimum hold delay.");
 
         var odd = ZetlHoldCalibration.Analyze([101], [402], 353);
-        AssertEqual(250.0, odd.SuggestedMs, "251.5 rounds to the nearest 5 ms.");
+        AssertEqual(310.0, odd.SuggestedMs, "311.7 rounds to the nearest 5 ms.");
+    }
+
+    [Fact] public void TheUsersMeasuredPressesLandInTheRangeThatFeltRight()
+    {
+        // Two real runs (2026-09-30). The plain midpoint suggested 230 and 235,
+        // which felt too fast; 280-290 felt right.
+        var first = ZetlHoldCalibration.Analyze(
+            [81, 108, 107, 99, 125, 76, 109, 103, 114, 103, 94, 98, 100, 112, 54, 107, 114, 93, 81, 106],
+            [433, 352, 339, 355, 353, 363, 403, 398, 415, 414, 347, 365, 400, 418, 376],
+            353);
+        var second = ZetlHoldCalibration.Analyze(
+            [72, 62, 76, 76, 56, 58, 70, 88, 77, 63, 82, 72, 80, 99, 85, 86, 79, 79, 72, 81],
+            [370, 413, 429, 452, 515, 511, 563, 580, 607, 579, 588, 597, 619, 565, 566],
+            230);
+
+        AssertEqual(275.0, first.SuggestedMs, "First run.");
+        AssertEqual(290.0, second.SuggestedMs, "Second run.");
+    }
+
+    [Fact] public void TheSuggestionKeepsAMarginBelowTheQuickestHold()
+    {
+        // A narrow gap: 70% of the way would sit 9 ms from the quickest hold.
+        var result = ZetlHoldCalibration.Analyze([200], [230], 353);
+        AssertEqual(215.0, result.SuggestedMs, "Falls back to the middle rather than crowding the hold.");
     }
 }
