@@ -35,7 +35,7 @@
                          Text="Toast display time (ms)"
                          VerticalAlignment="Center" />
               <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="toastMsBox"
-                             Width="100" HorizontalAlignment="Left"
+                             Width="150" HorizontalAlignment="Left"
                              Minimum="200" Maximum="5000" Increment="50" />
 
               <TextBlock Grid.Row="1" Grid.Column="0"
@@ -89,7 +89,7 @@
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
               <NumericUpDown Grid.Row="7" Grid.Column="1" x:Name="tsvRowLengthBox"
-                             Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
+                             Width="150" Margin="0,12,0,0" HorizontalAlignment="Left"
                              Minimum="1" Maximum="50" Increment="1" />
 
               <TextBlock Grid.Row="8" Grid.Column="0"
@@ -97,7 +97,7 @@
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
               <NumericUpDown Grid.Row="8" Grid.Column="1" x:Name="dayStartHourBox"
-                             Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
+                             Width="150" Margin="0,12,0,0" HorizontalAlignment="Left"
                              Minimum="0" Maximum="23" Increment="1" />
 
               <TextBlock Grid.Row="9" Grid.Column="0"
@@ -106,7 +106,7 @@
                          VerticalAlignment="Center"
                          TextWrapping="Wrap" />
               <NumericUpDown Grid.Row="9" Grid.Column="1" x:Name="autoReturnHoursBox"
-                             Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
+                             Width="150" Margin="0,12,0,0" HorizontalAlignment="Left"
                              Minimum="0" Maximum="168" Increment="1" />
 
               <TextBlock Grid.Row="10" Grid.Column="0"
@@ -138,52 +138,52 @@
                 <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="Log retention (days)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="logRetentionDaysBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="1" Maximum="365" Increment="1" />
 
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="Max log notes per day" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="logMaxNotesBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="100" Maximum="50000" Increment="100" />
 
                   <TextBlock Grid.Row="2" Grid.Column="0" Text="Log flush interval (ms)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="2" Grid.Column="1" x:Name="logFlushMsBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="500" Maximum="60000" Increment="500" />
 
                   <TextBlock Grid.Row="3" Grid.Column="0" Text="Max undo history actions" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="3" Grid.Column="1" x:Name="maxUndoBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="5" Maximum="1000" Increment="5" />
 
                   <TextBlock Grid.Row="4" Grid.Column="0" Text="Clipboard poll interval (ms)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="4" Grid.Column="1" x:Name="clipPollMsBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="5" Maximum="200" Increment="5" />
 
                   <TextBlock Grid.Row="5" Grid.Column="0" Text="Clipboard observation timeout (ms)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="5" Grid.Column="1" x:Name="clipObsTimeoutMsBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="50" Maximum="2000" Increment="50" />
 
                   <TextBlock Grid.Row="6" Grid.Column="0" Text="Auto-capture timeout (ms)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="6" Grid.Column="1" x:Name="autoCaptureTimeoutMsBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="10" Maximum="1000" Increment="10" />
 
                   <TextBlock Grid.Row="7" Grid.Column="0" Text="Pop clipboard delay (ms)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="7" Grid.Column="1" x:Name="popClipDelayMsBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="10" Maximum="1000" Increment="10" />
 
                   <TextBlock Grid.Row="8" Grid.Column="0" Text="Replay clipboard restore delay (ms)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="8" Grid.Column="1" x:Name="replayRestoreDelayMsBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="10" Maximum="1000" Increment="10" />
 
                   <TextBlock Grid.Row="9" Grid.Column="0" Text="URL image download timeout (s)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="9" Grid.Column="1" x:Name="downloadTimeoutBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="1" Maximum="120" Increment="1" />
                 </Grid>
               </StackPanel>
@@ -271,7 +271,7 @@
 
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="Max slip label length (chars)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="maxSlipLabelLengthBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="5" Maximum="100" Increment="1" />
 
                   <TextBlock Grid.Row="2" Grid.Column="0" Text="PDF page format" VerticalAlignment="Center" />
@@ -282,7 +282,7 @@
 
                   <TextBlock Grid.Row="3" Grid.Column="0" Text="PDF body font size (pt)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="3" Grid.Column="1" x:Name="pdfFontSizeBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="6" Maximum="24" Increment="1" />
                 </Grid>
               </StackPanel>
@@ -314,12 +314,12 @@
                 <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto" RowSpacing="12">
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="Hold delay (ms)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="holdDelayMsBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="100" Maximum="2000" Increment="25" />
 
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="Repeat suppression delay (ms)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="repeatSuppressionDelayMsBox"
-                                 Width="100" HorizontalAlignment="Left"
+                                 Width="150" HorizontalAlignment="Left"
                                  Minimum="5" Maximum="500" Increment="5" />
                 </Grid>
               </StackPanel>
@@ -333,9 +333,12 @@
             <TextBlock Text="Hold Actions" Classes="heading" />
             <TextBlock x:Name="holdActionsIntro" TextWrapping="Wrap" />
             <Border Classes="surface" BorderThickness="1" Padding="14">
-              <Grid x:Name="holdActionsGrid" ColumnDefinitions="150,150,*" RowSpacing="10" ColumnSpacing="12" />
+              <StackPanel Spacing="14">
+                <Grid x:Name="holdActionsGrid" ColumnDefinitions="150,150,*" RowSpacing="10" ColumnSpacing="12" />
+                <!-- Resets only the rules above, not the hold indicator settings. -->
+                <Button x:Name="holdActionsResetButton" Content="Reset to defaults" HorizontalAlignment="Left" />
+              </StackPanel>
             </Border>
-            <Button x:Name="holdActionsResetButton" Content="Reset to defaults" HorizontalAlignment="Left" />
 
             <TextBlock Text="Hold Indicator" Classes="heading" Margin="0,8,0,0" />
             <TextBlock Text="A ring that fills while you hold a shortcut and completes when its action fires. Quick taps never show it."
@@ -487,15 +490,15 @@
                   <TextBlock Grid.Row="2" Grid.Column="0" Text="Body size" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="2" Grid.Column="1" x:Name="themeBodyFontSizeBox"
                                  Minimum="9" Maximum="30" Increment="0.5"
-                                 Width="110" HorizontalAlignment="Left" />
+                                 Width="150" HorizontalAlignment="Left" />
                   <TextBlock Grid.Row="3" Grid.Column="0" Text="Heading size" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="3" Grid.Column="1" x:Name="themeHeadingFontSizeBox"
                                  Minimum="10" Maximum="40" Increment="0.5"
-                                 Width="110" HorizontalAlignment="Left" />
+                                 Width="150" HorizontalAlignment="Left" />
                   <TextBlock Grid.Row="4" Grid.Column="0" Text="Title size" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="4" Grid.Column="1" x:Name="themeTitleFontSizeBox"
                                  Minimum="12" Maximum="56" Increment="0.5"
-                                 Width="110" HorizontalAlignment="Left" />
+                                 Width="150" HorizontalAlignment="Left" />
                 </Grid>
 
                 <TextBlock Text="Layout" Classes="heading" />
@@ -505,15 +508,15 @@
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="Window padding" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="themeWindowPaddingBox"
                                  Minimum="0" Maximum="40" Increment="1"
-                                 Width="110" HorizontalAlignment="Left" />
+                                 Width="150" HorizontalAlignment="Left" />
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="Control spacing" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="themeControlSpacingBox"
                                  Minimum="0" Maximum="30" Increment="1"
-                                 Width="110" HorizontalAlignment="Left" />
+                                 Width="150" HorizontalAlignment="Left" />
                   <TextBlock Grid.Row="2" Grid.Column="0" Text="Corner radius" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="2" Grid.Column="1" x:Name="themeCornerRadiusBox"
                                  Minimum="0" Maximum="24" Increment="1"
-                                 Width="110" HorizontalAlignment="Left" />
+                                 Width="150" HorizontalAlignment="Left" />
                 </Grid>
               </StackPanel>
             </ScrollViewer>
