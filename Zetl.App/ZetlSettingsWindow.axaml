@@ -30,7 +30,7 @@
         <ScrollViewer x:Name="zetlSettingsPanel" IsVisible="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="20" Margin="0,0,12,0">
             <TextBlock Text="Zetl General Settings" Classes="heading" />
-            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
               <TextBlock Grid.Row="0" Grid.Column="0"
                          Text="Toast display time (ms)"
                          VerticalAlignment="Center" />
@@ -122,6 +122,21 @@
                          VerticalAlignment="Center" />
               <ComboBox Grid.Row="11" Grid.Column="1" x:Name="journalIntervalBox"
                         Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
+
+              <TextBlock Grid.Row="12" Grid.Column="0"
+                         Text="Popup position"
+                         Margin="0,12,0,0"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Row="12" Grid.Column="1" x:Name="popupPositionBox"
+                        Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+
+              <TextBlock Grid.Row="13" Grid.Column="0"
+                         Text="Popup opacity (%)"
+                         Margin="0,12,0,0"
+                         VerticalAlignment="Center" />
+              <NumericUpDown Grid.Row="13" Grid.Column="1" x:Name="popupOpacityBox"
+                             Width="100" Margin="0,12,0,0" HorizontalAlignment="Left"
+                             Minimum="60" Maximum="100" Increment="5" />
             </Grid>
 
             <!-- Advanced Section -->

@@ -60,6 +60,18 @@ public partial class App : Application
             // DEV HARNESS: preview windows against throwaway data.
             // Each instance gets its own state directory so concurrent
             // previews never contend on the same files.
+            // --popup-position= and --popup-opacity= preview the popup
+            // appearance settings without touching a real profile.
+            if (PreviewArgument("--popup-position=") is { } previewPosition)
+            {
+                ZetlWindowPlacement.PopupPosition = ZetlScreenAnchor.Normalize(previewPosition);
+            }
+
+            if (int.TryParse(PreviewArgument("--popup-opacity="), out var previewOpacity))
+            {
+                ZetlWindowPlacement.PopupOpacityPercent = ZetlPopupOpacity.Clamp(previewOpacity);
+            }
+
             var stateDir = Path.Combine(
                 Path.GetTempPath(),
                 "ZetlAvaloniaPreview",
@@ -273,6 +285,11 @@ public partial class App : Application
 
         base.OnFrameworkInitializationCompleted();
     }
+
+    private static string? PreviewArgument(string prefix) =>
+        Program.StartupArgs
+            .FirstOrDefault(arg => arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            ?[prefix.Length..];
 
     private static ZetlTemplateStore CreatePreviewTemplateStore(string stateDir)
     {

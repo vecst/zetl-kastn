@@ -65,6 +65,32 @@ internal static class Win32Interop
     [DllImport("user32.dll")]
     internal static extern bool IsWindow(IntPtr window);
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    // The pointer's position in physical screen pixels. Windows keeps it while
+    // the pointer is hidden, as during a full-screen video.
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorPos(out POINT point);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetWindowRect(IntPtr window, out RECT rect);
+
     [DllImport("user32.dll")]
     internal static extern uint GetWindowThreadProcessId(
         IntPtr window,

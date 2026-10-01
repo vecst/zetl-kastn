@@ -23,6 +23,10 @@ internal sealed class ZetlAppSettings
     // Hold Actions page: the rules whose action differs from Zetl's default.
     // Empty means every gesture does what Zetl does out of the box.
     public List<ZetlGestureRuleSetting> HoldActionRules { get; set; } = new();
+    // Where hold popups (capture, quick note, compile, Board, templates) open,
+    // and how opaque they are. Ordinary dialogs keep the top-center default.
+    public string PopupPosition { get; set; } = ZetlScreenAnchor.TopCenter;
+    public int PopupOpacityPercent { get; set; } = ZetlPopupOpacity.Maximum;
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
     public string ThemeVariant { get; set; } = "System";
     public string JournalInterval { get; set; } = ZetlJournalInterval.Weekly;

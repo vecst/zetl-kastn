@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Platform;
 
 namespace ZETL;
 
@@ -20,21 +21,64 @@ internal static class ZetlWindowPlacement
         public double CompactHeight;
         public double AuthoredWidth = double.NaN;
         public double AuthoredHeight = double.NaN;
+        // Hold popups follow the popup position and opacity settings; other
+        // windows keep the top-center default.
+        public bool IsPopup;
+        // Read once when the popup is shown: where the pointer was and the window
+        // the user was working in, which picks the screen.
+        public PixelPoint? Pointer;
+        public PixelPoint? WorkingWindowCenter;
     }
 
     private static readonly ConditionalWeakTable<Window, Placement> Placements = new();
+
+    // Set from settings by the host.
+    public static string PopupPosition { get; set; } = ZetlScreenAnchor.TopCenter;
+    public static int PopupOpacityPercent { get; set; } = ZetlPopupOpacity.Maximum;
 
     // Fit a window to the screen every time it opens. Done on Opened (not before
     // Show) because a window's screen is only reliably known once it has been
     // realized; doing it earlier silently no-ops and the window falls back to an
     // OS-chosen position. compactWidth/compactHeight trim the window further on
     // displays too small for its authored size.
-    public static void Track(Window window, double compactWidth = 0, double compactHeight = 0)
+    public static void Track(
+        Window window,
+        double compactWidth = 0,
+        double compactHeight = 0,
+        bool isPopup = false)
     {
         var placement = Placements.GetValue(window, _ => new Placement());
         placement.CompactWidth = compactWidth;
         placement.CompactHeight = compactHeight;
+        placement.IsPopup = isPopup;
         window.Opened += (_, _) => FitToScreen(window);
+    }
+
+    // Record where the pointer is and which window the user is working in, just
+    // before a popup is shown. One read each, no tracking in between.
+    public static void CaptureContext(Window window, IntPtr? workingWindow)
+    {
+        var placement = Placements.GetValue(window, _ => new Placement());
+        placement.Pointer = null;
+        placement.WorkingWindowCenter = null;
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        if (Win32Interop.GetCursorPos(out var pointer))
+        {
+            placement.Pointer = new PixelPoint(pointer.X, pointer.Y);
+        }
+
+        if (workingWindow is { } handle
+            && handle != IntPtr.Zero
+            && Win32Interop.GetWindowRect(handle, out var bounds))
+        {
+            placement.WorkingWindowCenter = new PixelPoint(
+                bounds.Left + (bounds.Right - bounds.Left) / 2,
+                bounds.Top + (bounds.Bottom - bounds.Top) / 2);
+        }
     }
 
     // Clamp a window to the screen working area and center it horizontally,
@@ -46,13 +90,14 @@ internal static class ZetlWindowPlacement
     // content (which scrolls) can still fit.
     public static void FitToScreen(Window window)
     {
-        var screen = window.Screens.Primary;
+        var placement = Placements.GetValue(window, _ => new Placement());
+        var anchor = placement.IsPopup ? ZetlScreenAnchor.Normalize(PopupPosition) : ZetlScreenAnchor.TopCenter;
+        var screen = ChooseScreen(window, placement, anchor);
         if (screen is null)
         {
             return;
         }
 
-        var placement = Placements.GetValue(window, _ => new Placement());
         // Capture the authored size once, before the first shrink, so a later
         // fit can restore it when the display is large enough.
         if (double.IsNaN(placement.AuthoredWidth) && !double.IsNaN(window.Width))
@@ -99,12 +144,32 @@ internal static class ZetlWindowPlacement
         window.Width = targetWidth;
         window.Height = targetHeight;
 
-        var x = Math.Max(0, (areaWidth - targetWidth) / 2);
-        var y = Math.Max(Margin, Math.Min(areaHeight / 6.0, areaHeight - targetHeight - Margin));
+        (double X, double Y)? pointer = placement.Pointer is { } at
+            ? ((at.X - area.X) / scaling, (at.Y - area.Y) / scaling)
+            : null;
+        var (x, y) = ZetlPlacementMath.Place(anchor, areaWidth, areaHeight, targetWidth, targetHeight, pointer);
 
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.Position = new PixelPoint(
             area.X + (int)(x * scaling),
             area.Y + (int)(y * scaling));
+        if (placement.IsPopup)
+        {
+            window.Opacity = ZetlPopupOpacity.Clamp(PopupOpacityPercent) / 100.0;
+        }
+    }
+
+    // A popup at the pointer opens on the pointer's screen; any other popup on
+    // the screen of the window the user was working in. Without either, and for
+    // ordinary dialogs, the primary screen.
+    private static Screen? ChooseScreen(Window window, Placement placement, string anchor)
+    {
+        var reference = placement.IsPopup
+            ? anchor == ZetlScreenAnchor.Pointer
+                ? placement.Pointer ?? placement.WorkingWindowCenter
+                : placement.WorkingWindowCenter ?? placement.Pointer
+            : null;
+        return (reference is { } point ? window.Screens.ScreenFromPoint(point) : null)
+            ?? window.Screens.Primary;
     }
 }

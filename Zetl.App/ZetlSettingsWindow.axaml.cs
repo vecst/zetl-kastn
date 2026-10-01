@@ -78,6 +78,12 @@ internal partial class ZetlSettingsWindow : Window
         dayStartHourBox.Value = Clamp(settings.DayStartHour, 0, 23);
         autoReturnHoursBox.Value = Clamp(settings.JournalAutoReturnHours, 0, 168);
         BuildHoldActions(settings);
+        popupPositionBox.ItemsSource = ZetlScreenAnchor.Choices.Select(choice => choice.Label).ToList();
+        popupPositionBox.SelectedIndex = Math.Max(
+            0,
+            ZetlScreenAnchor.Choices.ToList().FindIndex(choice =>
+                choice.Id == ZetlScreenAnchor.Normalize(settings.PopupPosition)));
+        popupOpacityBox.Value = ZetlPopupOpacity.Clamp(settings.PopupOpacityPercent);
         idleCopyCaptureBox.ItemsSource = new[]
         {
             "Don't capture copies",
@@ -267,6 +273,12 @@ internal partial class ZetlSettingsWindow : Window
     public int DefaultTsvRowLength => (int)(tsvRowLengthBox.Value ?? 5);
     public int DayStartHour => (int)(dayStartHourBox.Value ?? 0);
     public int JournalAutoReturnHours => (int)(autoReturnHoursBox.Value ?? 0);
+    public string PopupPosition =>
+        ZetlScreenAnchor.Choices[Math.Max(popupPositionBox.SelectedIndex, 0)].Id;
+
+    public int PopupOpacityPercent =>
+        ZetlPopupOpacity.Clamp((int)(popupOpacityBox.Value ?? ZetlPopupOpacity.Maximum));
+
     // The Hold Actions page as saved settings: only rules changed from the default.
     public List<ZetlGestureRuleSetting> HoldActionRules =>
         ZetlGestureRules.Overrides(holdActionRows.Select(row => row.Rule with

@@ -44,7 +44,7 @@ internal abstract class ZetlPopupWindow : Window, IClickAwayDismissable
             armTimer.Stop();
             OnPopupClosing();
         };
-        ZetlWindowPlacement.Track(this, CompactWidthReduction, CompactHeightReduction);
+        ZetlWindowPlacement.Track(this, CompactWidthReduction, CompactHeightReduction, isPopup: true);
     }
 
     // Extra width/height a subclass sheds when the screen is too small for its

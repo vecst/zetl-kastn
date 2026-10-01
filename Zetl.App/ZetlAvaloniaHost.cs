@@ -833,6 +833,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     // foreground, taking over from the captured shortcut target when present.
     private void PositionAndActivate(Window window, object? target)
     {
+        ZetlWindowPlacement.CaptureContext(window, ZetlForegroundService.GetWindowsHandle(target));
         ZetlWindowPlacement.FitToScreen(window);
         ZetlWindowActivation.Show(
             window,
@@ -990,6 +991,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.JournalAutoReturnHours = window.JournalAutoReturnHours;
         settings.IdleCopyCapture = window.IdleCopyCapture;
         settings.HoldActionRules = window.HoldActionRules;
+        settings.PopupPosition = window.PopupPosition;
+        settings.PopupOpacityPercent = window.PopupOpacityPercent;
         settings.JournalInterval = window.JournalInterval;
         settings.KastnAutosave = window.KastnAutosave;
         settings.KastnStartup = window.KastnStartup;
@@ -1079,6 +1082,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         notifications.DisplayMilliseconds = settingsStore.Settings.ToastDisplayMs;
         ZetlRuntimeSettings.ApplyTo(store, settingsStore.Settings);
         router.SetRules(ZetlGestureRules.Apply(settingsStore.Settings.HoldActionRules));
+        ZetlWindowPlacement.PopupPosition = ZetlScreenAnchor.Normalize(settingsStore.Settings.PopupPosition);
+        ZetlWindowPlacement.PopupOpacityPercent = ZetlPopupOpacity.Clamp(settingsStore.Settings.PopupOpacityPercent);
         if (logFlushTimer is not null)
         {
             logFlushTimer.Interval = TimeSpan.FromMilliseconds(settingsStore.Settings.LogFlushIntervalMs);
