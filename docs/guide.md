@@ -24,6 +24,11 @@ Zetl turns familiar keyboard shortcuts into two gestures:
 - **Hold** it (about a third of a second) and Zetl opens a capture, project,
   Replay, or compile action.
 
+While you hold, a small **hold indicator** ring fills and completes the moment
+the hold fires. It only appears once a press has lasted longer than a tap, so
+ordinary copies and pastes never show it, and it can't take focus from the app
+you're in. Keys whose hold does nothing never show it.
+
 The system has three parts:
 
 - **Chordl** is the tap/hold keyboard layer underneath.
@@ -81,6 +86,16 @@ hold rule with a menu of the actions it can run, including *Normal key
 behavior*. A rule for file lists (File Explorer, the desktop, Open/Save
 dialogs) wins there over the rule for anywhere. **Reset to defaults** puts
 everything back.
+
+**Hold indicator settings** are at the bottom of the Hold Actions page:
+
+- **Show hold progress** (on by default).
+- **Indicator position:** where popups open, at the mouse pointer, centered, or
+  a corner. The pointer position is read once per press, so this works over a
+  full-screen video too.
+- **Demo overlay:** adds the key name, a millisecond timer that stops when the
+  action fires, and the action's name, and shows taps as well. Made for
+  recording demos.
 
 The hold threshold defaults to `353 ms`; it and the repeat suppression delay
 are in Settings → Chordl Settings. The keys Chordl watches are defined in
@@ -373,9 +388,12 @@ Settings live in `%AppData%\Zetl\settings.json` and include:
 - capture origin detail and toast duration
 - automatic copy capture, and what copies do with no project active
 - quick-note clipboard behavior
+- popup position (top center by default, centered, a corner, or at the mouse
+  pointer) and popup opacity; with several monitors, popups open on the screen
+  you're working on
 - default project buckets, compile mode, and TSV row length
 - Journal interval, day start hour, and quiet-project deactivation
-- Hold Actions: what each tap and hold does
+- Hold Actions: what each tap and hold does, and the hold indicator
 - Chordl hold and repeat timings
 - Kastn autosave, startup, close behavior, reading view, and template handoff
 

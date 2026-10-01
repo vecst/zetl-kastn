@@ -72,10 +72,16 @@ Open individual windows against disposable state:
 dotnet run --project Zetl.App -- --preview=board
 dotnet run --project Zetl.App -- --preview=settings
 dotnet run --project Zetl.App -- --preview=hold-actions
+dotnet run --project Zetl.App -- --preview=hold-indicator
 dotnet run --project Zetl.App -- --preview=toast
 dotnet run --project Zetl.App -- --preview=export
 dotnet run --project Zetl.App -- --preview=note-image
 ```
+
+`--preview=hold-indicator` drives the hold indicator through a simulated hold,
+tap, and slow tap, with a demo-overlay toggle. Any popup preview also takes
+`--popup-position=` (`TopCenter`, `Center`, `TopRight`, `TopLeft`,
+`BottomRight`, `BottomLeft`, `Pointer`) and `--popup-opacity=` (60-100).
 
 ## Testing shortcuts with synthetic input
 

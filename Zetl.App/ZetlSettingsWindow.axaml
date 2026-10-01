@@ -344,6 +344,22 @@
               <Grid x:Name="holdActionsGrid" ColumnDefinitions="150,150,*" RowSpacing="10" ColumnSpacing="12" />
             </Border>
             <Button x:Name="holdActionsResetButton" Content="Reset to defaults" HorizontalAlignment="Left" />
+
+            <TextBlock Text="Hold Indicator" Classes="heading" Margin="0,8,0,0" />
+            <TextBlock Text="A ring that fills while you hold a shortcut and completes when its action fires. Quick taps never show it."
+                       TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="Show hold progress" VerticalAlignment="Center" />
+              <CheckBox Grid.Row="0" Grid.Column="1" x:Name="showHoldProgressBox" />
+
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="Indicator position" VerticalAlignment="Center" />
+              <ComboBox Grid.Row="1" Grid.Column="1" x:Name="holdIndicatorPositionBox"
+                        Width="220" HorizontalAlignment="Left" />
+
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="Demo overlay" VerticalAlignment="Center" />
+              <CheckBox Grid.Row="2" Grid.Column="1" x:Name="holdIndicatorDemoBox"
+                        Content="Show the keys and hold time, for recording" />
+            </Grid>
           </StackPanel>
         </ScrollViewer>
 

@@ -159,6 +159,38 @@ internal static class ZetlWindowPlacement
         }
     }
 
+    // Place a small overlay (the hold indicator) at an anchor on the screen the
+    // user is working on, reading the pointer and foreground window once.
+    public static void PlaceOverlay(Window window, double width, double height, string anchor)
+    {
+        var placement = Placements.GetValue(window, _ => new Placement());
+        placement.IsPopup = true;
+        CaptureContext(
+            window,
+            OperatingSystem.IsWindows() ? Win32Interop.GetForegroundWindow() : null);
+        var screen = ChooseScreen(window, placement, anchor);
+        if (screen is null)
+        {
+            return;
+        }
+
+        var area = screen.WorkingArea;
+        var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
+        (double X, double Y)? pointer = placement.Pointer is { } at
+            ? ((at.X - area.X) / scaling, (at.Y - area.Y) / scaling)
+            : null;
+        var (x, y) = ZetlPlacementMath.Place(
+            anchor,
+            area.Width / scaling,
+            area.Height / scaling,
+            width,
+            height,
+            pointer);
+        window.Position = new PixelPoint(
+            area.X + (int)(x * scaling),
+            area.Y + (int)(y * scaling));
+    }
+
     // A popup at the pointer opens on the pointer's screen; any other popup on
     // the screen of the window the user was working in. Without either, and for
     // ordinary dialogs, the primary screen.

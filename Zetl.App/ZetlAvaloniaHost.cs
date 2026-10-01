@@ -44,6 +44,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly ZetlShortcutCoordinator coordinator;
     // Between Chordl and Zetl: turns each press, tap, and hold into an action.
     private readonly ZetlGestureRouter router;
+    private readonly ZetlHoldIndicator holdIndicator = new();
     private readonly ChordlProcessor? processor;
     private readonly TrayIcon trayIcon;
     private readonly ZetlThemeManager themeManager;
@@ -162,7 +163,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             router.OnTap,
             OnHoldDetected,
             Log,
-            clipboard.GetChangeToken);
+            clipboard.GetChangeToken,
+            OnComboStarted,
+            OnComboEnded);
 
         trayIcon = CreateTrayIcon();
         // Reflect Zetl's state in the tray icon. store.Changed covers active
@@ -555,9 +558,35 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         }
     }
 
+    // Chordl's combo lifetime, for the hold indicator. These run on the keyboard
+    // hook thread under Chordl's lock, so they only stamp the time and post.
+    private void OnComboStarted(ChordlEventContext context)
+    {
+        var started = Stopwatch.GetTimestamp();
+        Dispatcher.UIThread.Post(() => holdIndicator.Start(
+            context.Name,
+            started,
+            TimeSpan.FromMilliseconds(settingsStore.Settings.HoldDelayMs),
+            HoldActionLabel(context)));
+    }
+
+    private void OnComboEnded(bool held) =>
+        Dispatcher.UIThread.Post(() => holdIndicator.End(held));
+
+    // What holding this chord would do, or null when it would do nothing.
+    private string? HoldActionLabel(ChordlEventContext context)
+    {
+        var actionId = router.Resolve(ZetlGestureKind.Hold, context.KeyCode);
+        return actionId == ZetlGestureActions.Native
+            ? null
+            : ZetlGestureActions.ChoicesFor(ZetlGestureKind.Hold)
+                .FirstOrDefault(choice => choice.Id == actionId)?.Label;
+    }
+
     private void OnHoldDetected(ChordlEventContext context)
     {
         var holdStarted = Stopwatch.GetTimestamp();
+        Dispatcher.UIThread.Post(holdIndicator.Complete);
         var pending = coordinator.ClaimPendingForHold(context);
         var target = TakeShortcutTarget(context.KeyCode)
             ?? ZetlForegroundService.CaptureTarget();
@@ -993,6 +1022,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         settings.HoldActionRules = window.HoldActionRules;
         settings.PopupPosition = window.PopupPosition;
         settings.PopupOpacityPercent = window.PopupOpacityPercent;
+        settings.ShowHoldProgress = window.ShowHoldProgress;
+        settings.HoldIndicatorPosition = window.HoldIndicatorPosition;
+        settings.HoldIndicatorDemo = window.HoldIndicatorDemo;
         settings.JournalInterval = window.JournalInterval;
         settings.KastnAutosave = window.KastnAutosave;
         settings.KastnStartup = window.KastnStartup;
@@ -1084,6 +1116,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         router.SetRules(ZetlGestureRules.Apply(settingsStore.Settings.HoldActionRules));
         ZetlWindowPlacement.PopupPosition = ZetlScreenAnchor.Normalize(settingsStore.Settings.PopupPosition);
         ZetlWindowPlacement.PopupOpacityPercent = ZetlPopupOpacity.Clamp(settingsStore.Settings.PopupOpacityPercent);
+        holdIndicator.Enabled = settingsStore.Settings.ShowHoldProgress || settingsStore.Settings.HoldIndicatorDemo;
+        holdIndicator.Demo = settingsStore.Settings.HoldIndicatorDemo;
+        holdIndicator.Anchor = ZetlHoldIndicatorPosition.Resolve(
+            settingsStore.Settings.HoldIndicatorPosition,
+            settingsStore.Settings.PopupPosition);
         if (logFlushTimer is not null)
         {
             logFlushTimer.Interval = TimeSpan.FromMilliseconds(settingsStore.Settings.LogFlushIntervalMs);

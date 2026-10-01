@@ -30,7 +30,8 @@ saves what you copied as a note, without you leaving what you are doing.
   paste as notes or as table rows.
 
 Tapping these shortcuts still does what it always did. Zetl steps in when you
-hold, or when you've switched on something that asks it to, like Replay.
+hold, or when you've switched on something that asks it to, like Replay. While
+you hold, a small ring fills to show the hold landing; quick taps never show it.
 
 ## The shortcuts
 

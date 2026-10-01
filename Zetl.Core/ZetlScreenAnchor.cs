@@ -30,6 +30,29 @@ internal static class ZetlScreenAnchor
         ?? TopCenter;
 }
 
+// Where the hold indicator appears: where popups open, or its own anchor.
+internal static class ZetlHoldIndicatorPosition
+{
+    public const string FollowPopups = "Popups";
+
+    public static IReadOnlyList<(string Id, string Label)> Choices { get; } =
+        [(FollowPopups, "Where popups open"), .. ZetlScreenAnchor.Choices];
+
+    public static string Normalize(string? value) =>
+        string.Equals(value?.Trim(), FollowPopups, StringComparison.OrdinalIgnoreCase)
+            ? FollowPopups
+            : ZetlScreenAnchor.Choices.Any(choice =>
+                string.Equals(choice.Id, value?.Trim(), StringComparison.OrdinalIgnoreCase))
+                ? ZetlScreenAnchor.Normalize(value)
+                : FollowPopups;
+
+    // The anchor to place at, given the popup position currently in effect.
+    public static string Resolve(string? value, string popupPosition) =>
+        Normalize(value) is var position && position == FollowPopups
+            ? ZetlScreenAnchor.Normalize(popupPosition)
+            : position;
+}
+
 // Popup appearance settings, kept in one place so popups and the hold
 // indicator read them the same way.
 internal static class ZetlPopupOpacity

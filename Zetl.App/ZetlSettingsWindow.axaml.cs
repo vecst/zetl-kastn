@@ -84,6 +84,13 @@ internal partial class ZetlSettingsWindow : Window
             ZetlScreenAnchor.Choices.ToList().FindIndex(choice =>
                 choice.Id == ZetlScreenAnchor.Normalize(settings.PopupPosition)));
         popupOpacityBox.Value = ZetlPopupOpacity.Clamp(settings.PopupOpacityPercent);
+        showHoldProgressBox.IsChecked = settings.ShowHoldProgress;
+        holdIndicatorPositionBox.ItemsSource = ZetlHoldIndicatorPosition.Choices.Select(choice => choice.Label).ToList();
+        holdIndicatorPositionBox.SelectedIndex = Math.Max(
+            0,
+            ZetlHoldIndicatorPosition.Choices.ToList().FindIndex(choice =>
+                choice.Id == ZetlHoldIndicatorPosition.Normalize(settings.HoldIndicatorPosition)));
+        holdIndicatorDemoBox.IsChecked = settings.HoldIndicatorDemo;
         idleCopyCaptureBox.ItemsSource = new[]
         {
             "Don't capture copies",
@@ -275,6 +282,13 @@ internal partial class ZetlSettingsWindow : Window
     public int JournalAutoReturnHours => (int)(autoReturnHoursBox.Value ?? 0);
     public string PopupPosition =>
         ZetlScreenAnchor.Choices[Math.Max(popupPositionBox.SelectedIndex, 0)].Id;
+
+    public bool ShowHoldProgress => showHoldProgressBox.IsChecked == true;
+
+    public string HoldIndicatorPosition =>
+        ZetlHoldIndicatorPosition.Choices[Math.Max(holdIndicatorPositionBox.SelectedIndex, 0)].Id;
+
+    public bool HoldIndicatorDemo => holdIndicatorDemoBox.IsChecked == true;
 
     public int PopupOpacityPercent =>
         ZetlPopupOpacity.Clamp((int)(popupOpacityBox.Value ?? ZetlPopupOpacity.Maximum));

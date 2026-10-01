@@ -27,6 +27,12 @@ internal sealed class ZetlAppSettings
     // and how opaque they are. Ordinary dialogs keep the top-center default.
     public string PopupPosition { get; set; } = ZetlScreenAnchor.TopCenter;
     public int PopupOpacityPercent { get; set; } = ZetlPopupOpacity.Maximum;
+    // Hold indicator: a ring that fills while a shortcut is held, shown only
+    // once a press has lasted longer than a tap. Demo mode adds the key name and
+    // a millisecond timer, for recording.
+    public bool ShowHoldProgress { get; set; } = true;
+    public string HoldIndicatorPosition { get; set; } = ZetlHoldIndicatorPosition.FollowPopups;
+    public bool HoldIndicatorDemo { get; set; }
     public string ThemeId { get; set; } = ZetlThemeDefaults.BuiltInId;
     public string ThemeVariant { get; set; } = "System";
     public string JournalInterval { get; set; } = ZetlJournalInterval.Weekly;

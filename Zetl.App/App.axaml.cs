@@ -271,6 +271,7 @@ public partial class App : Application
                         themeStore,
                         settingsStore,
                         defaultTab: "theme"),
+                    "hold-indicator" => CreateHoldIndicatorPreview(),
                     "hold-actions" => new ZetlSettingsWindow(
                         settingsStore.Settings,
                         themeManager,
@@ -284,6 +285,50 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    // Drives the real hold indicator through a hold or a tap with the default
+    // timings, since injected keys can't trigger Zetl's shortcuts.
+    private static Window CreateHoldIndicatorPreview()
+    {
+        var indicator = new ZetlHoldIndicator { Anchor = ZetlWindowPlacement.PopupPosition };
+        var holdDelay = TimeSpan.FromMilliseconds(353);
+        var demo = new CheckBox { Content = "Demo overlay" };
+        demo.IsCheckedChanged += (_, _) => indicator.Demo = demo.IsChecked == true;
+
+        async void Simulate(TimeSpan pressFor)
+        {
+            indicator.Start("Ctrl+X", System.Diagnostics.Stopwatch.GetTimestamp(), holdDelay, "Quick note");
+            var held = pressFor >= holdDelay;
+            await Task.Delay(held ? holdDelay : pressFor);
+            if (held)
+            {
+                indicator.Complete();
+                await Task.Delay(pressFor - holdDelay);
+            }
+
+            indicator.End(held);
+        }
+
+        var hold = new Button { Content = "Simulate a hold (600 ms)" };
+        hold.Click += (_, _) => Simulate(TimeSpan.FromMilliseconds(600));
+        var tap = new Button { Content = "Simulate a tap (90 ms)" };
+        tap.Click += (_, _) => Simulate(TimeSpan.FromMilliseconds(90));
+        var slow = new Button { Content = "Simulate a slow tap (250 ms)" };
+        slow.Click += (_, _) => Simulate(TimeSpan.FromMilliseconds(250));
+        return new Window
+        {
+            Title = "Hold indicator preview",
+            Width = 320,
+            Height = 220,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 10,
+                Children = { hold, tap, slow, demo }
+            }
+        };
     }
 
     private static string? PreviewArgument(string prefix) =>

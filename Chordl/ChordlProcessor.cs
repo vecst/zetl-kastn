@@ -15,6 +15,12 @@ public sealed class ChordlProcessor : IDisposable
     private readonly Action<ChordlEventContext> holdActionDetected;
     private readonly Action<string> logEvent;
     private readonly Func<uint> getClipboardSequenceNumber;
+    // Optional observers for a combo's lifetime, for showing hold progress:
+    // started (or restarted by a Shift change) when a configured chord goes
+    // down, and ended with whether its hold fired. Called on the keyboard hook
+    // thread under the processor's lock, so they must only hand off.
+    private readonly Action<ChordlEventContext>? comboStarted;
+    private readonly Action<bool>? comboEnded;
     private readonly TimeSpan postCtrlReleaseSuppression = TimeSpan.FromMilliseconds(400);
     private readonly HashSet<int> pressedShiftKeys = [];
 
@@ -40,7 +46,9 @@ public sealed class ChordlProcessor : IDisposable
         Func<ChordlEventContext, bool> tapDispatched,
         Action<ChordlEventContext> holdActionDetected,
         Action<string> logEvent,
-        Func<uint> getClipboardSequenceNumber)
+        Func<uint> getClipboardSequenceNumber,
+        Action<ChordlEventContext>? comboStarted = null,
+        Action<bool>? comboEnded = null)
     {
         this.actions = actions;
         this.configuredKeyCodes = configuredKeyCodes;
@@ -52,6 +60,8 @@ public sealed class ChordlProcessor : IDisposable
         this.holdActionDetected = holdActionDetected;
         this.logEvent = logEvent;
         this.getClipboardSequenceNumber = getClipboardSequenceNumber;
+        this.comboStarted = comboStarted;
+        this.comboEnded = comboEnded;
     }
 
     public bool HandleKeyEvent(int vkCode, bool isKeyDown, bool isKeyUp)
@@ -86,6 +96,8 @@ public sealed class ChordlProcessor : IDisposable
                         holdTimer?.Dispose();
                         holdTimer = null;
                         logEvent($"{activeComboName} Ctrl released before target key; waiting for tap key-up.");
+                        // No hold can fire any more; the combo only awaits its tap.
+                        comboEnded?.Invoke(holdDetected);
                     }
                     else
                     {
@@ -136,6 +148,7 @@ public sealed class ChordlProcessor : IDisposable
                 UpdateActiveComboForCurrentModifiers();
                 RestartHoldCounter();
                 logEvent($"Switched active combo to {activeComboName}; hold counter restarted.");
+                comboStarted?.Invoke(CreateContext());
             }
 
             return false;
@@ -203,6 +216,7 @@ public sealed class ChordlProcessor : IDisposable
                 holdDetected = false;
                 comboStartedAt = now;
                 StartHoldTimer();
+                comboStarted?.Invoke(CreateContext());
                 if (activeAction.Dispatch == ChordlDispatchMode.Immediate)
                 {
                     DispatchOriginalAction(activeKeyCode, activeAction.ReplayShift);
@@ -359,6 +373,7 @@ public sealed class ChordlProcessor : IDisposable
         if (comboCandidateActive)
         {
             logEvent($"{activeComboName} combo ended.");
+            comboEnded?.Invoke(holdDetected);
         }
 
         activeKeyCode = 0;
