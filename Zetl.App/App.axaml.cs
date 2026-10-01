@@ -335,6 +335,21 @@ public partial class App : Application
             }
         }
 
+        // Back-to-back copies straddling the ring's 120 ms threshold, the
+        // pattern logged before the 2026-10-01 work-machine crash: the window
+        // shows and hides again within milliseconds, several times a second.
+        async Task StressFast()
+        {
+            var random = new Random(11);
+            for (var i = 0; i < 2000; i++)
+            {
+                Simulate(TimeSpan.FromMilliseconds(random.Next(95, 145)));
+                await Task.Delay(random.Next(150, 200));
+            }
+
+            Console.Error.WriteLine("Fast stress finished.");
+        }
+
         var stress = new Button { Content = "Stress: 300 slow taps" };
         stress.Click += async (_, _) => await Stress();
         var previewArgs = Program.StartupArgs;
@@ -347,6 +362,10 @@ public partial class App : Application
         if (previewArgs.Contains("--stress", StringComparer.OrdinalIgnoreCase))
         {
             Dispatcher.UIThread.Post(async () => await Stress());
+        }
+        else if (previewArgs.Contains("--stress-fast", StringComparer.OrdinalIgnoreCase))
+        {
+            Dispatcher.UIThread.Post(async () => await StressFast());
         }
 
         return new Window
