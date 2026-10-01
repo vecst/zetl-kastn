@@ -389,13 +389,15 @@ Settings live in `%AppData%\Zetl\settings.json` and include:
 - automatic copy capture, and what copies do with no project active
 - quick-note clipboard behavior
 - popup position (top center by default, centered, a corner, or at the mouse
-  pointer) and popup opacity; with several monitors, popups open on the screen
-  you're working on
+  pointer); with several monitors, popups open on the screen you're working on
 - default project buckets, compile mode, and TSV row length
 - Journal interval, day start hour, and quiet-project deactivation
 - Hold Actions: what each tap and hold does, and the hold indicator
 - Chordl hold and repeat timings
 - Kastn autosave, startup, close behavior, reading view, and template handoff
+
+**Popup opacity** (60-100%) is on the Theme page. It's a single setting that
+applies in every theme rather than part of any theme file.
 
 The theme editor controls the shared Zetl and Kastn colors, typography,
 spacing, padding, and corner radius. Themes have light and dark palettes and

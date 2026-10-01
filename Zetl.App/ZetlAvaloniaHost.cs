@@ -1103,11 +1103,14 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         }
     }
 
-    private static Task ShowUntilClosedAsync(Window window)
+    private Task ShowUntilClosedAsync(Window window)
     {
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         window.Closed += (_, _) => completion.TrySetResult();
+        ZetlWindowReveal.WhenReady(
+            window,
+            elapsed => Log($"{window.Title} ready in {elapsed.TotalMilliseconds:0} ms."));
         ZetlWindowPlacement.FitToScreen(window);
         ZetlWindowActivation.Show(window);
         return completion.Task;

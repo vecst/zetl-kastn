@@ -231,7 +231,7 @@ internal partial class ZetlSettingsWindow : Window
         else
         {
             // If theme resources are missing, remove the Themes tab item
-            settingsTabList.Items.RemoveAt(3);
+            settingsTabList.Items.Remove(themeTab);
         }
 
         // Apply default navigation tab
