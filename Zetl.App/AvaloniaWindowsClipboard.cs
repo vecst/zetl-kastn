@@ -743,10 +743,15 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             // clipboard between these reads. The recorded sequence therefore
             // identifies the generation shared by every returned format.
             var changeToken = GetClipboardSequenceNumber();
+            ZetlTrace.Write("clipboard capture: text");
             var text = ReadTextFromOpenClipboard();
+            ZetlTrace.Write("clipboard capture: html");
             var html = ReadHtmlFromOpenClipboard();
+            ZetlTrace.Write("clipboard capture: replay formats");
             var replayFormats = ReadReplayFormatsFromOpenClipboard();
+            ZetlTrace.Write("clipboard capture: image");
             var image = ReadImageFromOpenClipboard();
+            ZetlTrace.Write("clipboard capture: done");
             return new ZetlClipboardCaptureSnapshot(
                 changeToken,
                 text,

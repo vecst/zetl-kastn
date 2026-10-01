@@ -68,6 +68,7 @@ internal sealed class ZetlHoldIndicator
     // when holding it would do nothing; then only demo mode shows anything.
     public void Start(string comboName, long timestamp, TimeSpan delay, string? holdActionLabel)
     {
+        ZetlTrace.Write($"indicator: start {comboName}");
         if (!Enabled || (holdActionLabel is null && !Demo))
         {
             Hide();
@@ -170,6 +171,7 @@ internal sealed class ZetlHoldIndicator
                 }
                 else
                 {
+                    ZetlTrace.Write($"indicator: fade {fade:0.00}");
                     window!.Opacity = 1 - fade;
                 }
 
@@ -189,23 +191,30 @@ internal sealed class ZetlHoldIndicator
         }
 
         var width = Demo ? DemoWidth : NormalWidth;
+        ZetlTrace.Write("indicator: show begin");
         window.Width = width;
         demoPanel.IsVisible = Demo;
         ZetlWindowPlacement.PlaceOverlay(window, width, WindowHeight, Anchor);
+        ZetlTrace.Write("indicator: placed");
         if (!window.IsVisible)
         {
             window.Show();
+            ZetlTrace.Write("indicator: shown");
             MakeNonActivating(window);
+            ZetlTrace.Write("indicator: styled");
         }
 
         ReassertTopmost(window);
+        ZetlTrace.Write("indicator: show end");
     }
 
     private void Hide()
     {
+        ZetlTrace.Write("indicator: hide begin");
         phase = Phase.Idle;
         frameTimer.Stop();
         window?.Hide();
+        ZetlTrace.Write("indicator: hide end");
     }
 
     private void EnsureWindow()

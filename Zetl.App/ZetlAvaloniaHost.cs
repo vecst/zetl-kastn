@@ -45,6 +45,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     // Between Chordl and Zetl: turns each press, tap, and hold into an action.
     private readonly ZetlGestureRouter router;
     private readonly ZetlHoldIndicator holdIndicator = new();
+    private readonly HashSet<int> configuredKeyCodes = [];
     private readonly ChordlProcessor? processor;
     private readonly TrayIcon trayIcon;
     private readonly ZetlThemeManager themeManager;
@@ -103,6 +104,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                         Environment.SpecialFolder.ApplicationData),
                     "Zetl"),
             "diagnostics.log");
+        ZetlTrace.EnableIfFlagged(Path.GetDirectoryName(diagnosticLogPath)!);
         diagnosticThread = new Thread(ProcessDiagnosticLines)
         {
             IsBackground = true,
@@ -130,6 +132,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         clipboard = ZetlPlatformServices.CreateClipboard(Log);
         imageUrlResolver = new ZetlImageUrlResolver(Log);
         var config = LoadChordlConfiguration(out var configMessage);
+        configuredKeyCodes.UnionWith(config.ConfiguredKeyCodes);
         coordinator = new ZetlShortcutCoordinator(
             store,
             keyboard,
@@ -533,6 +536,19 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         var started = Stopwatch.GetTimestamp();
         try
         {
+            // Trace only the keys Chordl handles plus the modifiers, so ordinary
+            // typing is neither slowed nor written down.
+            if (ZetlTrace.Enabled
+                && (configuredKeyCodes.Contains(virtualKey)
+                    || ChordlKeys.IsControlKey(virtualKey)
+                    || ChordlKeys.IsShiftKey(virtualKey)))
+            {
+                ZetlTrace.Write($"key vk=0x{virtualKey:X2} {(keyDown ? "down" : "up")}{(isRepeat ? " repeat" : "")} begin");
+                var handled = processor!.HandleKeyEvent(virtualKey, keyDown, keyUp, isRepeat);
+                ZetlTrace.Write($"key vk=0x{virtualKey:X2} end handled={handled}");
+                return handled;
+            }
+
             return processor!.HandleKeyEvent(virtualKey, keyDown, keyUp, isRepeat);
         }
         finally
@@ -604,7 +620,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             // Only cheap facts are read here on the hook thread; the origin's
             // application name resolves later, when a capture first needs it.
             var detail = settingsStore.Settings.CaptureOriginDetail;
+            ZetlTrace.Write("press: capture target begin");
             var originTarget = captureOriginProvider.CaptureTarget(detail);
+            ZetlTrace.Write("press: capture target end");
             var captureOrigin = new Lazy<ZetlCaptureOrigin?>(() => originTarget is null
                 ? null
                 : captureOriginProvider.Describe(originTarget, detail));
@@ -615,6 +633,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             }
 
             Log($"{context.Name} keydown target: {ZetlForegroundService.DescribeTarget(target)}.");
+            ZetlTrace.Write("press: router begin");
             ZetlAsync.RunLogged(
                 () => router.OnPressAsync(context, captureOrigin),
                 "physical shortcut pass-through",
