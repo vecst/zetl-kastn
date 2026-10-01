@@ -40,6 +40,15 @@ internal static class ZetlWindowsSelfTests
                 && System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(
                     bmp.AsSpan(10, 4)) == 54);
 
+            // The file-view check reads real window class names; a wrong buffer
+            // size here would corrupt native memory rather than just fail.
+            if (Win32Interop.GetForegroundWindow() is var foregroundWindow && foregroundWindow != IntPtr.Zero)
+            {
+                failures += Check(
+                    "file-view check reads a full window class name",
+                    ZetlShellFileView.ReadClassName(foregroundWindow) is { Length: > 1 });
+            }
+
             // The capture target is read on the keyboard hook thread for every
             // Ctrl+C and Ctrl+X, so it must stay cheap and still name the app.
             var originProvider = new WindowsCaptureOriginProvider();

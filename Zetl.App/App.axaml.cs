@@ -316,17 +316,44 @@ public partial class App : Application
         tap.Click += (_, _) => Simulate(TimeSpan.FromMilliseconds(90));
         var slow = new Button { Content = "Simulate a slow tap (250 ms)" };
         slow.Click += (_, _) => Simulate(TimeSpan.FromMilliseconds(250));
+        // Rapid slow taps cycle the indicator window on and off, as repeated
+        // copies do; used to reproduce show/hide problems.
+        async Task Stress()
+        {
+            // Presses of 70-300 ms every half second or so, like quick copies.
+            var random = new Random(7);
+            for (var i = 0; i < 300; i++)
+            {
+                Simulate(TimeSpan.FromMilliseconds(random.Next(70, 300)));
+                await Task.Delay(random.Next(250, 700));
+            }
+        }
+
+        var stress = new Button { Content = "Stress: 300 slow taps" };
+        stress.Click += async (_, _) => await Stress();
+        var previewArgs = Program.StartupArgs;
+        if (previewArgs.Contains("--demo", StringComparer.OrdinalIgnoreCase))
+        {
+            demo.IsChecked = true;
+            indicator.Demo = true;
+        }
+
+        if (previewArgs.Contains("--stress", StringComparer.OrdinalIgnoreCase))
+        {
+            Dispatcher.UIThread.Post(async () => await Stress());
+        }
+
         return new Window
         {
             Title = "Hold indicator preview",
             Width = 320,
-            Height = 220,
+            Height = 260,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Content = new StackPanel
             {
                 Margin = new Thickness(16),
                 Spacing = 10,
-                Children = { hold, tap, slow, demo }
+                Children = { hold, tap, slow, stress, demo }
             }
         };
     }

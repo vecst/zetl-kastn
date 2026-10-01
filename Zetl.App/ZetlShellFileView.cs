@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace ZETL;
 
@@ -51,11 +52,21 @@ internal static class ZetlShellFileView
         return false;
     }
 
+    // Window class names are at most 256 characters. A StringBuilder is
+    // marshalled as a real buffer of its capacity, so GetClassName can never
+    // write past what it was given.
     private static bool HasClass(IntPtr window, string className)
     {
-        Span<char> buffer = stackalloc char[64];
-        var length = GetClassName(window, ref MemoryMarshal.GetReference(buffer), buffer.Length);
-        return length > 0 && buffer[..length].SequenceEqual(className);
+        var buffer = new StringBuilder(256);
+        var length = GetClassName(window, buffer, buffer.Capacity);
+        return length > 0 && string.Equals(buffer.ToString(), className, StringComparison.Ordinal);
+    }
+
+    // For the Windows self-tests: the class name the check reads for a window.
+    internal static string? ReadClassName(IntPtr window)
+    {
+        var buffer = new StringBuilder(256);
+        return GetClassName(window, buffer, buffer.Capacity) > 0 ? buffer.ToString() : null;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -83,5 +94,5 @@ internal static class ZetlShellFileView
     private static extern IntPtr GetAncestor(IntPtr window, uint flags);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
-    private static extern int GetClassName(IntPtr window, ref char className, int maxCount);
+    private static extern int GetClassName(IntPtr window, StringBuilder className, int maxCount);
 }
