@@ -46,6 +46,12 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly ZetlGestureRouter router;
     private readonly ZetlHoldIndicator holdIndicator = new();
     private readonly HashSet<int> configuredKeyCodes = [];
+    // While the hold lab is open Zetl stands down and Ctrl+C presses are timed.
+    // Written on the UI thread, read on the keyboard hook thread.
+    private volatile ZetlHoldLabWindow? holdLab;
+    // The combo in progress, stamped on the hook thread when it starts.
+    private long comboStartedAt;
+    private ChordlEventContext? comboContext;
     private readonly ChordlProcessor? processor;
     private readonly TrayIcon trayIcon;
     private readonly ZetlThemeManager themeManager;
@@ -163,7 +169,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             holdDelay,
             DispatchOriginalAction,
             OnPhysicalShortcutPassedThrough,
-            router.OnTap,
+            // While the hold lab measures, taps go through untouched.
+            context => holdLab is null && router.OnTap(context),
             OnHoldDetected,
             Log,
             clipboard.GetChangeToken,
@@ -306,6 +313,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         menu.Items.Add(Item("Open Shift Board", () => ShowBoard(shifted: true)));
         menu.Items.Add(Item("New Project", () => _ = ShowProjectSetupAsync()));
         menu.Items.Add(Item("How Zetl Works", () => _ = ShowFirstRunGuideAsync(markSeen: false)));
+        menu.Items.Add(Item("Measure My Taps and Holds", () => _ = ShowHoldLabAsync()));
         menu.Items.Add(Item("Notification History", notifications.ShowHistory));
         menu.Items.Add(Item("Clear Notification History", notifications.ClearHistory));
         menu.Items.Add(Item("Toggle Active Bucket Pop Mode", TogglePopMode));
@@ -579,6 +587,14 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private void OnComboStarted(ChordlEventContext context)
     {
         var started = Stopwatch.GetTimestamp();
+        comboStartedAt = started;
+        comboContext = context;
+        if (holdLab is not null)
+        {
+            // The indicator would nudge measured holds toward the threshold.
+            return;
+        }
+
         Dispatcher.UIThread.Post(() => holdIndicator.Start(
             context.Name,
             started,
@@ -586,8 +602,53 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             HoldActionLabel(context)));
     }
 
-    private void OnComboEnded(bool held) =>
+    private void OnComboEnded(bool held)
+    {
+        if (holdLab is { } lab)
+        {
+            // Time plain Ctrl+C presses, key down to release, for the lab.
+            if (comboContext is { KeyCode: ChordlKeys.VK_C, ShiftLane: false })
+            {
+                var pressed = Stopwatch.GetElapsedTime(comboStartedAt).TotalMilliseconds;
+                Dispatcher.UIThread.Post(() => lab.RecordPress(pressed));
+            }
+
+            return;
+        }
+
         Dispatcher.UIThread.Post(() => holdIndicator.End(held));
+    }
+
+    // The hold lab: Zetl's actions pause while it is open so the user's own
+    // taps and holds can be measured, then it can apply a new hold delay.
+    private async Task ShowHoldLabAsync()
+    {
+        if (holdLab is { } open)
+        {
+            ZetlWindowActivation.Show(open);
+            return;
+        }
+
+        var lab = new ZetlHoldLabWindow(
+            settingsStore.Settings.HoldDelayMs,
+            milliseconds =>
+            {
+                settingsStore.Settings.HoldDelayMs = milliseconds;
+                settingsStore.Save();
+                ApplySettings();
+                notifications.Show($"Hold threshold set to {milliseconds} ms.");
+            },
+            Log);
+        holdLab = lab;
+        try
+        {
+            await ShowUntilClosedAsync(lab);
+        }
+        finally
+        {
+            holdLab = null;
+        }
+    }
 
     // What holding this chord would do, or null when it would do nothing.
     private string? HoldActionLabel(ChordlEventContext context)
@@ -601,6 +662,13 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     private void OnHoldDetected(ChordlEventContext context)
     {
+        if (holdLab is not null)
+        {
+            // Measuring: cancel the copy's pending auto-capture, open nothing.
+            coordinator.ClaimPendingForHold(context);
+            return;
+        }
+
         var holdStarted = Stopwatch.GetTimestamp();
         Dispatcher.UIThread.Post(holdIndicator.Complete);
         var pending = coordinator.ClaimPendingForHold(context);
@@ -615,6 +683,12 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     private void OnPhysicalShortcutPassedThrough(ChordlEventContext context)
     {
+        if (holdLab is not null)
+        {
+            // Measuring: the copy goes through natively and is never captured.
+            return;
+        }
+
         if (context.KeyCode is ChordlKeys.VK_C or ChordlKeys.VK_X)
         {
             // Only cheap facts are read here on the hook thread; the origin's

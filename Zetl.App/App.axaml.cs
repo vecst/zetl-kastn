@@ -272,6 +272,7 @@ public partial class App : Application
                         settingsStore,
                         defaultTab: "theme"),
                     "hold-indicator" => CreateHoldIndicatorPreview(),
+                    "hold-lab" => CreateHoldLabPreview(),
                     "hold-actions" => new ZetlSettingsWindow(
                         settingsStore.Settings,
                         themeManager,
@@ -361,6 +362,27 @@ public partial class App : Application
                 Children = { hold, tap, slow, stress, demo }
             }
         };
+    }
+
+    // The hold lab filled with simulated presses (the real one is timed by the
+    // keyboard hook), to check its results layout.
+    private static Window CreateHoldLabPreview()
+    {
+        var lab = new ZetlHoldLabWindow(353, _ => { }, message => Console.Error.WriteLine(message));
+        var random = new Random(3);
+        lab.Opened += (_, _) =>
+        {
+            for (var i = 0; i < 20; i++)
+            {
+                lab.RecordPress(random.Next(70, 190));
+            }
+
+            for (var i = 0; i < 15; i++)
+            {
+                lab.RecordPress(random.Next(380, 900));
+            }
+        };
+        return lab;
     }
 
     private static string? PreviewArgument(string prefix) =>
