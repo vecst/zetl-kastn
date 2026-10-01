@@ -280,6 +280,11 @@ public partial class App : Application
                         defaultTab: "hold-actions"),
                     _ => new NoteCaptureWindow(store, project, bucket, "sample copied text")
                 };
+                // Previews open the way the app opens dialogs: hidden until
+                // their first frame is drawn.
+                ZetlWindowReveal.WhenReady(
+                    desktop.MainWindow,
+                    elapsed => Console.Error.WriteLine($"Preview ready in {elapsed.TotalMilliseconds:0} ms."));
                 AttachPreviewResult(desktop.MainWindow);
             }
         }
