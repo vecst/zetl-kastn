@@ -141,10 +141,11 @@ internal sealed class ZetlHoldMeasurePanel : UserControl, IZetlPressMeasurer
         if (!measuringHolds)
         {
             instruction.Text = forNewUser
-                ? $"First, tap Ctrl+C {tapsWanted} times, the way you normally copy. "
-                  + "Nothing will pop up while you do this."
+                ? $"First, tap Ctrl+C {tapsWanted} times, the way you normally copy, letting go "
+                  + "of both keys each time. Nothing will pop up while you do this."
                 : $"First, your taps. Press Ctrl+C the way you always do when you copy, "
-                  + $"{tapsWanted} times. Zetl is paused while this window is open, so nothing pops up.";
+                  + $"{tapsWanted} times, letting go of Ctrl between them. Zetl is paused while "
+                  + "this window is open, so nothing pops up.";
             progress.Text = $"Taps: {taps.Count} of {tapsWanted}";
         }
         else
@@ -166,10 +167,14 @@ internal sealed class ZetlHoldMeasurePanel : UserControl, IZetlPressMeasurer
             ? $"At {currentMs:0} ms every tap stays a tap and every hold registers."
             : $"At {currentMs:0} ms, {Plural(result.CurrentTapsTooLong, "tap")} would open Zetl "
               + $"and {Plural(result.CurrentHoldsTooShort, "hold")} would be missed.";
-        var suggestion = result.Separated
-            ? $"Suggested: {suggestedMs} ms, well clear of your slowest tap and just under your quickest hold."
-            : $"Your taps and holds overlap, so no threshold separates them all. "
-              + $"{suggestedMs} ms misjudges the fewest presses.";
+        var suggestion = !result.Separated
+            ? $"Your taps and holds overlap, so no threshold separates them all. "
+              + $"{suggestedMs} ms misjudges the fewest presses."
+            : result.SuggestedHoldsTooShort == 0
+                ? $"Suggested: {suggestedMs} ms, well clear of your taps, and every hold reaches it."
+                : $"Suggested: {suggestedMs} ms, well clear of your taps. "
+                  + $"{Plural(result.SuggestedHoldsTooShort, "hold")} fell just short of it; once "
+                  + "Zetl is on, the ring shows you when a hold has landed.";
 
         results.Text = forNewUser
             ? $"Your taps were over by {result.SlowestTapMs:0} ms, and your holds lasted at least "
