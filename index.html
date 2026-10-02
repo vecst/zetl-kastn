@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zetl: tap as always, hold to keep it</title>
+<meta name="description" content="Zetl lives inside the shortcuts you already know. Tap Ctrl+C and you copy. Hold it, and Zetl keeps what you're working on. Free for Windows.">
+<meta property="og:title" content="Zetl: tap as always, hold to keep it">
+<meta property="og:description" content="Tap your shortcuts like always. Hold them, and Zetl keeps what you're working on.">
+<meta property="og:type" content="website">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #f8f6f1;
+  --surface: #ffffff;
+  --surface-2: #f0ede5;
+  --text: #1c1f1d;
+  --muted: #5c625e;
+  --line: #dedad0;
+  --accent: #14805f;
+  --accent-strong: #0e6a4e;
+  --accent-soft: #d8efe6;
+  --on-accent: #ffffff;
+  --mark: #cfe6f7;
+  --shadow: 0 1px 2px rgb(0 0 0 / .05), 0 8px 28px rgb(0 0 0 / .08);
+  --radius: 14px;
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111413;
+    --surface: #191d1b;
+    --surface-2: #212623;
+    --text: #e8ebe9;
+    --muted: #9aa39e;
+    --line: #2d3430;
+    --accent: #3cc493;
+    --accent-strong: #5fd6aa;
+    --accent-soft: #173a2e;
+    --on-accent: #08130f;
+    --mark: #23455e;
+    --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 10px 30px rgb(0 0 0 / .35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111413;
+  --surface: #191d1b;
+  --surface-2: #212623;
+  --text: #e8ebe9;
+  --muted: #9aa39e;
+  --line: #2d3430;
+  --accent: #3cc493;
+  --accent-strong: #5fd6aa;
+  --accent-soft: #173a2e;
+  --on-accent: #08130f;
+  --mark: #23455e;
+  --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 10px 30px rgb(0 0 0 / .35);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.6 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-strong); }
+a:hover { text-decoration-thickness: 2px; }
+kbd {
+  font: 600 .82em/1 var(--mono);
+  padding: .22em .45em;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--surface);
+  white-space: nowrap;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 640px) { .wrap { padding: 0 28px; } }
+
+/* Top bar */
+header.top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; align-items: center; gap: 20px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; color: var(--text); text-decoration: none; letter-spacing: -.01em; }
+.brand svg { width: 26px; height: 26px; }
+nav.links { display: none; gap: 22px; margin-left: auto; font-size: 15px; }
+nav.links a { color: var(--muted); text-decoration: none; }
+nav.links a:hover { color: var(--text); }
+header.top .btn { margin-left: auto; }
+@media (min-width: 820px) {
+  nav.links { display: flex; }
+  header.top .btn { margin-left: 0; }
+}
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 20px; border-radius: 10px;
+  font-weight: 600; font-size: 16px; text-decoration: none;
+  border: 1px solid transparent; cursor: pointer;
+}
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: var(--accent-strong); }
+.btn.ghost { border-color: var(--line); color: var(--text); background: var(--surface); }
+.btn.ghost:hover { border-color: var(--muted); }
+.btn.small { padding: 7px 14px; font-size: 14px; }
+
+/* Hero */
+.hero { padding: 72px 0 40px; text-align: center; }
+.hero h1 { font-size: clamp(34px, 6vw, 60px); line-height: 1.08; letter-spacing: -.025em; margin: 0 auto 20px; max-width: 15ch; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero p.lede { font-size: clamp(18px, 2.2vw, 21px); color: var(--muted); max-width: 40em; margin: 0 auto 30px; }
+.hero .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.hero .meta { margin-top: 18px; font-size: 14px; color: var(--muted); }
+
+/* Demo */
+.demo { padding: 24px 0 64px; }
+.demo-card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); padding: 22px; }
+@media (min-width: 640px) { .demo-card { padding: 30px; } }
+.demo-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 20px; align-items: baseline; margin-bottom: 18px; }
+.demo-head h2 { margin: 0; font-size: 24px; letter-spacing: -.01em; }
+.demo-head p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.screen { position: relative; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; min-height: 290px; overflow: hidden; }
+.screen .bar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.screen .bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.screen .bar span { margin-left: 6px; }
+.doc { padding: 22px 22px 40px; max-width: 34em; font-family: Georgia, "Times New Roman", serif; font-size: 18px; line-height: 1.7; margin: 0; }
+@media (min-width: 720px) { .doc { padding: 30px 230px 46px 30px; max-width: none; } }
+.doc mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 1px 0; transition: opacity .25s; }
+.doc mark.gone { opacity: 0; }
+.doc .src { display: block; margin-top: 12px; font: 13px/1.4 "Segoe UI", system-ui, sans-serif; color: var(--muted); }
+
+/* The detailed indicator, top right like Zetl's default. */
+.indicator {
+  position: absolute; top: 52px; right: 14px;
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 14px 10px 10px; box-shadow: var(--shadow);
+  opacity: 0; transform: translateY(-6px); transition: opacity .15s, transform .15s;
+  pointer-events: none; min-width: 178px;
+}
+.indicator.on { opacity: 1; transform: none; }
+.indicator svg { width: 46px; height: 46px; transform: rotate(-90deg); flex: none; }
+.indicator .track { stroke: var(--line); }
+.indicator .fill { stroke: var(--accent); stroke-linecap: round; }
+.indicator .info { line-height: 1.25; }
+.indicator .keyname { font: 700 14px/1.2 var(--mono); }
+.indicator .ms { font: 13px/1.3 var(--mono); color: var(--muted); }
+.indicator .what { font-size: 13px; font-weight: 600; color: var(--accent-strong); min-height: 1.2em; }
+.indicator .what.tap { color: var(--muted); font-weight: 500; }
+
+.popup {
+  position: absolute; left: 50%; top: 58px; transform: translateX(-50%) scale(.97);
+  width: min(420px, calc(100% - 28px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow); padding: 14px 16px 12px;
+  opacity: 0; pointer-events: none; transition: opacity .14s, transform .14s;
+  font-size: 15px;
+}
+.popup.on { opacity: 1; transform: translateX(-50%) scale(1); pointer-events: auto; }
+/* Narrow screens: keep the popup clear of the indicator in the corner. */
+@media (max-width: 719px) { .popup { top: auto; bottom: 12px; } .doc { padding-bottom: 60px; } }
+.popup .ptitle { display: flex; justify-content: space-between; align-items: center; font-weight: 700; margin-bottom: 10px; }
+.popup .ptitle small { font-weight: 500; color: var(--muted); font-size: 12px; }
+.popup .box { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--surface-2); min-height: 64px; font-family: Georgia, serif; line-height: 1.5; }
+.popup .box .caret { display: inline-block; width: 1.5px; height: 1.1em; background: var(--text); vertical-align: text-bottom; margin-left: 2px; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.popup .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.popup ul { list-style: none; margin: 0; padding: 0; }
+.popup li { display: flex; gap: 8px; padding: 4px 0; font-family: Georgia, serif; }
+.popup li::before { content: "☑"; color: var(--accent); font-family: system-ui, sans-serif; }
+.chips { display: flex; gap: 6px; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-size: 12px; }
+.chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+
+.toast {
+  position: absolute; left: 50%; bottom: 14px; transform: translate(-50%, 8px);
+  background: var(--text); color: var(--bg); border-radius: 999px; padding: 7px 16px; font-size: 14px;
+  opacity: 0; transition: opacity .15s, transform .15s; pointer-events: none; white-space: nowrap;
+}
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+.keys { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+.keys .plus { color: var(--muted); font-size: 22px; }
+.cap {
+  min-width: 64px; height: 60px; padding: 0 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 700 22px/1 var(--mono); color: var(--text);
+  background: var(--surface); border: 1px solid var(--line); border-bottom-width: 4px; border-radius: 10px;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
+}
+.cap.mod { font-size: 17px; color: var(--muted); background: var(--surface-2); }
+button.cap { cursor: pointer; transition: transform .05s, border-color .1s; }
+button.cap:hover { border-color: var(--muted); }
+button.cap.down { transform: translateY(3px); border-bottom-width: 1px; border-color: var(--accent); }
+button.cap:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.keys-hint { text-align: center; color: var(--muted); font-size: 14px; margin: 12px 0 0; }
+.result { text-align: center; font-weight: 600; min-height: 1.6em; margin: 10px 0 0; }
+
+/* Content sections */
+section.block { padding: 56px 0; border-top: 1px solid var(--line); }
+section.block h2 { font-size: clamp(26px, 3.4vw, 34px); letter-spacing: -.015em; line-height: 1.15; margin: 0 0 14px; }
+section.block p.intro { color: var(--muted); max-width: 42em; margin: 0 0 28px; }
+.grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+@media (min-width: 680px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 900px) { .grid.four { grid-template-columns: repeat(4, 1fr); } .grid.two-wide { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 640px) and (max-width: 899px) { .grid.four { grid-template-columns: 1fr 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+.card h3 { margin: 0 0 8px; font-size: 18px; }
+.card p { margin: 0; color: var(--muted); font-size: 15.5px; }
+.card .when { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--accent-strong); margin-bottom: 8px; }
+
+.split { display: grid; gap: 28px; }
+@media (min-width: 860px) { .split { grid-template-columns: 1fr 1.15fr; gap: 48px; align-items: start; } }
+.split p { margin: 0 0 14px; }
+
+table.keys-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; font-size: 15.5px; }
+.keys-table th, .keys-table td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.keys-table th { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--surface-2); }
+.keys-table tr:last-child td { border-bottom: 0; }
+.keys-table td:first-child { width: 1%; white-space: nowrap; }
+.note { color: var(--muted); font-size: 15px; margin-top: 16px; }
+
+ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 0 0 22px; display: grid; gap: 14px; }
+ol.steps li { counter-increment: step; position: relative; padding-left: 46px; }
+ol.steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; display: grid; place-items: center; font-size: 15px; }
+.callout { border-left: 4px solid var(--accent); background: var(--surface); border-radius: 0 10px 10px 0; padding: 14px 18px; font-size: 15.5px; }
+.callout p { margin: 0; }
+
+footer { border-top: 1px solid var(--line); padding: 34px 0 48px; color: var(--muted); font-size: 14.5px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 28px; justify-content: space-between; }
+footer nav { display: flex; gap: 20px; flex-wrap: wrap; }
+footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-opacity=".18" stroke-width="5"/><circle cx="16" cy="16" r="12" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" stroke-dasharray="56 76" transform="rotate(-90 16 16)"/></svg>
+      Zetl
+    </a>
+    <nav class="links" aria-label="Sections">
+      <a href="#try">Try it</a>
+      <a href="#shortcuts">Shortcuts</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/guide.md">Guide</a>
+      <a href="https://github.com/vecst/zetl-kastn">GitHub</a>
+    </nav>
+    <a class="btn primary small" href="https://github.com/vecst/zetl-kastn/releases/latest">Download</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <h1>Tap your shortcuts like always. <em>Hold them</em>, and Zetl keeps it.</h1>
+      <p class="lede">Zetl lives inside the shortcuts your hands already know. Tap <kbd>Ctrl+C</kbd> and you copy, the way you always have. Hold it a moment longer and what you copied is saved: a quote, a number, a picture, a passing thought, without leaving the window you're in.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/vecst/zetl-kastn/releases/latest">Download for Windows</a>
+        <a class="btn ghost" href="#try">Feel the hold</a>
+      </div>
+      <p class="meta">Free and open source · 64-bit Windows · No account, no cloud</p>
+    </div>
+  </section>
+
+  <section class="demo" id="try">
+    <div class="wrap">
+      <div class="demo-card">
+        <div class="demo-head">
+          <h2>Feel the difference</h2>
+          <p>Press a key and let go. Then press it again and hold.</p>
+        </div>
+
+        <div class="screen" id="screen">
+          <div class="bar"><i></i><i></i><i></i><span>Of Studies, Francis Bacon</span></div>
+          <p class="doc">Studies serve for delight, for ornament, and for ability. … <mark id="sel">Some books are to be tasted, others to be swallowed, and some few to be chewed and digested.</mark> … Reading maketh a full man; conference a ready man; and writing an exact man.<span class="src">Francis Bacon, <i>Of Studies</i> (1625). Public domain.</span></p>
+
+          <div class="indicator" id="indicator" aria-hidden="true">
+            <svg viewBox="0 0 48 48"><circle class="track" cx="24" cy="24" r="19" fill="none" stroke-width="5"/><circle class="fill" id="ring" cx="24" cy="24" r="19" fill="none" stroke-width="5"/></svg>
+            <div class="info">
+              <div class="keyname" id="keyname">Ctrl+C</div>
+              <div class="ms" id="ms">0 ms</div>
+              <div class="what" id="what"></div>
+            </div>
+          </div>
+
+          <div class="popup" id="popup" role="dialog" aria-label="Zetl popup"></div>
+          <div class="toast" id="toast" role="status"></div>
+        </div>
+
+        <div class="keys">
+          <span class="cap mod" aria-hidden="true">Ctrl</span>
+          <span class="plus" aria-hidden="true">+</span>
+          <button class="cap" data-key="c" aria-label="C: tap to copy, hold to capture">C</button>
+          <button class="cap" data-key="x" aria-label="X: tap to cut, hold for a quick note">X</button>
+          <button class="cap" data-key="v" aria-label="V: tap to paste, hold to compose">V</button>
+        </div>
+        <p class="keys-hint">Click and hold a key, or use <kbd>C</kbd> <kbd>X</kbd> <kbd>V</kbd> on your keyboard. A hold here starts at 353 ms, Zetl's default; the first-run tour tunes it to your hands.</p>
+        <p class="result" id="result" aria-live="polite"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <h2>How it feels</h2>
+      <p class="intro">Capture takes a second. Composing takes a minute. Nothing in between asks you to stop what you're doing.</p>
+      <div class="grid four">
+        <div class="card"><div class="when">Watching</div><h3>An idea hits mid-video</h3><p>Hold <kbd>Ctrl+X</kbd>, type it, press <kbd>Ctrl+Enter</kbd>. The full-screen video never stopped.</p></div>
+        <div class="card"><div class="when">Reading</div><h3>A paragraph worth keeping</h3><p>Select it and hold <kbd>Ctrl+C</kbd>. It's saved, along with the app and page it came from.</p></div>
+        <div class="card"><div class="when">Collecting</div><h3>A column of figures</h3><p>Click into a spreadsheet, hold <kbd>Ctrl+V</kbd>, choose TSV, and they land as cells. No import dialog.</p></div>
+        <div class="card"><div class="when">Wrapping up</div><h3>Everything, in one piece</h3><p>Hold <kbd>Ctrl+V</kbd> anywhere. What you collected is ready to paste as notes, a list, or table rows.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap split">
+      <div>
+        <h2>Why holding</h2>
+      </div>
+      <div>
+        <p>There's nothing new to learn and nothing new to remember. Every shortcut still does exactly what it did. Zetl only answers when you hold one, so it works the same in every app you use.</p>
+        <p>Zetl isn't a notes app, and it isn't a clipboard manager. It's a way of keeping what passes through your hands, without stopping to decide where it goes.</p>
+        <p>The first time you run it, a short tour measures how long your own taps and holds take, then has you try each hold for real. A ring in the corner fills while you hold, so you can feel exactly where a tap ends and a hold begins.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="shortcuts">
+    <div class="wrap">
+      <h2>The shortcuts</h2>
+      <p class="intro">Tap any of these and you get the ordinary shortcut. Hold it, and:</p>
+      <table class="keys-table">
+        <thead><tr><th>Hold</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Ctrl+C</kbd></td><td>Save what you copied, with a chance to edit it first</td></tr>
+          <tr><td><kbd>Ctrl+X</kbd></td><td>Write a quick note. Anything selected comes along; press Esc and it goes back</td></tr>
+          <tr><td><kbd>Ctrl+A</kbd></td><td>Select everything and save it</td></tr>
+          <tr><td><kbd>Ctrl+V</kbd></td><td>Compose: gather your notes into text, a list, or table rows, and paste</td></tr>
+          <tr><td><kbd>Ctrl+B</kbd></td><td>Open the Board, where your projects live</td></tr>
+          <tr><td><kbd>Ctrl+T</kbd></td><td>Start a new project from a template</td></tr>
+          <tr><td><kbd>Ctrl+J</kbd></td><td>Switch between your Journal and your last project</td></tr>
+          <tr><td><kbd>Ctrl+R</kbd></td><td>Replay: paste a saved list back one item at a time</td></tr>
+          <tr><td><kbd>Ctrl+P</kbd></td><td>Pop: remove each saved item as you paste it</td></tr>
+          <tr><td><kbd>Ctrl+Z</kbd></td><td>Undo Zetl's last action</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Add <kbd>Shift</kbd> for a second, separate workspace, so a work project and a personal one can run side by side. You can change what any hold does in Settings.</p>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <h2>Where your notes go</h2>
+      <p class="intro">Anything you save without picking a project lands in your Journal, sorted by day. Start a project when you're working on something specific, and Zetl files your notes there instead. While a project is active, every ordinary copy is saved into it too, so a research session collects itself. The tray icon turns green whenever that's happening.</p>
+      <div class="grid two-wide">
+        <div class="card"><div class="when">Always running</div><h3>Zetl</h3><p>Sits quietly by the clock and does the catching: quick, out of the way, gone as soon as you're done.</p></div>
+        <div class="card"><div class="when">When you sit down</div><h3>Kastn</h3><p>The workbench for what you collected. Browse it, organize it, edit it, link notes together, and export to Markdown, HTML, or PDF.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="privacy">
+    <div class="wrap split">
+      <div>
+        <h2>Your notes stay on your computer</h2>
+      </div>
+      <div>
+        <p>Zetl has no account and no cloud. Everything you save lives in readable files under <code>%AppData%\Zetl</code> on your own machine.</p>
+        <p>Copies that a password manager marks as private are never read or saved, even while a project is collecting your copies. When you export a project to share, a clean copy leaves out which apps and windows your notes came from.</p>
+        <p>The only time Zetl goes online is when you copy a link to an image: it downloads that image so it can save the picture.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="install">
+    <div class="wrap split">
+      <div>
+        <h2>Install</h2>
+        <p class="intro">Nothing else to install, nothing to sign up for.</p>
+      </div>
+      <div>
+        <ol class="steps">
+          <li>Download the latest <code>Zetl-…-win-x64.zip</code> from the <a href="https://github.com/vecst/zetl-kastn/releases/latest">Releases page</a>.</li>
+          <li>Extract the whole zip into a folder and keep its files together.</li>
+          <li>Run <code>Zetl.exe</code>. Its icon appears by the clock, and the tour opens.</li>
+        </ol>
+        <p>Zetl isn't code-signed yet, so Windows may show a SmartScreen warning the first time: choose <b>More info → Run anyway</b>. It runs on 64-bit Windows, and can't reach apps running as administrator unless it's run as administrator too.</p>
+        <div class="callout"><p>Zetl is in release-candidate testing. Expect some rough edges, and please <a href="https://github.com/vecst/zetl-kastn/issues">report what you find</a>.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Zetl is free software under the GNU General Public License v3 or later.</span>
+    <nav aria-label="Project links">
+      <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/guide.md">User guide</a>
+      <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/building.md">Build from source</a>
+      <a href="https://github.com/vecst/zetl-kastn/releases">Releases</a>
+      <a href="https://github.com/vecst/zetl-kastn">Source</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+(() => {
+  // Zetl's default hold threshold; a press shorter than this is a tap.
+  const HOLD_MS = 353;
+  const sentence = "Some books are to be tasted, others to be swallowed, and some few to be chewed and digested.";
+  const actions = {
+    c: {
+      key: "Ctrl+C", hold: "Capture",
+      tap: "Copied. That's all a tap ever does.",
+      held: "Held: the copy went through, and Zetl kept it too.",
+      popup: () => `<div class="ptitle">Capture <small>Journal · Today</small></div>
+        <div class="box">${sentence}</div>
+        <div class="row"><span>From: Of Studies</span><span><kbd>Ctrl+Enter</kbd> to save</span></div>`
+    },
+    x: {
+      key: "Ctrl+X", hold: "Quick note",
+      tap: "Cut, like always. (We'll put it back.)",
+      held: "Held: the sentence moved into a quick note. Esc would put it back.",
+      popup: () => `<div class="ptitle">Quick note <small>Journal · Today</small></div>
+        <div class="box">${sentence}<span class="caret"></span></div>
+        <div class="row"><span><kbd>Esc</kbd> puts it back</span><span><kbd>Ctrl+Enter</kbd> to save</span></div>`
+    },
+    v: {
+      key: "Ctrl+V", hold: "Compose",
+      tap: "Pasted, like always.",
+      held: "Held: Compose gathered your notes, ready to paste as one piece.",
+      popup: () => `<div class="ptitle">Compose <small>Journal · Today</small></div>
+        <ul><li>Some books are to be tasted…</li><li>Ask Sam about the Thursday draft</li><li>12.40 · 18.75 · 9.10</li></ul>
+        <div class="row"><span class="chips"><span class="chip on">Text</span><span class="chip">List</span><span class="chip">TSV</span></span><span><kbd>Ctrl+Enter</kbd> to paste</span></div>`
+    }
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const indicator = $("indicator"), ring = $("ring"), keyname = $("keyname"), ms = $("ms"), what = $("what");
+  const popup = $("popup"), toast = $("toast"), result = $("result"), mark = $("sel");
+  const circumference = 2 * Math.PI * 19;
+  ring.style.strokeDasharray = circumference;
+  ring.style.strokeDashoffset = circumference;
+
+  let press = null;          // { key, start, fired, frame, button }
+  let hideTimer = 0, toastTimer = 0, restoreTimer = 0;
+
+  function setRing(fraction) {
+    ring.style.strokeDashoffset = circumference * (1 - Math.min(1, fraction));
+  }
+
+  function showToast(text) {
+    toast.textContent = text;
+    toast.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("on"), 1800);
+  }
+
+  function closePopup() {
+    popup.classList.remove("on");
+    mark.classList.remove("gone");
+  }
+
+  function begin(key, button) {
+    if (press || !actions[key]) return;
+    clearTimeout(hideTimer);
+    clearTimeout(restoreTimer);
+    closePopup();
+    toast.classList.remove("on");
+    const action = actions[key];
+    press = { key, start: performance.now(), fired: false, frame: 0, button };
+    button?.classList.add("down");
+    keyname.textContent = action.key;
+    what.textContent = "";
+    what.classList.remove("tap");
+    setRing(0);
+    indicator.classList.add("on");
+    tick();
+  }
+
+  function tick() {
+    if (!press) return;
+    const elapsed = performance.now() - press.start;
+    if (!press.fired) {
+      ms.textContent = `${Math.round(elapsed)} ms`;
+      setRing(elapsed / HOLD_MS);
+      if (elapsed >= HOLD_MS) fire();
+    }
+    press.frame = requestAnimationFrame(tick);
+  }
+
+  // The hold lands while the key is still down, as it does in Zetl.
+  function fire() {
+    const action = actions[press.key];
+    press.fired = true;
+    setRing(1);
+    ms.textContent = `${HOLD_MS} ms`;
+    what.textContent = action.hold;
+    popup.innerHTML = action.popup();
+    popup.classList.add("on");
+    if (press.key === "x") mark.classList.add("gone");
+    result.textContent = action.held;
+  }
+
+  function end() {
+    if (!press) return;
+    cancelAnimationFrame(press.frame);
+    press.button?.classList.remove("down");
+    const action = actions[press.key];
+    if (!press.fired) {
+      const elapsed = Math.round(performance.now() - press.start);
+      ms.textContent = `${elapsed} ms`;
+      what.textContent = "tap";
+      what.classList.add("tap");
+      showToast(action.tap.split(".")[0] + ".");
+      result.textContent = action.tap;
+      if (press.key === "x") {
+        mark.classList.add("gone");
+        restoreTimer = setTimeout(() => mark.classList.remove("gone"), 1400);
+      }
+    }
+    hideTimer = setTimeout(() => indicator.classList.remove("on"), 1600);
+    press = null;
+  }
+
+  document.querySelectorAll("button.cap").forEach((button) => {
+    const key = button.dataset.key;
+    button.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      try { button.setPointerCapture(e.pointerId); } catch { /* not a capturable pointer */ }
+      begin(key, button);
+    });
+    button.addEventListener("pointerup", end);
+    button.addEventListener("pointercancel", end);
+    button.addEventListener("contextmenu", (e) => e.preventDefault());
+    // Space or Enter on a focused key works like pressing it.
+    button.addEventListener("keydown", (e) => {
+      if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); begin(key, button); }
+    });
+    button.addEventListener("keyup", (e) => {
+      if (e.key === " " || e.key === "Enter") end();
+    });
+  });
+
+  const capFor = (key) => document.querySelector(`button.cap[data-key="${key}"]`);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closePopup(); return; }
+    const key = e.key.toLowerCase();
+    if (e.repeat || e.altKey || e.metaKey || !actions[key]) return;
+    if (e.target.closest?.("input, textarea, [contenteditable]")) return;
+    begin(key, capFor(key));
+  });
+  document.addEventListener("keyup", (e) => {
+    if (press && e.key.toLowerCase() === press.key) end();
+  });
+  window.addEventListener("blur", end);
+  document.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest("#popup, button.cap")) closePopup();
+  });
+})();
+</script>
+</body>
+</html>
