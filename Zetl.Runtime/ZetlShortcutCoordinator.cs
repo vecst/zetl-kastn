@@ -150,6 +150,13 @@ internal sealed class ZetlShortcutCoordinator
             return true;
         }
 
+        if (replayClipboard.HasPendingRestore(shiftLane))
+        {
+            dispatcher.Post(() => ZetlAsync.RunLogged(
+                () => RestoreThenPasteAsync(shiftLane), "replay restore before paste", log));
+            return true;
+        }
+
         ZetlAsync.RunLogged(() => HandlePopTapAsync(context.ShiftLane), "pop tap", log);
         return false;
     }
@@ -1060,18 +1067,14 @@ internal sealed class ZetlShortcutCoordinator
             return;
         }
 
+        // Mid-queue the user's clipboard stays backed up and the next item
+        // simply replaces this one. Putting it back between pastes raced the
+        // target app: one still reading this paste (Notepad, busy with an Enter
+        // typed right after) got the restored clipboard, and the item was
+        // archived without ever landing. It comes back when the queue runs out,
+        // when Replay is turned off, or before the next ordinary paste.
         if (!pasteResult.ReplayComplete)
         {
-            if (resumeClipboard)
-            {
-                ZetlAsync.RunLogged(
-                    () => RestoreUserClipboardAfterReplayAndReportAsync(
-                        shifted,
-                        replayItem,
-                        injectedToken),
-                    "replay clipboard restore",
-                    log);
-            }
             return;
         }
 
@@ -1201,12 +1204,18 @@ internal sealed class ZetlShortcutCoordinator
         });
     }
 
+    // Once the last item is pasted, the target app may still be reading it, so
+    // the user's clipboard waits at least this long before it comes back.
+    private static readonly TimeSpan FinalPasteSettle = TimeSpan.FromMilliseconds(500);
+
     private async Task<ZetlClipboardRestoreOutcome> RestoreUserClipboardAfterReplayAsync(
         bool shifted,
         ZetlClipboardSnapshot injected,
         uint injectedToken)
     {
-        await delay.WaitAsync(ReplayClipboardRestoreDelay);
+        await delay.WaitAsync(ReplayClipboardRestoreDelay > FinalPasteSettle
+            ? ReplayClipboardRestoreDelay
+            : FinalPasteSettle);
         await replayClipboardGate.WaitAsync();
         try
         {
@@ -1221,19 +1230,21 @@ internal sealed class ZetlShortcutCoordinator
         }
     }
 
-    private async Task RestoreUserClipboardAfterReplayAndReportAsync(
-        bool shifted,
-        ZetlClipboardSnapshot injected,
-        uint injectedToken)
+    // Replay ended without its clipboard coming back (the bucket was changed
+    // on the Board or in Kastn, or the lane moved to another project): put the
+    // user's clipboard back, then let their paste through, so a leftover queue
+    // item is never pasted by surprise.
+    private async Task RestoreThenPasteAsync(bool shifted)
     {
-        var outcome = await RestoreUserClipboardAfterReplayAsync(
-            shifted,
-            injected,
-            injectedToken);
-        if (outcome is ZetlClipboardRestoreOutcome.Failed
-            or ZetlClipboardRestoreOutcome.FailedClipboardUncertain)
+        await replayClipboardGate.WaitAsync();
+        try
         {
-            await RunOnDispatcherAsync(() => ShowReplayRestoreFailure(outcome));
+            await RunOnDispatcherAsync(() => RestoreOriginalClipboard(shifted));
+            await keyboard.SendPaste();
+        }
+        finally
+        {
+            replayClipboardGate.Release();
         }
     }
 
@@ -1265,13 +1276,5 @@ internal sealed class ZetlShortcutCoordinator
 
     private static string ReturnedToSuffix(ZetlReplayFinish finish) =>
         finish.ReturnedTo is { } name ? $" Back to {name}." : "";
-
-    private void ShowReplayRestoreFailure(ZetlClipboardRestoreOutcome outcome)
-    {
-        log("Replay finished but restoring your previous clipboard failed.");
-        notifications.Show(outcome == ZetlClipboardRestoreOutcome.FailedClipboardUncertain
-            ? "Replay finished, but Zetl could not fully restore your previous clipboard."
-            : "Replay finished without replacing your current clipboard.");
-    }
 
 }

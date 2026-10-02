@@ -97,12 +97,19 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
         injectedToken = clipboard.GetChangeToken();
         lane.Injected = item;
         lane.InjectedToken = injectedToken;
+        lane.RestorePending = lane.UserBackup is not null;
         return result;
     }
+
+    // True while a Replay item this lane staged may still be on the clipboard
+    // with the user's own clipboard waiting to come back. Cheap: no clipboard
+    // read, so the keyboard hook can ask.
+    public bool HasPendingRestore(bool shifted) => lanes[ZetlLanes.Index(shifted)].RestorePending;
 
     public ZetlClipboardRestoreOutcome RestoreOriginalIfOwned(bool shifted)
     {
         var lane = lanes[ZetlLanes.Index(shifted)];
+        lane.RestorePending = false;
         if (lane.UserBackup is null)
         {
             return ZetlClipboardRestoreOutcome.NoBackup;
@@ -122,6 +129,7 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
         uint injectedToken)
     {
         var lane = lanes[ZetlLanes.Index(shifted)];
+        lane.RestorePending = false;
         if (lane.UserBackup is null)
         {
             return ZetlClipboardRestoreOutcome.NoBackup;
@@ -192,6 +200,10 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
         public ZetlClipboardSnapshot? Injected { get; set; }
 
         public uint? InjectedToken { get; set; }
+
+        // A staged item is (or was) on the clipboard and the user's clipboard
+        // hasn't been put back yet.
+        public bool RestorePending { get; set; }
     }
 }
 

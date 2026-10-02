@@ -253,12 +253,19 @@ entry:
 2. Copy the values into the bucket in the order you need them.
 3. Tap `Ctrl+V` in the destination app, once per value.
 
-For each paste, Zetl places the next slip on the clipboard, pastes it, moves
-it to a review bucket, and then puts your own clipboard back, every format of
-it (rich text, spreadsheet data, file lists, pictures). A few clipboards can't
-be backed up, such as a file copied in File Explorer; Replay still pastes and
-tells you the old clipboard can't be restored. It never blocks your paste. If
-you copy something new while Replay is restoring, your new copy wins.
+For each paste, Zetl places the next slip on the clipboard, pastes it, and
+moves it to a review bucket. Your own clipboard is set aside when Replay
+starts and comes back, every format of it (rich text, spreadsheet data, file
+lists, pictures), when the queue runs out or you turn Replay off. Between
+pastes the clipboard keeps the item just pasted, so an app that's slow to read
+it never gets the wrong thing. If Replay ends some other way (you change the
+bucket on the Board or switch projects), your next ordinary paste puts your
+clipboard back first.
+
+A few clipboards can't be backed up, such as a file copied in File Explorer;
+Replay still pastes and tells you the old clipboard can't be restored. It
+never blocks your paste. If you copy something new during Replay, your new
+copy wins and isn't overwritten when Replay ends.
 
 Pasting into a file list (File Explorer, the desktop, an Open/Save dialog)
 always pastes your files normally; Replay and Pop stay out of it.

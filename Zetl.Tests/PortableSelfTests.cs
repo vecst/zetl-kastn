@@ -3980,10 +3980,52 @@ public class PortableSelfTests
 
             AssertTrue(handled, "Replay should handle a visible prior-session queue item.");
             AssertEqual(1, keyboard.PasteCount, "Replay should paste rather than pass through an apparently empty queue.");
-            AssertEqual("user clipboard", clipboard.Text, "Replay should restore the user's clipboard after restart.");
+            AssertEqual("first queued value", clipboard.Text, "Mid-queue the pasted item stays on the clipboard; the user's comes back when Replay ends.");
             AssertEqual(1, queue.Slips.Count, "Replay should consume exactly the first visible queued item.");
             AssertEqual("second queued value", queue.Slips.Single().Text, "Replay should leave the next item queued.");
             AssertEqual("Replay", queue.Settings.Kind, "Replay should remain enabled while a visible item remains.");
+        }
+
+        [Fact(DisplayName = "Runtime Replay brings the user's clipboard back when it ends, not between pastes")]
+        public static async Task RuntimeReplayRestoresClipboardOnlyWhenItEnds()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            foreach (var value in new[] { "one", "two", "three" })
+            {
+                store.AddSlip(queue, value, "copy");
+            }
+
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1);
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                new FakeNotificationSink(),
+                out var keyboard,
+                out _);
+
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            AssertEqual("two", clipboard.Text, "Between pastes the clipboard is never put back, so a slow app still reads the item.");
+
+            // Turning Replay off brings the user's clipboard back.
+            await coordinator.HandleHoldAsync(ShortcutContext(VK_R));
+            AssertEqual("user clipboard", clipboard.Text, "Turning Replay off restores the user's clipboard.");
+
+            // Replay ended some other way (the bucket changed on the Board): the
+            // next ordinary paste restores first, then goes through.
+            await coordinator.HandleHoldAsync(ShortcutContext(VK_R));
+            store.AddSlip(queue, "four", "copy");
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            AssertEqual("three", clipboard.Text, "Replay pasted the next item, mid-queue.");
+            store.SetBucketKind(queue, "Standard");
+            var pastesBefore = keyboard.PasteCount;
+            AssertTrue(coordinator.OnTapDispatched(ShortcutContext(VK_V)), "The paste waits for the restore.");
+            AssertEqual("user clipboard", clipboard.Text, "The user's clipboard is back before their paste.");
+            AssertEqual(pastesBefore + 1, keyboard.PasteCount, "Then their own paste goes through.");
         }
 
         [Fact(DisplayName = "Runtime rapid Replay taps consume distinct slips")]
