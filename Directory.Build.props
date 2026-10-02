@@ -14,6 +14,6 @@
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
     <!-- The release both apps report: file properties, crash reports, and the
          first line Zetl logs at startup (which also carries the commit). -->
-    <Version>1.0.0-rc.2</Version>
+    <Version>1.0.0-rc.2.1</Version>
   </PropertyGroup>
 </Project>

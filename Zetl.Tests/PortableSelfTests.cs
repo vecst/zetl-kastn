@@ -4047,7 +4047,7 @@ public class PortableSelfTests
         public static async Task RuntimeReplaySettlesLateRead()
         {
             using var temp = new TempStateFile();
-            var (store, queue, clipboard, _, _, coordinator) = StagedReplay(temp, appReads: false);
+            var (store, queue, clipboard, notifications, _, coordinator) = StagedReplay(temp, appReads: false);
 
             coordinator.OnTapDispatched(ShortcutContext(VK_V));
             AssertEqual("one", queue.Slips.First().Text, "Unread in time, so kept for now.");
@@ -4062,11 +4062,12 @@ public class PortableSelfTests
 
             AssertEqual("two", queue.Slips.First().Text, "The late read archived the item it pasted.");
             coordinator.OnTapDispatched(ShortcutContext(VK_V));
-            // The late-read watch may still hold the lane for a moment.
-            for (var wait = 0; wait < 100 && queue.Slips.Count == 2; wait++)
-            {
-                await Task.Delay(10);
-            }
+            // The late-read watch may still hold the lane for a moment. Wait for
+            // the paste to finish completely (its message comes after the
+            // store has written the project), not just for the queue to move.
+            AssertTrue(
+                notifications.WaitForCount(2, TimeSpan.FromSeconds(10)),
+                "The next paste finishes: 'didn't land', then 'pasted next item'.");
 
             AssertEqual("two", clipboard.Text, "The next paste moves on rather than pasting 'one' twice.");
             AssertEqual("three", queue.Slips.Single().Text, "One left.");
