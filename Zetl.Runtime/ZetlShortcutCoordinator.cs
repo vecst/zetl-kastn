@@ -97,17 +97,18 @@ internal sealed class ZetlShortcutCoordinator
         Lazy<ZetlCaptureOrigin?>? captureOrigin,
         bool autoCapture)
     {
+        // Registering is cheap and happens here, on the keyboard hook thread, so
+        // a hold always finds it. Reading the clipboard is not: that waits for
+        // a thread-pool thread, so the key itself is never held up.
         var pending = pendingShortcuts.Register(
             context.KeyCode,
             context.ShiftLane,
             context.ClipboardSequenceNumber,
             deferredCaptureOrigin: captureOrigin ?? new Lazy<ZetlCaptureOrigin?>((ZetlCaptureOrigin?)null));
 
-        var observeTask = ObserveClipboardChangeAsync(pending);
-        var autoCaptureTask = autoCapture
-            ? AutoCaptureCopyAsync(pending)
-            : Task.CompletedTask;
-        await Task.WhenAll(observeTask, autoCaptureTask);
+        await Task.Run(() => Task.WhenAll(
+            ObserveClipboardChangeAsync(pending),
+            autoCapture ? AutoCaptureCopyAsync(pending) : Task.CompletedTask));
     }
 
     public ZetlPendingShortcut? CancelPending(int keyCode, bool shifted)
@@ -659,6 +660,13 @@ internal sealed class ZetlShortcutCoordinator
     {
         try
         {
+            // The change counter costs nothing to read; opening the clipboard
+            // and reading every format is only worth it once it has moved.
+            if (clipboard.GetChangeToken() == beforeSequence)
+            {
+                return null;
+            }
+
             var content = clipboard.TryCaptureContent();
             if (content is null || content.ChangeToken == beforeSequence)
             {

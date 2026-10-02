@@ -87,28 +87,20 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         }
     }
 
+    // Reads no further than the block Windows hands over. Text from another app
+    // need not end in a terminator inside its block, and scanning for one ran
+    // past the end into memory that isn't Zetl's: an access violation, or with
+    // a busy heap, the heap corruption seen during fast repeated copies.
     private static string? ReadTextFromOpenClipboard()
     {
-        var handle = GetClipboardData(UnicodeText);
-        if (handle == IntPtr.Zero)
+        if (ReadClipboardBytes(UnicodeText) is not { } bytes)
         {
             return null;
         }
 
-        var pointer = GlobalLock(handle);
-        if (pointer == IntPtr.Zero)
-        {
-            return null;
-        }
-
-        try
-        {
-            return Marshal.PtrToStringUni(pointer);
-        }
-        finally
-        {
-            GlobalUnlock(handle);
-        }
+        var text = Encoding.Unicode.GetString(bytes, 0, bytes.Length & ~1);
+        var end = text.IndexOf('\0');
+        return end >= 0 ? text[..end] : text;
     }
 
     public string? TryGetHtml()
@@ -733,8 +725,18 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         return true;
     }
 
+    // The last capture, handed out again while the clipboard hasn't changed:
+    // a burst of copies starts several observers, and they all want the same
+    // generation. Snapshots are immutable, so sharing one is safe.
+    private volatile ZetlClipboardCaptureSnapshot? lastCapture;
+
     public ZetlClipboardCaptureSnapshot? TryCaptureContent()
     {
+        if (lastCapture is { } last && last.ChangeToken == GetClipboardSequenceNumber())
+        {
+            return last;
+        }
+
         if (!TryOpen())
         {
             return null;
@@ -762,12 +764,14 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             ZetlTrace.Write("clipboard capture: image");
             var image = ReadImageFromOpenClipboard();
             ZetlTrace.Write("clipboard capture: done");
-            return new ZetlClipboardCaptureSnapshot(
+            var snapshot = new ZetlClipboardCaptureSnapshot(
                 changeToken,
                 text,
                 html,
                 replayFormats,
                 image);
+            lastCapture = snapshot;
+            return snapshot;
         }
         finally
         {
@@ -1190,8 +1194,67 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         return ownerWindow != IntPtr.Zero;
     }
 
+    // Every open-to-close span holds this gate, so only one thread in Zetl has
+    // the clipboard open at a time. Windows ties an open clipboard to the owner
+    // window, not the thread: a second thread opening with the same window
+    // succeeds too, and when the first closes, the next app to copy frees the
+    // data the second is still reading. That use-after-free is what corrupted
+    // the heap during fast repeated Ctrl+C on the desktop.
+    private static readonly object OpenGate = new();
+
+    // For --clipboard-stress: one open-to-close pass doing only the named part
+    // of a read, so a crash can be pinned to the call that causes it.
+    internal void StressPass(string part)
+    {
+        if (!EnsureOwnerWindow() || !TryOpen())
+        {
+            return;
+        }
+
+        try
+        {
+            switch (part)
+            {
+                case "open":
+                    break;
+                case "data":
+                    GetClipboardData(UnicodeText);
+                    break;
+                case "lock":
+                    var handle = GetClipboardData(UnicodeText);
+                    if (handle != IntPtr.Zero && GlobalLock(handle) != IntPtr.Zero)
+                    {
+                        GlobalUnlock(handle);
+                    }
+
+                    break;
+                case "text":
+                    ReadTextFromOpenClipboard();
+                    break;
+                case "private":
+                    IsPrivateOnOpenClipboard();
+                    break;
+                case "formats":
+                    ReadReplayFormatsFromOpenClipboard();
+                    break;
+                case "html":
+                    ReadHtmlFromOpenClipboard();
+                    break;
+                case "image":
+                    ReadImageFromOpenClipboard();
+                    break;
+            }
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
+    // Taken with the gate held; CloseClipboard releases both.
     private bool TryOpen()
     {
+        Monitor.Enter(OpenGate);
         for (var attempt = 0; attempt < ClipboardAttempts; attempt++)
         {
             // Open with our own owner window rather than a NULL association, so
@@ -1204,8 +1267,22 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             Thread.Sleep(5);
         }
 
+        Monitor.Exit(OpenGate);
         log($"Windows clipboard was temporarily unavailable (error {Marshal.GetLastWin32Error()}).");
         return false;
+    }
+
+    // Closes a clipboard opened by TryOpen and lets the next thread in.
+    private static void CloseClipboard()
+    {
+        try
+        {
+            NativeCloseClipboard();
+        }
+        finally
+        {
+            Monitor.Exit(OpenGate);
+        }
     }
 
     // A message-only window to own the clipboard. "STATIC" is a system-registered
@@ -1238,8 +1315,8 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool OpenClipboard(IntPtr owner);
 
-    [DllImport("user32.dll")]
-    private static extern bool CloseClipboard();
+    [DllImport("user32.dll", EntryPoint = "CloseClipboard")]
+    private static extern bool NativeCloseClipboard();
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EmptyClipboard();

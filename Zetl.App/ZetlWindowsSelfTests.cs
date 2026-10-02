@@ -7,6 +7,46 @@ namespace ZETL;
 // captured and restored.
 internal static class ZetlWindowsSelfTests
 {
+    // --clipboard-stress=N: four threads read the clipboard flat out for N
+    // seconds, as overlapping copy observers do. Run it with another process
+    // replacing the clipboard in a loop (Explorer does on every desktop copy)
+    // and Windows' page heap on Zetl.exe: any reader touching clipboard memory
+    // another thread let go of stops the process at once. Exits 0 if it lasts.
+    // part narrows each pass to one piece of a read (see StressPass); "all"
+    // reads everything the way a capture does.
+    public static int ClipboardStress(int seconds, int threads = 4, string part = "all")
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return 0;
+        }
+
+        var clipboard = new AvaloniaWindowsClipboard(_ => { });
+        var deadline = DateTime.UtcNow.AddSeconds(seconds);
+        var reads = 0L;
+        var readers = Enumerable.Range(0, threads).Select(_ => new Thread(() =>
+        {
+            while (DateTime.UtcNow < deadline)
+            {
+                if (part == "all")
+                {
+                    clipboard.TryCaptureContent();
+                    clipboard.TryGetText();
+                }
+                else
+                {
+                    clipboard.StressPass(part);
+                }
+
+                Interlocked.Increment(ref reads);
+            }
+        })).ToList();
+        readers.ForEach(thread => thread.Start());
+        readers.ForEach(thread => thread.Join());
+        Console.WriteLine($"Clipboard stress survived {seconds} s: {reads} reads on {threads} threads.");
+        return 0;
+    }
+
     public static int Run()
     {
         if (!OperatingSystem.IsWindows())

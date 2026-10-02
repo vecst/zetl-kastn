@@ -36,6 +36,18 @@ internal static class Program
             return ZetlWindowsSelfTests.Run();
         }
 
+        // --clipboard-stress=SECONDS[,THREADS[,PART]]
+        if (args.FirstOrDefault(arg => arg.StartsWith("--clipboard-stress=", StringComparison.OrdinalIgnoreCase))
+            is { } stress
+            && stress["--clipboard-stress=".Length..].Split(',') is var stressParts
+            && int.TryParse(stressParts[0], out var stressSeconds))
+        {
+            return ZetlWindowsSelfTests.ClipboardStress(
+                stressSeconds,
+                stressParts.Length > 1 && int.TryParse(stressParts[1], out var threads) ? threads : 4,
+                stressParts.Length > 2 ? stressParts[2] : "all");
+        }
+
         var preview = args.Any(arg =>
             arg.StartsWith("--preview=", StringComparison.OrdinalIgnoreCase));
         var ownsMutex = false;
