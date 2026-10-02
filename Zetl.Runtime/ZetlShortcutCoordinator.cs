@@ -639,6 +639,7 @@ internal sealed class ZetlShortcutCoordinator
         try
         {
             action.Undo();
+            log($"Undo: {action.Message}");
             notifications.Show(action.Message);
         }
         catch (Exception ex)
@@ -972,6 +973,7 @@ internal sealed class ZetlShortcutCoordinator
                 // queued. The shared gate keeps another lane from replacing the
                 // staged clipboard before Windows accepts this chord.
                 pasted = await keyboard.SendPaste();
+                log($"Replay paste {noteId[..Math.Min(8, noteId.Length)]} from {bucketName}: sent={pasted}.");
             }
         }
         finally
@@ -1009,7 +1011,7 @@ internal sealed class ZetlShortcutCoordinator
                 : store.TryConsumeReplaySlip(activeBucket, noteId, out consumedSlip);
             if (consumed && reviewBucket is not null)
             {
-                log($"Archived replay paste from {bucketName} to {reviewBucket.Name}.");
+                log($"Archived replay paste {noteId[..Math.Min(8, noteId.Length)]} from {bucketName} to {reviewBucket.Name}.");
             }
 
             if (!consumed)
