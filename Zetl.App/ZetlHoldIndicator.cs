@@ -242,8 +242,9 @@ internal sealed class ZetlHoldIndicator
             StartAngle = -90,
             SweepAngle = 0,
             StrokeLineCap = PenLineCap.Round,
-            // Avalonia's arc sweeps counter-clockwise from 12 o'clock; mirroring
-            // it makes the ring fill clockwise like a clock hand.
+            // Avalonia's arc sweeps clockwise from 12 o'clock; mirroring it makes
+            // the ring fill counter-clockwise. That's deliberate: it's Zetl's
+            // look, and the logo and website ring fill the same way.
             RenderTransform = new ScaleTransform(-1, 1)
         };
         progress.Bind(Shape.StrokeProperty, progress.GetResourceObservable("ZetlAccentBrush"));
