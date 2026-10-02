@@ -102,7 +102,11 @@ internal sealed class ZetlTutorialWindow : Window
 
     private Step step = Step.Welcome;
     private bool stepDone;
+    private bool cutPastedBack;
     private bool compilePasted;
+    // Steps done at some point in this tour, so going back to one doesn't make
+    // the user do it again before Next works.
+    private readonly HashSet<Step> finished = [];
     private string indicatorStyle;
 
     public ZetlTutorialWindow(ZetlTutorialHost host)
@@ -170,11 +174,8 @@ internal sealed class ZetlTutorialWindow : Window
                 Done("Captured. The copy went through as usual, and Zetl kept a note of it too.");
                 break;
             case (Step.Cut, ZetlTutorialSignal.CutPastedBack):
-                if (practice.Text?.Contains(CutSentence, StringComparison.Ordinal) == true)
-                {
-                    Done("Back where it was. Dismissing a quick note never loses what you cut.");
-                }
-
+                cutPastedBack = true;
+                CheckCutPasteBack();
                 break;
             case (Step.Cut, ZetlTutorialSignal.QuickNoteSaved):
                 // Saved instead of dismissed: the sentence is a note now. Put it
@@ -253,6 +254,7 @@ internal sealed class ZetlTutorialWindow : Window
                             host.ApplyHoldDelay(chosen);
                         }
 
+                        finished.Add(Step.Measure);
                         GoTo(Step.QuickNote);
                     },
                     host.Log);
@@ -279,6 +281,7 @@ internal sealed class ZetlTutorialWindow : Window
 
             case Step.Cut:
                 stepTitle.Text = "Cut, then change your mind";
+                cutPastedBack = false;
                 practice.Text = Paragraph;
                 body.Content = Practice(
                     "Now hold Ctrl+X on the selected sentence. It leaves the text and lands in a "
@@ -326,11 +329,20 @@ internal sealed class ZetlTutorialWindow : Window
                     + "Settings, to measure your taps and holds again, or to take this tour again.");
                 break;
         }
+
+        if (finished.Contains(step))
+        {
+            nextButton.IsVisible = true;
+            nextButton.IsEnabled = true;
+            Hint("✓ You've done this one. Try it again if you like, or go on with Next.");
+        }
     }
 
     private void Done(string message)
     {
         stepDone = true;
+        finished.Add(step);
+        BuildChapterRow();
         status.Text = "✓ " + message;
         status.IsVisible = true;
         nextButton.IsEnabled = true;
@@ -350,10 +362,30 @@ internal sealed class ZetlTutorialWindow : Window
 
     private void OnPracticeTextChanged()
     {
-        if (step == Step.Cut && !stepDone
-            && practice.Text?.Contains(CutSentence, StringComparison.Ordinal) == false)
+        if (step != Step.Cut || stepDone)
+        {
+            return;
+        }
+
+        if (practice.Text?.Contains(CutSentence, StringComparison.Ordinal) == false)
         {
             Hint("It's in the note now. Press Esc to bring it back.");
+        }
+        else
+        {
+            CheckCutPasteBack();
+        }
+    }
+
+    // The paste that puts the cut back is real keystrokes, which the practice
+    // box reads a moment after the host reports them sent; the step is done
+    // once both have happened.
+    private void CheckCutPasteBack()
+    {
+        if (step == Step.Cut && !stepDone && cutPastedBack
+            && practice.Text?.Contains(CutSentence, StringComparison.Ordinal) == true)
+        {
+            Done("Back where it was. Dismissing a quick note never loses what you cut.");
         }
     }
 
@@ -494,7 +526,7 @@ internal sealed class ZetlTutorialWindow : Window
         {
             var button = new Button
             {
-                Content = label,
+                Content = finished.Contains(chapter) ? "✓ " + label : label,
                 Padding = new Thickness(10, 3),
                 FontSize = 12
             };
