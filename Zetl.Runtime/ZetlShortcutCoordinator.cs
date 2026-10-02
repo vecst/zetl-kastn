@@ -990,13 +990,16 @@ internal sealed class ZetlShortcutCoordinator
                 // Await the actual injection result, not just that the paste was
                 // queued. The shared gate keeps another lane from replacing the
                 // staged clipboard before Windows accepts this chord.
+                var stagedAt = System.Diagnostics.Stopwatch.GetTimestamp();
                 pasted = await keyboard.SendPaste();
+                var sentMs = System.Diagnostics.Stopwatch.GetElapsedTime(stagedAt).TotalMilliseconds;
                 // Windows accepting the keystrokes isn't the paste landing: a
                 // busy app can drop or miss it. Where the item was staged as a
                 // promise, wait for the app to actually read it.
                 landed = pasted && (staged is null || await WaitForReadAsync(staged));
-                log($"Replay paste {ShortId(noteId)} from {bucketName}: sent={pasted}"
-                    + (staged is null ? "." : $", read={landed}."));
+                var settledMs = System.Diagnostics.Stopwatch.GetElapsedTime(stagedAt).TotalMilliseconds;
+                log($"Replay paste {ShortId(noteId)} from {bucketName}: sent={pasted} after {sentMs:0} ms"
+                    + (staged is null ? "." : $", read={landed} after {settledMs:0} ms."));
             }
         }
         finally
