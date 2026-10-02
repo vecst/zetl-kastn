@@ -411,7 +411,7 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
         var formats = new List<ZetlClipboardFormatData>();
         var nonMemoryFormats = new List<uint>();
-        var hasEnterpriseProtectionMarker = false;
+        var enterpriseProtected = false;
         try
         {
             ulong totalBytes = 0;
@@ -431,13 +431,14 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
                     break;
                 }
 
-                // Windows Information Protection marks managed content with
-                // this format, as system metadata that often has no data handle.
-                // It can't be read or put back like ordinary data, so its
-                // presence alone makes the backup incomplete (below).
+                // Windows marks copies with this format even on unmanaged
+                // machines (some apps add it to every copy), usually with no
+                // data at all. Only a marker naming an enterprise makes the
+                // copy protected; the marker itself is never backed up.
                 if (format == EnterpriseDataProtection)
                 {
-                    hasEnterpriseProtectionMarker = true;
+                    enterpriseProtected |= ReadClipboardBytes(format) is { } id
+                        && Encoding.Unicode.GetString(id, 0, id.Length & ~1).Trim('\0', ' ').Length > 0;
                     continue;
                 }
 
@@ -515,14 +516,12 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
             CloseClipboard();
         }
 
-        // Telling protected content from unprotected content needs an
-        // undocumented Windows call whose memory rules are unknown, and freeing
-        // its result the wrong way corrupts the heap. A marked clipboard is
-        // treated as protected instead; writes still go ahead, without a backup.
-        if (hasEnterpriseProtectionMarker)
+        // Protected enterprise content isn't copied into a backup; writes still
+        // go ahead without one.
+        if (enterpriseProtected)
         {
             return ZetlClipboardBackup.Incomplete(
-                "the clipboard is marked by Windows enterprise data protection");
+                "the clipboard holds Windows-protected enterprise data");
         }
 
         var unsupportedFormat = nonMemoryFormats.FirstOrDefault(format =>

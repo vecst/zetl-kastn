@@ -441,6 +441,28 @@ internal static class ZetlWindowsSelfTests
                     "a copy allowed in clipboard history is captured normally",
                     clipboard.TryCaptureContent() is { Private: false, Text: "not-a-real-password" });
 
+                // Some apps add Windows' enterprise-protection marker to every
+                // copy, empty, even on unmanaged machines. That copy backs up
+                // (and Replay can restore it); only a marker naming an
+                // enterprise keeps it out of a backup.
+                var plain = System.Text.Encoding.Unicode.GetBytes("ordinary copy\0");
+                clipboard.RestoreBackup(ZetlClipboardBackup.FromRaw(
+                [
+                    new ZetlClipboardFormatData(13, plain),
+                    new ZetlClipboardFormatData(0, [0, 0], "EnterpriseDataProtectionId")
+                ]));
+                failures += Check(
+                    "a copy with an empty enterprise marker still backs up",
+                    clipboard.CaptureBackup().IsComplete);
+                clipboard.RestoreBackup(ZetlClipboardBackup.FromRaw(
+                [
+                    new ZetlClipboardFormatData(13, plain),
+                    new ZetlClipboardFormatData(0, System.Text.Encoding.Unicode.GetBytes("contoso.com\0"), "EnterpriseDataProtectionId")
+                ]));
+                failures += Check(
+                    "a copy marked with an enterprise is not backed up",
+                    !clipboard.CaptureBackup().IsComplete);
+
                 // A clipboard holding a format Windows will not hand over (a
                 // browser's virtual-file image) cannot be backed up. Writes must
                 // still replace it rather than refusing until the user copies
