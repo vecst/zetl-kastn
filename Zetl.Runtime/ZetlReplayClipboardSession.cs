@@ -82,19 +82,29 @@ internal sealed class ZetlReplayClipboardSession(IClipboard clipboard)
     public ZetlClipboardWriteResult Stage(
         bool shifted,
         ZetlClipboardSnapshot item,
-        out uint injectedToken)
+        out uint injectedToken) =>
+        Stage(shifted, item, out injectedToken, out _);
+
+    // staged reports when an app reads the item, where the backend can tell;
+    // null means it was written the ordinary way.
+    public ZetlClipboardWriteResult Stage(
+        bool shifted,
+        ZetlClipboardSnapshot item,
+        out uint injectedToken,
+        out ZetlStagedPaste? staged)
     {
         injectedToken = 0;
         // Always write the queued representation. A clipboard whose visible
         // text matches the item may still carry unrelated rich formats.
-        var result = WriteSnapshot(item);
+        staged = clipboard.StagePaste(item.Text ?? "", item.Html, item.ReplayFormats, item.Image);
+        var result = staged is not null ? ZetlClipboardWriteResult.Success : WriteSnapshot(item);
         if (!result.Succeeded)
         {
             return result;
         }
 
         var lane = lanes[ZetlLanes.Index(shifted)];
-        injectedToken = clipboard.GetChangeToken();
+        injectedToken = staged?.ChangeToken ?? clipboard.GetChangeToken();
         lane.Injected = item;
         lane.InjectedToken = injectedToken;
         lane.RestorePending = lane.UserBackup is not null;

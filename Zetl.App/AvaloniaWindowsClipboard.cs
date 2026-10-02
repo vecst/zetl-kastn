@@ -48,6 +48,13 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         RegisterClipboardFormat("Clipboard Viewer Ignore");
     private static readonly uint EnterpriseDataProtection =
         RegisterClipboardFormat("EnterpriseDataProtectionId");
+    private static readonly uint CanUploadToCloud =
+        RegisterClipboardFormat("CanUploadToCloudClipboard");
+    private const uint WmRenderFormat = 0x0305;
+    private const uint WmRenderAllFormats = 0x0306;
+    private const uint WmDestroyClipboard = 0x0307;
+    private const int GwlpWndProc = -4;
+    private static readonly uint OwnProcessId = (uint)Environment.ProcessId;
     private static readonly HashSet<string> NativeReplayFormatNames = new(
         StringComparer.Ordinal)
     {
@@ -68,6 +75,226 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         this.log = log;
         createOwnerWindow = ownerWindowFactory ?? (() => CreateOwnerWindow(log));
         ownerWindow = createOwnerWindow();
+        HookOwnerWindow();
+    }
+
+    // Staged paste: the formats Zetl promised, waiting for an app to ask, and
+    // the record that reports when one does. Touched by StagePaste and by the
+    // owner window's procedure.
+    private sealed record PendingPaste(Dictionary<uint, byte[]> Formats, ZetlStagedPaste Staged);
+
+    private readonly object pendingGate = new();
+    private PendingPaste? pendingPaste;
+    private WindowProc? ownerProc;
+    private IntPtr ownerOriginalProc;
+
+    private delegate IntPtr WindowProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    // The owner window answers Windows when an app asks for a promised format.
+    // It runs on the thread that created it (the UI thread), which pumps.
+    private void HookOwnerWindow()
+    {
+        if (ownerWindow == IntPtr.Zero || ownerProc is not null)
+        {
+            return;
+        }
+
+        ownerProc = OwnerWindowProc;
+        ownerOriginalProc = SetWindowLongPtr(
+            ownerWindow,
+            GwlpWndProc,
+            Marshal.GetFunctionPointerForDelegate(ownerProc));
+        if (ownerOriginalProc == IntPtr.Zero)
+        {
+            ownerProc = null;
+            log($"Clipboard owner window could not be hooked (error {Marshal.GetLastWin32Error()}); Replay will assume sent pastes landed.");
+        }
+    }
+
+    private IntPtr OwnerWindowProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam)
+    {
+        switch (message)
+        {
+            case WmRenderFormat:
+                RenderPending((uint)wParam.ToInt64(), countsAsRead: true);
+                return IntPtr.Zero;
+            case WmRenderAllFormats:
+                RenderAllPending(window);
+                return IntPtr.Zero;
+            case WmDestroyClipboard:
+                lock (pendingGate)
+                {
+                    pendingPaste?.Staged.MarkReplaced();
+                    pendingPaste = null;
+                }
+
+                return IntPtr.Zero;
+            default:
+                return CallWindowProc(ownerOriginalProc, window, message, wParam, lParam);
+        }
+    }
+
+    // An app asked for a promised format: hand it over. The clipboard is
+    // already open by whoever is reading, so no gate or open is needed. A read
+    // by any app other than Zetl itself means the paste landed; clipboard
+    // history and monitors skip staged items, so in practice that is the paste.
+    private void RenderPending(uint format, bool countsAsRead)
+    {
+        PendingPaste? pending;
+        lock (pendingGate)
+        {
+            pending = pendingPaste;
+        }
+
+        if (pending is null || !pending.Formats.TryGetValue(format, out var data))
+        {
+            return;
+        }
+
+        var handle = AllocateGlobal(data);
+        if (handle != IntPtr.Zero && SetClipboardData(format, handle) == IntPtr.Zero)
+        {
+            GlobalFree(handle);
+        }
+
+        if (countsAsRead)
+        {
+            var reader = GetOpenClipboardWindow();
+            var readerProcess = 0u;
+            if (reader != IntPtr.Zero)
+            {
+                Win32GetWindowThreadProcessId(reader, out readerProcess);
+            }
+
+            if (readerProcess != OwnProcessId)
+            {
+                pending.Staged.MarkRead();
+            }
+        }
+    }
+
+    // Zetl is closing while it still owns promised formats: render them all so
+    // the item stays pasteable after Zetl is gone.
+    private void RenderAllPending(IntPtr window)
+    {
+        PendingPaste? pending;
+        lock (pendingGate)
+        {
+            pending = pendingPaste;
+        }
+
+        if (pending is null || !OpenClipboard(window))
+        {
+            return;
+        }
+
+        try
+        {
+            if (GetClipboardOwner() == window)
+            {
+                foreach (var format in pending.Formats.Keys)
+                {
+                    RenderPending(format, countsAsRead: false);
+                }
+            }
+        }
+        finally
+        {
+            NativeCloseClipboard();
+        }
+    }
+
+    public ZetlStagedPaste? StagePaste(
+        string text,
+        string? html,
+        IReadOnlyList<ZetlClipboardFormatData>? replayFormats,
+        ZetlClipboardImage? image)
+    {
+        if (ownerProc is null || !EnsureOwnerWindow())
+        {
+            return null;
+        }
+
+        List<ZetlClipboardFormatData> items;
+        try
+        {
+            items = replayFormats is { Count: > 0 }
+                ? replayFormats.ToList()
+                : image is not null
+                    ? [new(Png, image.PngBytes), new(Dib, CreateDib(image.PngBytes))]
+                    : string.IsNullOrWhiteSpace(html)
+                        ? [new(UnicodeText, Encoding.Unicode.GetBytes(text + '\0'))]
+                        : [
+                            new(UnicodeText, Encoding.Unicode.GetBytes(text + '\0')),
+                            new(Html, BuildHtmlClipboardBytes(html))
+                        ];
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException)
+        {
+            log($"Staged paste skipped: {ex.Message}");
+            return null;
+        }
+
+        var formats = new Dictionary<uint, byte[]>();
+        foreach (var item in items)
+        {
+            var format = ResolveStoredFormat(item);
+            if (format == 0
+                || item.Data.Length == 0
+                || UsesNonMemoryHandle(format)
+                || format == EnhancedMetafile
+                || !formats.TryAdd(format, item.Data))
+            {
+                // Anything that can't be promised as plain memory is written
+                // the ordinary way instead.
+                return null;
+            }
+        }
+
+        var staged = new ZetlStagedPaste();
+        if (!TryOpen())
+        {
+            return null;
+        }
+
+        try
+        {
+            // Emptying ends any earlier promise (Windows sends this window
+            // WM_DESTROYCLIPBOARD) before the new one is recorded.
+            if (!EmptyClipboard())
+            {
+                return null;
+            }
+
+            lock (pendingGate)
+            {
+                pendingPaste = new PendingPaste(formats, staged);
+            }
+
+            foreach (var format in formats.Keys)
+            {
+                SetClipboardData(format, IntPtr.Zero);
+            }
+
+            // Keep the item out of Windows clipboard history, the cloud
+            // clipboard, and clipboard monitors (Zetl's own copy observers
+            // included), so the app being pasted into is the one that reads it.
+            foreach (var marker in new[] { ExcludeFromMonitoring, CanIncludeInHistory, CanUploadToCloud })
+            {
+                var handle = AllocateGlobal([0, 0, 0, 0]);
+                if (handle != IntPtr.Zero && SetClipboardData(marker, handle) == IntPtr.Zero)
+                {
+                    GlobalFree(handle);
+                }
+            }
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+
+        staged.ChangeToken = GetClipboardSequenceNumber();
+        return staged;
     }
 
     public string? TryGetText()
@@ -1188,6 +1415,7 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
         if (ownerWindow == IntPtr.Zero)
         {
             ownerWindow = createOwnerWindow();
+            HookOwnerWindow();
         }
 
         return ownerWindow != IntPtr.Zero;
@@ -1359,6 +1587,21 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyWindow(IntPtr window);
+
+    [DllImport("user32.dll", SetLastError = true, EntryPoint = "SetWindowLongPtrW")]
+    private static extern IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr value);
+
+    [DllImport("user32.dll", EntryPoint = "CallWindowProcW")]
+    private static extern IntPtr CallWindowProc(IntPtr previous, IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetOpenClipboardWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetClipboardOwner();
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")]
+    private static extern uint Win32GetWindowThreadProcessId(IntPtr window, out uint processId);
 
     [DllImport("kernel32.dll")]
     private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);

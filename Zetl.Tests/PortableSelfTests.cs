@@ -3986,6 +3986,95 @@ public class PortableSelfTests
             AssertEqual("Replay", queue.Settings.Kind, "Replay should remain enabled while a visible item remains.");
         }
 
+        private static (ZetlStateStore Store, ZetlBucket Queue, FakeClipboard Clipboard, FakeNotificationSink Notifications, FakeKeyboardBackend Keyboard, RoutedCoordinator Coordinator)
+            StagedReplay(TempStateFile temp, bool appReads)
+        {
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Queue"], "Queue");
+            var queue = store.GetActiveBucket()!;
+            store.SetBucketKind(queue, "Replay");
+            foreach (var value in new[] { "one", "two", "three" })
+            {
+                store.AddSlip(queue, value, "copy");
+            }
+
+            var clipboard = new FakeClipboard("user clipboard", changeToken: 1)
+            {
+                StagesPastes = true,
+                ReadStagedPastes = appReads
+            };
+            var notifications = new FakeNotificationSink();
+            var coordinator = CreateShortcutCoordinator(store, clipboard, notifications, out var keyboard, out _);
+            return (store, queue, clipboard, notifications, keyboard, coordinator);
+        }
+
+        [Fact(DisplayName = "Runtime Replay archives an item once the app reads it")]
+        public static void RuntimeReplayArchivesReadItem()
+        {
+            using var temp = new TempStateFile();
+            var (_, queue, clipboard, _, _, coordinator) = StagedReplay(temp, appReads: true);
+
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertEqual("one", clipboard.Text, "The item was staged for the paste.");
+            AssertEqual("two", queue.Slips.First().Text, "Read by the app, so it moved on.");
+        }
+
+        [Fact(DisplayName = "Runtime Replay keeps an item no app read")]
+        public static void RuntimeReplayKeepsUnreadItem()
+        {
+            using var temp = new TempStateFile();
+            var (_, queue, clipboard, notifications, keyboard, coordinator) = StagedReplay(temp, appReads: false);
+
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+
+            AssertEqual(3, queue.Slips.Count, "Nothing read it, so nothing was archived.");
+            AssertEqual("one", queue.Slips.First().Text, "The item stays at the front.");
+            AssertTrue(
+                notifications.Messages.Any(message => message.Contains("didn't land", StringComparison.Ordinal)),
+                "The user hears the paste didn't land.");
+
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            AssertEqual(2, keyboard.PasteCount, "The next Ctrl+V pastes again.");
+            AssertEqual("one", clipboard.Text, "It tries the same item, not the next one.");
+            AssertEqual(3, queue.Slips.Count, "Still unread, still kept.");
+
+            // Ends the late-read watch, as the next copy would.
+            clipboard.LastStaged!.MarkReplaced();
+        }
+
+        [Fact(DisplayName = "Runtime Replay settles a late read before the next paste")]
+        public static async Task RuntimeReplaySettlesLateRead()
+        {
+            using var temp = new TempStateFile();
+            var (store, queue, clipboard, _, _, coordinator) = StagedReplay(temp, appReads: false);
+
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            AssertEqual("one", queue.Slips.First().Text, "Unread in time, so kept for now.");
+
+            // The app gets to it after all.
+            clipboard.ReadStagedPastes = true;
+            clipboard.LastStaged!.MarkRead();
+            for (var wait = 0; wait < 100 && queue.Slips.Count == 3; wait++)
+            {
+                await Task.Delay(10);
+            }
+
+            AssertEqual("two", queue.Slips.First().Text, "The late read archived the item it pasted.");
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            // The late-read watch may still hold the lane for a moment.
+            for (var wait = 0; wait < 100 && queue.Slips.Count == 2; wait++)
+            {
+                await Task.Delay(10);
+            }
+
+            AssertEqual("two", clipboard.Text, "The next paste moves on rather than pasting 'one' twice.");
+            AssertEqual("three", queue.Slips.Single().Text, "One left.");
+            var review = store.State.Projects.SelectMany(project => project.Buckets)
+                .Single(bucket => bucket.Id == queue.Settings.ReplayReviewBucketId);
+            AssertEqual("one|two", string.Join("|", review.Slips.Select(slip => slip.Text)), "Each item is archived once, in order.");
+        }
+
         [Fact(DisplayName = "Runtime Replay brings the user's clipboard back when it ends, not between pastes")]
         public static async Task RuntimeReplayRestoresClipboardOnlyWhenItEnds()
         {
@@ -6047,6 +6136,37 @@ public class PortableSelfTests
             public bool MarkedPrivate { get; set; }
 
             public bool IsMarkedPrivate() => MarkedPrivate;
+
+            // Staged pastes, like the Windows backend's: off unless a test turns
+            // them on. ReadStagedPastes stands in for the target app reading
+            // the item the moment it is pasted.
+            public bool StagesPastes { get; set; }
+
+            public bool ReadStagedPastes { get; set; } = true;
+
+            public ZetlStagedPaste? LastStaged { get; private set; }
+
+            public ZetlStagedPaste? StagePaste(
+                string text,
+                string? html,
+                IReadOnlyList<ZetlClipboardFormatData>? replayFormats,
+                ZetlClipboardImage? image)
+            {
+                if (!StagesPastes)
+                {
+                    return null;
+                }
+
+                LastStaged?.MarkReplaced();
+                SetText(text);
+                LastStaged = new ZetlStagedPaste { ChangeToken = ChangeToken };
+                if (ReadStagedPastes)
+                {
+                    LastStaged.MarkRead();
+                }
+
+                return LastStaged;
+            }
 
             public string? TryGetText()
             {

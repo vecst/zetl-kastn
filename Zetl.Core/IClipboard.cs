@@ -117,6 +117,37 @@ internal interface IClipboard
     /// equality, so any change-detecting value works (a content hash is fine).
     /// </summary>
     uint GetChangeToken();
+
+    /// <summary>
+    /// Put an item on the clipboard for a paste Zetl is about to send, handing
+    /// its data over only when an app asks for it, so Zetl learns whether the
+    /// paste really landed. The item is kept out of clipboard history and
+    /// monitors. Null when the backend can't stage this way; the caller then
+    /// writes the item normally and has to assume a sent paste landed.
+    /// </summary>
+    ZetlStagedPaste? StagePaste(
+        string text,
+        string? html,
+        IReadOnlyList<ZetlClipboardFormatData>? replayFormats,
+        ZetlClipboardImage? image) => null;
+}
+
+/// <summary>
+/// An item staged for a paste. Read completes true the first time another app
+/// reads it, or false if the clipboard is replaced before anyone does.
+/// </summary>
+internal sealed class ZetlStagedPaste
+{
+    private readonly TaskCompletionSource<bool> read =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public uint ChangeToken { get; internal set; }
+
+    public Task<bool> Read => read.Task;
+
+    internal void MarkRead() => read.TrySetResult(true);
+
+    internal void MarkReplaced() => read.TrySetResult(false);
 }
 
 internal sealed record ZetlClipboardImage(byte[] PngBytes, int Width, int Height);

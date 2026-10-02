@@ -397,6 +397,7 @@ internal sealed class ZetlShortcutCoordinator
     public void ResetReplayClipboardTracking(bool shifted)
     {
         replayClipboard.Reset(shifted);
+        unlandedPastes[ZetlLanes.Index(shifted)] = null;
     }
 
     private void RestoreOriginalClipboard(bool shifted)
@@ -895,12 +896,19 @@ internal sealed class ZetlShortcutCoordinator
 
     private async Task HandleReplayTapCoreAsync(bool shifted, ZetlBucket activeBucket)
     {
+        SettleLatePaste(shifted);
+        unlandedPastes[ZetlLanes.Index(shifted)] = null;
         if (!store.TryPeekNextReplaySlip(activeBucket, out var replayNote) || replayNote is null)
         {
             // The bucket is empty, so replay is genuinely done -- return to
             // Standard regardless. But this tap suppressed the physical Ctrl+V, so
             // send the user's own clipboard through as the final pass-through and
             // report if even that paste didn't land (e.g. an elevated target).
+            if (replayClipboard.HasPendingRestore(shifted))
+            {
+                RestoreOriginalClipboard(shifted);
+            }
+
             var finish = store.FinishReplayBucket(activeBucket, shifted);
 
             await replayClipboardGate.WaitAsync();
@@ -945,7 +953,9 @@ internal sealed class ZetlShortcutCoordinator
         await replayClipboardGate.WaitAsync();
         bool clipboardStaged = false;
         bool pasted = false;
+        bool landed = false;
         uint injectedToken = 0;
+        ZetlStagedPaste? staged = null;
         try
         {
             // A lane waiting for the shared clipboard may resume off the UI
@@ -965,7 +975,8 @@ internal sealed class ZetlShortcutCoordinator
                 var stageResult = replayClipboard.Stage(
                     shifted,
                     replayItem,
-                    out injectedToken);
+                    out injectedToken,
+                    out staged);
                 clipboardStaged = stageResult.Succeeded;
                 if (!clipboardStaged)
                 {
@@ -980,7 +991,12 @@ internal sealed class ZetlShortcutCoordinator
                 // queued. The shared gate keeps another lane from replacing the
                 // staged clipboard before Windows accepts this chord.
                 pasted = await keyboard.SendPaste();
-                log($"Replay paste {noteId[..Math.Min(8, noteId.Length)]} from {bucketName}: sent={pasted}.");
+                // Windows accepting the keystrokes isn't the paste landing: a
+                // busy app can drop or miss it. Where the item was staged as a
+                // promise, wait for the app to actually read it.
+                landed = pasted && (staged is null || await WaitForReadAsync(staged));
+                log($"Replay paste {ShortId(noteId)} from {bucketName}: sent={pasted}"
+                    + (staged is null ? "." : $", read={landed}."));
             }
         }
         finally
@@ -1004,47 +1020,20 @@ internal sealed class ZetlShortcutCoordinator
                 return new ReplayPasteResult(Pasted: false, ReplayComplete: false);
             }
 
-            ZetlBucket? reviewBucket = null;
-            ZetlSlip? consumedSlip = null;
-            ZetlSlip? reviewSlip = null;
-            var consumed = project is not null
-                ? store.TryConsumeReplaySlipToReview(
-                    project,
-                    activeBucket,
-                    noteId,
-                    out reviewBucket,
-                    out consumedSlip,
-                    out reviewSlip)
-                : store.TryConsumeReplaySlip(activeBucket, noteId, out consumedSlip);
-            if (consumed && reviewBucket is not null)
+            if (!landed)
             {
-                log($"Archived replay paste {noteId[..Math.Min(8, noteId.Length)]} from {bucketName} to {reviewBucket.Name}.");
+                // The keystrokes went out but no app read the item. Keep it at
+                // the front; a late read settles it before the next paste.
+                unlandedPastes[ZetlLanes.Index(shifted)] = new UnlandedPaste(activeBucket, noteId, staged!);
+                WatchForLateRead(shifted, staged!);
+                notifications.Show($"Paste didn't land; {bucketName} item kept. Press Ctrl+V to try again.");
+                return new ReplayPasteResult(Pasted: false, ReplayComplete: false);
             }
 
-            if (!consumed)
+            if (!ArchiveReplayItem(shifted, activeBucket, noteId, out var replayComplete))
             {
                 notifications.Show($"Paste landed, but {bucketName} changed before Zetl could consume its item.");
                 return new ReplayPasteResult(Pasted: true, ReplayComplete: false);
-            }
-
-            var replayComplete = !store.TryPeekNextReplaySlip(activeBucket, out _);
-            // Finishing a consumable hands the lane back, so its last item
-            // isn't undoable into a project that is no longer active.
-            var finishingConsumable = replayComplete
-                && project is not null
-                && ZetlStateStore.IsConsumableProject(project);
-            if (consumed && consumedSlip is not null && !finishingConsumable)
-            {
-                var undoReviewBucket = reviewBucket;
-                var undoReviewSlipId = reviewSlip?.Id;
-                undoStack.Push(
-                    shifted,
-                    $"Restored replay item to {bucketName}.",
-                    () => store.RestoreReplayConsumedSlip(
-                        activeBucket,
-                        consumedSlip,
-                        undoReviewBucket,
-                        undoReviewSlipId));
             }
 
             if (replayComplete && !replayLanes.TryBeginRestoring(shifted))
@@ -1112,6 +1101,118 @@ internal sealed class ZetlShortcutCoordinator
     private readonly record struct ReplayPasteResult(
         bool Pasted,
         bool ReplayComplete);
+
+    // Moves a pasted Replay item to its review bucket and makes that undoable.
+    // False when the item was no longer in the bucket.
+    private bool ArchiveReplayItem(bool shifted, ZetlBucket bucket, string noteId, out bool replayComplete)
+    {
+        replayComplete = false;
+        var project = store.GetActiveProject(shifted);
+        ZetlBucket? reviewBucket = null;
+        ZetlSlip? consumedSlip = null;
+        ZetlSlip? reviewSlip = null;
+        var consumed = project is not null
+            ? store.TryConsumeReplaySlipToReview(
+                project,
+                bucket,
+                noteId,
+                out reviewBucket,
+                out consumedSlip,
+                out reviewSlip)
+            : store.TryConsumeReplaySlip(bucket, noteId, out consumedSlip);
+        if (!consumed)
+        {
+            return false;
+        }
+
+        if (reviewBucket is not null)
+        {
+            log($"Archived replay paste {ShortId(noteId)} from {bucket.Name} to {reviewBucket.Name}.");
+        }
+
+        replayComplete = !store.TryPeekNextReplaySlip(bucket, out _);
+        // Finishing a consumable hands the lane back, so its last item isn't
+        // undoable into a project that is no longer active.
+        var finishingConsumable = replayComplete
+            && project is not null
+            && ZetlStateStore.IsConsumableProject(project);
+        if (consumedSlip is not null && !finishingConsumable)
+        {
+            var undoReviewBucket = reviewBucket;
+            var undoReviewSlipId = reviewSlip?.Id;
+            undoStack.Push(
+                shifted,
+                $"Restored replay item to {bucket.Name}.",
+                () => store.RestoreReplayConsumedSlip(
+                    bucket,
+                    consumedSlip,
+                    undoReviewBucket,
+                    undoReviewSlipId));
+        }
+
+        return true;
+    }
+
+    // True once an app reads the staged item, false if none does in time.
+    private async Task<bool> WaitForReadAsync(ZetlStagedPaste staged)
+    {
+        var finished = await Task.WhenAny(staged.Read, delay.WaitAsync(PasteReadTimeout));
+        return finished == staged.Read && staged.Read.Result;
+    }
+
+    // A paste that timed out can still be read later. Settle it then (or at
+    // the lane's next paste, whichever comes first).
+    private void WatchForLateRead(bool shifted, ZetlStagedPaste staged) =>
+        ZetlAsync.RunLogged(
+            async () =>
+            {
+                if (!await staged.Read)
+                {
+                    return;
+                }
+
+                var laneGate = replayLaneGates[ZetlLanes.Index(shifted)];
+                await laneGate.WaitAsync();
+                try
+                {
+                    await RunOnDispatcherAsync(() => SettleLatePaste(shifted, finishIfDone: true));
+                }
+                finally
+                {
+                    laneGate.Release();
+                }
+            },
+            "late replay paste",
+            log);
+
+    // The app read a timed-out paste after all, so it landed: archive its item
+    // before the lane pastes anything else. Called with the lane gate held.
+    private void SettleLatePaste(bool shifted, bool finishIfDone = false)
+    {
+        var index = ZetlLanes.Index(shifted);
+        if (unlandedPastes[index] is not { } unlanded || !unlanded.Staged.Read.IsCompleted)
+        {
+            return;
+        }
+
+        unlandedPastes[index] = null;
+        if (!unlanded.Staged.Read.Result)
+        {
+            return;
+        }
+
+        log($"Replay paste {ShortId(unlanded.NoteId)} from {unlanded.Bucket.Name}: read late.");
+        if (ArchiveReplayItem(shifted, unlanded.Bucket, unlanded.NoteId, out var replayComplete)
+            && replayComplete
+            && finishIfDone)
+        {
+            RestoreOriginalClipboard(shifted);
+            var finish = store.FinishReplayBucket(unlanded.Bucket, shifted);
+            ShowReplayCompletion(unlanded.Bucket.Name, null, ReturnedToSuffix(finish));
+        }
+    }
+
+    private static string ShortId(string id) => id[..Math.Min(8, id.Length)];
 
     private Task RunOnDispatcherAsync(Action action)
     {
@@ -1203,6 +1304,17 @@ internal sealed class ZetlShortcutCoordinator
             }
         });
     }
+
+    // How long Replay waits for the app being pasted into to read a staged
+    // item before deciding the paste didn't land.
+    private static readonly TimeSpan PasteReadTimeout = TimeSpan.FromMilliseconds(1500);
+
+    // A Replay paste that no app read in time, per lane. Its item stays queued;
+    // if the app reads it after all, the item is archived before the lane's
+    // next paste, so it is never pasted twice.
+    private sealed record UnlandedPaste(ZetlBucket Bucket, string NoteId, ZetlStagedPaste Staged);
+
+    private readonly UnlandedPaste?[] unlandedPastes = new UnlandedPaste?[2];
 
     // Once the last item is pasted, the target app may still be reading it, so
     // the user's clipboard waits at least this long before it comes back.

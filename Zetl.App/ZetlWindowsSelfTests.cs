@@ -12,6 +12,62 @@ internal static class ZetlWindowsSelfTests
     // replacing the clipboard in a loop (Explorer does on every desktop copy)
     // and Windows' page heap on Zetl.exe: any reader touching clipboard memory
     // another thread let go of stops the process at once. Exits 0 if it lasts.
+    // Reads the clipboard's text from a separate process, as an app does when
+    // pasting, while this thread pumps messages so Zetl's clipboard window can
+    // hand over promised formats.
+    private static string? ReadClipboardFromAnotherProcess()
+    {
+        using var reader = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+            "powershell",
+            "-NoProfile -STA -Command \"[Console]::Out.Write((Get-Clipboard -Raw))\"")
+        {
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        });
+        if (reader is null)
+        {
+            return null;
+        }
+
+        var output = reader.StandardOutput.ReadToEndAsync();
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        while (!reader.HasExited && DateTime.UtcNow < deadline)
+        {
+            while (PeekMessage(out var message, IntPtr.Zero, 0, 0, 1))
+            {
+                TranslateMessage(ref message);
+                DispatchMessage(ref message);
+            }
+
+            Thread.Sleep(5);
+        }
+
+        return reader.HasExited ? output.Result.Trim() : null;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct NativeMessage
+    {
+        public IntPtr Window;
+        public uint Message;
+        public IntPtr WParam;
+        public IntPtr LParam;
+        public uint Time;
+        public int X;
+        public int Y;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "PeekMessageW")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool PeekMessage(out NativeMessage message, IntPtr window, uint min, uint max, uint remove);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool TranslateMessage(ref NativeMessage message);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "DispatchMessageW")]
+    private static extern IntPtr DispatchMessage(ref NativeMessage message);
+
     // part narrows each pass to one piece of a read (see StressPass); "all"
     // reads everything the way a capture does.
     public static int ClipboardStress(int seconds, int threads = 4, string part = "all")
@@ -440,6 +496,24 @@ internal static class ZetlWindowsSelfTests
                 failures += Check(
                     "a copy allowed in clipboard history is captured normally",
                     clipboard.TryCaptureContent() is { Private: false, Text: "not-a-real-password" });
+
+                // Replay stages its item as a promise: another app reading it
+                // gets the text, and Zetl learns the paste landed. The item is
+                // marked so clipboard history (and Zetl's own observers) skip it.
+                var staged = clipboard.StagePaste("staged paste text", null, null, null);
+                failures += Check("clipboard stages a paste as a promise", staged is not null);
+                if (staged is not null)
+                {
+                    failures += Check("a staged paste is not yet read", !staged.Read.IsCompleted);
+                    var readBack = ReadClipboardFromAnotherProcess();
+                    failures += Check("another app reading the promise gets its text", readBack == "staged paste text");
+                    failures += Check(
+                        "the read is reported as the paste landing",
+                        staged.Read.IsCompletedSuccessfully && staged.Read.Result);
+                    failures += Check(
+                        "a staged paste is kept out of clipboard history and monitors",
+                        clipboard.TryCaptureContent() is { Private: true });
+                }
 
                 // Some apps add Windows' enterprise-protection marker to every
                 // copy, empty, even on unmanaged machines. That copy backs up
