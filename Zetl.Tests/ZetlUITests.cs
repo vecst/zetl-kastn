@@ -1229,8 +1229,8 @@ public partial class ZetlUITests : IDisposable
                 Assert.Equal(slip.Revision, drafts.Draft?.BaselineRevision);
                 Assert.Equal("sent draft plus newer typing", drafts.Draft?.DraftText);
                 Assert.Equal(ZetlInlineStyleKinds.Italic, Assert.Single(window.editorState.DraftInlineStyles).Kind);
-                var history = WindowField<KastnUndoHistory>(window, "undoStack");
-                Assert.Equal(kind == ZetlCommandKind.UpdateSlip ? 1 : 0, history.Count);
+                var history = WindowField<KastnEditHistory>(window, "editHistory");
+                Assert.Equal(kind == ZetlCommandKind.UpdateSlip ? 1 : 0, history.UndoCount);
             }
             else
             {

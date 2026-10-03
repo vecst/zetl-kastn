@@ -55,8 +55,8 @@ internal sealed record KastnUndoEntry(
 internal sealed record KastnInverseStep(ZetlCommandKind Kind, JsonElement Payload, bool BestEffort);
 
 // Bounded, newest-on-top history of reversible actions. Used for both the undo
-// and redo stacks. Cleared on project switch or loss of a live connection,
-// because the revisions it captured go stale after a resync.
+// and redo stacks. Project/server changes retire the captured run; a transient
+// reconnect to the same server can retain its revision-checked entries.
 internal sealed class KastnUndoHistory
 {
     public const int DefaultCapacity = 100;

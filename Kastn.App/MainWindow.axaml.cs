@@ -207,6 +207,7 @@ internal partial class MainWindow : Window
     private bool recoveredDraftActive;
     private bool addingSlip;
     private bool visibilityUpdating;
+    private string? renderServerInstanceId;
     private KastnEditorSaveOperation? pendingEditorSave;
     private KastnEditorMutationAcceptance? pendingEditorMutation;
     private string? pendingBucketSelectionId;
@@ -249,6 +250,7 @@ internal partial class MainWindow : Window
     {
         InitializeComponent();
         connection = null!;
+        editHistory = CreateEditHistory();
         pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
     }
@@ -258,6 +260,7 @@ internal partial class MainWindow : Window
         KastnDraftStore? draftStore = null)
     {
         this.connection = connection;
+        editHistory = CreateEditHistory();
         pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         this.draftStore = draftStore ?? new KastnDraftStore(log: Console.Error.WriteLine);
         InitializeComponent();
@@ -585,27 +588,14 @@ internal partial class MainWindow : Window
         var selectedBucketId = SelectedBucketId;
         var selectedSlipId = pendingSlipSelectionId ?? editorState.SlipId;
 
-        // Undo/redo entries hold revision-checked commands. A transient pipe
-        // outage does not invalidate them: reconnecting to the same Zetl instance
-        // can validate (and, for an uncertain command, deduplicate) them. A project
-        // change or a different server instance does invalidate the captured run.
+        // Rendering has its own server lifetime: history reconciliation can
+        // observe a restart before its queued UI snapshot is applied.
         var serverChanged = snapshot.ConnectionState == KastnConnectionState.Online
-            && undoServerInstanceId is not null
-            && snapshot.ServerInstanceId is not null
-            && !string.Equals(
-                undoServerInstanceId,
-                snapshot.ServerInstanceId,
-                StringComparison.Ordinal);
-        if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal)
-            || serverChanged)
-        {
-            ClearUndoHistory();
-        }
-        if (snapshot.ConnectionState == KastnConnectionState.Online
-            && snapshot.ServerInstanceId is not null)
-        {
-            undoServerInstanceId = snapshot.ServerInstanceId;
-        }
+            && renderServerInstanceId is not null && snapshot.ServerInstanceId is not null
+            && renderServerInstanceId != snapshot.ServerInstanceId;
+        editHistory.ObserveSession(snapshot);
+        if (snapshot.ConnectionState == KastnConnectionState.Online && snapshot.ServerInstanceId is not null)
+            renderServerInstanceId = snapshot.ServerInstanceId;
 
         // Rendered controls and decoded pictures belong to this project/server.
         if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal) || serverChanged)

@@ -96,6 +96,30 @@ extracting undo or the renderers.
   interrupted moves. Validation: solution build with zero warnings/errors;
   669 tests passed, with the same two intentional latency-probe skips. The next
   extraction target is edit-history ownership; window lifetime remains open.
+- Extracted `KastnEditHistory`: it owns mutation recording, undo/redo stacks,
+  gesture accumulation, inverse execution, revision threading, conflict decisions,
+  and reconciliation/repair of partial or uncertain outcomes. It receives snapshot
+  supply, transport, refresh deferrals, and an async conflict callback. MainWindow
+  keeps autosave, tree selection, native dialogs, and status presentation; its undo
+  partial is now about 90 lines instead of roughly 800.
+- Gesture context is scoped to each history owner and async flow. A history
+  generation retires pending recordings and unsent inverse commands after project
+  navigation or a server restart, including a switch away and back to the same
+  project. Transient reconnection to the same server retains checked entries.
+  Unconfirmed/malformed responses do not advance history; inverse outcomes can
+  reconcile into repair entries without discarding the original transaction.
+- Rendering tracks its own server lifetime so history reconciliation observing a
+  restart early does not suppress later UI cache invalidation. Undo completion
+  preserves later typing and avoids restoring selection/status into a different
+  editor session; navigation during prerequisite autosave cancels the step.
+- Added service-backed owner tests for gesture isolation/grouping, sequential
+  undo/redo, redo invalidation, slip/bucket conflict choices, best-effort position
+  failures, interrupted and unknown-outcome repair/retry, busy rejection, response
+  identity/revision checks, and generation invalidation. Delayed real-IPC UI tests
+  cover typing, reselection, and project changes during undo or its initial save.
+  Validation: solution build with zero warnings/errors; 706 tests passed, with
+  the same two intentional latency-probe skips. Drop planning and move execution
+  are the next extraction target.
 
 ## Responsibility Map
 

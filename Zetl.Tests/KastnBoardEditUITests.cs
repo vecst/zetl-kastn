@@ -261,11 +261,12 @@ public partial class ZetlUITests
             Assert.Equal("replacement baseline", replacementSlip.Text);
             Assert.False(WindowField<bool>(window, "savingCore"));
             Assert.False(WindowField<bool>(window, "boardEditing"));
-            var history = WindowField<KastnUndoHistory>(window, "undoStack");
-            Assert.Equal(interruption == "project" ? 0 : interruption == "focus-save" ? 2 : 1, history.Count);
+            var history = WindowField<KastnEditHistory>(window, "editHistory");
+            Assert.Equal(interruption == "project" ? 0 : interruption == "focus-save" ? 2 : 1, history.UndoCount);
             if (completesMove)
             {
-                Assert.True(history.TryPeek(out var entry));
+                var entry = history.Peek();
+                Assert.NotNull(entry);
                 var undo = Assert.Single(entry!.Operations);
                 Assert.Equal(inbox.Id, undo.To.Restore!.BucketId);
                 Assert.Equal(next.Id, undo.From.BucketId);
@@ -284,7 +285,10 @@ public partial class ZetlUITests
                     "project" => "replacement draft", "reselection" => "other draft", _ => "later writing"
                 }, window.slipEditor.Text);
                 Assert.True(window.editorState.IsDirty);
-                Assert.StartsWith("Unsaved changes", window.statusText.Text);
+                // A queued snapshot may show the draft status after the command
+                // showed its conflict status. Both must preserve the conflict.
+                Assert.True(window.statusText.Text?.StartsWith("Unsaved changes", StringComparison.Ordinal) == true
+                    || window.statusText.Text?.StartsWith("Resolve the slip conflict", StringComparison.Ordinal) == true);
                 Assert.Equal(interruption == "conflict", window.editorState.ConflictCurrent is not null);
                 if (interruption is "typing" or "conflict" or "during-save")
                 {
