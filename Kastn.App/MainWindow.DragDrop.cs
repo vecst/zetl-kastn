@@ -41,6 +41,7 @@ internal partial class MainWindow
 
     // The row currently showing a drop marker (highlight or insertion line).
     private KastnTreeNode? markerNode;
+    private long dropFeedbackVersion;
 
     // The last drop position resolved during the current drag. When the pointer slips into
     // a gap between rows (where nothing resolves), the drag holds this position instead of
@@ -60,6 +61,7 @@ internal partial class MainWindow
         projectTree.AddHandler(PointerReleasedEvent, OnTreePointerReleased, RoutingStrategies.Tunnel);
         projectTree.AddHandler(PointerMovedEvent, OnTreePointerMoved, RoutingStrategies.Tunnel);
         DragDrop.SetAllowDrop(projectTree, true);
+        projectTree.AddHandler(DragDrop.DragEnterEvent, OnTreeDragOver);
         projectTree.AddHandler(DragDrop.DragOverEvent, OnTreeDragOver);
         projectTree.AddHandler(DragDrop.DragLeaveEvent, OnTreeDragLeave);
         projectTree.AddHandler(DragDrop.DropEvent, OnTreeDrop);
@@ -210,13 +212,22 @@ internal partial class MainWindow
     private void OnTreeDragLeave(object? sender, DragEventArgs args)
     {
         dragPointerInsideTree = false;
-        ApplyDropMarker(null);
+        // Native hit testing emits leave/enter when crossing children inside a
+        // row, too. Let the matching enter keep or replace the marker before
+        // clearing feedback for a real exit from the tree.
+        var version = dropFeedbackVersion;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (version == dropFeedbackVersion && !dragPointerInsideTree)
+                ApplyDropMarker(null);
+        });
     }
 
     // Show the plan's drag feedback on its marker row — a highlight to nest into, or an
     // insertion line to reorder before/after — clearing the previously marked row.
     private void ApplyDropMarker(KastnDropPlan? plan)
     {
+        dropFeedbackVersion++;
         var node = plan?.MarkerId is { } id ? treeProjection.Find(id) : null;
         var edge = plan?.MarkerEdge ?? KastnDropEdge.None;
 

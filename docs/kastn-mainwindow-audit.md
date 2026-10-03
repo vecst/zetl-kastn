@@ -237,6 +237,17 @@ extracting undo or the renderers.
   solution build with zero warnings/errors; 842 tests passed, with the same two
   intentional latency-probe skips. View catalog/editor ownership remains next.
 
+- Reproduced the remaining tree-hover flash using Avalonia's platform drag
+  device and real hit testing: crossing a row's child controls emits leave/enter
+  pairs. The tree previously cleared its marker on every leave and only resolved
+  drag-over, leaving the marker absent until another pointer movement.
+- Tree enter now resolves feedback immediately. Leave cleanup runs after the
+  paired enter and checks a feedback version, preserving unchanged markers and
+  newer targets while still clearing a real tree exit. Added horizontal/vertical
+  pointer sweeps and exit/reentry regressions. Validation: solution build with
+  zero warnings/errors; 846 tests passed, with two intentional latency-probe
+  skips. View catalog/editor ownership remains the next extraction target.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |
