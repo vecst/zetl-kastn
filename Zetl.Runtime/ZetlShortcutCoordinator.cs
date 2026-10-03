@@ -20,6 +20,10 @@ internal sealed class ZetlShortcutCoordinator
     private readonly Func<ZetlAppSettings> getSettings;
     private readonly Action<string> log;
     private readonly IImageUrlResolver? imageUrlResolver;
+    private readonly ZetlPassThroughLanes passThrough;
+
+    // Pass-through was flipped or went back to the setting on some lane.
+    public event Action? PassThroughChanged;
 
     private bool autoCaptureOnCopy() => getSettings().AutoCaptureOnCopy;
     private bool quickNoteToClipboard() => getSettings().QuickNoteToClipboard;
@@ -29,7 +33,7 @@ internal sealed class ZetlShortcutCoordinator
     private TimeSpan ClipboardPollInterval => TimeSpan.FromMilliseconds(getSettings().ClipboardPollIntervalMs);
     private TimeSpan ClipboardObservationTimeout => TimeSpan.FromMilliseconds(getSettings().ClipboardObservationTimeoutMs);
     private TimeSpan AutoCaptureClipboardTimeout => TimeSpan.FromMilliseconds(getSettings().AutoCaptureClipboardTimeoutMs);
-    private TimeSpan PopClipboardDelay => TimeSpan.FromMilliseconds(getSettings().PopClipboardDelayMs);
+    private TimeSpan PasteSettleDelay => TimeSpan.FromMilliseconds(getSettings().PopClipboardDelayMs);
     private TimeSpan ReplayClipboardRestoreDelay => TimeSpan.FromMilliseconds(getSettings().ReplayClipboardRestoreDelayMs);
 
     public ZetlShortcutCoordinator(
@@ -42,8 +46,10 @@ internal sealed class ZetlShortcutCoordinator
         ZetlUndoStack undoStack,
         Func<ZetlAppSettings> getSettings,
         Action<string> log,
-        IImageUrlResolver? imageUrlResolver = null)
+        IImageUrlResolver? imageUrlResolver = null,
+        Func<DateTimeOffset>? clock = null)
     {
+        passThrough = new ZetlPassThroughLanes(clock ?? (() => DateTimeOffset.UtcNow));
         this.store = store;
         this.keyboard = keyboard;
         this.clipboard = clipboard;
@@ -75,8 +81,8 @@ internal sealed class ZetlShortcutCoordinator
         router.RegisterHold(ZetlGestureActions.Board, (context, _) =>
             Task.FromResult<ZetlShortcutRequest?>(new ZetlBoardRequest(context.ShiftLane)));
         router.RegisterHold(ZetlGestureActions.CaptureCopy, CreateCopyHoldRequestAsync);
-        router.RegisterHold(ZetlGestureActions.TogglePop, (context, _) =>
-            Task.FromResult(HandlePopToggle(context.ShiftLane)));
+        router.RegisterHold(ZetlGestureActions.TogglePassThrough, (context, _) =>
+            Task.FromResult(HandlePassThroughToggle(context.ShiftLane)));
         router.RegisterHold(ZetlGestureActions.ToggleReplay, (context, _) =>
             Task.FromResult(HandleReplayToggle(context.ShiftLane)));
         router.RegisterHold(ZetlGestureActions.TemplatePicker, (context, _) =>
@@ -105,6 +111,7 @@ internal sealed class ZetlShortcutCoordinator
             context.ShiftLane,
             context.ClipboardSequenceNumber,
             deferredCaptureOrigin: captureOrigin ?? new Lazy<ZetlCaptureOrigin?>((ZetlCaptureOrigin?)null));
+        passThrough.NoteActivity(context.ShiftLane);
 
         await Task.Run(() => Task.WhenAll(
             ObserveClipboardChangeAsync(pending),
@@ -122,8 +129,9 @@ internal sealed class ZetlShortcutCoordinator
         return CancelPending(context.KeyCode, context.ShiftLane);
     }
 
-    // A tapped paste: Replay pastes the next queued item instead, Pop lets the
-    // paste through and removes the matching item. Both paste chords share it;
+    // A tapped paste: Replay pastes the next queued item instead; otherwise the
+    // paste goes through, and with pass-through on, the latest automatic copy
+    // it matches is set aside. Both paste chords share it;
     // the lane comes from ShiftLane, not from ReplayShift, which only describes
     // the pass-through replay chord.
     private bool HandlePasteTap(ChordlEventContext context)
@@ -157,8 +165,31 @@ internal sealed class ZetlShortcutCoordinator
             return true;
         }
 
-        ZetlAsync.RunLogged(() => HandlePopTapAsync(context.ShiftLane), "pop tap", log);
+        passThrough.NoteActivity(shiftLane);
+        if (IsPassThroughOn(shiftLane))
+        {
+            ZetlAsync.RunLogged(() => HandlePassThroughTapAsync(shiftLane), "pass-through paste", log);
+        }
+
         return false;
+    }
+
+    // Whether a pasted copy on this lane passes through right now, and whether
+    // that is a held Ctrl+P's doing rather than the setting's.
+    public bool IsPassThroughOn(bool shifted) =>
+        passThrough.IsOn(getSettings().PassThrough, shifted, store.GetActiveProject(shifted)?.Id);
+
+    public bool IsPassThroughFlipped(bool shifted) =>
+        passThrough.IsFlipped(shifted, store.GetActiveProject(shifted)?.Id);
+
+    // Ends flips that have gone quiet; the host calls this now and then so the
+    // tray stops showing a flip that has run out.
+    public void ExpirePassThroughFlips()
+    {
+        if (passThrough.Expire(shifted => store.GetActiveProject(shifted)?.Id))
+        {
+            PassThroughChanged?.Invoke();
+        }
     }
 
     public ZetlNoteCaptureOutcome CompleteNoteCapture(
@@ -376,7 +407,7 @@ internal sealed class ZetlShortcutCoordinator
 
     public async Task PasteCompiledTextAsync()
     {
-        await delay.WaitAsync(PopClipboardDelay);
+        await delay.WaitAsync(PasteSettleDelay);
         var pasted = await keyboard.SendPaste();
         dispatcher.Post(() => notifications.Show(pasted
             ? "Pasted composed text."
@@ -387,7 +418,7 @@ internal sealed class ZetlShortcutCoordinator
     // Ctrl+X note was discarded, undoing the physical cut.
     public async Task PasteCutBackAsync()
     {
-        await delay.WaitAsync(PopClipboardDelay);
+        await delay.WaitAsync(PasteSettleDelay);
         var pasted = await keyboard.SendPaste();
         dispatcher.Post(() => notifications.Show(pasted
             ? "Restored the cut text."
@@ -582,30 +613,20 @@ internal sealed class ZetlShortcutCoordinator
         return null;
     }
 
-    private ZetlShortcutRequest? HandlePopToggle(bool shifted)
+    // The tray menu's way to the same flip.
+    public void TogglePassThrough(bool shifted) => HandlePassThroughToggle(shifted);
+
+    // A held Ctrl+P flips pass-through on this lane for now; holding it again
+    // goes back to the setting, as ten quiet minutes or a project switch do.
+    private ZetlShortcutRequest? HandlePassThroughToggle(bool shifted)
     {
-        var bucket = store.GetActiveBucket(shifted);
-        if (bucket is null)
-        {
-            notifications.Show("No active bucket yet.");
-            return null;
-        }
-
-        if (ZetlStateStore.IsReplayBucket(bucket))
-        {
-            store.SetBucketKind(bucket, "Standard");
-            store.SetBucketPopMode(bucket, true);
-            if (replayResumeClipboard())
-            {
-                RestoreOriginalClipboard(shifted);
-            }
-            ResetReplayClipboardTracking(shifted);
-            notifications.Show($"{bucket.Name} pop is on.");
-            return null;
-        }
-
-        store.ToggleActiveBucketPopMode(shifted);
-        notifications.Show($"{bucket.Name} pop is {(bucket.Settings.PopMode ? "on" : "off")}.");
+        var on = passThrough.Toggle(getSettings().PassThrough, shifted, store.GetActiveProject(shifted)?.Id);
+        var forNow = passThrough.IsFlipped(shifted, store.GetActiveProject(shifted)?.Id) ? " for now" : "";
+        notifications.Show(on
+            ? $"Pass-through on{forNow}: copies you paste straight away won't stay."
+            : $"Pass-through off{forNow}: copies you paste stay.");
+        log($"Pass-through {(on ? "on" : "off")}{forNow} (lane {(shifted ? "Shift" : "Normal")}).");
+        PassThroughChanged?.Invoke();
         return null;
     }
 
@@ -818,7 +839,7 @@ internal sealed class ZetlShortcutCoordinator
                     project,
                     bucket,
                     image,
-                    "copy",
+                    ZetlStateStore.AutoCopySource,
                     pending.CaptureOrigin,
                     caption: text,
                     sourceUrl: imageSourceUrl,
@@ -828,7 +849,7 @@ internal sealed class ZetlShortcutCoordinator
                 : store.AddSlip(
                     bucket,
                     text!,
-                    "copy",
+                    ZetlStateStore.AutoCopySource,
                     captureOrigin: pending.CaptureOrigin,
                     richHtml: richHtml,
                     replayFormats: replayFormats);
@@ -1254,56 +1275,39 @@ internal sealed class ZetlShortcutCoordinator
         return completion.Task;
     }
 
-    private async Task HandlePopTapAsync(bool shifted)
+    private async Task HandlePassThroughTapAsync(bool shifted)
     {
-        await delay.WaitAsync(PopClipboardDelay);
+        await delay.WaitAsync(PasteSettleDelay);
         var content = clipboard.TryCaptureContent();
         if (content is null || (content.Text is null && content.Image is null))
         {
             return;
         }
 
+        var imageSha256 = content.Image is null
+            ? null
+            : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content.Image.PngBytes))
+                .ToLowerInvariant();
         dispatcher.Post(() =>
         {
-            // A paste can carry both formats (spreadsheet cells). Match the
-            // image hash first, then fall back to the text so a dual paste can
-            // still pop a text-only slip.
-            ZetlBucket? bucket = null;
-            ZetlSlip? note = null;
-            ZetlBucket? reviewBucket = null;
-            ZetlSlip? reviewNote = null;
-            var popped = content.Image is not null
-                && store.TryPopLastMatchingActiveImage(
-                    Convert.ToHexString(
-                        System.Security.Cryptography.SHA256.HashData(content.Image.PngBytes))
-                        .ToLowerInvariant(),
-                    shifted,
-                    out bucket,
-                    out note,
-                    out reviewBucket,
-                    out reviewNote);
-            if (!popped && content.Text is not null)
-            {
-                popped = store.TryPopLastMatchingActiveSlip(
+            if (store.TryPassThroughLatestCopy(
                     content.Text,
+                    imageSha256,
                     shifted,
-                    out bucket,
-                    out note,
-                    out reviewBucket,
-                    out reviewNote);
-            }
-
-            if (popped
+                    out var bucket,
+                    out var slip,
+                    out var reviewBucket,
+                    out var reviewSlip)
                 && bucket is not null
-                && note is not null
+                && slip is not null
                 && reviewBucket is not null
-                && reviewNote is not null)
+                && reviewSlip is not null)
             {
                 undoStack.Push(
                     shifted,
-                    $"Restored popped item to {bucket.Name} from {reviewBucket.Name}.",
-                    () => store.RestorePoppedSlip(bucket, note, reviewBucket, reviewNote.Id));
-                notifications.Show($"Popped item from {bucket.Name} to {reviewBucket.Name}.");
+                    $"Kept the pasted copy in {bucket.Name}.",
+                    () => store.RestorePassedThroughSlip(bucket, slip, reviewBucket, reviewSlip.Id));
+                notifications.Show("Passed through, not kept. Hold Ctrl+Z to keep it.");
             }
         });
     }

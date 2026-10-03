@@ -147,29 +147,29 @@ public class PortableSelfTests
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        [Fact(DisplayName = "Ctrl+P tap dispatches pop key on key-up")]
-        public static void PopToggleTapDispatchesOnKeyUp()
+        [Fact(DisplayName = "Ctrl+P tap dispatches the P key on key-up")]
+        public static void PassThroughToggleTapDispatchesOnKeyUp()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out var taps, out _);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
-            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: true, isKeyUp: false), "Pop toggle key down should suppress.");
-            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: false, isKeyUp: true), "Pop toggle key up should suppress physical event.");
+            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: true, isKeyUp: false), "Pass-through toggle key down should suppress.");
+            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: false, isKeyUp: true), "Pass-through toggle key up should suppress physical event.");
             AssertEqual(1, dispatched.Count, "Tap should dispatch one synthetic shortcut.");
             AssertEqual(VK_P, dispatched[0], "Dispatched key should be P.");
             AssertEqual(1, taps.Count, "Tap callback should fire once.");
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
-        [Fact(DisplayName = "Ctrl+P hold raises Pop toggle")]
-        public static void PopToggleHoldDoesNotDispatch()
+        [Fact(DisplayName = "Ctrl+P hold raises the pass-through toggle")]
+        public static void PassThroughToggleHoldDoesNotDispatch()
         {
             using var processor = CreateProcessor(out var dispatched, out _, out _, out var holds);
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: true, isKeyUp: false);
-            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: true, isKeyUp: false), "Pop toggle key down should suppress.");
+            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: true, isKeyUp: false), "Pass-through toggle key down should suppress.");
             WaitForHold(holds, "Hold callback should fire once.");
-            AssertEqual("Ctrl+P", holds[0].Name, "Hold should use Pop toggle chord.");
-            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: false, isKeyUp: true), "Held Pop toggle key up should suppress.");
-            AssertEqual(0, dispatched.Count, "Held Pop toggle should not dispatch the pop key.");
+            AssertEqual("Ctrl+P", holds[0].Name, "Hold should use pass-through toggle chord.");
+            AssertTrue(processor.HandleKeyEvent(VK_P, isKeyDown: false, isKeyUp: true), "Held pass-through toggle key up should suppress.");
+            AssertEqual(0, dispatched.Count, "Held pass-through toggle should not dispatch the P key.");
             processor.HandleKeyEvent(VK_CONTROL, isKeyDown: false, isKeyUp: true);
         }
 
@@ -571,106 +571,108 @@ public class PortableSelfTests
             AssertFalse(ZetlStateStore.IsReplayBucket(queue), "The bucket turns Standard.");
         }
 
-        [Fact(DisplayName = "Zetl state pop mode removes matching last note")]
-        public static void StatePopModeRemovesLastMatchingNote()
+        [Fact(DisplayName = "Zetl state passes through only the latest automatic copy")]
+        public static void StatePassesThroughOnlyTheLatestAutomaticCopy()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.ActiveBucket!;
-            store.AddSlip(bucket, "alpha", "copy");
-            store.AddSlip(bucket, "beta", "copy");
-            store.SetBucketPopMode(bucket, true);
-            AssertFalse(store.TryPopLastMatchingActiveSlip("alpha"), "Only the last note may pop.");
-            AssertTrue(store.TryPopLastMatchingActiveSlip("beta"), "Matching last note should pop.");
-            AssertEqual(1, bucket.Slips.Count, "One note should remain.");
-            AssertEqual("alpha", bucket.Slips[0].Text, "The earlier note should remain.");
+            store.AddSlip(bucket, "alpha", ZetlStateStore.AutoCopySource);
+            store.AddSlip(bucket, "beta", ZetlStateStore.AutoCopySource);
+            AssertFalse(PassThrough(store, "alpha"), "Only the latest automatic copy passes through.");
+            AssertTrue(PassThrough(store, "beta"), "Pasting the latest automatic copy passes it through.");
+            AssertEqual("alpha", bucket.Slips.Single().Text, "The earlier copy stays.");
 
+            store.AddSlip(bucket, "held", "copy");
+            AssertFalse(PassThrough(store, "held"), "A held capture never passes through.");
             AssertTrue(
-                store.TryPopLastMatchingActiveSlip(
+                store.TryPassThroughLatestCopy(
                     "alpha",
+                    null,
                     shifted: false,
-                    out var poppedBucket,
-                    out var poppedNote,
+                    out var passedBucket,
+                    out var passedSlip,
                     out var reviewBucket,
-                    out var reviewNote),
-                "Pop should return durable undo details.");
-            AssertEqual(bucket.Id, poppedBucket?.Id, "Pop should report the source bucket.");
-            AssertEqual("alpha", poppedNote?.Text, "Pop should report the removed note.");
-            AssertEqual("Inbox Pop Review", reviewBucket?.Name, "Pop should report its recovery bucket.");
-            store.RestorePoppedSlip(poppedBucket!, poppedNote!, reviewBucket, reviewNote?.Id);
-            AssertEqual("alpha", bucket.Slips.Single().Text, "Restore should put popped note back.");
+                    out var reviewSlip),
+                "Behind a held capture, alpha is still the latest automatic copy.");
+            AssertEqual(bucket.Id, passedBucket?.Id, "Pass-through reports the source bucket.");
+            AssertEqual("alpha", passedSlip?.Text, "Pass-through reports the slip it set aside.");
+            AssertEqual(ZetlStateStore.PassedThroughBucketName, reviewBucket?.Name, "Set aside in Passed Through.");
+            store.RestorePassedThroughSlip(passedBucket!, passedSlip!, reviewBucket, reviewSlip?.Id);
+            AssertEqual(2, bucket.Slips.Count, "Undo puts the copy back beside the held capture.");
+            AssertEqual(1, reviewBucket!.Slips.Count, "Undo takes it back out of Passed Through.");
         }
 
-        [Fact(DisplayName = "Zetl state Pop recovers text across restart")]
-        public static void StatePopRecoversTextAcrossRestart()
+        private static bool PassThrough(ZetlStateStore store, string text) =>
+            store.TryPassThroughLatestCopy(text, null, shifted: false, out _, out _, out _, out _);
+
+        [Fact(DisplayName = "Zetl state pass-through recovers text across restart")]
+        public static void StatePassThroughRecoversTextAcrossRestart()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             var source = store.ActiveBucket!;
-            store.SetBucketPopMode(source, true);
-            store.AddSlip(source, "durable text", "copy");
+            store.AddSlip(source, "durable text", ZetlStateStore.AutoCopySource);
 
             AssertTrue(
-                store.TryPopLastMatchingActiveSlip("durable text", false, out _, out _, out var review, out _),
-                "Text Pop should move the slip to review.");
-            AssertEqual("Inbox Pop Review", review?.Name, "Pop review should name its source bucket.");
+                store.TryPassThroughLatestCopy("durable text", null, false, out _, out _, out var review, out _),
+                "Passing text through should set the slip aside.");
+            AssertEqual(ZetlStateStore.PassedThroughBucketName, review?.Name, "Set aside in Passed Through.");
 
             var reloaded = new ZetlStateStore(temp.Path);
             var loadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
             var loadedSource = loadedProject.Buckets.Single(item => item.Id == source.Id);
-            var loadedReview = loadedProject.Buckets.Single(item => item.Id == loadedSource.Settings.PopReviewBucketId);
+            var loadedReview = loadedProject.Buckets.Single(item => item.Id == loadedSource.Settings.PassThroughReviewBucketId);
             AssertEqual(0, loadedSource.Slips.Count, "The source should remain consumed after restart.");
-            AssertEqual("durable text", loadedReview.Slips.Single().Text, "Popped text should remain recoverable after restart.");
-            AssertEqual("pop-recovery", loadedReview.Slips.Single().Source, "Recovered slips should identify their Pop origin.");
+            AssertEqual("durable text", loadedReview.Slips.Single().Text, "Passed-through text should remain recoverable after restart.");
+            AssertEqual("passed-through", loadedReview.Slips.Single().Source, "Set-aside slips say they passed through.");
         }
 
-        [Fact(DisplayName = "Zetl state Pop recovers images across restart")]
-        public static void StatePopRecoversImageAcrossRestart()
+        [Fact(DisplayName = "Zetl state pass-through recovers images across restart")]
+        public static void StatePassThroughRecoversImageAcrossRestart()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             var source = store.ActiveBucket!;
-            store.SetBucketPopMode(source, true);
             var bytes = new byte[] { 8, 6, 7, 5, 3, 0, 9 };
             var image = store.AddImageSlip(
                 project,
                 source,
                 new ZetlClipboardImage(bytes, 7, 1),
-                "copy");
+                ZetlStateStore.AutoCopySource);
 
             AssertTrue(
-                store.TryPopLastMatchingActiveImage(image.Image!.Sha256, false, out _, out _, out _, out _),
-                "Image Pop should move the slip to review.");
+                store.TryPassThroughLatestCopy(null, image.Image!.Sha256, false, out _, out _, out _, out _),
+                "Passing an image through should set the slip aside.");
 
             var reloaded = new ZetlStateStore(temp.Path);
             var loadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
             var loadedSource = loadedProject.Buckets.Single(item => item.Id == source.Id);
             var recovered = loadedProject.Buckets
-                .Single(item => item.Id == loadedSource.Settings.PopReviewBucketId)
+                .Single(item => item.Id == loadedSource.Settings.PassThroughReviewBucketId)
                 .Slips.Single();
-            AssertTrue(recovered.IsImage, "Popped image type should survive restart.");
-            AssertEqual(7, recovered.Image?.Width, "Popped image metadata should survive restart.");
-            AssertEqual(bytes.Length, reloaded.ReadImageAsset(loadedProject, recovered)?.Length, "Popped image bytes should remain readable after restart.");
+            AssertTrue(recovered.IsImage, "Passed-through image type should survive restart.");
+            AssertEqual(7, recovered.Image?.Width, "Passed-through image metadata should survive restart.");
+            AssertEqual(bytes.Length, reloaded.ReadImageAsset(loadedProject, recovered)?.Length, "Passed-through image bytes should remain readable after restart.");
         }
 
-        [Fact(DisplayName = "Zetl state Pop recovers mixed slips across restart")]
-        public static void StatePopRecoversMixedSlipAcrossRestart()
+        [Fact(DisplayName = "Zetl state pass-through recovers mixed slips across restart")]
+        public static void StatePassThroughRecoversMixedSlipAcrossRestart()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             var source = store.ActiveBucket!;
-            store.SetBucketPopMode(source, true);
             var bytes = new byte[] { 1, 3, 3, 7 };
             var html = "<p><strong>mixed</strong></p>";
             var mixed = store.AddImageSlip(
                 project,
                 source,
                 new ZetlClipboardImage(bytes, 2, 2),
-                "copy",
+                ZetlStateStore.AutoCopySource,
                 caption: "mixed",
                 preferTextContent: true,
                 richHtml: html,
@@ -685,25 +687,25 @@ public class PortableSelfTests
                 textColor: "#cc0000");
 
             AssertTrue(
-                store.TryPopLastMatchingActiveImage(mixed.Image!.Sha256, false, out _, out _, out _, out _),
-                "Mixed Pop should move the complete slip to review.");
+                store.TryPassThroughLatestCopy(null, mixed.Image!.Sha256, false, out _, out _, out _, out _),
+                "Passing a mixed slip through should set the complete slip aside.");
 
             var reloaded = new ZetlStateStore(temp.Path);
             var loadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
             var loadedSource = loadedProject.Buckets.Single(item => item.Id == source.Id);
             var recovered = loadedProject.Buckets
-                .Single(item => item.Id == loadedSource.Settings.PopReviewBucketId)
+                .Single(item => item.Id == loadedSource.Settings.PassThroughReviewBucketId)
                 .Slips.Single();
-            AssertEqual("mixed", recovered.Text, "Mixed Pop should retain text after restart.");
-            AssertTrue(recovered.Image is not null, "Mixed Pop should retain its attached image after restart.");
-            AssertEqual(html, recovered.RichHtml, "Mixed Pop should retain rich clipboard content after restart.");
-            AssertEqual("Native Test", recovered.ReplayFormats?.Single().RegisteredName, "Mixed Pop should retain native replay formats after restart.");
-            AssertEqual("right", recovered.Align, "Mixed Pop should retain block alignment after restart.");
-            AssertTrue(recovered.Bold, "Mixed Pop should retain emphasis after restart.");
-            AssertEqual("Aptos", recovered.FontFamily, "Mixed Pop should retain its font after restart.");
-            AssertEqual(18, recovered.FontSize, "Mixed Pop should retain its font size after restart.");
-            AssertEqual("#CC0000", recovered.TextColor, "Mixed Pop should retain its normalized color after restart.");
-            AssertEqual(bytes.Length, reloaded.ReadImageAsset(loadedProject, recovered)?.Length, "Mixed Pop should retain readable image bytes after restart.");
+            AssertEqual("mixed", recovered.Text, "Mixed pass-through should retain text after restart.");
+            AssertTrue(recovered.Image is not null, "Mixed pass-through should retain its attached image after restart.");
+            AssertEqual(html, recovered.RichHtml, "Mixed pass-through should retain rich clipboard content after restart.");
+            AssertEqual("Native Test", recovered.ReplayFormats?.Single().RegisteredName, "Mixed pass-through should retain native replay formats after restart.");
+            AssertEqual("right", recovered.Align, "Mixed pass-through should retain block alignment after restart.");
+            AssertTrue(recovered.Bold, "Mixed pass-through should retain emphasis after restart.");
+            AssertEqual("Aptos", recovered.FontFamily, "Mixed pass-through should retain its font after restart.");
+            AssertEqual(18, recovered.FontSize, "Mixed pass-through should retain its font size after restart.");
+            AssertEqual("#CC0000", recovered.TextColor, "Mixed pass-through should retain its normalized color after restart.");
+            AssertEqual(bytes.Length, reloaded.ReadImageAsset(loadedProject, recovered)?.Length, "Mixed pass-through should retain readable image bytes after restart.");
         }
 
         [Fact(DisplayName = "Zetl state finds the most recently written project")]
@@ -1555,11 +1557,9 @@ public class PortableSelfTests
 
             store.UpdateBucketName(deleted, "Trash");
             store.SetBucketKind(deleted, "Replay");
-            store.SetBucketPopMode(deleted, true);
             store.DeleteBucket(project, deleted.Id);
             AssertEqual("Deleted", deleted.Name, "Deleted should not be renamable.");
             AssertEqual("Deleted", deleted.Settings.Kind, "Deleted should not change kind.");
-            AssertFalse(deleted.Settings.PopMode, "Deleted should not enable Pop.");
             AssertTrue(project.Buckets.Any(bucket => bucket.Id == deleted.Id), "Deleted should not be deletable.");
 
             var loaded = new ZetlStateStore(temp.Path);
@@ -1641,7 +1641,6 @@ public class PortableSelfTests
             store.CreateProject("Demo", ["Vehicles"], "Vehicles");
             var bucket = store.ActiveBucket!;
 
-            store.SetBucketPopMode(bucket, true);
             store.UpdateBucketSettings(
                 bucket,
                 "Vehicle Entry",
@@ -1652,7 +1651,6 @@ public class PortableSelfTests
 
             AssertEqual("Vehicle Entry", bucket.Name, "Bucket settings should rename the bucket.");
             AssertTrue(ZetlStateStore.IsReplayBucket(bucket), "Bucket settings should set the current kind.");
-            AssertFalse(bucket.Settings.PopMode, "Replay bucket settings should disable pop mode.");
             AssertEqual("Replay", bucket.Settings.DefaultKind, "Default kind should persist in memory.");
             AssertEqual("TSV", bucket.Settings.DefaultCompileMode, "Compile mode should persist in memory.");
             AssertEqual(3, store.GetBucketTsvRowLength(bucket), "Header count should infer TSV row length.");
@@ -1899,20 +1897,18 @@ public class PortableSelfTests
             AssertEqual(0, reviewBucket!.Slips.Count, "Replay undo should remove the review copy.");
         }
 
-        [Fact(DisplayName = "Zetl state Replay disables pop mode")]
-        public static void StateReplayDisablesPopMode()
+        [Fact(DisplayName = "Zetl state never passes a Replay item through")]
+        public static void StateNeverPassesReplayItemsThrough()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             store.CreateProject("Demo", ["Queue"], "Queue");
             var queue = store.ActiveBucket!;
-
-            store.SetBucketPopMode(queue, true);
-            AssertTrue(queue.Settings.PopMode, "Standard bucket should accept pop mode.");
+            store.AddSlip(queue, "queued", ZetlStateStore.AutoCopySource);
             store.SetBucketKind(queue, "Replay");
-            AssertFalse(queue.Settings.PopMode, "Switching to Replay should turn pop mode off.");
-            store.SetBucketPopMode(queue, true);
-            AssertFalse(queue.Settings.PopMode, "Replay bucket should reject pop mode.");
+
+            AssertFalse(PassThrough(store, "queued"), "Replay owns its queue; pass-through leaves it alone.");
+            AssertEqual(1, queue.Slips.Count, "The queued item stays.");
         }
 
         [Fact(DisplayName = "Zetl state maps legacy Fifo kind to Replay")]
@@ -2839,7 +2835,7 @@ public class PortableSelfTests
 
             var note = store.GetActiveBucket()!.Slips.Single();
             AssertEqual("copied text", note.Text, "Auto-capture should trim and save copied text.");
-            AssertEqual("copy", note.Source, "Auto-capture should mark the copy source.");
+            AssertEqual(ZetlStateStore.AutoCopySource, note.Source, "Auto-capture marks the copy as automatic, so pass-through can tell it from a held capture.");
             AssertEqual("Editor", note.CaptureOrigin?.ApplicationName, "Auto-capture should retain its keydown origin.");
             AssertEqual(
                 "Captured to Inbox in Demo.",
@@ -3339,20 +3335,19 @@ public class PortableSelfTests
                 "A reloaded dual slip should keep its rich HTML representation.");
         }
 
-        [Fact(DisplayName = "Runtime Pop removes a dual slip by image hash")]
-        public static void RuntimePopRemovesDualSlipByImageHash()
+        [Fact(DisplayName = "Runtime pass-through sets aside a dual slip by image hash")]
+        public static void RuntimePassThroughSetsAsideDualSlipByImageHash()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.GetActiveBucket()!;
-            store.SetBucketPopMode(bucket, true);
             var bytes = new byte[] { 3, 1, 4 };
             store.AddImageSlip(
                 project,
                 bucket,
                 new ZetlClipboardImage(bytes, 3, 1),
-                "copy",
+                ZetlStateStore.AutoCopySource,
                 caption: "A1\tB1",
                 preferTextContent: true);
             // The paste re-offers both formats, exactly as the original copy did.
@@ -3365,13 +3360,14 @@ public class PortableSelfTests
                 clipboard,
                 new FakeNotificationSink(),
                 out _,
-                out var undo);
+                out var undo,
+                passThrough: true);
 
             var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
 
-            AssertFalse(handled, "Dual Pop should allow the physical paste through.");
-            AssertEqual(0, bucket.Slips.Count, "Pop should remove the matching dual slip via its image hash.");
-            AssertTrue(undo.TryPop(false, out _), "Popped dual slip should be undoable.");
+            AssertFalse(handled, "Pass-through lets the physical paste go through.");
+            AssertEqual(0, bucket.Slips.Count, "The matching dual slip passes through on its image hash.");
+            AssertTrue(undo.TryPop(false, out _), "Passing it through is undoable.");
         }
 
         [Fact(DisplayName = "Runtime Replay pastes a dual slip as text")]
@@ -3801,8 +3797,8 @@ public class PortableSelfTests
             AssertTrue(undo.TryPop(false, out _), "Replay consumption should be undoable.");
         }
 
-        [Fact(DisplayName = "Runtime Replay and Pop let a paste into a file view through")]
-        public static void RuntimeReplayAndPopPassThroughIntoFileView()
+        [Fact(DisplayName = "Runtime Replay and pass-through let a paste into a file view through")]
+        public static void RuntimeReplayAndPassThroughIgnoreFileViewPastes()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
@@ -3818,7 +3814,8 @@ public class PortableSelfTests
                 new FakeNotificationSink(),
                 out var keyboard,
                 out _,
-                isFileViewFocused: () => fileViewFocused);
+                isFileViewFocused: () => fileViewFocused,
+                passThrough: true);
 
             AssertFalse(
                 coordinator.OnTapDispatched(ShortcutContext(VK_V)),
@@ -3827,12 +3824,12 @@ public class PortableSelfTests
             AssertEqual("queued value", queue.Slips.Single().Text, "The Replay item waits for a text target.");
 
             store.SetBucketKind(queue, "Standard");
-            store.SetBucketPopMode(queue, true);
-            clipboard.SetState("queued value", changeToken: 2);
-            AssertFalse(coordinator.OnTapDispatched(ShortcutContext(VK_V)), "Pop passes the paste through.");
-            AssertEqual(1, queue.Slips.Count, "Pop does not consume an item that was not pasted as text.");
+            store.AddSlip(queue, "copied value", ZetlStateStore.AutoCopySource);
+            clipboard.SetState("copied value", changeToken: 2);
+            AssertFalse(coordinator.OnTapDispatched(ShortcutContext(VK_V)), "The file paste goes through.");
+            AssertEqual(2, queue.Slips.Count, "A paste of files doesn't pass a copy through.");
 
-            store.SetBucketPopMode(queue, false);
+            store.DeleteSlip(queue, queue.Slips.Last().Id);
             store.SetBucketKind(queue, "Replay");
             fileViewFocused = false;
             AssertTrue(coordinator.OnTapDispatched(ShortcutContext(VK_V)), "Back in a text target, Replay takes the paste.");
@@ -4798,15 +4795,14 @@ public class PortableSelfTests
                 "Running queued work should paste, consume, restore, and finalize Replay off the hook thread.");
         }
 
-        [Fact(DisplayName = "Runtime Pop tap removes matching note")]
-        public static void RuntimePopTapRemovesMatchingNote()
+        [Fact(DisplayName = "Runtime pass-through sets aside a copy pasted straight away")]
+        public static void RuntimePassThroughSetsAsidePastedCopy()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.GetActiveBucket()!;
-            store.SetBucketPopMode(bucket, true);
-            store.AddSlip(bucket, "paste once", "copy");
+            store.AddSlip(bucket, "paste once", ZetlStateStore.AutoCopySource);
             var clipboard = new FakeClipboard("paste once", changeToken: 1);
             var notifications = new FakeNotificationSink();
             var coordinator = CreateShortcutCoordinator(
@@ -4814,37 +4810,100 @@ public class PortableSelfTests
                 clipboard,
                 notifications,
                 out _,
-                out var undo);
+                out var undo,
+                passThrough: true);
 
             var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
 
-            AssertFalse(handled, "Pop tap should allow the physical paste through.");
-            AssertEqual(0, bucket.Slips.Count, "Pop tap should remove the matching note.");
+            AssertFalse(handled, "The physical paste goes through.");
+            AssertEqual(0, bucket.Slips.Count, "The pasted copy doesn't stay in the bucket.");
             AssertEqual(
-                "Popped item from Inbox to Inbox Pop Review.",
+                ZetlStateStore.PassedThroughBucketName,
+                store.ActiveProject!.Buckets.Single(item => item.Slips.Count == 1).Name,
+                "It's set aside in Passed Through.");
+            AssertEqual(
+                "Passed through, not kept. Hold Ctrl+Z to keep it.",
                 notifications.Messages.Single(),
-                "Pop should name both its source and durable recovery destination.");
-            AssertTrue(undo.TryPop(false, out var action), "Popped note should be undoable.");
-            AssertEqual(
-                "Restored popped item to Inbox from Inbox Pop Review.",
-                action?.Message,
-                "Pop undo should name both recovery endpoints.");
+                "The toast says how to keep it.");
+            AssertTrue(undo.TryPop(false, out var action), "Passing it through is undoable.");
+            AssertEqual("Kept the pasted copy in Inbox.", action?.Message, "Undo says where the copy went back.");
+            action!.Undo();
+            AssertEqual("paste once", bucket.Slips.Single().Text, "Undo keeps the copy.");
         }
 
-        [Fact(DisplayName = "Runtime Pop removes matching image slip")]
-        public static void RuntimePopRemovesMatchingImageSlip()
+        [Fact(DisplayName = "Runtime held Ctrl+P flips pass-through until ten quiet minutes pass")]
+        public static async Task RuntimeHeldCtrlPFlipsPassThroughForNow()
+        {
+            using var temp = new TempStateFile();
+            var store = new ZetlStateStore(temp.Path);
+            store.CreateProject("Demo", ["Inbox"], "Inbox");
+            var bucket = store.GetActiveBucket()!;
+            store.AddSlip(bucket, "work quote", ZetlStateStore.AutoCopySource);
+            var clipboard = new FakeClipboard("work quote", changeToken: 1);
+            var notifications = new FakeNotificationSink();
+            var now = DateTimeOffset.Parse("2026-10-02T12:00:00Z");
+            var coordinator = CreateShortcutCoordinator(
+                store,
+                clipboard,
+                notifications,
+                out _,
+                out _,
+                clock: () => now);
+            var changes = 0;
+            coordinator.Inner.PassThroughChanged += () => changes++;
+
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            AssertEqual(1, bucket.Slips.Count, "With the setting off, a pasted copy stays.");
+
+            await coordinator.HandleHoldAsync(ShortcutContext(VK_P));
+            AssertTrue(coordinator.Inner.IsPassThroughOn(false), "A held Ctrl+P turns it on.");
+            AssertTrue(coordinator.Inner.IsPassThroughFlipped(false), "...for now, not as the setting.");
+            AssertTrue(
+                notifications.Messages.Last().StartsWith("Pass-through on for now", StringComparison.Ordinal),
+                "The toast says it's for now.");
+            AssertFalse(coordinator.Inner.IsPassThroughOn(true), "The Shift lane keeps its own state.");
+
+            store.AddSlip(bucket, "link for a friend", ZetlStateStore.AutoCopySource);
+            clipboard.SetState("link for a friend", changeToken: 2);
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            AssertEqual("work quote", bucket.Slips.Single().Text, "The friend's link passes through.");
+
+            now += TimeSpan.FromMinutes(9);
+            coordinator.OnTapDispatched(ShortcutContext(VK_V));
+            now += TimeSpan.FromMinutes(9);
+            AssertTrue(coordinator.Inner.IsPassThroughOn(false), "Each paste keeps the flip alive.");
+
+            now += TimeSpan.FromMinutes(1);
+            AssertFalse(coordinator.Inner.IsPassThroughOn(false), "Ten quiet minutes end it.");
+            var before = changes;
+            coordinator.Inner.ExpirePassThroughFlips();
+            AssertEqual(before + 1, changes, "Expiring it tells the tray.");
+
+            await coordinator.HandleHoldAsync(ShortcutContext(VK_P));
+            await coordinator.HandleHoldAsync(ShortcutContext(VK_P));
+            AssertFalse(coordinator.Inner.IsPassThroughFlipped(false), "Holding Ctrl+P again goes back to the setting.");
+            AssertTrue(
+                notifications.Messages.Last().StartsWith("Pass-through off:", StringComparison.Ordinal),
+                "Back to the setting isn't 'for now'.");
+
+            await coordinator.HandleHoldAsync(ShortcutContext(VK_P));
+            store.CreateProject("Other", ["Inbox"], "Inbox");
+            AssertFalse(coordinator.Inner.IsPassThroughFlipped(false), "Switching projects ends the flip.");
+        }
+
+        [Fact(DisplayName = "Runtime pass-through sets aside a pasted image")]
+        public static void RuntimePassThroughSetsAsidePastedImage()
         {
             using var temp = new TempStateFile();
             var store = new ZetlStateStore(temp.Path);
             var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
             var bucket = store.GetActiveBucket()!;
-            store.SetBucketPopMode(bucket, true);
             var bytes = new byte[] { 3, 1, 4, 1, 5 };
             store.AddImageSlip(
                 project,
                 bucket,
                 new ZetlClipboardImage(bytes, 5, 1),
-                "copy");
+                ZetlStateStore.AutoCopySource);
             var clipboard = new FakeClipboard(null, changeToken: 1)
             {
                 Image = new ZetlClipboardImage(bytes, 5, 1)
@@ -4854,15 +4913,16 @@ public class PortableSelfTests
                 clipboard,
                 new FakeNotificationSink(),
                 out _,
-                out var undo);
+                out var undo,
+                passThrough: true);
 
             var handled = coordinator.OnTapDispatched(ShortcutContext(VK_V));
 
-            AssertFalse(handled, "Image Pop should allow the physical paste through.");
-            AssertEqual(0, bucket.Slips.Count, "Image Pop should remove the matching image slip.");
-            AssertTrue(undo.TryPop(false, out var action), "Popped image should be undoable.");
+            AssertFalse(handled, "The physical paste goes through.");
+            AssertEqual(0, bucket.Slips.Count, "The pasted image passes through.");
+            AssertTrue(undo.TryPop(false, out var action), "Passed-through image should be undoable.");
             action!.Undo();
-            AssertTrue(bucket.Slips.Single().IsImage, "Undo should restore the popped image slip.");
+            AssertTrue(bucket.Slips.Single().IsImage, "Undo should restore the image slip.");
         }
 
         [Fact(DisplayName = "Runtime copy hold creates note request")]
@@ -5094,10 +5154,9 @@ public class PortableSelfTests
                 out var undo);
 
             await coordinator.HandleHoldAsync(ShortcutContext(VK_P));
-            AssertTrue(store.GetActiveBucket()!.Settings.PopMode, "Ctrl+P hold should enable Pop.");
+            AssertTrue(coordinator.Inner.IsPassThroughOn(false), "Ctrl+P hold should turn pass-through on for now.");
             await coordinator.HandleHoldAsync(ShortcutContext(VK_R));
             AssertEqual("Replay", store.GetActiveBucket()!.Settings.Kind, "Ctrl+R hold should enable Replay.");
-            AssertFalse(store.GetActiveBucket()!.Settings.PopMode, "Replay should disable Pop.");
 
             var undone = false;
             undo.Push(false, "Undone.", () => undone = true);
@@ -5726,7 +5785,9 @@ public class PortableSelfTests
             IZetlDispatcher? dispatcher = null,
             IImageUrlResolver? imageUrlResolver = null,
             Action<string>? log = null,
-            Func<bool>? isFileViewFocused = null)
+            Func<bool>? isFileViewFocused = null,
+            bool passThrough = false,
+            Func<DateTimeOffset>? clock = null)
         {
             keyboard = new FakeKeyboardBackend();
             undo = new ZetlUndoStack(100);
@@ -5735,6 +5796,7 @@ public class PortableSelfTests
                 AutoCaptureOnCopy = true,
                 QuickNoteToClipboard = quickNoteToClipboard,
                 ReplayResumeClipboard = replayResumeClipboard,
+                PassThrough = passThrough,
                 HoldDelayMs = 60
             };
             var coordinator = new ZetlShortcutCoordinator(
@@ -5747,7 +5809,8 @@ public class PortableSelfTests
                 undo,
                 () => settings,
                 log ?? (_ => { }),
-                imageUrlResolver);
+                imageUrlResolver,
+                clock);
             var router = new ZetlGestureRouter(ZetlGestureRules.Defaults, isFileViewFocused);
             coordinator.RegisterActions(router);
             return new RoutedCoordinator(coordinator, router);
@@ -5761,6 +5824,7 @@ public class PortableSelfTests
             ZetlGestureRouter router)
         {
             public ZetlGestureRouter Router => router;
+            public ZetlShortcutCoordinator Inner => coordinator;
 
             public Task OnPhysicalShortcutPassedThroughAsync(
                 ChordlEventContext context,

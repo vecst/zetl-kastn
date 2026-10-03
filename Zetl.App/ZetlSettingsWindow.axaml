@@ -41,9 +41,14 @@
               <TextBlock Grid.Row="1" Grid.Column="0"
                          Text="Auto-capture on copy"
                          VerticalAlignment="Center" />
-              <CheckBox Grid.Row="1" Grid.Column="1" x:Name="autoCaptureBox"
-                        Margin="0,8,0,0"
-                        Content="Capture plain Ctrl+C into the active bucket" />
+              <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6" Margin="0,8,0,0">
+                <CheckBox x:Name="autoCaptureBox"
+                          Content="Capture plain Ctrl+C into the active bucket" />
+                <CheckBox x:Name="passThroughBox">
+                  <TextBlock TextWrapping="Wrap"
+                             Text="Pass-through: a copy you paste straight away doesn't stay in your project. Hold Ctrl+P to flip this for now; it flips back after 10 quiet minutes." />
+                </CheckBox>
+              </StackPanel>
 
               <TextBlock Grid.Row="2" Grid.Column="0"
                          Text="Quick note to clipboard"
@@ -174,7 +179,7 @@
                                  Width="150" HorizontalAlignment="Left"
                                  Minimum="10" Maximum="1000" Increment="10" />
 
-                  <TextBlock Grid.Row="7" Grid.Column="0" Text="Pop clipboard delay (ms)" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="7" Grid.Column="0" Text="Paste settle delay (ms)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="7" Grid.Column="1" x:Name="popClipDelayMsBox"
                                  Width="150" HorizontalAlignment="Left"
                                  Minimum="10" Maximum="1000" Increment="10" />
@@ -302,8 +307,8 @@
                 <TextBlock Text="Chordl intercepts standard shortcuts and distinguishes between short taps and long holds:" TextWrapping="Wrap" />
                 <TextBlock Text="•  Tap Ctrl+C / Ctrl+X: Performs normal copy/cut actions, optionally auto-capturing to the active bucket." Margin="10,4,0,0" TextWrapping="Wrap" />
                 <TextBlock Text="•  Hold Ctrl+C / Ctrl+X: Opens the capture window to review, edit, and route the note before saving." Margin="10,0,0,0" TextWrapping="Wrap" />
-                <TextBlock Text="•  Tap Ctrl+V: Pastes the next item in Pop or Replay modes; otherwise passes through a normal paste." Margin="10,0,0,0" TextWrapping="Wrap" />
-                <TextBlock Text="•  Hold Ctrl+V / Ctrl+P / Ctrl+R: Opens Compose to gather slips, or toggles Pop and Replay modes." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Tap Ctrl+V: Pastes the next Replay item in Replay mode; otherwise a normal paste (with pass-through on, a copy pasted straight away doesn't stay)." Margin="10,0,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="•  Hold Ctrl+V / Ctrl+P / Ctrl+R: Opens Compose to gather slips, flips pass-through for now, or toggles Replay mode." Margin="10,0,0,0" TextWrapping="Wrap" />
                 <TextBlock Text="•  Hold Ctrl+B / Ctrl+T / Ctrl+Z: Opens the Board, picks templates, or undos the last Zetl action." Margin="10,0,0,0" TextWrapping="Wrap" />
                 <TextBlock Text="•  Adding Shift (e.g. Ctrl+Shift+C): Executes the same action targeting your second (Shift-lane) project." Margin="10,0,0,0" TextWrapping="Wrap" />
                 <TextBlock Text="Change what each tap and hold does on the Hold Actions page." Margin="0,6,0,0" TextWrapping="Wrap" />

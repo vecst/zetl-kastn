@@ -24,7 +24,7 @@ public class ZetlGestureRouterTests
             (ZetlGestureKind.Hold, VK_B, ZetlGestureActions.Board),
             (ZetlGestureKind.Hold, VK_C, ZetlGestureActions.CaptureCopy),
             (ZetlGestureKind.Hold, VK_J, ZetlGestureActions.ToggleProject),
-            (ZetlGestureKind.Hold, VK_P, ZetlGestureActions.TogglePop),
+            (ZetlGestureKind.Hold, VK_P, ZetlGestureActions.TogglePassThrough),
             (ZetlGestureKind.Hold, VK_R, ZetlGestureActions.ToggleReplay),
             (ZetlGestureKind.Hold, VK_T, ZetlGestureActions.TemplatePicker),
             (ZetlGestureKind.Hold, VK_V, ZetlGestureActions.Compile),
@@ -57,7 +57,7 @@ public class ZetlGestureRouterTests
         AssertEqual(1, checks, "The paste checked focus once.");
 
         fileView = false;
-        AssertEqual(ZetlGestureActions.PasteQueue, router.Resolve(ZetlGestureKind.Tap, VK_V), "A paste elsewhere reaches Replay and Pop.");
+        AssertEqual(ZetlGestureActions.PasteQueue, router.Resolve(ZetlGestureKind.Tap, VK_V), "A paste elsewhere reaches Replay and pass-through.");
         AssertEqual(2, checks, "Each paste checks focus once.");
 
         router.Resolve(ZetlGestureKind.Hold, VK_C);
@@ -75,7 +75,7 @@ public class ZetlGestureRouterTests
         AssertEqual(ZetlGestureActions.QuickNote, router.Resolve(ZetlGestureKind.Hold, VK_X), "Holds still work in Zetl's windows and Kastn.");
 
         own = ZetlOwnWindow.None;
-        AssertEqual(ZetlGestureActions.PasteQueue, router.Resolve(ZetlGestureKind.Tap, VK_V), "Other apps still get Replay and Pop.");
+        AssertEqual(ZetlGestureActions.PasteQueue, router.Resolve(ZetlGestureKind.Tap, VK_V), "Other apps still get Replay and pass-through.");
         AssertEqual(ZetlGestureActions.ObserveCopy, router.Resolve(ZetlGestureKind.Press, VK_C), "Other apps' copies can still be auto-captured.");
     }
 

@@ -10,6 +10,10 @@ internal sealed class ZetlAppSettings
     public string TutorialState { get; set; } = "";
     public int ToastDisplayMs { get; set; } = 950;
     public bool AutoCaptureOnCopy { get; set; } = true;
+    // Pass-through: a copy Zetl captured on its own, then pasted straight away,
+    // was only passing through, so it doesn't stay in the project. A held Ctrl+P
+    // flips this for a while; see ZetlShortcutCoordinator.
+    public bool PassThrough { get; set; }
     public bool QuickNoteToClipboard { get; set; }
     public bool ReplayResumeClipboard { get; set; } = true;
     public string CaptureOriginDetail { get; set; } = ZetlCaptureOriginDetail.ApplicationAndWindowTitle;

@@ -105,7 +105,6 @@ internal static class ZetlParityScenario
                             ? parentName
                             : null,
                     bucket.Settings.Kind,
-                    bucket.Settings.PopMode,
                     bucket.Settings.DefaultCompileMode,
                     bucket.Settings.DefaultTsvRowLength,
                     bucket.Slips
@@ -134,7 +133,6 @@ internal static class ZetlParityScenario
         string Name,
         string? ParentBucket,
         string Kind,
-        bool PopMode,
         string DefaultCompileMode,
         int DefaultTsvRowLength,
         IReadOnlyList<ParityNote> Notes);

@@ -61,7 +61,7 @@ exactly where a tap ends and a hold begins.
 | `Ctrl+T` | Start a new project from a template |
 | `Ctrl+J` | Switch between your Journal and your last project |
 | `Ctrl+R` | Replay: paste a saved list back one item at a time |
-| `Ctrl+P` | Pop: remove each saved item as you paste it |
+| `Ctrl+P` | Pass-through for now: a copy you paste straight away doesn't stay in your project |
 | `Ctrl+Z` | Undo Zetl's last action |
 
 Add `Shift` (`Ctrl+Shift+C`, `Ctrl+Shift+X`, …) for a second, separate
@@ -79,6 +79,12 @@ While a project is active, Zetl also saves every ordinary `Ctrl+C` into it, so
 a research session collects itself. The tray icon turns green whenever that's
 happening. When it's grey, a normal copy is just a copy, unless you've asked
 Zetl in Settings to save every copy to your Journal.
+
+Not every copy belongs to your project, like a link you copy to send a friend.
+With **pass-through** on, a copy you paste straight away doesn't stay; it's set
+aside, and `Ctrl+Z` brings it back. Turn it on in Settings, or hold `Ctrl+P` to
+flip it for a while, say for a break to chat. It flips back by itself after 10
+quiet minutes.
 
 ## Zetl and Kastn
 

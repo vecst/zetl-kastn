@@ -60,7 +60,8 @@ internal static class ZetlGestureActions
     public const string ToggleProject = "zetl.toggle-project";
     public const string Board = "zetl.board";
     public const string CaptureCopy = "zetl.capture-copy";
-    public const string TogglePop = "zetl.toggle-pop";
+    // The id keeps Pop, its old name, so saved Hold Actions still find it.
+    public const string TogglePassThrough = "zetl.toggle-pop";
     public const string ToggleReplay = "zetl.toggle-replay";
     public const string TemplatePicker = "zetl.template-picker";
     public const string QuickNote = "zetl.quick-note";
@@ -80,7 +81,7 @@ internal static class ZetlGestureActions
 
     private static readonly IReadOnlyList<Choice> TapChoices =
     [
-        new(PasteQueue, "Paste from Replay / Pop"),
+        new(PasteQueue, "Paste (Replay, pass-through)"),
         NormalKey
     ];
 
@@ -93,7 +94,7 @@ internal static class ZetlGestureActions
         new(Board, "Open the Board"),
         new(TemplatePicker, "Open templates"),
         new(ToggleProject, "Switch Journal / last project"),
-        new(TogglePop, "Toggle Pop mode"),
+        new(TogglePassThrough, "Pass-through on/off for now"),
         new(ToggleReplay, "Toggle Replay mode"),
         new(Undo, "Undo last Zetl action"),
         NormalKey
@@ -113,10 +114,10 @@ internal static class ZetlGestureRules
         new(ZetlGestureKind.Press, VK_C, ZetlGestureActions.Observe, ZetlGestureFocus.ZetlWindow),
         new(ZetlGestureKind.Press, VK_X, ZetlGestureActions.Observe),
 
-        // A paste into a file list pastes files; Replay and Pop work on text and
+        // A paste into a file list pastes files; Replay and pass-through work on text and
         // pictures, so the physical paste goes through untouched.
         new(ZetlGestureKind.Tap, VK_V, ZetlGestureActions.Native, ZetlGestureFocus.FileView),
-        // A paste inside Zetl or Kastn is editing a slip; Replay and Pop are
+        // A paste inside Zetl or Kastn is editing a slip; Replay and pass-through are
         // for other apps, and would consume a queued slip into the editor.
         new(ZetlGestureKind.Tap, VK_V, ZetlGestureActions.Native, ZetlGestureFocus.ZetlWindow),
         new(ZetlGestureKind.Tap, VK_V, ZetlGestureActions.PasteQueue),
@@ -125,7 +126,7 @@ internal static class ZetlGestureRules
         new(ZetlGestureKind.Hold, VK_B, ZetlGestureActions.Board),
         new(ZetlGestureKind.Hold, VK_C, ZetlGestureActions.CaptureCopy),
         new(ZetlGestureKind.Hold, VK_J, ZetlGestureActions.ToggleProject),
-        new(ZetlGestureKind.Hold, VK_P, ZetlGestureActions.TogglePop),
+        new(ZetlGestureKind.Hold, VK_P, ZetlGestureActions.TogglePassThrough),
         new(ZetlGestureKind.Hold, VK_R, ZetlGestureActions.ToggleReplay),
         new(ZetlGestureKind.Hold, VK_T, ZetlGestureActions.TemplatePicker),
         new(ZetlGestureKind.Hold, VK_V, ZetlGestureActions.Compile),

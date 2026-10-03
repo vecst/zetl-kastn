@@ -128,7 +128,6 @@ public sealed record ZetlBucketSettings
     public string DefaultCompileMode { get; init; } = "Formatted";
     public string DefaultStartingText { get; init; } = "";
     public int DefaultTsvRowLength { get; init; } = 5;
-    public bool PopMode { get; init; }
     public string? ReplayReviewBucketId { get; init; }
 }
 

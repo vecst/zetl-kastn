@@ -740,23 +740,22 @@ public class ZetlProjectServiceTests
         AssertEqual(ZetlResponseStatus.ValidationError, empty.Status, "A content-less plain note is still rejected.");
     }
 
-    [Fact] public void StructuralNoteIsSkippedByPop()
+    [Fact] public void StructuralNoteIsSkippedByPassThrough()
     {
         using var temp = new TempStateDirectory();
         var store = CreateStoreWithProject(temp, out var project, out var bucket);
 
-        // Activate the bucket in Pop mode, then capture a real note followed by a divider.
+        // An automatic copy followed by a divider.
         store.SetActiveProject(project.Id);
         store.SetActiveBucket(project, bucket.Id);
-        store.SetBucketPopMode(bucket, true);
-        var note = store.AddSlip(bucket, "value", "copy");
-        store.AddSlip(bucket, "", "copy", blockKind: "divider");
+        var note = store.AddSlip(bucket, "value", ZetlStateStore.AutoCopySource);
+        store.AddSlip(bucket, "", ZetlStateStore.AutoCopySource, blockKind: "divider");
 
-        // A trailing divider must not block popping the content note above it (Pop only
-        // looks at the last note, so a structural one would otherwise shadow it).
-        var popped = store.TryPopLastMatchingActiveSlip("value", shifted: false, out _, out var poppedNote);
-        AssertTrue(popped, "A trailing divider should not block Pop of the note above it.");
-        AssertEqual(note.Id, poppedNote?.Id, "Pop should remove the content note, not the divider.");
+        // A trailing divider must not shadow the copy above it: pass-through only
+        // looks at the latest copy, and a structural slip isn't one.
+        var passed = store.TryPassThroughLatestCopy("value", null, shifted: false, out _, out var passedNote, out _, out _);
+        AssertTrue(passed, "A trailing divider should not block passing the copy above it through.");
+        AssertEqual(note.Id, passedNote?.Id, "Pass-through should set aside the copy, not the divider.");
     }
 
     [Fact] public void BucketRenderKindRoundTrips()
@@ -898,7 +897,7 @@ public class ZetlProjectServiceTests
         AssertEqual(3, scratch.Settings.DefaultTsvRowLength, "The Scratch settings change should apply.");
     }
 
-    // A slip copy (Replay review, Pop recovery, temporary Replay) must carry every
+    // A slip copy (Replay review, pass-through recovery, temporary Replay) must carry every
     // authored property. Adding a ZetlSlip property fails here until the test sets
     // it, which forces a decision about whether copies carry it.
     [Fact] public void SlipCopiesCarryEveryAuthoredProperty()
@@ -973,8 +972,7 @@ public class ZetlProjectServiceTests
                     DefaultKind = "Replay",
                     DefaultCompileMode = "TSV",
                     DefaultTsvRowLength = 3,
-                    DefaultStartingText = "A\nB\nC",
-                    PopMode = true
+                    DefaultStartingText = "A\nB\nC"
                 }
             },
             project.Id));

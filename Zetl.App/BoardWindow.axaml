@@ -72,9 +72,6 @@
               Margin="0,8,0,0">
           <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" />
           <ComboBox Grid.Column="1" x:Name="bucketKindBox" />
-          <CheckBox Grid.Column="2" x:Name="popModeBox"
-                    Content="Pop mode"
-                    VerticalAlignment="Center" />
           <Button Grid.Column="3" x:Name="bucketSettingsButton"
                   Content="Settings"
                   HorizontalAlignment="Right" />

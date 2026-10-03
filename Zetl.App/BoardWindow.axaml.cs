@@ -84,13 +84,6 @@ internal partial class BoardWindow : ZetlPopupWindow
                 RefreshSelectedNote();
             }
         };
-        popModeBox.IsCheckedChanged += (_, _) =>
-        {
-            if (!refreshing && ActiveBucket is { } bucket)
-            {
-                store.SetBucketPopMode(bucket, popModeBox.IsChecked == true);
-            }
-        };
         bucketKindBox.SelectionChanged += (_, _) =>
         {
             if (!refreshing
@@ -289,8 +282,6 @@ internal partial class BoardWindow : ZetlPopupWindow
             bucketKindBox.SelectedItem = ZetlStateStore.IsReplayBucket(bucket)
                 ? "Replay"
                 : "Standard";
-            popModeBox.IsChecked = bucket.Settings.PopMode;
-            popModeBox.IsEnabled = !ZetlStateStore.IsReplayBucket(bucket);
             createNoteButton.IsEnabled = true;
 
             DisposeNoteImages();
@@ -322,8 +313,6 @@ internal partial class BoardWindow : ZetlPopupWindow
         bucketSettingsButton.IsEnabled = false;
         bucketKindBox.SelectedItem = "Standard";
         bucketKindBox.IsEnabled = false;
-        popModeBox.IsChecked = false;
-        popModeBox.IsEnabled = false;
         createNoteButton.IsEnabled = false;
         deleteNoteButton.IsEnabled = false;
         DisposeNoteImages();

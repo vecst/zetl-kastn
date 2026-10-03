@@ -33,6 +33,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly AvaloniaNotificationService notifications;
     private readonly ZetlUndoStack undoStack = new(MaxUndoActions);
     private readonly DispatcherTimer logFlushTimer;
+    // Ends pass-through flips that have gone quiet, so the tray stops showing them.
+    private readonly DispatcherTimer passThroughTimer;
     // Baseline timings for the key path and the hold path, summarized into the
     // diagnostics log (see docs/hold-routing-discussion.md, Latency).
     private readonly ZetlLatencyStats keyEventLatency = new("key event");
@@ -186,9 +188,14 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
         trayIcon = CreateTrayIcon();
         // Reflect Zetl's state in the tray icon. store.Changed covers active
-        // project, bucket kind, and pop toggles; UpdateTrayIcon no-ops when the
-        // effective state is unchanged, so this stays cheap despite firing often.
+        // project and bucket kind, PassThroughChanged a held Ctrl+P; UpdateTrayIcon
+        // no-ops when the effective state is unchanged, so this stays cheap
+        // despite firing often.
         store.Changed += (_, _) => Dispatcher.UIThread.Post(UpdateTrayIcon);
+        coordinator.PassThroughChanged += () => Dispatcher.UIThread.Post(UpdateTrayIcon);
+        passThroughTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        passThroughTimer.Tick += (_, _) => coordinator.ExpirePassThroughFlips();
+        passThroughTimer.Start();
         // Announce projects created through the project service — notably a template
         // used in Kastn, which creates and activates the project in Zetl over IPC —
         // so the user sees Zetl is now armed with it (ready to capture or replay).
@@ -266,6 +273,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         ipcServer.Dispose();
         clickAwayWatcher.Stop();
         logFlushTimer.Stop();
+        passThroughTimer.Stop();
         latencySummaryTimer.Stop();
         LogLatencySummaries();
         FlushLogNotes();
@@ -329,7 +337,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         menu.Items.Add(Item("Measure My Taps and Holds", () => _ = ShowHoldLabAsync()));
         menu.Items.Add(Item("Notification History", notifications.ShowHistory));
         menu.Items.Add(Item("Clear Notification History", notifications.ClearHistory));
-        menu.Items.Add(Item("Toggle Active Bucket Pop Mode", TogglePopMode));
+        menu.Items.Add(Item("Pass-through On/Off for Now", () => coordinator.TogglePassThrough(shifted: false)));
         menu.Items.Add(Item("Settings", () => _ = ShowSettingsAsync()));
         menu.Items.Add(new NativeMenuItemSeparator());
         // Unified tray: launch Kastn when it is not running, or focus/restore it
@@ -351,23 +359,24 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     }
 
     // Tray icon state, ordered so the most attention-worthy mode wins when the
-    // two lanes differ (Replay > Pop > Active > Idle).
+    // two lanes differ (Replay > PassThrough > Active > Idle).
     private enum TrayIconState
     {
         Idle = 0,
         Active = 1,
-        Pop = 2,
+        PassThrough = 2,
         Replay = 3
     }
 
     // White Z over a left-to-right gradient. Idle is a muted grey-periwinkle
-    // (solid). Active is solid green. Replay/Pop fade green into the status hue
-    // (purple for replay, orange for pop), so "active" reads on the left while
-    // the mode shows on the right.
+    // (solid). Active is solid green. Replay and a held Ctrl+P's pass-through
+    // fade green into the status hue (purple for replay, orange for
+    // pass-through), so "active" reads on the left while the mode shows on the
+    // right.
     private const uint TrayIdleColor = 0x7B779C;
     private const uint TrayActiveColor = 0x2FA565;
     private const uint TrayReplayColor = 0x9B4FD6;
-    private const uint TrayPopColor = 0xEE8A2D;
+    private const uint TrayPassThroughColor = 0xEE8A2D;
 
     private readonly Dictionary<TrayIconState, WindowIcon> trayIcons = [];
     private TrayIconState currentTrayState;
@@ -397,7 +406,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             return TrayIconState.Replay;
         }
 
-        return bucket.Settings.PopMode ? TrayIconState.Pop : TrayIconState.Active;
+        // Orange only for pass-through switched on for now; the setting itself
+        // is the normal state and doesn't tint the icon.
+        return coordinator.IsPassThroughFlipped(shifted) && coordinator.IsPassThroughOn(shifted)
+            ? TrayIconState.PassThrough
+            : TrayIconState.Active;
     }
 
     private void UpdateTrayIcon()
@@ -427,7 +440,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             {
                 TrayIconState.Active => CreateTrayWindowIcon(TrayActiveColor, TrayActiveColor),
                 TrayIconState.Replay => CreateTrayWindowIcon(TrayActiveColor, TrayReplayColor),
-                TrayIconState.Pop => CreateTrayWindowIcon(TrayActiveColor, TrayPopColor),
+                TrayIconState.PassThrough => CreateTrayWindowIcon(TrayActiveColor, TrayPassThroughColor),
                 _ => CreateTrayWindowIcon(TrayIdleColor, TrayIdleColor)
             };
             trayIcons[state] = icon;
@@ -444,7 +457,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             TrayIconState.Active => "Zetl — project active",
             TrayIconState.Replay => "Zetl — replay mode",
-            TrayIconState.Pop => "Zetl — pop mode",
+            TrayIconState.PassThrough => "Zetl — pass-through on for now",
             _ => ZetlIdleCopyCapture.CapturesToJournal(store.Defaults.IdleCopyCapture)
                 ? "Zetl — capturing copies to the Journal"
                 : "Zetl — not capturing copies"
@@ -1171,6 +1184,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         var settings = settingsStore.Settings;
         settings.ToastDisplayMs = window.ToastDisplayMs;
         settings.AutoCaptureOnCopy = window.AutoCaptureOnCopy;
+        settings.PassThrough = window.PassThrough;
         settings.QuickNoteToClipboard = window.QuickNoteToClipboard;
         settings.ReplayResumeClipboard = window.ReplayResumeClipboard;
         settings.CaptureOriginDetail = window.CaptureOriginDetail;
@@ -1243,21 +1257,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         ZetlWindowPlacement.FitToScreen(window);
         ZetlWindowActivation.Show(window);
         return completion.Task;
-    }
-
-    private void TogglePopMode()
-    {
-        if (store.ActiveBucket is { } bucket
-            && ZetlStateStore.IsReplayBucket(bucket))
-        {
-            notifications.Show("Replay buckets cannot use pop mode.");
-            return;
-        }
-
-        store.ToggleActiveBucketPopMode();
-        notifications.Show(store.ActiveBucket is { } active
-            ? $"{active.Name} pop mode is {(active.Settings.PopMode ? "on" : "off")}."
-            : "No active bucket yet.");
     }
 
     private void ApplySettings()

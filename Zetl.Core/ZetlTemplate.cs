@@ -87,7 +87,6 @@ internal sealed class ZetlTemplateDocument
                         DefaultCompileMode = bucket.Settings.DefaultCompileMode,
                         DefaultStartingText = bucket.Settings.DefaultStartingText,
                         DefaultTsvRowLength = bucket.Settings.DefaultTsvRowLength,
-                        PopMode = bucket.Settings.PopMode,
                         ReplayReviewBucketId = bucket.Settings.ReplayReviewBucketId
                     }
                 })

@@ -104,8 +104,8 @@ recursive shortcut handling.
   through Zetl's keyboard auto-capture path.
 - [ ] During Replay's restore delay, copy new rich content whose visible text
       matches the queued slip; verify Zetl does not overwrite the newer copy.
-- [ ] Pop removes the matching pasted slip and can be undone.
-- [ ] Replay and Pop image slips; verify image-to-image and image-to-text
+- [ ] Pass-through sets aside the latest pasted automatic copy (never a held capture) and can be undone.
+- [ ] Replay and pass-through image slips; verify image-to-image and image-to-text
       clipboard restoration plus undo.
 - [ ] After rapid tap/hold replay stress and after forced Zetl termination,
       type in a plain editor and confirm Ctrl, Shift, Caps Lock, and the

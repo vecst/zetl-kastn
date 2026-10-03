@@ -1183,7 +1183,6 @@ internal sealed class ZetlProjectService
             settings.DefaultCompileMode,
             settings.DefaultStartingText,
             settings.DefaultTsvRowLength,
-            settings.PopMode,
             settings.ReplayReviewBucketId,
             renderKind);
     }

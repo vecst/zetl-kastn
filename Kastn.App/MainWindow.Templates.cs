@@ -233,8 +233,7 @@ internal partial class MainWindow
                     DefaultKind = bucket.Settings.DefaultKind,
                     DefaultCompileMode = bucket.Settings.DefaultCompileMode,
                     DefaultStartingText = bucket.Settings.DefaultStartingText,
-                    DefaultTsvRowLength = bucket.Settings.DefaultTsvRowLength,
-                    PopMode = bucket.Settings.PopMode
+                    DefaultTsvRowLength = bucket.Settings.DefaultTsvRowLength
                 },
                 Cards = project.Slips
                     .Where(slip => slip.BucketId == bucket.Id

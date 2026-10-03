@@ -54,6 +54,7 @@ internal partial class ZetlSettingsWindow : Window
         // Zetl General Settings binding
         toastMsBox.Value = Clamp(settings.ToastDisplayMs, 200, 5000);
         autoCaptureBox.IsChecked = settings.AutoCaptureOnCopy;
+        passThroughBox.IsChecked = settings.PassThrough;
         quickNoteClipboardBox.IsChecked = settings.QuickNoteToClipboard;
         replayResumeClipboardBox.IsChecked = settings.ReplayResumeClipboard;
         captureOriginBox.ItemsSource = new[]
@@ -267,6 +268,7 @@ internal partial class ZetlSettingsWindow : Window
     // Zetl General getters
     public int ToastDisplayMs => (int)(toastMsBox.Value ?? 950);
     public bool AutoCaptureOnCopy => autoCaptureBox.IsChecked == true;
+    public bool PassThrough => passThroughBox.IsChecked == true;
     public bool QuickNoteToClipboard => quickNoteClipboardBox.IsChecked == true;
     public bool ReplayResumeClipboard => replayResumeClipboardBox.IsChecked == true;
     public string CaptureOriginDetail => captureOriginBox.SelectedIndex switch

@@ -7,7 +7,7 @@ with the [README](../README.md).
 - [Coldkeys: tap and hold](#coldkeys-tap-and-hold)
 - [Projects, buckets, and slips](#projects-buckets-and-slips)
 - [Capturing](#capturing)
-- [Replay and Pop](#replay-and-pop)
+- [Replay and pass-through](#replay-and-pass-through)
 - [Compose](#compose)
 - [Templates and creation types](#templates-and-creation-types)
 - [The Board](#the-board)
@@ -49,7 +49,7 @@ Zetl lives in the Windows notification area. Its tray menu provides:
   `Esc`, the Board, Compose, and the indicator style
 - `Measure My Taps and Holds`
 - `Notification History` and `Clear Notification History`
-- `Toggle Active Bucket Pop Mode`
+- `Pass-through On/Off for Now`
 - `Settings`
 - `Open Kastn`
 - `Quit`
@@ -73,7 +73,7 @@ for the Zetl action.
 | `Ctrl+B` | Normal `Ctrl+B` | Open the Board |
 | `Ctrl+C` | Copy; captured too while a project is active | Review and save what you copied |
 | `Ctrl+J` | Normal `Ctrl+J` | Toggle between the Journal and your last project |
-| `Ctrl+P` | Normal `Ctrl+P` | Toggle Pop mode |
+| `Ctrl+P` | Normal `Ctrl+P` | Flip pass-through for now |
 | `Ctrl+R` | Normal `Ctrl+R` | Toggle Replay mode |
 | `Ctrl+T` | Normal `Ctrl+T` | Start a project from a template |
 | `Ctrl+X` | Normal cut | Open a quick note |
@@ -91,7 +91,7 @@ hold rule with a menu of the actions it can run, including *Normal key
 behavior*. A rule for file lists (File Explorer, the desktop, Open/Save
 dialogs), or for Zetl's and Kastn's own windows, wins there over the rule for
 anywhere. Inside Zetl and Kastn, a tapped `Ctrl+V` is an ordinary paste (never
-Replay or Pop), and copies aren't auto-captured. Inside Zetl's popups (quick
+Replay or pass-through), and copies aren't auto-captured. Inside Zetl's popups (quick
 notes, captures, Compose, the Board) every hold is the normal key, so popups
 never open on top of each other. **Reset to defaults** puts
 everything back.
@@ -242,7 +242,7 @@ The levels are `Off`, `Application only`, and `Application and window title`.
 Executable paths are never stored. Capture origin is private: it isn't part of
 the slip's text, and clean exports remove it.
 
-## Replay And Pop
+## Replay And Pass-Through
 
 ### Replay mode
 
@@ -271,7 +271,7 @@ never blocks your paste. If you copy something new during Replay, your new
 copy wins and isn't overwritten when Replay ends.
 
 Pasting into a file list (File Explorer, the desktop, an Open/Save dialog)
-always pastes your files normally; Replay and Pop stay out of it.
+always pastes your files normally; Replay and pass-through stay out of it.
 
 Text slips paste with the richest formatting the target accepts: Calc's own
 formats, then HTML, then plain text. Picture slips paste as pictures.
@@ -281,16 +281,28 @@ empty, the bucket goes back to normal. Fast taps are handled one at a time per
 lane, so no slip is pasted twice, and the two lanes' queues run independently.
 A Replay queue picks up where it left off after Zetl restarts.
 
-### Pop mode
+### Pass-through
 
-Pop is for throwaway copy and paste:
+While a project is collecting your copies, not every copy belongs to it. A link
+you copy to send a friend, or a phone number you paste into a form, was only
+passing through on its way somewhere else. With pass-through on, a copy you
+paste straight away doesn't stay in your project, so Compose and Kastn only see
+what you meant to keep.
 
-1. Turn on Pop with a held `Ctrl+P`.
-2. Tap `Ctrl+V` normally.
-3. If what you pasted matches the latest slip from this session in the active
-   bucket, Zetl removes that slip.
+- It only touches copies Zetl collected on its own. A held `Ctrl+C` capture or
+  a quick note is something you chose to keep, and never passes through.
+- It only looks at your latest copy. If you paste something you copied earlier,
+  it stays.
+- Nothing is deleted. The copy moves to the project's **Passed Through** bucket,
+  and holding `Ctrl+Z` puts it back.
 
-Replay and Pop exclude each other; turning one on turns the other off.
+Pass-through is off by default; turn it on in Settings. Either way, a held
+`Ctrl+P` flips it for now: on for a break to chat while you're working, or off
+just before pasting a quote into a draft you want to keep. Hold `Ctrl+P` again
+to go back to your setting, or just keep going: after 10 minutes without a copy
+or a paste, or when you switch projects, it goes back on its own. Each lane
+flips separately, and the tray icon turns orange while pass-through is on for
+now.
 
 ## Compose
 
@@ -358,7 +370,7 @@ The Board is Zetl's quick project workspace. From it you can:
 - create, rename, activate, finish, and delete projects
 - create, nest, rename, and delete buckets
 - change the active bucket
-- set Standard, Replay, Pop, Compose, and TSV defaults
+- set Standard, Replay, Compose, and TSV defaults
 - create, edit, and delete slips
 - view picture thumbnails, previews, and captions
 - export a project
@@ -366,7 +378,7 @@ The Board is Zetl's quick project workspace. From it you can:
 
 `Scratch` and `Deleted` are protected buckets. `Scratch` is the quick-note
 fallback in projects; `Deleted` holds slips deleted in Kastn and stays out of
-capture, Compose, Replay, and Pop.
+capture, Compose, Replay, and pass-through.
 
 Board shortcuts:
 
@@ -414,7 +426,7 @@ history keeps the latest 100 Zetl actions for the session and covers:
 - copy capture
 - held-copy and quick-note saves
 - Compose saves into a bucket
-- Pop removal
+- copies set aside by pass-through
 - Replay pastes and their review copies
 
 Project and bucket management isn't part of undo yet.

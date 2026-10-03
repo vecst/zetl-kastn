@@ -110,7 +110,7 @@ internal static class ZetlLanes
 internal static class ZetlAsync
 {
     // Fire-and-forget a task while still surfacing failures: await it and log any
-    // exception under the given label, so a faulted background task (replay, pop,
+    // exception under the given label, so a faulted background task (replay, pass-through,
     // clipboard restore, paste) can't vanish without a diagnostic. This is the
     // fire-and-forget root, so it deliberately catches everything rather than
     // letting an exception reach the synchronization context unobserved.

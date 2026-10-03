@@ -87,10 +87,12 @@ internal sealed class ZetlBucketSettings
     public string DefaultCompileMode { get; set; } = "Formatted";
     public string DefaultStartingText { get; set; } = "";
     public int DefaultTsvRowLength { get; set; } = 5;
-    public bool PopMode { get; set; }
     [System.Text.Json.Serialization.JsonPropertyName("fifoReviewBucketId")]
     public string? ReplayReviewBucketId { get; set; }
-    public string? PopReviewBucketId { get; set; }
+    // Where copies that passed through this bucket were set aside. Stored under
+    // its old Pop name so existing projects keep their link.
+    [System.Text.Json.Serialization.JsonPropertyName("popReviewBucketId")]
+    public string? PassThroughReviewBucketId { get; set; }
 }
 
 internal sealed class ZetlBucket
@@ -113,8 +115,6 @@ internal sealed class ZetlBucket
     public string? LegacyDefaultStartingText { set { if (value is not null) Settings.DefaultStartingText = value; } }
     [System.Text.Json.Serialization.JsonPropertyName("defaultTsvRowLength")]
     public int? LegacyDefaultTsvRowLength { set { if (value is not null) Settings.DefaultTsvRowLength = value.Value; } }
-    [System.Text.Json.Serialization.JsonPropertyName("popMode")]
-    public bool? LegacyPopMode { set { if (value is not null) Settings.PopMode = value.Value; } }
     [System.Text.Json.Serialization.JsonPropertyName("fifoReviewBucketId")]
     public string? LegacyReplayReviewBucketId { set { if (value is not null) Settings.ReplayReviewBucketId = value; } }
 
@@ -329,7 +329,6 @@ internal sealed record ZetlBucketDefinition(
     string DefaultCompileMode,
     string DefaultStartingText,
     int DefaultTsvRowLength,
-    bool PopMode,
     string? ReplayReviewBucketId,
     string? RenderKind);
 
