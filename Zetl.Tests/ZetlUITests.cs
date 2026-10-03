@@ -27,7 +27,7 @@ public static class TestAppBuilder
     }
 }
 
-public class ZetlUITests : IDisposable
+public partial class ZetlUITests : IDisposable
 {
     private readonly string defaultDraftDirectory;
 

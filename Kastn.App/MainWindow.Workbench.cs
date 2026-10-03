@@ -38,97 +38,128 @@ internal partial class MainWindow
     private async void OnTreeVisibilityClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if (visibilityUpdating
-            || !IsOnline
-            || currentProject is null
-            || (sender as Control)?.DataContext is not KastnTreeNode node)
+        if ((sender as Control)?.DataContext is KastnTreeNode node)
+        {
+            await ToggleTreeVisibilityAsync(node);
+        }
+    }
+
+    private async Task ToggleTreeVisibilityAsync(KastnTreeNode node)
+    {
+        if (visibilityUpdating || !IsOnline || currentProject is null
+            || saving && inflightSave is not { IsCompleted: false })
         {
             return;
         }
 
-        var targetIds = node.TreeSlips()
-            .Select(slip => slip.Id)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        if (targetIds.Count == 0)
+        var context = new KastnEditorWorkflowContext(currentProject.Id, editorState);
+        var clickedSlips = node.TreeSlips().ToArray();
+        var targetIds = clickedSlips.Select(slip => slip.Id).Distinct(StringComparer.Ordinal).ToArray();
+        if (targetIds.Length == 0)
         {
             return;
         }
-
+        // Preserve the clicked intent even if a refresh arrives during the save.
+        var exclude = clickedSlips.Any(slip => !slip.ExcludedFromViews);
+        var ownsBusy = false;
         visibilityUpdating = true;
         try
         {
-            if (!await SaveEditorAsync())
+            var savedEditor = await SaveEditorAsync();
+            if (!context.IsSameSession(currentProject?.Id, editorState))
+            {
+                return;
+            }
+            if (!savedEditor)
             {
                 statusText.Text = "Save or resolve the current slip before changing visibility.";
                 return;
             }
 
-            var project = currentProject;
-            if (project is null)
+            if (!IsOnline || saving)
             {
                 return;
             }
-
-            var targets = targetIds
-                .Select(id => project.Slips.FirstOrDefault(slip => slip.Id == id))
-                .Where(slip => slip is not null)
-                .Cast<ZetlSlipSnapshot>()
-                .ToList();
-            var exclude = targets.Any(slip => !slip.ExcludedFromViews);
+            var targets = targetIds.Select(id => ProjectIndex.Slip(id))
+                .OfType<ZetlSlipSnapshot>().ToArray();
             var changed = 0;
             var failed = 0;
+            ownsBusy = true;
             saving = true;
             SetEditingEnabled();
             await using var refreshBatch = connection.DeferRefresh();
             foreach (var slip in targets.Where(slip => slip.ExcludedFromViews != exclude))
             {
-                var revision = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
-                    ? editorState.Revision
-                    : slip.Revision;
-                var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                    Guid.NewGuid().ToString("N"),
-                    ZetlCommandKind.UpdateSlip,
-                    new UpdateSlipCommand
-                    {
-                        Text = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
-                            ? editorState.DraftText.Trim()
-                            : slip.Text,
-                        ExcludedFromViews = exclude
-                    },
-                    project.Id,
-                    slip.Id,
-                    revision));
-                if (response.Status == ZetlResponseStatus.Success)
+                // Already-sent commands finish in their original project. Stop
+                // issuing further commands after navigation or editor reselection.
+                if (!IsOnline || !context.IsSameSession(currentProject?.Id, editorState))
                 {
-                    changed++;
-                    if (response.Payload?.Deserialize<ZetlSlipSnapshot>(
-                            ZetlProtocolJson.Options) is { } saved
-                        && string.Equals(saved.Id, editorState.SlipId, StringComparison.Ordinal))
-                    {
-                        AcceptEditorSaved(saved);
-                    }
+                    break;
                 }
-                else
+                if (slip.Id == editorState.SlipId && editorState.ConflictCurrent is not null)
                 {
                     failed++;
+                    continue;
+                }
+                var mutation = KastnEditorMutationAcceptance.Create(
+                    editorState, context.ProjectId, slip, ZetlCommandKind.UpdateSlip,
+                    text => new UpdateSlipCommand { Text = text, ExcludedFromViews = exclude });
+                pendingEditorMutation = mutation;
+                try
+                {
+                    var response = await ExecuteMutationAsync(mutation.Command);
+                    if (response.Status == ZetlResponseStatus.Success && mutation.TryAcceptResponse(response))
+                    {
+                        changed++;
+                        if (mutation.IsCurrentEditor)
+                        {
+                            PersistEditorAfterSave(context.ProjectId);
+                            UpdateEditorFromState();
+                        }
+                    }
+                    else
+                    {
+                        failed++;
+                        if (response.Status == ZetlResponseStatus.Conflict && mutation.ReconcileConflict(response))
+                        {
+                            ShowConflict();
+                        }
+                    }
+                }
+                finally
+                {
+                    pendingEditorMutation = null;
                 }
             }
 
+            if (!context.IsSameSession(currentProject?.Id, editorState))
+            {
+                return;
+            }
             await connection.SynchronizeAsync();
-            var action = exclude ? "hidden" : "shown";
-            statusText.Text = failed == 0
-                ? $"{changed} slip{Plural(changed)} {action}."
-                : $"{changed} slip{Plural(changed)} {action}; {failed} failed.";
+            if (context.IsSameSession(currentProject?.Id, editorState))
+            {
+                var action = exclude ? "hidden" : "shown";
+                statusText.Text = editorState.ConflictCurrent is not null
+                    ? "Resolve the slip conflict before continuing."
+                    : failed == 0 ? $"{changed} slip{Plural(changed)} {action}."
+                        : $"{changed} slip{Plural(changed)} {action}; {failed} failed.";
+            }
         }
         catch (Exception ex) when (
             ex is IOException or InvalidOperationException or OperationCanceledException)
         {
-            statusText.Text = ex.Message;
+            if (context.IsSameSession(currentProject?.Id, editorState))
+            {
+                statusText.Text = ex.Message;
+            }
         }
         finally
         {
-            saving = false;
+            if (ownsBusy)
+            {
+                saving = false;
+            }
             visibilityUpdating = false;
             SetEditingEnabled();
         }
@@ -600,21 +631,9 @@ internal partial class MainWindow
             return;
         }
 
-        var revision = isEditing ? editorState.Revision : slip.Revision;
-        var text = isEditing ? editorState.DraftText.Trim() : slip.Text;
-        object payload = buildWithText(text)!;
-        if (isEditing && payload is UpdateSlipCommand { InlineStyles: null } update
-            && editorState.InlineStylesAreDirty)
-        {
-            payload = update with
-            {
-                InlineStyles = KastnInlineStyleEditing.ForTrimmedCommand(
-                    editorState.DraftText, editorState.DraftInlineStyles)
-            };
-        }
-        var command = ZetlCommandEnvelope.Create(
-            Guid.NewGuid().ToString("N"), kind, payload, currentProject.Id, slip.Id, revision);
-        var acceptance = new KastnEditorMutationAcceptance(editorState, command, payload);
+        var acceptance = KastnEditorMutationAcceptance.Create(
+            editorState, currentProject.Id, slip, kind, buildWithText);
+        var command = acceptance.Command;
 
         saving = true;
         pendingEditorMutation = acceptance;
@@ -704,13 +723,17 @@ internal partial class MainWindow
         slipEditor.Focus();
     }
 
-    private async Task SetEditorWebLinkAsync()
+    private Task SetEditorWebLinkAsync() => SetEditorWebLinkAsync(
+        (initial, allowRemove) => KastnDialogs.EditWebLinkAsync(this, initial, allowRemove));
+
+    private async Task SetEditorWebLinkAsync(Func<string, bool, Task<KastnDialogs.LinkEditResult?>> editLink)
     {
-        if (!CanEditInlineStyle(out var slip))
+        if (currentProject is null || !CanEditInlineStyle(out var slip))
         {
             return;
         }
 
+        var context = new KastnEditorWorkflowContext(currentProject.Id, editorState);
         var text = slipEditor.Text ?? "";
         var start = Math.Clamp(Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
         var end = Math.Clamp(Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
@@ -721,10 +744,13 @@ internal partial class MainWindow
             start,
             end - start,
             ZetlInlineStyleKinds.Link);
-        var linkEdit = await KastnDialogs.EditWebLinkAsync(
-            this,
+        var linkEdit = await editLink(
             existing?.Href ?? "https://",
-            allowRemove: existing is not null);
+            existing is not null);
+        if (!CanApplyLinkEdit(context, out slip))
+        {
+            return;
+        }
         if (linkEdit is null)
         {
             slipEditor.Focus();
@@ -766,24 +792,25 @@ internal partial class MainWindow
         slipEditor.Focus();
     }
 
-    private async Task InsertSlipLinkAsync()
+    private Task InsertSlipLinkAsync() => InsertSlipLinkAsync(
+        title => KastnDialogs.PickLinkRangeActionAsync(this, "Slip Link", title),
+        (candidates, query) => KastnDialogs.PickSlipAsync(this, candidates, query));
+
+    private async Task InsertSlipLinkAsync(
+        Func<string, Task<KastnDialogs.LinkRangeAction?>> pickAction,
+        Func<IReadOnlyList<ZetlSlipSnapshot>, string, Task<ZetlSlipSnapshot?>> pickSlip)
     {
-        if (!slipEditor.IsEnabled || currentProject is null)
+        if (currentProject is null || !CanEditInlineStyle(out var slip))
         {
             return;
         }
 
+        var context = new KastnEditorWorkflowContext(currentProject.Id, editorState);
         var text = slipEditor.Text ?? "";
         var selectionStart = Math.Clamp(
             Math.Min(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
         var selectionEnd = Math.Clamp(
             Math.Max(slipEditor.SelectionStart, slipEditor.SelectionEnd), 0, text.Length);
-        if (SelectedSlip is not { } slip)
-        {
-            slipEditor.Focus();
-            return;
-        }
-
         var styles = CurrentInlineStyles(slip);
         var existing = KastnInlineStyleEditing.CoveringRangeAtSelection(
             text,
@@ -793,10 +820,12 @@ internal partial class MainWindow
             ZetlInlineStyleKinds.WikiLink);
         if (existing is not null)
         {
-            var action = await KastnDialogs.PickLinkRangeActionAsync(
-                this,
-                "Slip Link",
+            var action = await pickAction(
                 $"Change or remove the link to '{existing.CachedTitle ?? "this slip"}'?");
+            if (!CanApplyLinkEdit(context, out slip))
+            {
+                return;
+            }
             if (action is null)
             {
                 slipEditor.Focus();
@@ -816,13 +845,22 @@ internal partial class MainWindow
         var candidates = currentProject.Slips
             .Where(slip => slip.Id != editorState.SlipId && !IsSlipInDeleted(slip))
             .ToList();
-        var target = await KastnDialogs.PickSlipAsync(this, candidates, query);
+        var target = await pickSlip(candidates, query);
+        if (!CanApplyLinkEdit(context, out slip))
+        {
+            return;
+        }
         if (target is null)
         {
             slipEditor.Focus();
             return;
         }
 
+        target = ProjectIndex.Slip(target.Id);
+        if (target is null || target.Id == slip.Id || IsSlipInDeleted(target))
+        {
+            return;
+        }
         var label = selectionEnd > selectionStart ? text[selectionStart..selectionEnd] : ZetlSlipLinks.TitleFor(target);
         if (existing is not null)
         {
@@ -853,6 +891,13 @@ internal partial class MainWindow
         }
 
         slipEditor.Focus();
+    }
+
+    private bool CanApplyLinkEdit(KastnEditorWorkflowContext context, out ZetlSlipSnapshot slip)
+    {
+        slip = null!;
+        return !saving && context.IsSameDraft(currentProject?.Id, editorState)
+            && CanEditInlineStyle(out slip);
     }
 
     private bool CanEditInlineStyle(out ZetlSlipSnapshot slip)
@@ -946,6 +991,10 @@ internal partial class MainWindow
         IReadOnlyList<ZetlInlineStyleRange> styles,
         string successText)
     {
+        if (saving || slip.Id != editorState.SlipId || !CanEditInlineStyle(out var current) || current.Id != slip.Id)
+        {
+            return;
+        }
         var commandText = text.Trim();
         var commandStyles = KastnInlineStyleEditing.ForTrimmedCommand(text, styles);
         editorState.SetDraft(text);

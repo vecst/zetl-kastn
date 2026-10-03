@@ -46,6 +46,27 @@ internal sealed class KastnEditorMutationAcceptance
     public bool IsCurrentEditor => targetedEditor && editor.SelectionVersion == selectionVersion
         && editor.SlipId == Command.TargetId;
 
+    public static KastnEditorMutationAcceptance Create<TPayload>(
+        KastnEditorState editor, string projectId, ZetlSlipSnapshot slip,
+        ZetlCommandKind kind, Func<string, TPayload> buildWithText)
+    {
+        var isEditing = slip.Id == editor.SlipId;
+        var revision = isEditing ? editor.Revision : slip.Revision;
+        var text = isEditing ? editor.DraftText.Trim() : slip.Text;
+        object payload = buildWithText(text)!;
+        if (isEditing && payload is UpdateSlipCommand { InlineStyles: null } update
+            && editor.InlineStylesAreDirty)
+        {
+            payload = update with
+            {
+                InlineStyles = KastnInlineStyleEditing.ForTrimmedCommand(editor.DraftText, editor.DraftInlineStyles)
+            };
+        }
+        var command = ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"), kind, payload, projectId, slip.Id, revision);
+        return new(editor, command, payload);
+    }
+
     public bool TryAcknowledgeSnapshot(ZetlSlipSnapshot? current)
     {
         if (!IsCurrentEditor || current is null || current.Id != Command.TargetId

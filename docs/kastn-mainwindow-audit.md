@@ -47,6 +47,23 @@ extracting undo or the renderers.
   asynchronous link dialogs still need their own captured workflow context.
 - Validation after mutation acceptance: solution build with zero warnings/errors;
   568 tests passed, with the same two intentional latency-probe skips.
+- Added `KastnEditorWorkflowContext` for workflows spanning saves or dialogs.
+  Web/slip-link dialogs check the original project, editor session, text, inline
+  styles, and pending formatting intent after every prompt. They re-resolve the
+  destination slip before applying a link; removed/deleted destinations cancel
+  the edit. Unchanged drafts can survive an ordinary baseline save.
+- Visibility changes capture the clicked action and target IDs before autosave,
+  use indexed target resolution, and share editor-aware command construction and
+  acceptance with formatting/pictures. Later typing and remote conflicts survive;
+  navigation/reselection stops unsent commands, while already-sent changes remain.
+- Added headless dialog interruption tests and delayed real-IPC visibility tests,
+  including journal rebasing, project changes during the prerequisite save, and
+  a newer remote conflict. Board edit dialogs and export context remain separate
+  follow-up workflows.
+- Visibility clicks still join an autosave already started by focus loss; they
+  reject other overlapping mutations without clearing another workflow's busy
+  state. Validation: solution build with zero warnings/errors; 605 tests passed,
+  with the same two intentional latency-probe skips.
 
 ## Responsibility Map
 
