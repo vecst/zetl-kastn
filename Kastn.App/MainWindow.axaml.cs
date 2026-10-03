@@ -1245,6 +1245,15 @@ internal partial class MainWindow : Window
         refreshing = true;
         try
         {
+            if (pendingTreeSelectionSave is { } selectionSave && selectionSave.ProjectId == currentProject.Id
+                && selectionSave.Generation == editHistory.Generation && selectionSave.EditorVersion == editorState.SelectionVersion)
+            {
+                // Keep the saved editor session until the selection handler can
+                // accept its clicked destination or restore it on save failure.
+                RefreshViewer();
+                RefreshDestinationBuckets();
+                return;
+            }
             // Bind the editor from the explicit selection: a batch clears it; a
             // pending/just-created or surviving single slip loads it; otherwise (and
             // not in title mode) default to the first slip.

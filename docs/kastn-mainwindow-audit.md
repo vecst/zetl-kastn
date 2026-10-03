@@ -213,6 +213,19 @@ extracting undo or the renderers.
   the same two intentional latency-probe skips. View catalog/editor ownership is
   the next extraction target; broader window lifetime cleanup remains open.
 
+- Fixed cross-bucket navigation after autosave: an early save snapshot could mark
+  the old draft clean, then the new bucket's filter loaded its first slip before
+  save acceptance finished. That changed the editor session and caused the click
+  handler to restore the previous row despite a successful save. A scoped pending
+  selection now keeps the saved editor session until acceptance, then applies the
+  captured clicked IDs. Newer clicks, typing, and project/server changes cannot
+  be overwritten by an older completion. Save failures retain the original draft.
+- Added delayed real-IPC regressions for same/cross-bucket clicks, joined focus
+  autosaves, non-first targets, early snapshots, later selections/typing, and
+  project changes with reused IDs. Validation: solution build with zero
+  warnings/errors; 838 tests passed, with the same two intentional latency-probe
+  skips. View catalog/editor ownership remains the next extraction target.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

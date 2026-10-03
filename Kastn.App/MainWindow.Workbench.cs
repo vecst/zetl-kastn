@@ -2011,6 +2011,11 @@ internal partial class MainWindow
         UpdateInlineFormatButtons(context);
     }
 
+    // A clicked destination is provisional until autosave settles. Snapshots may
+    // acknowledge the old draft, but must not bind the editor from the new bucket.
+    private sealed record TreeSelectionSaveRequest(string? ProjectId, long Generation, long EditorVersion);
+    private TreeSelectionSaveRequest? pendingTreeSelectionSave;
+
     private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (refreshing)
@@ -2026,17 +2031,44 @@ internal partial class MainWindow
 
         var slipIds = SelectedTreeSlipIds();
         var singleSlipId = slipIds.Count == 1 ? slipIds[0] : null;
+        pendingTreeSelectionSave = null; // A later user selection supersedes an earlier wait.
 
         // Save the current edit before switching away from the edited slip. On a
         // failed save (conflict or offline) revert the selection so it stays put.
         if (editorState.SlipId is { } editingId
             && !string.Equals(editingId, singleSlipId, StringComparison.Ordinal)
-            && editorState.IsDirty
-            && !await SaveEditorAsync())
+            && editorState.IsDirty)
         {
-            refreshing = true;
-            projectTree.SelectedItem = treeProjection.Find(editingId);
-            refreshing = false;
+            var request = new TreeSelectionSaveRequest(currentProject?.Id, editHistory.Generation, editorState.SelectionVersion);
+            pendingTreeSelectionSave = request;
+            var requestedIds = projectTree.SelectedItems?.OfType<KastnTreeNode>().Select(item => item.Id).ToArray()
+                ?? [node.Id];
+            try
+            {
+                var saved = await SaveEditorAsync();
+                if (!ReferenceEquals(pendingTreeSelectionSave, request) || currentProject?.Id != request.ProjectId
+                    || request.Generation != editHistory.Generation || request.EditorVersion != editorState.SelectionVersion)
+                    return;
+                pendingTreeSelectionSave = null;
+                var wasRefreshing = refreshing;
+                refreshing = true;
+                try
+                {
+                    ApplyTreeNodeSelection(saved ? requestedIds : [editingId]);
+                }
+                finally { refreshing = wasRefreshing; }
+                if (saved) UpdateTreeSelectionUi();
+                else
+                {
+                    RefreshBucketEditor();
+                    RefreshViewer();
+                    RefreshDestinationBuckets();
+                }
+            }
+            finally
+            {
+                if (ReferenceEquals(pendingTreeSelectionSave, request)) pendingTreeSelectionSave = null;
+            }
             return;
         }
 
