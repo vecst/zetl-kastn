@@ -666,7 +666,7 @@ internal partial class MainWindow : Window
                 var acknowledged = pendingEditorSave is { } save && save.ProjectId == projectSnapshot.Id
                     && save.TryAcknowledgeSnapshot(currentSlip)
                     || pendingEditorMutation is { } mutation && mutation.Command.ProjectId == projectSnapshot.Id
-                        && mutation.TryAcknowledgeSnapshot(currentSlip);
+                        && mutation.TryAcknowledgeSnapshot(currentSlip, projectSnapshot);
                 if (!acknowledged)
                 {
                     editorState.Reconcile(currentSlip);
@@ -1126,7 +1126,7 @@ internal partial class MainWindow : Window
                 .Where(item => selected is null
                     || (item.Id != selected.Id
                         && !KastnWorkbench.IsDeletedBucket(item.Bucket)
-                        && !IsDescendant(project, item.Id!, selected.Id))))
+                        && !ProjectIndex.IsDescendant(item.Id!, selected.Id))))
             {
                 parentBuckets.Add(item);
             }

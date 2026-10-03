@@ -55,6 +55,17 @@ internal sealed class KastnProjectIndex
     public IReadOnlyList<ZetlSlipSnapshot> Slips(string bucketId) =>
         slipsByBucket.TryGetValue(bucketId, out var slips) ? slips : [];
 
+    public bool IsDescendant(string candidateId, string ancestorId)
+    {
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = Bucket(candidateId); current?.ParentBucketId is { } parentId
+            && visited.Add(current.Id); current = Bucket(parentId))
+        {
+            if (parentId == ancestorId) return true;
+        }
+        return false;
+    }
+
     public IReadOnlySet<string> DescendantBucketIds(string bucketId)
     {
         var result = new HashSet<string>(StringComparer.Ordinal);

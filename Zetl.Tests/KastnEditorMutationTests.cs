@@ -8,6 +8,36 @@ namespace ZETL.Tests;
 public class KastnEditorMutationTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReorderAcknowledgesOnlyTheCapturedPositionAndPreservesNewWriting(bool append)
+    {
+        var (editor, before) = Setup();
+        var anchor = before with { Id = "anchor" };
+        var payload = new ReorderSlipCommand { BeforeSlipId = append ? null : anchor.Id };
+        var command = ZetlCommandEnvelope.Create("reorder", ZetlCommandKind.ReorderSlip, payload,
+            "project", before.Id, before.Revision);
+        var mutation = new KastnEditorMutationAcceptance(editor, command, payload);
+        editor.ApplyTextEdit("later writing");
+        var saved = before with { Revision = 4 };
+        var wrong = new ZetlProjectSnapshot
+        {
+            Id = "project", Name = "Project", MetadataRevision = 1, ChangeSequence = 2,
+            Slips = append ? [saved, anchor] : [anchor, saved]
+        };
+        Assert.False(mutation.TryAcknowledgeSnapshot(saved));
+        Assert.False(mutation.TryAcknowledgeSnapshot(saved, wrong));
+        var correct = wrong with { Slips = append ? [anchor, saved] : [saved, anchor] };
+        Assert.False(mutation.TryAcknowledgeSnapshot(saved, correct with { Id = "other" }));
+        Assert.True(mutation.TryAcknowledgeSnapshot(saved, correct));
+        Assert.Null(editor.ConflictCurrent);
+        Assert.True(mutation.TryAcceptResponse(Success(mutation, saved)));
+        Assert.Equal("later writing", editor.DraftText);
+        Assert.Equal(4, editor.Revision);
+        Assert.True(editor.IsDirty);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

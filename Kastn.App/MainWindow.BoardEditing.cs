@@ -27,20 +27,8 @@ internal partial class MainWindow
                 || editorState.IsDirty || editorState.ConflictCurrent is not null || !IsOnline || saving)
                 return;
 
-            // IPC refreshes publish off-thread. The prerequisite save's response
-            // can reach us before its posted UI snapshot; settle that projection
-            // before showing saved content in the dialog.
-            if (slip.Id == editorState.SlipId
-                && ProjectIndex.Slip(slip.Id) is { } displayed && displayed.Revision < editorState.Revision)
-            {
-                var latest = connection.Current;
-                if (latest.Project?.Id != context.ProjectId
-                    || latest.Project.Slips.FirstOrDefault(item => item.Id == slip.Id) is not { } savedSlip
-                    || savedSlip.Revision < editorState.Revision)
-                    return;
-                ApplySnapshot(latest);
-                if (!context.IsSameSession(currentProject?.Id, editorState)) return;
-            }
+            if (!TrySettleSavedEditorSnapshot(context.ProjectId)
+                || !context.IsSameSession(currentProject?.Id, editorState)) return;
 
             // A reused card may still close over an older snapshot.
             if (ProjectIndex.Slip(slip.Id) is not { } target || IsSlipInDeleted(target))

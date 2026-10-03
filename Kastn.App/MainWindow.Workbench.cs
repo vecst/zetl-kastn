@@ -165,6 +165,19 @@ internal partial class MainWindow
         }
     }
 
+    // A save response may arrive before its posted UI projection. Settle the
+    // saved baseline before a workflow captures authoritative target snapshots.
+    private bool TrySettleSavedEditorSnapshot(string projectId)
+    {
+        if (editorState.SlipId is not { } id) return true;
+        if (ProjectIndex.Slip(id) is { } displayed && displayed.Revision >= editorState.Revision) return true;
+        var latest = connection.Current;
+        if (latest.Project?.Id != projectId || latest.Project.Slips.FirstOrDefault(slip => slip.Id == id) is not { } saved
+            || saved.Revision < editorState.Revision) return false;
+        ApplySnapshot(latest);
+        return currentProject?.Id == projectId;
+    }
+
     private Task<bool> SaveEditorAsync()
     {
         // Coalesce concurrent callers (editor focus-loss racing a slip selection)
@@ -2192,25 +2205,6 @@ internal partial class MainWindow
     private static string Plural(int count)
     {
         return count == 1 ? "" : "s";
-    }
-
-    private static bool IsDescendant(
-        ZetlProjectSnapshot project,
-        string candidateId,
-        string ancestorId)
-    {
-        var current = project.Buckets.FirstOrDefault(bucket => bucket.Id == candidateId);
-        while (current?.ParentBucketId is { } parentId)
-        {
-            if (parentId == ancestorId)
-            {
-                return true;
-            }
-
-            current = project.Buckets.FirstOrDefault(bucket => bucket.Id == parentId);
-        }
-
-        return false;
     }
 
     private static string ShortSession(string? session)

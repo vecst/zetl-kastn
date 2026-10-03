@@ -26,6 +26,8 @@ public class KastnProjectionTests
         Assert.Equal(new[] { "deleted" }, index.OrderedBuckets(deletedOnly: true).Select(bucket => bucket.Id));
         Assert.Equal(new[] { "two", "three" }, index.Slips("child").Select(slip => slip.Id));
         Assert.Equal("root > child", index.BucketPathLabel(index.Bucket("child")!));
+        Assert.True(index.IsDescendant("child", "root"));
+        Assert.False(index.IsDescendant("root", "child"));
         Assert.True(index.DescendantBucketIds("root").SetEquals(new[] { "root", "child" }));
         Assert.Same(slips[0], index.Slip("two"));
         Assert.Null(index.Bucket("missing"));
@@ -43,6 +45,7 @@ public class KastnProjectionTests
         var index = new KastnProjectIndex(Project([Bucket("a", "b"), Bucket("b", "a")], []));
         Assert.True(index.DescendantBucketIds("a").SetEquals(new[] { "a", "b" }));
         Assert.Equal("b > a", index.BucketPathLabel(index.Bucket("a")!));
+        Assert.False(index.IsDescendant("a", "missing"));
     }
 
     [Fact]

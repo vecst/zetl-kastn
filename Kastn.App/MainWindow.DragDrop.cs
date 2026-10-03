@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -47,7 +46,9 @@ internal partial class MainWindow
     // a gap between rows (where nothing resolves), the drag holds this position instead of
     // rejecting the drop — so there is no dead band between adjacent slots. It only changes
     // when the pointer moves far enough to resolve a new slot.
-    private DropPlan? stickyDropPlan;
+    private KastnDropPlan? stickyDropPlan;
+    private string? draggingProjectId;
+    private bool applyingDrop;
     // When a press lands on an item that is part of a multi-selection, the collapse to
     // that single item is deferred to pointer-release — so a drag in between keeps the
     // whole selection (and a plain click still narrows to the one item).
@@ -141,6 +142,7 @@ internal partial class MainWindow
         // A drag began, so the deferred collapse must not fire on the post-drag release.
         deferredCollapseNode = null;
         draggingNode = node;
+        draggingProjectId = currentProject?.Id;
         draggingNodes = ResolveDragSet(node);
         dragInProgress = true;
         dragPointerInsideTree = true;
@@ -160,6 +162,7 @@ internal partial class MainWindow
             dragInProgress = false;
             dragPointerInsideTree = false;
             draggingNode = null;
+            draggingProjectId = null;
             draggingNodes = [];
         }
     }
@@ -188,14 +191,8 @@ internal partial class MainWindow
             return [node];
         }
 
-        var order = currentProject is { } project
-            ? project.Slips.Select((slip, index) => (slip.Id, index))
-                .ToDictionary(entry => entry.Id, entry => entry.index, StringComparer.Ordinal)
-            : [];
-        slipNodes.Sort((a, b) =>
-            order.GetValueOrDefault(a.Id, int.MaxValue)
-                .CompareTo(order.GetValueOrDefault(b.Id, int.MaxValue)));
-        return slipNodes;
+        return currentProject is null ? [node] : ProjectIndex.SlipsInDocumentOrder(slipNodes.Select(item => item.Id))
+            .Select(slip => treeProjection.Find(slip.Id)).OfType<KastnTreeNode>().ToArray();
     }
 
     private void OnTreeDragOver(object? sender, DragEventArgs args)
@@ -224,9 +221,9 @@ internal partial class MainWindow
 
     // Show the plan's drag feedback on its marker row — a highlight to nest into, or an
     // insertion line to reorder before/after — clearing the previously marked row.
-    private void ApplyDropMarker(DropPlan? plan)
+    private void ApplyDropMarker(KastnDropPlan? plan)
     {
-        var node = plan?.MarkerNode;
+        var node = plan?.MarkerId is { } id ? treeProjection.Find(id) : null;
         var edge = plan?.MarkerEdge ?? KastnDropEdge.None;
 
         if (markerNode is not null && !ReferenceEquals(markerNode, node))
@@ -276,328 +273,60 @@ internal partial class MainWindow
         await ApplyDropAsync(plan);
     }
 
-    private enum DropAction
+    private KastnDropPlan? PlanDrop(DragEventArgs args)
     {
-        SlipMove,
-        BucketReparent,
-        BucketReorder
-    }
-
-    private readonly record struct DropPlan(
-        DropAction Action,
-        KastnTreeNode Source,
-        string? DestinationBucketId,
-        string? BeforeSlipId,
-        string? NewParentBucketId)
-    {
-        // Bucket reorder: the sibling to land immediately before (null = end of the
-        // sibling group under NewParentBucketId).
-        public string? BeforeBucketId { get; init; }
-
-        // The row that shows drag feedback. MarkerEdge None highlights it as a drop-into
-        // target; Before/After draws an insertion line at that edge instead.
-        public KastnTreeNode? MarkerNode { get; init; }
-        public KastnDropEdge MarkerEdge { get; init; }
-    }
-
-    // Resolve the dragged node + the node under the pointer into a concrete plan, or
-    // null when the drop is invalid (no-op, onto itself, into Deleted, or a cycle).
-    private DropPlan? PlanDrop(DragEventArgs args)
-    {
-        if (draggingNode is not { } source
-            || currentProject is not { } project
-            || !IsOnline
-            || !args.DataTransfer.Contains(DragNodeFormat))
-        {
-            return null;
-        }
-
-        if (source.Kind == KastnTreeNodeKind.Slip)
-        {
-            return PlanSlipDrop(args, project, source);
-        }
-
-        // Dragging a bucket.
-        if (source.Bucket is not { } moving || KastnWorkbench.IsDeletedBucket(moving))
-        {
-            return null;
-        }
-
-        // No row under the pointer. In the tree that is the empty space below the
-        // list → move to the end of the top level (what makes "drop past the last
-        // bucket" reach the bottom). On the board it is the gap between columns —
-        // hold the sticky last-resolved slot instead of silently retargeting the end.
+        if (draggingNode is not { } source || currentProject is null || !IsOnline
+            || draggingProjectId != currentProject.Id || !args.DataTransfer.Contains(DragNodeFormat)) return null;
+        var ids = (draggingNodes.Count > 0 ? draggingNodes : [source])
+            .Where(node => node.Kind == KastnTreeNodeKind.Slip).Select(node => node.Id).ToArray();
+        KastnDropPosition position;
         if (RowUnderPointer(args) is not { } row)
         {
-            return boardDragInProgress
-                ? null
-                : BucketReorderPlan(project, source, moving, newParentId: null, beforeBucketId: null,
-                    markerNode: null, markerEdge: KastnDropEdge.None);
+            // Tree empty space promotes/appends a bucket. Board gaps retain the
+            // sticky slot, whose project and targets are revalidated at execution.
+            if (boardDragInProgress) return null;
+            position = new(KastnDropTargetKind.Empty);
         }
-
-        var (targetNode, fraction, fractionX) = row;
-        var targetBucket = targetNode.Kind == KastnTreeNodeKind.Bucket
-            ? targetNode.Bucket
-            : project.Buckets.FirstOrDefault(bucket => bucket.Id == targetNode.Slip?.BucketId);
-        if (targetBucket is null || KastnWorkbench.IsDeletedBucket(targetBucket))
+        else
         {
-            return null;
-        }
-
-        // A board column drag reorders side-by-side columns: the pointer's horizontal
-        // half picks before (left) or after (right) the target column. The board never
-        // nests — a middle drop has no meaning between flattened columns, so reparenting
-        // stays a tree gesture.
-        if (boardDragInProgress)
-        {
-            var columnNode = targetNode.Kind == KastnTreeNodeKind.Bucket
-                ? targetNode
-                : treeProjection.Find(targetBucket.Id);
-            return fractionX < 0.5
-                ? BucketReorderPlan(project, source, moving,
-                    newParentId: targetBucket.ParentBucketId, beforeBucketId: targetBucket.Id,
-                    markerNode: columnNode, markerEdge: KastnDropEdge.Before)
-                : BucketReorderPlan(project, source, moving,
-                    newParentId: targetBucket.ParentBucketId,
-                    beforeBucketId: NextSiblingBucketId(project, targetBucket),
-                    markerNode: columnNode, markerEdge: KastnDropEdge.After);
-        }
-
-        // Over a bucket row: the top edge inserts before it, the bottom edge after it, and
-        // the middle nests into it (the existing reparent). A slip row only nests into its
-        // bucket.
-        if (targetNode.Kind == KastnTreeNodeKind.Bucket)
-        {
-            var edge = EdgeFromFraction(fraction, allowInto: true);
-            if (edge == KastnDropEdge.Before)
+            var (target, fraction, fractionX) = row;
+            if (boardDragInProgress && source.Kind == KastnTreeNodeKind.Bucket)
             {
-                return BucketReorderPlan(project, source, moving,
-                    newParentId: targetBucket.ParentBucketId, beforeBucketId: targetBucket.Id,
-                    markerNode: targetNode, markerEdge: KastnDropEdge.Before);
+                var bucketId = target.Kind == KastnTreeNodeKind.Bucket ? target.Id : ProjectIndex.Slip(target.Id)?.BucketId;
+                position = new(KastnDropTargetKind.Bucket, bucketId,
+                    fractionX < 0.5 ? KastnDropEdge.Before : KastnDropEdge.After);
             }
-
-            if (edge == KastnDropEdge.After)
-            {
-                return BucketReorderPlan(project, source, moving,
-                    newParentId: targetBucket.ParentBucketId,
-                    beforeBucketId: NextSiblingBucketId(project, targetBucket),
-                    markerNode: targetNode, markerEdge: KastnDropEdge.After);
-            }
+            else if (boardDragInProgress && target.Kind == KastnTreeNodeKind.Bucket
+                && source.Kind == KastnTreeNodeKind.Slip)
+                position = BoardColumnSlipPosition(args, target.Id, ids.ToHashSet(StringComparer.Ordinal));
+            else
+                position = new(target.Kind == KastnTreeNodeKind.Slip ? KastnDropTargetKind.Slip : KastnDropTargetKind.Bucket,
+                    target.Id, source.Kind == KastnTreeNodeKind.Slip && target.Kind == KastnTreeNodeKind.Bucket
+                        ? KastnDropEdge.None : EdgeFromFraction(fraction, target.Kind == KastnTreeNodeKind.Bucket));
         }
-
-        return BucketReparentPlan(project, source, moving, targetBucket, targetNode);
+        return KastnDropPlanner.Plan(ProjectIndex, source.Id, source.Kind == KastnTreeNodeKind.Slip, ids, position);
     }
 
-    // The slip half of PlanDrop, mirroring the bucket half: the row under the pointer and
-    // its vertical fraction choose the drop. A slip row inserts before (top half) or after
-    // (bottom half) that slip with an insertion line; a bucket row appends into the bucket.
-    private DropPlan? PlanSlipDrop(DragEventArgs args, ZetlProjectSnapshot project, KastnTreeNode source)
+    private KastnDropPosition BoardColumnSlipPosition(DragEventArgs args, string bucketId, HashSet<string> draggedIds)
     {
-        if (source.Slip is not { } slip
-            || IsSlipInDeleted(slip)
-            || RowUnderPointer(args) is not { } row)
-        {
-            return null;
-        }
-
-        var (targetNode, fraction, _) = row;
-        var draggedIds = (draggingNodes.Count > 0 ? draggingNodes : [source])
-            .Where(node => node.Kind == KastnTreeNodeKind.Slip)
-            .Select(node => node.Id)
-            .ToHashSet(StringComparer.Ordinal);
-
-        // Onto a bucket row → into the bucket (no slip nests inside a slip). On the
-        // board the pointer's place among the column's cards picks the exact slot, so
-        // the gaps between cards and the space below the last card mean "insert here";
-        // in the tree (and for an empty column) it appends, a no-op when the dragged
-        // set is already last there.
-        if (targetNode.Kind == KastnTreeNodeKind.Bucket)
-        {
-            if (targetNode.Bucket is not { } bucket || KastnWorkbench.IsDeletedBucket(bucket))
-            {
-                return null;
-            }
-
-            if (boardDragInProgress && BoardColumnSlipPlan(args, source, bucket, draggedIds) is { } boardPlan)
-            {
-                return boardPlan;
-            }
-
-            var bucketSlips = project.Slips.Where(item => item.BucketId == bucket.Id).ToList();
-            var isNoOp = draggedIds.Count > 0 && bucketSlips.Count >= draggedIds.Count
-                && bucketSlips.Skip(bucketSlips.Count - draggedIds.Count).All(item => draggedIds.Contains(item.Id));
-            return isNoOp
-                ? null
-                : new DropPlan(DropAction.SlipMove, source, bucket.Id, null, null) { MarkerNode = targetNode };
-        }
-
-        return PlanSlipRowDrop(source, targetNode, fraction, draggedIds);
-    }
-
-    // The precise slot for a card dropped over a board column's body: the first
-    // non-dragged card whose midpoint sits below the pointer is the insert-before
-    // anchor; past the last card inserts after it. Null for an empty column (the
-    // caller's append-into path covers it) or when the column isn't on the board.
-    private DropPlan? BoardColumnSlipPlan(
-        DragEventArgs args,
-        KastnTreeNode source,
-        ZetlBucketSnapshot bucket,
-        HashSet<string> draggedIds)
-    {
-        if (!boardColumnCardPanels.TryGetValue(bucket.Id, out var cardsPanel))
-        {
-            return null;
-        }
-
+        if (!boardColumnCardPanels.TryGetValue(bucketId, out var cardsPanel))
+            return new(KastnDropTargetKind.Bucket, bucketId);
         var y = args.GetPosition(cardsPanel).Y;
-        KastnTreeNode? anchor = null;
-        KastnTreeNode? last = null;
+        string? last = null;
         foreach (var child in cardsPanel.Children)
         {
-            if (child is not Control { DataContext: KastnTreeNode cardNode } control
-                || draggedIds.Contains(cardNode.Id))
-            {
-                continue;
-            }
-
-            last = cardNode;
-            if (anchor is null && y < control.Bounds.Y + (control.Bounds.Height / 2))
-            {
-                anchor = cardNode;
-            }
+            if (child is not Control { DataContext: KastnTreeNode node } control || draggedIds.Contains(node.Id)) continue;
+            last = node.Id;
+            if (y < control.Bounds.Y + control.Bounds.Height / 2)
+                return new(KastnDropTargetKind.BoardSlot, bucketId, KastnDropEdge.Before, node.Id, node.Id);
         }
-
-        if (anchor is not null)
-        {
-            return new DropPlan(DropAction.SlipMove, source, bucket.Id, anchor.Id, null)
-            {
-                MarkerNode = anchor,
-                MarkerEdge = KastnDropEdge.Before
-            };
-        }
-
-        if (last is not null)
-        {
-            return new DropPlan(DropAction.SlipMove, source, bucket.Id, null, null)
-            {
-                MarkerNode = last,
-                MarkerEdge = KastnDropEdge.After
-            };
-        }
-
-        return null;
+        return last is null ? new(KastnDropTargetKind.Bucket, bucketId)
+            : new(KastnDropTargetKind.BoardSlot, bucketId, KastnDropEdge.After, MarkerId: last);
     }
 
-    private DropPlan? PlanSlipRowDrop(
-        KastnTreeNode source,
-        KastnTreeNode targetNode,
-        double fraction,
-        HashSet<string> draggedIds)
-    {
-        // Onto a slip row → before (top half) or after (bottom half) that slip. Dropping
-        // onto a member of the dragged set is a no-op.
-        if (targetNode.Slip is not { } targetSlip
-            || IsSlipInDeleted(targetSlip)
-            || draggedIds.Contains(targetSlip.Id))
-        {
-            return null;
-        }
-
-        var slipEdge = EdgeFromFraction(fraction, allowInto: false);
-        var beforeSlipId = slipEdge == KastnDropEdge.Before
-            ? targetSlip.Id
-            : NextSlipInBucket(targetSlip.BucketId, targetSlip.Id);
-        return new DropPlan(DropAction.SlipMove, source, targetSlip.BucketId, beforeSlipId, null)
-        {
-            MarkerNode = targetNode,
-            MarkerEdge = slipEdge
-        };
-    }
-
-    // The fraction of a row's height, at the top and bottom, that triggers an insertion
-    // (reorder) instead of a nest, when nesting is possible.
-    private const double ReorderEdgeFraction = 0.3;
-
-    // Map the pointer's vertical position within a row to a drop edge. With nesting
-    // possible (a bucket target) the middle nests (None); otherwise the row splits in
-    // half into before/after, since a slip cannot be nested into.
-    private static KastnDropEdge EdgeFromFraction(double fraction, bool allowInto)
-    {
-        if (!allowInto)
-        {
-            return fraction < 0.5 ? KastnDropEdge.Before : KastnDropEdge.After;
-        }
-
-        if (fraction < ReorderEdgeFraction)
-        {
-            return KastnDropEdge.Before;
-        }
-
-        return fraction > 1 - ReorderEdgeFraction ? KastnDropEdge.After : KastnDropEdge.None;
-    }
-
-    private DropPlan? BucketReparentPlan(
-        ZetlProjectSnapshot project,
-        KastnTreeNode source,
-        ZetlBucketSnapshot moving,
-        ZetlBucketSnapshot targetBucket,
-        KastnTreeNode targetNode)
-    {
-        if (targetBucket.Id == moving.Id
-            || moving.ParentBucketId == targetBucket.Id
-            || IsDescendant(project, targetBucket.Id, moving.Id))
-        {
-            return null;
-        }
-
-        var markerNode = targetNode.Kind == KastnTreeNodeKind.Bucket
-            ? targetNode
-            : treeProjection.Find(targetBucket.Id);
-        return new DropPlan(DropAction.BucketReparent, source, null, null, targetBucket.Id)
-        {
-            MarkerNode = markerNode
-        };
-    }
-
-    private DropPlan? BucketReorderPlan(
-        ZetlProjectSnapshot project,
-        KastnTreeNode source,
-        ZetlBucketSnapshot moving,
-        string? newParentId,
-        string? beforeBucketId,
-        KastnTreeNode? markerNode,
-        KastnDropEdge markerEdge)
-    {
-        // Reordering before/after itself is a no-op, as is landing in the same parent
-        // immediately before the slot it already holds.
-        if (beforeBucketId == moving.Id)
-        {
-            return null;
-        }
-
-        // The new parent must not be the bucket itself or one of its descendants.
-        if (newParentId is not null
-            && (newParentId == moving.Id || IsDescendant(project, newParentId, moving.Id)))
-        {
-            return null;
-        }
-
-        return new DropPlan(DropAction.BucketReorder, source, null, null, newParentId)
-        {
-            BeforeBucketId = beforeBucketId,
-            MarkerNode = markerNode,
-            MarkerEdge = markerEdge
-        };
-    }
-
-    private static string? NextSiblingBucketId(ZetlProjectSnapshot project, ZetlBucketSnapshot bucket)
-    {
-        var siblings = project.Buckets
-            .Where(item => item.ParentBucketId == bucket.ParentBucketId)
-            .ToList();
-        var index = siblings.FindIndex(item => item.Id == bucket.Id);
-        return index >= 0 && index + 1 < siblings.Count ? siblings[index + 1].Id : null;
-    }
+    private static KastnDropEdge EdgeFromFraction(double fraction, bool allowInto) => !allowInto
+        ? fraction < 0.5 ? KastnDropEdge.Before : KastnDropEdge.After
+        : fraction < 0.3 ? KastnDropEdge.Before : fraction > 0.7 ? KastnDropEdge.After : KastnDropEdge.None;
 
     // The node under the pointer and the pointer's fraction within that row —
     // vertical (0 = top, 1 = bottom) for tree rows and cards, horizontal
@@ -625,158 +354,93 @@ internal partial class MainWindow
         return null;
     }
 
-    private async Task ApplyDropAsync(DropPlan plan)
+    private async Task ApplyDropAsync(KastnDropPlan plan)
     {
-        if (!await SaveEditorAsync())
-        {
-            statusText.Text = "Save or resolve the current slip before moving things.";
-            return;
-        }
-
+        if (applyingDrop || !IsOnline || currentProject?.Id != plan.ProjectId
+            || saving && inflightSave is not { IsCompleted: false }) return;
+        plan = plan with { SlipIds = plan.SlipIds.ToArray() };
+        var context = new KastnEditorWorkflowContext(plan.ProjectId, editorState);
+        var generation = editHistory.Generation;
+        var ownsBusy = false;
+        applyingDrop = true;
         try
         {
-            if (plan.Action == DropAction.SlipMove)
+            var saved = await SaveEditorAsync();
+            if (!context.IsSameSession(currentProject?.Id, editorState) || generation != editHistory.Generation) return;
+            if (!saved)
             {
-                await ApplySlipDropAsync(plan);
+                statusText.Text = "Save or resolve the current slip before moving things.";
+                return;
             }
-            else if (plan.Action == DropAction.BucketReorder)
+            if (!IsOnline || saving || !TrySettleSavedEditorSnapshot(plan.ProjectId)
+                || !context.IsSameSession(currentProject?.Id, editorState) || editorState.IsDirty) return;
+            if (!KastnDropPlanner.IsValid(ProjectIndex, plan))
             {
-                await ApplyBucketReorderAsync(plan);
+                statusText.Text = "The drop target changed. Try the move again.";
+                return;
             }
-            else
+            if (plan.Action == KastnDropAction.SlipMove && KastnDropPlanner.IsSlipNoOp(ProjectIndex, plan)) return;
+            var operation = new KastnMoveOperation(ProjectIndex, plan);
+            ownsBusy = true;
+            saving = true;
+            SetEditingEnabled();
+            // Deferring refresh coalesces ordinary mutation events without
+            // suppressing project navigation or explicit snapshots.
+            using var gesture = BeginGesture(plan.Action == KastnDropAction.SlipMove ? "Move slips" : "Move bucket");
+            await using var refreshBatch = connection.DeferRefresh();
+            var result = await operation.ExecuteAsync(async (command, payload) =>
             {
-                await ApplyBucketReparentAsync(plan);
-            }
-        }
-        catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or OperationCanceledException)
-        {
-            statusText.Text = ex.Message;
-        }
-    }
-
-    // The shared inner step of both move paths: send one mutation and, on success, read the
-    // record's new revision from the response so it can be threaded into the next command
-    // (a reorder after a move/reparent). Slip and bucket snapshots both carry a revision.
-    private async Task<(long Revision, ZetlResponseEnvelope Response)> SendThreadedAsync(
-        ZetlCommandEnvelope command,
-        long revision)
-    {
-        var response = await ExecuteMutationAsync(command);
-        var next = response.Status == ZetlResponseStatus.Success
-            ? response.Payload?.Deserialize<RevisionCarrier>(ZetlProtocolJson.Options)?.Revision ?? revision
-            : revision;
-        return (next, response);
-    }
-
-    private sealed record RevisionCarrier
-    {
-        public long Revision { get; init; }
-    }
-
-    private async Task ApplySlipDropAsync(DropPlan plan)
-    {
-        if (currentProject is not { } project)
-        {
-            return;
-        }
-
-        // The dragged slip ids (the multi-selection set, or just the primary), resolved to
-        // current snapshots in document order. A slip dropped before itself is skipped.
-        var draggedIds = (draggingNodes.Count > 0 ? draggingNodes : [plan.Source])
-            .Where(node => node.Kind == KastnTreeNodeKind.Slip)
-            .Select(node => node.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        var slips = project.Slips
-            .Where(slip => draggedIds.Contains(slip.Id)
-                && !string.Equals(slip.Id, plan.BeforeSlipId, StringComparison.Ordinal))
-            .ToList();
-        if (slips.Count == 0)
-        {
-            return;
-        }
-
-        pendingBucketSelectionId = plan.DestinationBucketId;
-        // Group the whole drag into one undo entry; it disposes at method end, after
-        // the final refresh, so the recorded positions read from fresh project state.
-        using var undoGesture = BeginGesture("Move slips");
-        await using var refreshBatch = connection.DeferRefresh();
-        var moved = 0;
-        string? failure = null;
-        // Send every move/reorder as a batch: the service publishes a snapshot per
-        // command, but dropping the intermediate pushes (one rebuild at the end) keeps a
-        // multi-slip move snappy instead of shuffling the slips in one at a time.
-        batching = true;
-        try
-        {
-            // Iterating in document order and reordering each "before" the target lands
-            // the set contiguously in its original order; moves to a bucket append too.
-            foreach (var slip in slips)
-            {
-                var revision = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
-                    ? editorState.Revision
-                    : slip.Revision;
-
-                if (slip.BucketId != plan.DestinationBucketId)
+                var mutation = plan.Action == KastnDropAction.SlipMove
+                    ? new KastnEditorMutationAcceptance(editorState, command, payload) : null;
+                pendingEditorMutation = mutation;
+                try
                 {
-                    var (rev, moveResponse) = await SendThreadedAsync(
-                        ZetlCommandEnvelope.Create(
-                            Guid.NewGuid().ToString("N"),
-                            ZetlCommandKind.MoveSlip,
-                            new MoveSlipCommand { DestinationBucketId = plan.DestinationBucketId! },
-                            project.Id,
-                            slip.Id,
-                            revision),
-                        revision);
-                    if (moveResponse.Status != ZetlResponseStatus.Success)
+                    var response = await ExecuteMutationAsync(command);
+                    if (context.IsSameSession(currentProject?.Id, editorState) && mutation is not null)
                     {
-                        failure = moveResponse.Error?.Message ?? $"Move failed: {moveResponse.Status}.";
-                        break;
+                        if (KastnMoveOperation.IsConfirmedResponse(plan, command, response) && mutation.TryAcceptResponse(response)
+                            && mutation.IsCurrentEditor)
+                        {
+                            PersistEditorAfterSave(plan.ProjectId);
+                            UpdateEditorFromState();
+                        }
+                        else if (mutation.ReconcileConflict(response)) ShowConflict();
                     }
-
-                    revision = rev;
+                    return response;
                 }
-
-                var isSameBucket = slip.BucketId == plan.DestinationBucketId;
-                var needsEndReorder = isSameBucket && plan.BeforeSlipId is null &&
-                                      (slips.Count > 1 || project.Slips.LastOrDefault(s => s.BucketId == plan.DestinationBucketId)?.Id != slip.Id);
-
-                if ((plan.BeforeSlipId is { } beforeId && !string.Equals(beforeId, slip.Id, StringComparison.Ordinal))
-                    || needsEndReorder)
-                {
-                    var (_, reorderResponse) = await SendThreadedAsync(
-                        ZetlCommandEnvelope.Create(
-                            Guid.NewGuid().ToString("N"),
-                            ZetlCommandKind.ReorderSlip,
-                            new ReorderSlipCommand { BeforeSlipId = plan.BeforeSlipId },
-                            project.Id,
-                            slip.Id,
-                            revision),
-                        revision);
-                    if (reorderResponse.Status != ZetlResponseStatus.Success)
-                    {
-                        failure = reorderResponse.Error?.Message
-                            ?? $"Reorder failed: {reorderResponse.Status}.";
-                        break;
-                    }
-                }
-
-                moved++;
+                finally { pendingEditorMutation = null; }
+            }, () => IsOnline && context.IsSameSession(currentProject?.Id, editorState)
+                && generation == editHistory.Generation && editorState.ConflictCurrent is null
+                && KastnDropPlanner.IsValid(ProjectIndex, plan));
+            if (!context.IsSameSession(currentProject?.Id, editorState) || generation != editHistory.Generation) return;
+            await connection.SynchronizeAsync();
+            if (!context.IsSameSession(currentProject?.Id, editorState) || generation != editHistory.Generation) return;
+            // SnapshotChanged is posted to the dispatcher. Settle the synchronized
+            // snapshot before selection and gesture disposal record final neighbours.
+            ApplySnapshot(connection.Current);
+            if (!context.IsSameSession(currentProject?.Id, editorState) || generation != editHistory.Generation) return;
+            if (result.Status == KastnMoveStatus.Completed && !editorState.IsDirty)
+            {
+                if (plan.Action == KastnDropAction.SlipMove) ReselectSlipNode(plan.SourceId);
+                else projectTree.SelectedItem = treeProjection.Find(plan.SourceId);
             }
+            statusText.Text = editorState.ConflictCurrent is not null ? "Resolve the slip conflict before continuing."
+                : result.Status != KastnMoveStatus.Completed ? result.ConfirmedCommands > 0
+                    ? $"Move partly completed. {result.Error}" : result.Error
+                : editorState.IsDirty ? "Unsaved changes."
+                : plan.Action != KastnDropAction.SlipMove ? "Bucket moved."
+                : result.CompletedItems == 1 ? "Slip moved." : $"{result.CompletedItems} slips moved.";
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException)
+        {
+            if (context.IsSameSession(currentProject?.Id, editorState)) statusText.Text = ex.Message;
         }
         finally
         {
-            batching = false;
+            if (ownsBusy) saving = false;
+            applyingDrop = false;
+            SetEditingEnabled();
         }
-
-        await connection.SynchronizeAsync();
-        // Re-drive selection through the tree (not the snapshot/pending path): the tree
-        // node is restored under the refresh guard, which never syncs the editor, so the
-        // moved slip would otherwise show stale editor content. Selecting it here runs the
-        // canonical OnTreeSelectionChanged path and syncs editor, inspector, and View.
-        ReselectSlipNode(plan.Source.Id);
-        statusText.Text = failure
-            ?? (moved == 1 ? "Slip moved." : $"{moved} slips moved.");
     }
 
     private void ReselectSlipNode(string slipId)
@@ -791,93 +455,6 @@ internal partial class MainWindow
         // already restored this node, so OnTreeSelectionChanged fires and re-syncs.
         projectTree.SelectedItem = null;
         projectTree.SelectedItem = node;
-    }
-
-    private async Task ApplyBucketReparentAsync(DropPlan plan)
-    {
-        if (currentProject is not { } project
-            || plan.Source.Bucket is not { } bucket)
-        {
-            return;
-        }
-
-        pendingBucketSelectionId = bucket.Id;
-        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-            Guid.NewGuid().ToString("N"),
-            ZetlCommandKind.UpdateBucket,
-            new UpdateBucketCommand
-            {
-                Name = bucket.Name,
-                ParentBucketId = plan.NewParentBucketId,
-                Settings = bucket.Settings
-            },
-            project.Id,
-            bucket.Id,
-            bucket.Revision));
-        if (response.Status == ZetlResponseStatus.Success)
-        {
-            await connection.SynchronizeAsync();
-        }
-
-        HandleSimpleResponse(response, "Bucket moved.");
-    }
-
-    // Reorder a bucket to a sibling position. When the target slot is under a different
-    // parent, reparent first (UpdateBucket) and thread the new revision into the
-    // ReorderBucket so the sibling move sees an up-to-date record.
-    private async Task ApplyBucketReorderAsync(DropPlan plan)
-    {
-        if (currentProject is not { } project || plan.Source.Bucket is not { } bucket)
-        {
-            return;
-        }
-
-        // The reparent + reorder pair is one drag, so it undoes as one entry.
-        using var undoGesture = BeginGesture("Reorder bucket");
-        await using var refreshBatch = connection.DeferRefresh();
-        pendingBucketSelectionId = bucket.Id;
-        var revision = bucket.Revision;
-
-        if (bucket.ParentBucketId != plan.NewParentBucketId)
-        {
-            var (rev, reparent) = await SendThreadedAsync(
-                ZetlCommandEnvelope.Create(
-                    Guid.NewGuid().ToString("N"),
-                    ZetlCommandKind.UpdateBucket,
-                    new UpdateBucketCommand
-                    {
-                        Name = bucket.Name,
-                        ParentBucketId = plan.NewParentBucketId,
-                        Settings = bucket.Settings
-                    },
-                    project.Id,
-                    bucket.Id,
-                    revision),
-                revision);
-            if (reparent.Status != ZetlResponseStatus.Success)
-            {
-                HandleSimpleResponse(reparent, "Bucket moved.");
-                return;
-            }
-
-            revision = rev;
-        }
-
-        var (_, response) = await SendThreadedAsync(
-            ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.ReorderBucket,
-                new ReorderBucketCommand { BeforeBucketId = plan.BeforeBucketId },
-                project.Id,
-                bucket.Id,
-                revision),
-            revision);
-        if (response.Status == ZetlResponseStatus.Success)
-        {
-            await connection.SynchronizeAsync();
-        }
-
-        HandleSimpleResponse(response, "Bucket moved.");
     }
 
     private bool CanDragNode(KastnTreeNode node)
@@ -961,6 +538,7 @@ internal partial class MainWindow
     private async Task RunBoardDragAsync(KastnTreeNode node, PointerEventArgs args)
     {
         draggingNode = node;
+        draggingProjectId = currentProject?.Id;
         draggingNodes = [node];
         boardDragInProgress = true;
         boardDragPointerInsideBoard = true;
@@ -978,6 +556,7 @@ internal partial class MainWindow
             ApplyDropMarker(null);
             stickyDropPlan = null;
             draggingNode = null;
+            draggingProjectId = null;
             draggingNodes = [];
             boardDragInProgress = false;
             boardDragPointerInsideBoard = false;

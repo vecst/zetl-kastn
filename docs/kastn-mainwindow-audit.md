@@ -120,6 +120,32 @@ extracting undo or the renderers.
   Validation: solution build with zero warnings/errors; 706 tests passed, with
   the same two intentional latency-probe skips. Drop planning and move execution
   are the next extraction target.
+- Extracted `KastnDropPlanner` and `KastnMoveOperation`: drop plans carry project,
+  source, dragged IDs, placement anchors, and marker IDs rather than live tree
+  nodes. Tree/board adapters retain pointer hit tests, feedback, and scrolling.
+  Indexed placement rules reject Deleted targets, invalid anchors, self/descendant
+  nesting, and malformed parent cycles. Multi-slip order is captured before
+  autosave, after-slip placement skips dragged anchors, and unchanged placements
+  avoid mutation commands. Parent choices now use indexed, cycle-safe ancestry.
+- Move execution captures fresh target revisions and bucket properties after
+  autosave, checks workflow and destination validity before unsent commands, and
+  threads only confirmed response revisions. Typed outcomes preserve partial
+  completion, conflicts, interruptions, and uncertain results. A drop remains
+  one gesture; confirmed work stays undoable when a later step fails.
+- Drop responses and matching early reorder snapshots share editor-safe
+  acceptance, preserving later typing/styles and rebasing recovery journals.
+  Refresh deferral coalesces ordinary mutation events while allowing navigation
+  snapshots through. The synchronized snapshot is applied before gesture disposal
+  to record final neighbours reliably; delayed autosave tests reproduced and
+  fixed stale positions that previously broke redo ordering. Bucket selection
+  settles immediately after synchronization.
+- Added pure planner, service-backed execution/undo, and delayed real-IPC UI
+  coverage for tree/board placements, multi-drag ordering, fresh bucket properties,
+  partial failures, malformed responses, disconnection/unknown outcomes, draft
+  preservation, captured IDs, changed anchors, reused IDs across projects, and
+  grouped undo/redo. Validation: solution build with zero warnings/errors;
+  753 tests passed, with the same two intentional latency-probe skips. Shared slip
+  content and reader/board presenters are next; window lifetime remains open.
 
 ## Responsibility Map
 

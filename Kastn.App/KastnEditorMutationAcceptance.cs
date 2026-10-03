@@ -20,6 +20,7 @@ internal sealed class KastnEditorMutationAcceptance
     private readonly UpdateSlipCommand? update;
     private readonly string? pictureHash;
     private readonly string? destinationBucketId;
+    private readonly ReorderSlipCommand? reorder;
 
     public KastnEditorMutationAcceptance(KastnEditorState editor, ZetlCommandEnvelope command, object payload)
     {
@@ -33,6 +34,7 @@ internal sealed class KastnEditorMutationAcceptance
         baselineText = editor.BaselineText;
         baselineStyles = editor.BaselineInlineStyles.Select(style => style with { }).ToArray();
         destinationBucketId = (payload as MoveSlipCommand)?.DestinationBucketId;
+        reorder = payload as ReorderSlipCommand;
         if (command.Kind == ZetlCommandKind.UpdateSlip)
         {
             update = payload as UpdateSlipCommand;
@@ -69,10 +71,10 @@ internal sealed class KastnEditorMutationAcceptance
         return new(editor, command, payload);
     }
 
-    public bool TryAcknowledgeSnapshot(ZetlSlipSnapshot? current)
+    public bool TryAcknowledgeSnapshot(ZetlSlipSnapshot? current, ZetlProjectSnapshot? project = null)
     {
         if (!IsCurrentEditor || current is null || current.Id != Command.TargetId
-            || current.Revision != Command.ExpectedTargetRevision + 1 || !MatchesMutation(current))
+            || current.Revision != Command.ExpectedTargetRevision + 1 || !MatchesMutation(current, project))
         {
             return false;
         }
@@ -130,7 +132,7 @@ internal sealed class KastnEditorMutationAcceptance
         }
     }
 
-    private bool MatchesMutation(ZetlSlipSnapshot current)
+    private bool MatchesMutation(ZetlSlipSnapshot current, ZetlProjectSnapshot? project)
     {
         if (update is { } payload)
         {
@@ -163,6 +165,9 @@ internal sealed class KastnEditorMutationAcceptance
             && (Command.Kind == ZetlCommandKind.RemoveSlipPicture && current.Picture is null
                 || Command.Kind == ZetlCommandKind.MoveSlip
                     && destinationBucketId is not null && current.BucketId == destinationBucketId
+                || Command.Kind == ZetlCommandKind.ReorderSlip && reorder is not null
+                    && project is not null && project.Id == Command.ProjectId
+                    && KastnUndoPlanner.FollowingSlipId(project, current.BucketId, current.Id) == reorder.BeforeSlipId
                 // Deleted is created lazily, so its bucket ID may not yet be
                 // present in the captured project. Check soft-delete metadata.
                 || Command.Kind == ZetlCommandKind.DeleteSlip && current.DeletedAtUtc is not null
