@@ -64,6 +64,20 @@ extracting undo or the renderers.
   reject other overlapping mutations without clearing another workflow's busy
   state. Validation: solution build with zero warnings/errors; 605 tests passed,
   with the same two intentional latency-probe skips.
+- Extracted `KastnViewExportOperation`: copy/export capture the project snapshot,
+  a cloned view, filtered slips, list preference, and PDF page/font settings before
+  awaiting any picker, asset load, clipboard write, or output stream. File options
+  and completion messages also use the captured view/project.
+- Export picture loads use the captured project and asset hash, sharing preview
+  fetches while allowing validated export results to survive a preview-cache
+  reset. Retired results do not repopulate that cache; preview/disposal guards
+  remain active. Literal text formats skip picture fetching entirely.
+- Added delayed picker, stream, and image-load tests across project/view/filter
+  changes, PDF page/font checks, and real IPC navigation while copy shares an
+  image fetch with the reader. Cancelled pickers and destination failures are
+  covered. Window lifetime and board edit workflows remain follow-up work.
+- Validation after export extraction: solution build with zero warnings/errors;
+  625 tests passed, with the same two intentional latency-probe skips.
 
 ## Responsibility Map
 
@@ -231,11 +245,11 @@ visible slips, and preferences before awaiting a picker or picture loads. Use
 the same captured inputs through rendering and writing. Clipboard/export UI
 remains a window adapter.
 
-Evidence: `CopyRenderedViewAsync` and `ExportRenderedViewAsync` read mutable
-window state at different points across awaits. Export captures the view early
-but obtains the visible set and project later. Add a test for an external
-project/snapshot change while awaiting. Do not blindly reuse cached preview
-text for HTML/PDF exports that include fetched picture contents.
+Evidence at the audit baseline: `CopyRenderedViewAsync` and
+`ExportRenderedViewAsync` read mutable window state at different points across
+awaits. This gap is now addressed by `KastnViewExportOperation` and delayed
+project/snapshot-change coverage. HTML/PDF still render with fetched picture
+contents rather than reusing cached preview text.
 
 Give window-owned subscriptions, queued snapshot application, debounce/busy
 timers, and drag timers an explicit close lifecycle. The current `Closed`

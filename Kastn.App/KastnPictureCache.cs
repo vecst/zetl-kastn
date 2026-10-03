@@ -30,7 +30,16 @@ internal sealed class KastnPictureCache : IDisposable
         this.contentBudget = contentBudget;
     }
 
-    public async Task<ZetlPictureContent?> GetContentAsync(string projectId, ZetlSlipSnapshot slip)
+    public Task<ZetlPictureContent?> GetContentAsync(string projectId, ZetlSlipSnapshot slip) =>
+        GetContentAsync(projectId, slip, allowRetiredGeneration: false);
+
+    // An export renders its captured snapshot even after navigation resets the
+    // preview cache. Share fetches, but do not put retired results back in the cache.
+    public Task<ZetlPictureContent?> GetCapturedContentAsync(string projectId, ZetlSlipSnapshot slip) =>
+        GetContentAsync(projectId, slip, allowRetiredGeneration: true);
+
+    private async Task<ZetlPictureContent?> GetContentAsync(
+        string projectId, ZetlSlipSnapshot slip, bool allowRetiredGeneration)
     {
         if (slip.Picture is null)
         {
@@ -59,7 +68,11 @@ internal sealed class KastnPictureCache : IDisposable
 
         try
         {
-            return await loading.ConfigureAwait(false);
+            var picture = await loading.ConfigureAwait(false);
+            lock (gate)
+            {
+                return disposed || generation != key.Generation && !allowRetiredGeneration ? null : picture;
+            }
         }
         finally
         {
@@ -88,7 +101,7 @@ internal sealed class KastnPictureCache : IDisposable
         {
             if (disposed || generation != key.Generation)
             {
-                return null;
+                return picture;
             }
             if (picture.Bytes.LongLength <= contentBudget && !content.ContainsKey(key.Sha))
             {

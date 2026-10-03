@@ -6,6 +6,8 @@ using ZETL.Contracts;
 
 namespace KASTN;
 
+internal sealed record KastnPdfRenderOptions(string PageFormat, int FontSize);
+
 /// <summary>
 /// Renders a project's slips to a PDF using MigraDoc (pure managed). Built from the
 /// same snapshot grouping the text views use — a read-only projection — so the PDF
@@ -19,8 +21,14 @@ internal static class KastnPdfRenderer
         IReadOnlyList<ZetlSlipSnapshot> slips,
         ZetlViewDocument view,
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures = null,
-        bool preferSlipKindOverBucketKind = false)
+        bool preferSlipKindOverBucketKind = false,
+        KastnPdfRenderOptions? options = null)
     {
+        if (options is null)
+        {
+            var settings = new ZetlAppSettingsStore().Settings;
+            options = new(settings.PdfPageFormat, settings.PdfFontSize);
+        }
         EnsureFonts();
         var imageDirectory = Path.Combine(Path.GetTempPath(), $"kastn-pdf-{Guid.NewGuid():N}");
         try
@@ -31,7 +39,8 @@ internal static class KastnPdfRenderer
                 view,
                 pictures,
                 imageDirectory,
-                preferSlipKindOverBucketKind);
+                preferSlipKindOverBucketKind,
+                options);
             var renderer = new PdfDocumentRenderer { Document = document };
             renderer.RenderDocument();
 
@@ -67,16 +76,16 @@ internal static class KastnPdfRenderer
         ZetlViewDocument view,
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures,
         string imageDirectory,
-        bool preferSlipKindOverBucketKind)
+        bool preferSlipKindOverBucketKind,
+        KastnPdfRenderOptions options)
     {
         var document = new Document();
-        var settings = new ZetlAppSettingsStore().Settings;
         var normal = document.Styles["Normal"]!;
         normal.Font.Name = KastnPdfFontResolver.FamilyName;
-        normal.Font.Size = settings.PdfFontSize;
+        normal.Font.Size = options.FontSize;
 
         var section = document.AddSection();
-        section.PageSetup.PageFormat = string.Equals(settings.PdfPageFormat, "A4", StringComparison.OrdinalIgnoreCase)
+        section.PageSetup.PageFormat = string.Equals(options.PageFormat, "A4", StringComparison.OrdinalIgnoreCase)
             ? PageFormat.A4
             : PageFormat.Letter;
 

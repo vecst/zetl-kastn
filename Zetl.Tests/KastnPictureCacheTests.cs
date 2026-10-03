@@ -8,6 +8,36 @@ namespace ZETL.Tests;
 public class KastnPictureCacheTests
 {
     [Fact]
+    public async Task ExportSharesPreviewFetchButCanFinishAfterResetWithoutRecachingOldContent()
+    {
+        var firstLoad = new TaskCompletionSource<ZetlPictureContent?>();
+        var requests = 0;
+        using var cache = new KastnPictureCache((_, _) => ++requests == 1 ? firstLoad.Task
+            : Task.FromResult<ZetlPictureContent?>(Content("a")));
+        var preview = cache.GetContentAsync("old", Slip("a"));
+        var export = cache.GetCapturedContentAsync("old", Slip("a"));
+        Assert.Equal(1, requests);
+        cache.Reset();
+        firstLoad.SetResult(Content("a"));
+        Assert.Null(await preview);
+        Assert.NotNull(await export);
+        Assert.NotNull(await cache.GetContentAsync("new", Slip("a")));
+        Assert.Equal(2, requests);
+    }
+
+    [Fact]
+    public async Task ExportStillRejectsMismatchedAssetsAndDisposedCache()
+    {
+        var load = new TaskCompletionSource<ZetlPictureContent?>();
+        using var cache = new KastnPictureCache((_, _) => load.Task);
+        var export = cache.GetCapturedContentAsync("project", Slip("a"));
+        load.SetResult(Content("other"));
+        Assert.Null(await export);
+        cache.Dispose();
+        Assert.Null(await cache.GetCapturedContentAsync("project", Slip("a")));
+    }
+
+    [Fact]
     public async Task ConcurrentRequestsShareAFetchAndThenReuseContent()
     {
         var completion = new TaskCompletionSource<ZetlPictureContent?>(TaskCreationOptions.RunContinuationsAsynchronously);

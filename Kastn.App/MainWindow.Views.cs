@@ -965,29 +965,6 @@ internal partial class MainWindow
             : null;
     }
 
-    private async Task<IReadOnlyDictionary<string, ZetlPictureContent>> LoadPictureContentsAsync(
-        IReadOnlyList<ZetlSlipSnapshot> slips)
-    {
-        var result = new Dictionary<string, ZetlPictureContent>(StringComparer.Ordinal);
-        foreach (var slip in slips.Where(slip => slip.Type == ZetlSlipType.Picture))
-        {
-            try
-            {
-                if (await GetPictureContentAsync(slip) is { } content)
-                {
-                    result[slip.Id] = content;
-                }
-            }
-            catch (Exception ex) when (
-                ex is IOException or InvalidOperationException or OperationCanceledException)
-            {
-                // Keep rendering the rest; unavailable pictures get a readable placeholder.
-            }
-        }
-
-        return result;
-    }
-
     private void ClearViewDocument()
     {
         pictureRenderGeneration++;
@@ -1069,104 +1046,71 @@ internal partial class MainWindow
     private bool IsProjectScopedView(string viewId) =>
         currentProject?.Views.Any(view => view.Id == viewId) == true;
 
-    private async Task CopyRenderedViewAsync()
+    private KastnViewExportOperation? CaptureViewExportOperation() =>
+        currentProject is null ? null : new(currentProject, CurrentViewSlips(), SelectedView, CurrentAppSettings());
+
+    private Task CopyRenderedViewAsync() => TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard
+        ? CopyRenderedViewAsync(clipboard.SetTextAsync, pictureCache.GetCapturedContentAsync)
+        : Task.CompletedTask;
+
+    private async Task CopyRenderedViewAsync(
+        Func<string, Task> setText,
+        Func<string, ZetlSlipSnapshot, Task<ZetlPictureContent?>> fetchPicture)
     {
-        if (currentProject is null
-            || lastRenderedViewText.Length == 0
-            || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+        if (lastRenderedViewText.Length == 0 || CaptureViewExportOperation() is not { } operation)
         {
             return;
         }
-
-        var visible = CurrentViewSlips();
-        var pictures = await LoadPictureContentsAsync(visible);
-        var rendered = ZetlViewRenderer.Render(
-            currentProject,
-            visible,
-            SelectedView,
-            pictures,
-            CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
-        await clipboard.SetTextAsync(rendered);
-        statusText.Text = $"Copied the {SelectedView.Name} view to the clipboard.";
-    }
-
-    private async Task ExportRenderedViewAsync()
-    {
-        if (currentProject is null)
-        {
-            return;
-        }
-
-        var view = SelectedView;
-        var isPdf = view.Kind == ZetlViewKinds.Pdf;
-        if (!isPdf && lastRenderedViewText.Length == 0)
-        {
-            return;
-        }
-
-        var extension = ViewFileExtension(view.Kind);
-        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = $"Export {view.Name}",
-            SuggestedFileName = $"{SafeFileName(currentProject.Name)}.{extension}",
-            DefaultExtension = extension
-        });
-        if (file is null)
-        {
-            return;
-        }
-
         try
         {
-            var visible = CurrentViewSlips();
-            var pictures = await LoadPictureContentsAsync(visible);
-            await using var stream = await file.OpenWriteAsync();
-            if (isPdf)
-            {
-                var pdf = KastnPdfRenderer.Render(
-                    currentProject,
-                    visible,
-                    view,
-                    pictures,
-                    CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
-                await stream.WriteAsync(pdf);
-            }
-            else
-            {
-                var rendered = ZetlViewRenderer.Render(
-                    currentProject,
-                    visible,
-                    view,
-                    pictures,
-                    CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
-                await using var writer = new StreamWriter(stream);
-                await writer.WriteAsync(rendered);
-            }
+            var pictures = await operation.LoadPicturesAsync(fetchPicture);
+            await setText(operation.RenderText(pictures));
+            statusText.Text = $"Copied the {operation.ViewName} view to the clipboard.";
         }
-        catch (Exception ex) when (
-            ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or InvalidOperationException or OperationCanceledException)
         {
-            statusText.Text = $"Could not export the view: {ex.Message}";
-            return;
+            statusText.Text = $"Could not copy the view: {ex.Message}";
         }
-
-        statusText.Text = $"Exported the {view.Name} view to {file.Name}.";
     }
 
-    private static string ViewFileExtension(string kind) => kind switch
+    private Task ExportRenderedViewAsync() => ExportRenderedViewAsync(async options =>
     {
-        ZetlViewKinds.Markdown => "md",
-        ZetlViewKinds.Html => "html",
-        ZetlViewKinds.Pdf => "pdf",
-        ZetlViewKinds.Tsv => "tsv",
-        _ => "txt"
-    };
+        var file = await StorageProvider.SaveFilePickerAsync(options);
+        return file is null ? null : new KastnViewExportDestination(file.Name, file.OpenWriteAsync);
+    }, pictureCache.GetCapturedContentAsync);
 
-    private static string SafeFileName(string name)
+    private async Task ExportRenderedViewAsync(
+        Func<FilePickerSaveOptions, Task<KastnViewExportDestination?>> pickFile,
+        Func<string, ZetlSlipSnapshot, Task<ZetlPictureContent?>> fetchPicture)
     {
-        var cleaned = string.Concat(name.Trim().Select(character =>
-            Array.IndexOf(Path.GetInvalidFileNameChars(), character) >= 0 ? '-' : character));
-        return string.IsNullOrWhiteSpace(cleaned) ? "project" : cleaned;
+        if (CaptureViewExportOperation() is not { } operation
+            || !operation.IsPdf && lastRenderedViewText.Length == 0)
+        {
+            return;
+        }
+        try
+        {
+            var file = await pickFile(new FilePickerSaveOptions
+            {
+                Title = $"Export {operation.ViewName}",
+                SuggestedFileName = operation.SuggestedFileName,
+                DefaultExtension = operation.FileExtension
+            });
+            if (file is null)
+            {
+                return;
+            }
+            var pictures = await operation.LoadPicturesAsync(fetchPicture);
+            await using var stream = await file.OpenWriteAsync();
+            await operation.WriteAsync(stream, pictures);
+            statusText.Text = $"Exported the {operation.ViewName} view to {file.Name}.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or InvalidOperationException or OperationCanceledException)
+        {
+            statusText.Text = $"Could not export the view: {ex.Message}";
+        }
     }
 
     // ---- In-window view editor (mirrors the template editor) ----
