@@ -11,6 +11,16 @@ the text, but they still share one object's state and transaction boundaries.
 The next pass should establish ownership of selection and command context before
 extracting undo or the renderers.
 
+## Cleanup Progress
+
+- Completed the first cleanup pass: removed `ReloadViews`, the two write-only
+  fields, the slip-list wrappers and unused preview/detail formatting, and the
+  inspector's unused filter argument. Made the template catalog load local and
+  corrected the settings, bitmap-ownership, and seed comments.
+- Validation: solution build with zero warnings/errors; 131 focused Kastn and
+  Avalonia UI tests passed. The responsibility map below remains the historical
+  audit baseline.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

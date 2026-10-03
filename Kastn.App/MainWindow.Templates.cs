@@ -144,7 +144,6 @@ internal partial class MainWindow
     private void OpenTemplateEditor(ZetlTemplateDocument working, bool isNew)
     {
         editingTemplate = working;
-        editingTemplateIsNew = isNew;
         templateErrorText.IsVisible = false;
 
         templateEditorUpdating = true;
@@ -465,7 +464,6 @@ internal partial class MainWindow
     private void CloseTemplateEditor()
     {
         editingTemplate = null;
-        editingTemplateIsNew = false;
         selectedTemplateBucket = null;
         templateBuckets.Clear();
         templateErrorText.IsVisible = false;
@@ -641,9 +639,8 @@ internal partial class MainWindow
         return lane;
     }
 
-    // Seed a consumable template's ordered slips into their buckets through Zetl,
-    // in listed order so a Replay bucket pastes them back in the same sequence.
-    // Capture templates have no seeds and skip this entirely.
+    // Seed template slips through Zetl in listed order, preserving Replay order.
+    // Buckets without seed text or cards need no commands.
     private async Task<bool> SeedTemplateSlipsAsync(
         ZetlTemplateDocument template,
         ZetlProjectSnapshot project)

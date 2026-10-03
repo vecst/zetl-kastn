@@ -33,7 +33,7 @@ internal partial class MainWindow
             viewRenderCache.Clear();
             ClearViewDocument();
             ClearBoard();
-            RefreshSlipInspector([]);
+            RefreshSlipInspector();
             copyViewButton.IsEnabled = false;
             exportViewButton.IsEnabled = false;
             formatFidelityNote.IsVisible = false;
@@ -41,7 +41,7 @@ internal partial class MainWindow
         }
 
         var visible = CurrentViewSlips();
-        RefreshSlipInspector(visible);
+        RefreshSlipInspector();
         viewerSummaryText.Text = visible.Count == 0
             ? "No slips match the current filters."
             : $"{visible.Count} of {currentProject.Slips.Count} slips in the current view.";
@@ -152,12 +152,11 @@ internal partial class MainWindow
         _ => $"{string.Join(", ", items.Take(items.Count - 1))}, or {items[^1]}"
     };
 
-    private void RefreshSlipInspector(IReadOnlyList<ZetlSlipSnapshot> visible)
+    private void RefreshSlipInspector()
     {
         // The inspector follows the tree selection, which can be any slip in the
         // project — including a deleted or filtered-out one the whole-project View
         // does not render. Keep it as long as the slip still exists in the project.
-        _ = visible;
         var selected = SelectedTreeNode?.Slip;
         if (selected is not null
             && currentProject?.Slips.All(slip => slip.Id != selected.Id) != false)
@@ -165,13 +164,11 @@ internal partial class MainWindow
             selected = null;
         }
 
-        inspectedSlipId = selected?.Id;
         RenderSlipInspector(selected);
     }
 
     private void InspectSlip(string slipId)
     {
-        inspectedSlipId = slipId;
         RenderSlipInspector(currentProject is null ? null : ProjectIndex.Slip(slipId));
     }
 
@@ -1032,17 +1029,13 @@ internal partial class MainWindow
         viewPickerBox.SelectedItem = target ?? loadedViews.FirstOrDefault();
     }
 
-    // The Kastn workbench preferences live in the shared Zetl settings file, edited
-    // from Zetl's one Settings window. Read fresh at each use so a change made in Zetl
-    // takes effect without restarting Kastn; these read points are all infrequent.
+    // The Kastn workbench preferences live in the shared Zetl settings file.
+    // Cache reads for hot render paths; local saves invalidate immediately via
+    // the save stamp, while external changes are picked up within a second.
     private static ZetlAppSettings? cachedAppSettings;
     private static DateTime cachedAppSettingsAt;
     private static int cachedAppSettingsStamp;
 
-    // Settings live in a JSON file rewritten by Zetl; a fresh read per call put
-    // disk IO inside per-slip render loops. A short-lived cache keeps hot paths
-    // off the disk: in-process saves invalidate it immediately (the save stamp),
-    // and external settings changes from Zetl still land within a second.
     private static ZetlAppSettings CurrentAppSettings()
     {
         var now = DateTime.UtcNow;
@@ -1472,14 +1465,6 @@ internal partial class MainWindow
         statusText.Text = $"Deleted view '{view.Name}'.";
     }
 
-    // Re-read the view catalog from disk, restoring the selection (by id when given,
-    // otherwise the first view) and re-rendering the read view.
-    private void ReloadViews(string? selectId)
-    {
-        RefreshViewCatalog(currentProject, selectId);
-        RefreshViewer();
-    }
-
     // Each board column's cards panel by bucket id, so the drag hit-test can pick
     // the precise insertion slot from the pointer's place among the cards.
     private readonly Dictionary<string, StackPanel> boardColumnCardPanels = new(StringComparer.Ordinal);
@@ -1487,7 +1472,7 @@ internal partial class MainWindow
     // Reconciled board state, keyed by bucket/slip id, so a refresh updates only
     // what changed instead of rebuilding the whole board (which flashed and reset
     // every scroll position). A card is reused while its render inputs are
-    // unchanged; its picture bitmap is card-owned and disposed with it.
+    // unchanged; decoded picture bitmaps belong to the shared picture cache.
     private sealed class BoardColumnUi
     {
         public required Grid Wrapper { get; init; }

@@ -2025,7 +2025,6 @@ internal partial class MainWindow
             pendingSlipSelectionId = null;
             RefreshBucketEditor();
             RefreshSlipView(force: true);
-            inspectedSlipId = null;
             RenderSlipInspector(null);
             editorState.Select(null);
             UpdateEditorFromState();
@@ -2232,16 +2231,6 @@ internal partial class MainWindow
         }
 
         return session.Length <= 12 ? session : session[..12];
-    }
-
-    private static string SlipPreviewText(ZetlSlipSnapshot slip)
-    {
-        var source = string.IsNullOrWhiteSpace(slip.Title) ? slip.Text : slip.Title;
-        var words = source
-            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Take(5)
-            .ToList();
-        return words.Count == 0 ? "Untitled" : string.Join(' ', words);
     }
 
     private static bool IsUntitledKastnSlip(ZetlSlipSnapshot slip)

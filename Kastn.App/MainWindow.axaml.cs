@@ -27,7 +27,6 @@ internal partial class MainWindow : Window
     // Built-ins plus user templates; corrupt/invalid user files are skipped with a
     // diagnostic written to Console.Error (Kastn's existing diagnostic channel).
     private readonly KastnTemplateCatalog templateCatalog = new(Console.Error.WriteLine);
-    private IReadOnlyList<ZetlTemplateDocument> loadedTemplates = [];
     // Built-in plus user views for the read-view renderer.
     private readonly ZetlViewStore viewStore = new(log: Console.Error.WriteLine);
     private IReadOnlyList<ZetlViewDocument> globalViews = ZetlViewDefaults.CreateAll();
@@ -66,7 +65,6 @@ internal partial class MainWindow : Window
     private static readonly string[] TemplateKindChoices = ["Standard", "Replay"];
     private static readonly string[] TemplateCompileChoices = ["Formatted", "Plain", "TSV"];
     private ZetlTemplateDocument? editingTemplate;
-    private bool editingTemplateIsNew;
     private ZetlTemplateBucketDocument? selectedTemplateBucket;
     private bool templateEditorUpdating;
     // Serialized working document at open, to detect unsaved edits on cancel.
@@ -75,7 +73,6 @@ internal partial class MainWindow : Window
     private readonly ObservableCollection<ProjectListItem> recentProjects = [];
     private readonly ObservableCollection<ProjectListItem> projects = [];
     private readonly ObservableCollection<TemplateListItem> templates = [];
-    private readonly ObservableCollection<SlipListItem> slips = [];
     private readonly ObservableCollection<FilterItem> sources = [];
     private readonly ObservableCollection<FilterItem> sessions = [];
     private readonly ObservableCollection<DateFilterItem> dates = [];
@@ -232,7 +229,6 @@ internal partial class MainWindow : Window
     private bool landingShowArchived;
     private IReadOnlyList<ZetlProjectSummary> lastProjectSummaries = [];
     private bool suppressLandingProjectSelection;
-    private string? inspectedSlipId;
     private int pictureRenderGeneration;
     // The center View is one addressable per-slip document: each slip id maps to its
     // rendered block so the tree can scroll/highlight it and a block click can select
@@ -691,7 +687,6 @@ internal partial class MainWindow : Window
                 currentProject = null;
                 projectIndex = null;
                 treeProjection.Clear();
-                slips.Clear();
                 editorState.Select(null);
                 UpdateEditorFromState();
                 RefreshViewer();
@@ -772,7 +767,7 @@ internal partial class MainWindow : Window
         var type = landingShowingConsumable
             ? ZetlTemplateTypes.Consumable
             : ZetlTemplateTypes.Capture;
-        loadedTemplates = templateCatalog.LoadAll();
+        var loadedTemplates = templateCatalog.LoadAll();
         templates.Clear();
         foreach (var template in loadedTemplates.Where(
             item => string.Equals(item.Type, type, StringComparison.Ordinal)))
@@ -1272,21 +1267,10 @@ internal partial class MainWindow : Window
         refreshing = true;
         try
         {
-            slips.Clear();
-            foreach (var slip in filtered)
-            {
-                var bucketName = ProjectIndex.Bucket(slip.BucketId)?.Name ?? "Unknown";
-                slips.Add(new SlipListItem(
-                    slip.Id,
-                    SlipPreviewText(slip),
-                    $"{bucketName} | {slip.Source} | {slip.CapturedAtUtc.LocalDateTime:g}",
-                    slip));
-            }
-
             // Bind the editor from the explicit selection: a batch clears it; a
             // pending/just-created or surviving single slip loads it; otherwise (and
             // not in title mode) default to the first slip.
-            var selected = slips.FirstOrDefault(item => item.Id == selectedId);
+            var selected = filtered.FirstOrDefault(slip => slip.Id == selectedId);
             if (pendingSlipSelectionId is null
                 && CurrentSelection() is KastnSelection.Slips { SlipIds.Count: > 1 })
             {
@@ -1298,13 +1282,13 @@ internal partial class MainWindow : Window
                 if (pendingSlipSelectionId == selected.Id)
                 {
                     pendingSlipSelectionId = null;
-                    editorState.Select(selected.Slip);
+                    editorState.Select(selected);
                     UpdateEditorFromState();
                     if (pendingSlipFocus)
                     {
                         pendingSlipFocus = false;
                         slipEditor.Focus();
-                        if (IsUntitledKastnSlip(selected.Slip))
+                        if (IsUntitledKastnSlip(selected))
                         {
                             slipEditor.SelectAll();
                         }
@@ -1317,7 +1301,7 @@ internal partial class MainWindow : Window
             }
             else if (!editorState.IsDirty && editorState.ConflictCurrent is null && TitleModeBucket() is null)
             {
-                editorState.Select(slips.FirstOrDefault()?.Slip);
+                editorState.Select(filtered.FirstOrDefault());
                 UpdateEditorFromState();
             }
 
@@ -1872,11 +1856,6 @@ internal partial class MainWindow : Window
 
         public event PropertyChangedEventHandler? PropertyChanged;
     }
-    private sealed record SlipListItem(
-        string Id,
-        string Text,
-        string Detail,
-        ZetlSlipSnapshot Slip);
     private sealed record FilterItem(string? Value, string Label);
     private sealed record TypeFilterItem(ZetlSlipType? Value, string Label);
     private sealed record DateFilterItem(KastnDateFilter Value, string Label);
