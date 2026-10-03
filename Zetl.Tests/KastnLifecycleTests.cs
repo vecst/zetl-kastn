@@ -409,6 +409,69 @@ public class KastnLifecycleTests
         });
     }
 
+    [Fact] public void ControllerDefersBatchProjectionUntilFinalSynchronization()
+    {
+        RunAsync(async () =>
+        {
+            var listRequests = 0;
+            using var fixture = new LifecycleFixture(dropResponseForTesting: command =>
+            {
+                if (command.Kind == ZetlCommandKind.ListProjects)
+                {
+                    Interlocked.Increment(ref listRequests);
+                }
+                return false;
+            });
+            await using var controller = CreateConnectedController(fixture);
+            var initial = await WaitForSnapshotAsync(controller,
+                snapshot => snapshot.ConnectionState == KastnConnectionState.Online);
+            var baseline = Volatile.Read(ref listRequests);
+            await using (controller.DeferRefresh())
+            {
+                for (var i = 0; i < 12; i++)
+                {
+                    var response = await controller.ExecuteAsync(ZetlCommandEnvelope.Create(
+                        Guid.NewGuid().ToString("N"), ZetlCommandKind.AddSlip,
+                        new AddSlipCommand { BucketId = fixture.Bucket.Id, Text = $"batch-{i}", Source = "kastn" },
+                        fixture.Project.Id));
+                    AssertEqual(ZetlResponseStatus.Success, response.Status, "Batch mutation should succeed.");
+                }
+                AssertEqual(baseline, Volatile.Read(ref listRequests), "Commands and events must defer batch projection requests.");
+                AssertEqual(initial.Project!.ChangeSequence, controller.Current.Project!.ChangeSequence,
+                    "Intermediate batch snapshots should not replace the starting projection.");
+                await controller.SynchronizeAsync();
+                AssertEqual(12, controller.Current.Project!.Slips.Count(slip => slip.Text.StartsWith("batch-")),
+                    "The final synchronization must include the entire batch.");
+            }
+            AssertTrue(Volatile.Read(ref listRequests) - baseline <= 2,
+                "A batch should need one final query, with at most a late-event follow-up.");
+        });
+    }
+
+    [Fact] public void ControllerCleanSynchronizationRepublishesWithoutQuerying()
+    {
+        RunAsync(async () =>
+        {
+            var listRequests = 0;
+            using var fixture = new LifecycleFixture(dropResponseForTesting: command =>
+            {
+                if (command.Kind == ZetlCommandKind.ListProjects)
+                {
+                    Interlocked.Increment(ref listRequests);
+                }
+                return false;
+            });
+            await using var controller = CreateConnectedController(fixture);
+            await WaitForSnapshotAsync(controller, snapshot => snapshot.ConnectionState == KastnConnectionState.Online);
+            var baseline = Volatile.Read(ref listRequests);
+            var publications = 0;
+            controller.SnapshotChanged += (_, _) => publications++;
+            await controller.SynchronizeAsync();
+            AssertEqual(baseline, Volatile.Read(ref listRequests), "A clean synchronization should not query projects again.");
+            AssertEqual(1, publications, "Selection restoration still needs the current snapshot published.");
+        });
+    }
+
     [Fact] public void ControllerRetriesUnknownMutationWithSameCommandId()
     {
         RunAsync(async () =>

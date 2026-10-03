@@ -22,7 +22,6 @@ internal partial class MainWindow : Window
 {
     private string UntitledSlipTitle => CurrentAppSettings().UntitledSlipTitle;
     private const int RecentProjectLimit = 10;
-    private const long MaximumPictureCacheBytes = 128L * 1024 * 1024;
 
     private readonly KastnConnectionController connection;
     // Built-ins plus user templates; corrupt/invalid user files are skipped with a
@@ -137,17 +136,22 @@ internal partial class MainWindow : Window
         new("#FFFFFF", "White", new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)))
     ];
     internal readonly KastnEditorState editorState = new();
-    private readonly Dictionary<string, ZetlPictureContent> pictureCache = new(StringComparer.Ordinal);
-    private readonly Queue<string> pictureCacheOrder = [];
-    private readonly Dictionary<string, Task<ZetlPictureContent?>> pictureLoads = new(StringComparer.Ordinal);
-    // Decoded picture bitmaps by content hash and decode width. Pictures are
-    // content-addressed, so an entry never goes stale; the cache clears on project
-    // switch (and window close). Owning decoded bitmaps here lets view and board
-    // rebuilds reuse them synchronously instead of re-decoding every picture on
-    // every action — the main cost behind the editor sitting disabled with the
-    // view flashing for a second per mutation.
-    private readonly Dictionary<(string Sha, int Width), Bitmap> decodedPictureCache = new();
+    private readonly KastnPictureCache pictureCache;
     private ZetlProjectSnapshot? currentProject;
+    private KastnProjectIndex? projectIndex;
+    private KastnProjectIndex ProjectIndex
+    {
+        get
+        {
+            var project = currentProject ?? throw new InvalidOperationException("No project selected.");
+            if (projectIndex is null || !ReferenceEquals(projectIndex.Project, project))
+            {
+                projectIndex = new KastnProjectIndex(project);
+            }
+            return projectIndex;
+        }
+    }
+    internal readonly KastnTreeProjection treeProjection = new();
     private bool refreshing;
     private bool editorUpdating;
     // The logical in-flight-mutation flag every handler consults. The greyed-out
@@ -230,13 +234,13 @@ internal partial class MainWindow : Window
     private bool suppressLandingProjectSelection;
     private string? inspectedSlipId;
     private int pictureRenderGeneration;
-    private long pictureCacheBytes;
     // The center View is one addressable per-slip document: each slip id maps to its
     // rendered block so the tree can scroll/highlight it and a block click can select
     // it back in the tree. The signature lets a pure selection change skip a rebuild
     // (so picture blocks don't reload) while content changes still re-render.
     private readonly Dictionary<string, Border> viewSlipBlocks = new(StringComparer.Ordinal);
-    private string lastViewSignature = "";
+    private KastnViewRenderKey? lastViewRenderKey;
+    private readonly KastnViewRenderCache viewRenderCache = new();
     private string? highlightedViewSlipId;
     // The project the center View was last built for, so an in-place rebuild
     // (e.g. hiding a slip) preserves scroll while switching projects resets it.
@@ -248,6 +252,7 @@ internal partial class MainWindow : Window
     {
         InitializeComponent();
         connection = null!;
+        pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
     }
 
@@ -256,6 +261,7 @@ internal partial class MainWindow : Window
         KastnDraftStore? draftStore = null)
     {
         this.connection = connection;
+        pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         this.draftStore = draftStore ?? new KastnDraftStore(log: Console.Error.WriteLine);
         InitializeComponent();
         Icon = KastnIcon.Create();
@@ -448,7 +454,7 @@ internal partial class MainWindow : Window
         Closed += (_, _) =>
         {
             connection.SnapshotChanged -= OnSnapshotChanged;
-            ClearDecodedPictureCache();
+            pictureCache.Dispose();
         };
         ApplySnapshot(connection.Current);
     }
@@ -604,10 +610,13 @@ internal partial class MainWindow : Window
             undoServerInstanceId = snapshot.ServerInstanceId;
         }
 
-        // Decoded pictures belong to the outgoing project.
-        if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal))
+        // Rendered controls and decoded pictures belong to this project/server.
+        if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal) || serverChanged)
         {
-            ClearDecodedPictureCache();
+            ClearViewDocument();
+            ClearBoard();
+            viewRenderCache.Clear();
+            pictureCache.Reset();
         }
 
         refreshing = true;
@@ -677,7 +686,8 @@ internal partial class MainWindow : Window
             else
             {
                 currentProject = null;
-                projectTreeRoots.Clear();
+                projectIndex = null;
+                treeProjection.Clear();
                 slips.Clear();
                 editorState.Select(null);
                 UpdateEditorFromState();
@@ -1021,106 +1031,46 @@ internal partial class MainWindow : Window
         // ItemsSource: unchanged rows keep their realized containers (a full
         // reset re-created every row — about a second per refresh on a
         // few-hundred-slip project), and selection/expansion survive naturally.
-        ReconcileTreeLevel(
-            projectTreeRoots,
-            KastnWorkbench.BuildProjectTree(project, project.Slips, deletedOnly: showingDeleted));
-        if (!ReferenceEquals(projectTree.ItemsSource, projectTreeRoots))
+        treeProjection.Update(ProjectIndex, showingDeleted, CurrentAppSettings().MaxSlipLabelLength);
+        if (!ReferenceEquals(projectTree.ItemsSource, treeProjection.Roots))
         {
-            projectTree.ItemsSource = projectTreeRoots;
+            projectTree.ItemsSource = treeProjection.Roots;
         }
 
         UpdateDeletedToggle(project);
-        var treeNodes = projectTree.ItemsSource as IEnumerable<KastnTreeNode>;
 
         // A pending override (after creating/moving a slip) wins; else restore the
         // remembered group; else fall back to the requested bucket / first slip /
         // first bucket so the editor and tree agree on open.
         IReadOnlyList<string> restoreIds;
-        if (pendingSlipSelectionId is { } pending && FindTreeNode(treeNodes, pending) is not null)
+        if (pendingSlipSelectionId is { } pending && treeProjection.Find(pending) is not null)
         {
             restoreIds = [pending];
         }
         else
         {
-            var present = rememberedIds.Where(id => FindTreeNode(treeNodes, id) is not null).ToList();
+            var present = rememberedIds.Where(id => treeProjection.Find(id) is not null).ToList();
             restoreIds = present.Count > 0
                 ? present
                 : (selectedBucketId
-                    ?? FirstSlipNode(treeNodes)?.Id
+                    ?? treeProjection.FirstSlip?.Id
                     ?? project.Buckets.FirstOrDefault()?.Id) is { } fallback
                         ? [fallback]
                         : [];
         }
 
-        ApplyTreeNodeSelection(treeNodes, restoreIds);
+        ApplyTreeNodeSelection(restoreIds);
         RefreshBucketEditor();
         RefreshDestinationBuckets();
         SetDetailPaneMode(detailShowingMetadata);
     }
 
-    // The live tree roots the TreeView stays bound to across refreshes.
-    private readonly System.Collections.ObjectModel.ObservableCollection<KastnTreeNode> projectTreeRoots = [];
-
-    // Make one level of the live tree match the freshly built projection: reuse a
-    // node with the same id (updating its display state in place and recursing
-    // into its children), insert new ones, drop stale ones, and move the rest
-    // into order with minimal collection churn.
-    private static void ReconcileTreeLevel(
-        System.Collections.ObjectModel.ObservableCollection<KastnTreeNode> current,
-        IReadOnlyList<KastnTreeNode> desired)
-    {
-        var desiredIds = new HashSet<string>(desired.Select(node => node.Id), StringComparer.Ordinal);
-        for (var i = current.Count - 1; i >= 0; i--)
-        {
-            if (!desiredIds.Contains(current[i].Id))
-            {
-                current.RemoveAt(i);
-            }
-        }
-
-        for (var i = 0; i < desired.Count; i++)
-        {
-            var want = desired[i];
-            var existingIndex = -1;
-            for (var j = i; j < current.Count; j++)
-            {
-                if (string.Equals(current[j].Id, want.Id, StringComparison.Ordinal))
-                {
-                    existingIndex = j;
-                    break;
-                }
-            }
-
-            if (existingIndex < 0)
-            {
-                current.Insert(i, want);
-                continue;
-            }
-
-            var node = current[existingIndex];
-            if (node.Kind != want.Kind)
-            {
-                current[existingIndex] = want;
-            }
-            else
-            {
-                node.UpdateFrom(want);
-                ReconcileTreeLevel(node.Children, want.Children);
-            }
-
-            if (existingIndex != i)
-            {
-                current.Move(existingIndex, i);
-            }
-        }
-    }
-
     // Re-select a set of tree nodes by id: a single node sets SelectedItem, several
     // populate SelectedItems (multi). Runs under the refreshing guard.
-    private void ApplyTreeNodeSelection(IEnumerable<KastnTreeNode>? treeNodes, IReadOnlyList<string> ids)
+    private void ApplyTreeNodeSelection(IReadOnlyList<string> ids)
     {
         var nodes = ids
-            .Select(id => FindTreeNode(treeNodes, id))
+            .Select(id => treeProjection.Find(id))
             .OfType<KastnTreeNode>()
             .ToList();
         if (nodes.Count <= 1)
@@ -1179,7 +1129,7 @@ internal partial class MainWindow : Window
         parentBuckets.Add(new KastnBucketItem(null, "No parent (top level)", null));
         if (currentProject is { } project)
         {
-            foreach (var item in KastnWorkbench.BuildBucketPickerChoices(project)
+            foreach (var item in KastnWorkbench.BuildBucketPickerChoices(ProjectIndex)
                 .Where(item => selected is null
                     || (item.Id != selected.Id
                         && !KastnWorkbench.IsDeletedBucket(item.Bucket)
@@ -1269,7 +1219,7 @@ internal partial class MainWindow : Window
             bucket.Revision));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
         else if (response.Status != ZetlResponseStatus.Conflict)
         {
@@ -1285,7 +1235,7 @@ internal partial class MainWindow : Window
         moveBuckets.Clear();
         if (currentProject is { } project)
         {
-            foreach (var item in KastnWorkbench.BuildBucketPickerChoices(project)
+            foreach (var item in KastnWorkbench.BuildBucketPickerChoices(ProjectIndex)
                 .Where(item => (selectedSlips.Count != 1 || item.Id != selectedSlip?.BucketId)
                     && !KastnWorkbench.IsDeletedBucket(item.Bucket)))
             {
@@ -1322,8 +1272,7 @@ internal partial class MainWindow : Window
             slips.Clear();
             foreach (var slip in filtered)
             {
-                var bucketName = currentProject.Buckets.FirstOrDefault(
-                    bucket => bucket.Id == slip.BucketId)?.Name ?? "Unknown";
+                var bucketName = ProjectIndex.Bucket(slip.BucketId)?.Name ?? "Unknown";
                 slips.Add(new SlipListItem(
                     slip.Id,
                     SlipPreviewText(slip),

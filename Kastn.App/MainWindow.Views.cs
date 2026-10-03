@@ -22,6 +22,7 @@ namespace KASTN;
 internal partial class MainWindow
 {
     private bool lastBoardModeActive;
+    private bool lastViewerDeletedOnly;
 
     private void RefreshViewer()
     {
@@ -29,8 +30,9 @@ internal partial class MainWindow
         {
             viewerSummaryText.Text = "No project selected.";
             lastRenderedViewText = "";
-            lastViewSignature = "";
+            viewRenderCache.Clear();
             ClearViewDocument();
+            ClearBoard();
             RefreshSlipInspector([]);
             copyViewButton.IsEnabled = false;
             exportViewButton.IsEnabled = false;
@@ -48,8 +50,11 @@ internal partial class MainWindow
         // governs only the Copy/Export artifact. Rebuild only when the rendered content
         // could have changed (a project mutation, the filters, or the chosen view) — a
         // pure selection change just re-highlights, so picture blocks never reload.
-        var signature = ViewSignature(visible);
-        var rebuilt = signature != lastViewSignature || viewSlipBlocks.Count == 0 || boardModeActive != lastBoardModeActive;
+        var view = SelectedView;
+        var settings = CurrentAppSettings();
+        var inputs = KastnViewRenderKey.Create(currentProject, visible, view, settings);
+        var rebuilt = inputs != lastViewRenderKey || boardModeActive != lastBoardModeActive
+            || showingDeleted != lastViewerDeletedOnly;
         var sameProject = string.Equals(lastViewerProjectId, currentProject.Id, StringComparison.Ordinal);
         lastViewerProjectId = currentProject.Id;
         var savedOffset = viewerDocumentScroll.Offset;
@@ -63,8 +68,9 @@ internal partial class MainWindow
             {
                 BuildViewDocument(visible);
             }
-            lastViewSignature = signature;
+            lastViewRenderKey = inputs;
             lastBoardModeActive = boardModeActive;
+            lastViewerDeletedOnly = showingDeleted;
         }
 
         // A rebuild resets the document scroll to the top. For an in-place change to
@@ -77,7 +83,7 @@ internal partial class MainWindow
             RestoreViewScroll(savedOffset);
         }
 
-        if (SelectedView.Kind == ZetlViewKinds.Pdf)
+        if (view.Kind == ZetlViewKinds.Pdf)
         {
             // PDF is binary — there is no text to copy; Export writes the .pdf.
             lastRenderedViewText = "";
@@ -86,13 +92,13 @@ internal partial class MainWindow
         }
         else
         {
-            lastRenderedViewText = visible.Count == 0
+            lastRenderedViewText = viewRenderCache.GetText(inputs, () => visible.Count == 0
                 ? ""
                 : ZetlViewRenderer.Render(
                     currentProject,
                     visible,
-                    SelectedView,
-                    preferSlipKindOverBucketKind: CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
+                    view,
+                    preferSlipKindOverBucketKind: settings.KastnPreferSlipKindOverBucketKind));
             var hasOutput = lastRenderedViewText.Length > 0;
             copyViewButton.IsEnabled = hasOutput;
             exportViewButton.IsEnabled = hasOutput;
@@ -146,14 +152,6 @@ internal partial class MainWindow
         _ => $"{string.Join(", ", items.Take(items.Count - 1))}, or {items[^1]}"
     };
 
-    private string ViewSignature(IReadOnlyList<ZetlSlipSnapshot> visible)
-    {
-        // Bumps on any durable mutation (ChangeSequence), filter change (the id set),
-        // or chosen view — the cases where the rendered document actually differs.
-        return $"{SelectedView.Id}|{currentProject?.ChangeSequence}|"
-            + string.Join(',', visible.Select(slip => slip.Id));
-    }
-
     private void RefreshSlipInspector(IReadOnlyList<ZetlSlipSnapshot> visible)
     {
         // The inspector follows the tree selection, which can be any slip in the
@@ -174,7 +172,7 @@ internal partial class MainWindow
     private void InspectSlip(string slipId)
     {
         inspectedSlipId = slipId;
-        RenderSlipInspector(currentProject?.Slips.FirstOrDefault(slip => slip.Id == slipId));
+        RenderSlipInspector(currentProject is null ? null : ProjectIndex.Slip(slipId));
     }
 
     private string lastInspectorSignature = "";
@@ -204,7 +202,7 @@ internal partial class MainWindow
             return;
         }
 
-        foreach (var section in KastnSlipInspector.Build(currentProject, slip))
+        foreach (var section in KastnSlipInspector.Build(ProjectIndex, slip))
         {
             slipInspectorFieldsPanel.Children.Add(new TextBlock
             {
@@ -226,7 +224,7 @@ internal partial class MainWindow
                     };
                     navigateButton.Click += (_, _) =>
                     {
-                        var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, targetSlipId);
+                        var node = treeProjection.Find(targetSlipId);
                         if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
                         {
                             projectTree.SelectedItem = node;
@@ -563,7 +561,7 @@ internal partial class MainWindow
             return;
         }
 
-        var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, slipId);
+        var node = treeProjection.Find(slipId);
         if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
         {
             projectTree.SelectedItem = node;
@@ -883,7 +881,7 @@ internal partial class MainWindow
                         linkBlock.PointerPressed += (s, e) =>
                         {
                             e.Handled = true;
-                            var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, targetId);
+                            var node = treeProjection.Find(targetId);
                             if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
                             {
                                 projectTree.SelectedItem = node;
@@ -925,7 +923,7 @@ internal partial class MainWindow
 
             // The cache owns the bitmap, so a stale load neither disposes nor
             // assigns — the next rebuild picks the decoded bitmap up synchronously.
-            var bitmap = DecodeAndCachePicture(content, slip.Picture!.Sha256, 1100);
+            var bitmap = pictureCache.Decode(content, 1100);
             if (generation != pictureRenderGeneration)
             {
                 return;
@@ -951,39 +949,12 @@ internal partial class MainWindow
         ex is IOException or InvalidOperationException or OperationCanceledException
             or ArgumentException or NotSupportedException;
 
-    private async Task<ZetlPictureContent?> GetPictureContentAsync(ZetlSlipSnapshot slip)
-    {
-        if (currentProject is null || slip.Picture is null)
-        {
-            return null;
-        }
+    private Task<ZetlPictureContent?> GetPictureContentAsync(ZetlSlipSnapshot slip) =>
+        currentProject is null
+            ? Task.FromResult<ZetlPictureContent?>(null)
+            : pictureCache.GetContentAsync(currentProject.Id, slip);
 
-        var cacheKey = slip.Picture.Sha256;
-        if (pictureCache.TryGetValue(cacheKey, out var cached))
-        {
-            return cached;
-        }
-
-        if (!pictureLoads.TryGetValue(cacheKey, out var loading))
-        {
-            loading = FetchPictureContentAsync(currentProject.Id, slip, cacheKey);
-            pictureLoads[cacheKey] = loading;
-        }
-
-        try
-        {
-            return await loading;
-        }
-        finally
-        {
-            pictureLoads.Remove(cacheKey);
-        }
-    }
-
-    private async Task<ZetlPictureContent?> FetchPictureContentAsync(
-        string projectId,
-        ZetlSlipSnapshot slip,
-        string cacheKey)
+    private async Task<ZetlPictureContent?> FetchPictureContentAsync(string projectId, ZetlSlipSnapshot slip)
     {
         var response = await connection.QueryAsync(new ZetlCommandEnvelope
         {
@@ -992,41 +963,9 @@ internal partial class MainWindow
             ProjectId = projectId,
             TargetId = slip.Id
         });
-        var content = response.Status == ZetlResponseStatus.Success
+        return response.Status == ZetlResponseStatus.Success
             ? response.Payload?.Deserialize<ZetlPictureContent>(ZetlProtocolJson.Options)
             : null;
-        if (content is null
-            || content.Bytes.Length == 0
-            || !string.Equals(content.Sha256, cacheKey, StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        CachePicture(cacheKey, content);
-        return content;
-    }
-
-    private void CachePicture(string cacheKey, ZetlPictureContent content)
-    {
-        if (content.Bytes.LongLength > MaximumPictureCacheBytes)
-        {
-            return;
-        }
-
-        while (pictureCacheBytes + content.Bytes.LongLength > MaximumPictureCacheBytes
-            && pictureCacheOrder.TryDequeue(out var expired))
-        {
-            if (pictureCache.Remove(expired, out var removed))
-            {
-                pictureCacheBytes -= removed.Bytes.LongLength;
-            }
-        }
-
-        if (pictureCache.TryAdd(cacheKey, content))
-        {
-            pictureCacheOrder.Enqueue(cacheKey);
-            pictureCacheBytes += content.Bytes.LongLength;
-        }
     }
 
     private async Task<IReadOnlyDictionary<string, ZetlPictureContent>> LoadPictureContentsAsync(
@@ -1055,6 +994,7 @@ internal partial class MainWindow
     private void ClearViewDocument()
     {
         pictureRenderGeneration++;
+        lastViewRenderKey = null;
         viewerDocumentPanel.Children.Clear();
         viewSlipBlocks.Clear();
         viewSlipBlockCache.Clear();
@@ -1067,33 +1007,7 @@ internal partial class MainWindow
     // or null when it has not been decoded yet. A hit lets the caller assign the
     // image synchronously, so a rebuild neither re-decodes nor blinks "Loading…".
     private Bitmap? CachedDecodedPicture(ZetlSlipSnapshot slip, int width) =>
-        slip.Picture is { } picture
-        && decodedPictureCache.TryGetValue((picture.Sha256, width), out var bitmap)
-            ? bitmap
-            : null;
-
-    private Bitmap DecodeAndCachePicture(ZetlPictureContent content, string sha, int width)
-    {
-        if (decodedPictureCache.TryGetValue((sha, width), out var existing))
-        {
-            return existing;
-        }
-
-        using var stream = new MemoryStream(content.Bytes, writable: false);
-        var bitmap = Bitmap.DecodeToWidth(stream, width);
-        decodedPictureCache[(sha, width)] = bitmap;
-        return bitmap;
-    }
-
-    private void ClearDecodedPictureCache()
-    {
-        foreach (var bitmap in decodedPictureCache.Values)
-        {
-            bitmap.Dispose();
-        }
-
-        decodedPictureCache.Clear();
-    }
+        slip.Picture is { } picture ? pictureCache.FindDecoded(picture.Sha256, width) : null;
 
     private ZetlViewDocument SelectedView =>
         viewPickerBox.SelectedItem as ZetlViewDocument
@@ -1482,7 +1396,7 @@ internal partial class MainWindow
         var savedId = view.Id;
         var savedName = view.Name;
         CloseViewEditor();
-        await connection.RefreshAsync();
+        await connection.SynchronizeAsync();
         currentProject = connection.Current.Project;
         RefreshViewCatalog(currentProject, savedId);
         RefreshViewer();
@@ -1551,7 +1465,7 @@ internal partial class MainWindow
             }
         }
 
-        await connection.RefreshAsync();
+        await connection.SynchronizeAsync();
         currentProject = connection.Current.Project;
         RefreshViewCatalog(currentProject);
         RefreshViewer();
@@ -1564,20 +1478,6 @@ internal partial class MainWindow
     {
         RefreshViewCatalog(currentProject, selectId);
         RefreshViewer();
-    }
-
-    private List<KastnTreeNode> FlattenBucketNodes(IEnumerable<KastnTreeNode> nodes)
-    {
-        var list = new List<KastnTreeNode>();
-        foreach (var node in nodes)
-        {
-            if (node.Kind == KastnTreeNodeKind.Bucket)
-            {
-                list.Add(node);
-                list.AddRange(FlattenBucketNodes(node.Children));
-            }
-        }
-        return list;
     }
 
     // Each board column's cards panel by bucket id, so the drag hit-test can pick
@@ -1609,7 +1509,7 @@ internal partial class MainWindow
         public required string RenderKey { get; init; }
 
         // The thumbnail targets of a picture card, waiting for the async load
-        // (the decoded bitmap lives in the shared decodedPictureCache). The
+        // (the decoded bitmap lives in the shared picture cache). The
         // reconcile starts the load after the card is registered, so a load that
         // completes synchronously still sees itself as the current card. A dual
         // card also feeds its click-to-peek expanded image from the same bitmap.
@@ -1633,10 +1533,9 @@ internal partial class MainWindow
             return;
         }
 
-        // The active tree nodes (which exclude the Deleted bucket), flattened to
-        // pre-order traversal so columns follow the canonical bucket order.
-        var treeNodes = KastnWorkbench.BuildProjectTree(currentProject, currentProject.Slips, deletedOnly: false);
-        var buckets = FlattenBucketNodes(treeNodes);
+        // Traverse bucket snapshots directly: board columns need canonical bucket
+        // order, not a second projection of every slip into temporary tree nodes.
+        var buckets = ProjectIndex.OrderedBuckets();
         var visibleSlipsByBucket = visible
             .Where(slip => !IsSlipInDeleted(slip))
             .GroupBy(slip => slip.BucketId)
@@ -1645,14 +1544,8 @@ internal partial class MainWindow
         var desiredColumns = new List<Control>();
         var liveBucketIds = new HashSet<string>(StringComparer.Ordinal);
         var liveSlipIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var bucketNode in buckets)
+        foreach (var bucket in buckets)
         {
-            var bucket = bucketNode.Bucket;
-            if (bucket is null)
-            {
-                continue;
-            }
-
             liveBucketIds.Add(bucket.Id);
             var slips = visibleSlipsByBucket.TryGetValue(bucket.Id, out var found) ? found : [];
             if (!boardColumns.TryGetValue(bucket.Id, out var column))
@@ -1661,13 +1554,12 @@ internal partial class MainWindow
                 boardColumns[bucket.Id] = column;
             }
 
-            // Per-refresh state: the header text and the node context. The tree
-            // rebuilds its nodes on every snapshot, and the drag markers bind the
-            // node's drop flags, so a reused column must point at the fresh node.
+            // Drag markers bind live node flags, so reused columns must adopt the
+            // current projection's context (including changes to Deleted mode).
             column.TitleText.Text = bucket.Name;
             column.CountText.Text = $"({slips.Count})";
             column.Wrapper.DataContext =
-                FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, bucket.Id);
+                treeProjection.Find(bucket.Id);
 
             ReconcileColumnCards(column, bucket, slips, liveSlipIds);
             desiredColumns.Add(column.Wrapper);
@@ -1735,7 +1627,7 @@ internal partial class MainWindow
             }
 
             card.Wrapper.DataContext =
-                FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, slip.Id);
+                treeProjection.Find(slip.Id);
             desiredCards.Add(card.Wrapper);
         }
 
@@ -2037,7 +1929,7 @@ internal partial class MainWindow
             }
 
             column.ComposerBox.Text = "";
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
             statusText.Text = "Card added.";
             if (keepOpen)
             {
@@ -2354,7 +2246,7 @@ internal partial class MainWindow
                     editorState.Select(null);
                     UpdateEditorFromState();
                 }
-                await connection.RefreshAsync();
+                await connection.SynchronizeAsync();
                 statusText.Text = "Slip moved to Deleted.";
             }
             else
@@ -2368,6 +2260,7 @@ internal partial class MainWindow
         {
             // A bucket move plus content update for one slip is a single undo step.
             using var undoGesture = BeginGesture("Edit slip");
+            await using var refreshBatch = connection.DeferRefresh();
             // Update slip content and column/bucket and block kind
             var revision = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
                 ? editorState.Revision
@@ -2421,7 +2314,7 @@ internal partial class MainWindow
                     }
                 }
 
-                await connection.RefreshAsync();
+                await connection.SynchronizeAsync();
                 statusText.Text = "Slip saved.";
             }
             else
@@ -2493,7 +2386,7 @@ internal partial class MainWindow
             }
 
             // 260: smaller decode width for board card thumbnails.
-            var bitmap = DecodeAndCachePicture(content, slip.Picture!.Sha256, 260);
+            var bitmap = pictureCache.Decode(content, 260);
             if (!IsCurrent())
             {
                 return;

@@ -399,6 +399,7 @@ internal partial class MainWindow
                 pendingBucketSelectionId = entry.BucketOperations[0].BucketId;
             }
 
+            await using var refreshBatch = connection.DeferRefresh();
             var result = await ApplyEntryAsync(entry, verb);
             if (result.Status is HistoryApplyStatus.Interrupted or HistoryApplyStatus.OutcomeUnknown)
             {

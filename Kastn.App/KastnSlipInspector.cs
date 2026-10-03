@@ -14,14 +14,19 @@ internal static class KastnSlipInspector
     public static IReadOnlyList<KastnInspectorSection> Build(
         ZetlProjectSnapshot project,
         ZetlSlipSnapshot slip)
+        => Build(new KastnProjectIndex(project), slip);
+
+    public static IReadOnlyList<KastnInspectorSection> Build(
+        KastnProjectIndex index,
+        ZetlSlipSnapshot slip)
     {
-        var bucket = project.Buckets.FirstOrDefault(item => item.Id == slip.BucketId);
+        var bucket = index.Bucket(slip.BucketId);
         var overview = new List<KastnInspectorField>
         {
             new("Type", slip.Type.ToString()),
             new("Bucket", bucket is null
                 ? "Unknown bucket"
-                : KastnWorkbench.BucketPathLabel(project, bucket)),
+                : index.BucketPathLabel(bucket)),
             new("Captured", slip.CapturedAtUtc.ToLocalTime().ToString("F")),
             new("Source", slip.Source)
         };
@@ -62,15 +67,14 @@ internal static class KastnSlipInspector
 
         if (slip.DeletedAtUtc is not null || !string.IsNullOrWhiteSpace(slip.DeletedFromBucketId))
         {
-            var originalBucket = project.Buckets.FirstOrDefault(
-                item => item.Id == slip.DeletedFromBucketId);
+            var originalBucket = index.Bucket(slip.DeletedFromBucketId);
             var lifecycle = new List<KastnInspectorField>();
             AddIfPresent(
                 lifecycle,
                 "Deleted from",
                 originalBucket is null
                     ? slip.DeletedFromBucketId
-                    : KastnWorkbench.BucketPathLabel(project, originalBucket));
+                    : index.BucketPathLabel(originalBucket));
             if (slip.DeletedAtUtc is { } deletedAt)
             {
                 lifecycle.Add(new("Deleted", deletedAt.ToLocalTime().ToString("F")));
@@ -78,7 +82,7 @@ internal static class KastnSlipInspector
             sections.Add(new("Lifecycle", lifecycle));
         }
 
-        var backlinksIndex = ZetlSlipLinks.BuildBacklinkIndex(project);
+        var backlinksIndex = index.Backlinks;
         if (backlinksIndex.TryGetValue(slip.Id, out var backlinks) && backlinks.Count > 0)
         {
             var backlinksFields = new List<KastnInspectorField>();

@@ -209,8 +209,15 @@ internal static class KastnWorkbench
     public static IReadOnlyList<KastnBucketItem> BuildBucketHierarchy(
         ZetlProjectSnapshot project,
         bool includeAll = false)
+        => BuildBucketHierarchy(new KastnProjectIndex(project), includeAll);
+
+    public static IReadOnlyList<KastnBucketItem> BuildBucketHierarchy(
+        KastnProjectIndex index,
+        bool includeAll = false)
     {
+        var project = index.Project;
         var result = new List<KastnBucketItem>();
+        var visited = new HashSet<string>(StringComparer.Ordinal);
         if (includeAll)
         {
             result.Add(new KastnBucketItem(null, "All buckets", null));
@@ -220,7 +227,7 @@ internal static class KastnWorkbench
 
         foreach (var bucket in project.Buckets)
         {
-            if (result.All(item => item.Id != bucket.Id))
+            if (visited.Add(bucket.Id))
             {
                 result.Add(new KastnBucketItem(
                     bucket.Id,
@@ -233,10 +240,14 @@ internal static class KastnWorkbench
 
         void AddChildren(string? parentId, int depth)
         {
-            foreach (var child in project.Buckets
-                .Where(bucket => bucket.ParentBucketId == parentId)
+            foreach (var child in index.Children(parentId)
                 .OrderBy(bucket => bucket.Name, StringComparer.OrdinalIgnoreCase))
             {
+                if (!visited.Add(child.Id))
+                {
+                    continue;
+                }
+
                 result.Add(new KastnBucketItem(
                     child.Id,
                     $"{new string(' ', depth * 3)}{child.Name}",
@@ -249,6 +260,11 @@ internal static class KastnWorkbench
     public static IReadOnlyList<KastnBucketItem> BuildBucketPickerChoices(
         ZetlProjectSnapshot project,
         bool includeAll = false)
+        => BuildBucketPickerChoices(new KastnProjectIndex(project), includeAll);
+
+    public static IReadOnlyList<KastnBucketItem> BuildBucketPickerChoices(
+        KastnProjectIndex index,
+        bool includeAll = false)
     {
         var result = new List<KastnBucketItem>();
         if (includeAll)
@@ -256,14 +272,14 @@ internal static class KastnWorkbench
             result.Add(new KastnBucketItem(null, "All buckets", null));
         }
 
-        foreach (var item in BuildBucketHierarchy(project))
+        foreach (var item in BuildBucketHierarchy(index))
         {
             if (item.Bucket is null)
             {
                 continue;
             }
 
-            result.Add(item with { Label = BucketPathLabel(project, item.Bucket) });
+            result.Add(item with { Label = index.BucketPathLabel(item.Bucket) });
         }
 
         return result;
@@ -286,9 +302,17 @@ internal static class KastnWorkbench
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlSlipSnapshot> slips,
         bool deletedOnly = false)
+        => BuildProjectTree(new KastnProjectIndex(project), slips, deletedOnly,
+            new ZetlAppSettingsStore().Settings.MaxSlipLabelLength);
+
+    public static IReadOnlyList<KastnTreeNode> BuildProjectTree(
+        KastnProjectIndex index,
+        IReadOnlyList<ZetlSlipSnapshot> slips,
+        bool deletedOnly,
+        int maxSlipLabelLength)
     {
-        RefreshMaxSlipLabelLength();
-        var slipsByBucket = slips
+        maxSlipLabelLength = Math.Max(2, maxSlipLabelLength);
+        var slipsByBucket = ReferenceEquals(slips, index.Project.Slips) ? null : slips
             .GroupBy(slip => slip.BucketId)
             .ToDictionary(
                 group => group.Key,
@@ -303,13 +327,12 @@ internal static class KastnWorkbench
             // Buckets read in project.Buckets order — the canonical, manually
             // reorderable order — so the tree and board match the default view and
             // export instead of sorting alphabetically.
-            foreach (var bucket in project.Buckets
-                .Where(bucket => bucket.ParentBucketId == parentId)
+            foreach (var bucket in index.Children(parentId)
                 .Where(bucket => deletedOnly == IsDeletedBucket(bucket)))
             {
-                var bucketSlips = slipsByBucket.TryGetValue(bucket.Id, out var found)
-                    ? found
-                    : [];
+                var bucketSlips = slipsByBucket is null
+                    ? index.Slips(bucket.Id)
+                    : slipsByBucket.TryGetValue(bucket.Id, out var found) ? found : [];
                 var childNodes = BuildLevel(bucket.Id);
                 var includedCount = bucketSlips.Count(slip => !slip.ExcludedFromViews)
                     + childNodes.Sum(child => child.IncludedCount);
@@ -326,7 +349,7 @@ internal static class KastnWorkbench
                     IncludedCount = includedCount,
                     HiddenCount = hiddenCount,
                     Children = new ObservableCollection<KastnTreeNode>(
-                        childNodes.Concat(bucketSlips.Select(SlipNode)))
+                        childNodes.Concat(bucketSlips.Select(slip => SlipNode(slip, maxSlipLabelLength))))
                 });
             }
 
@@ -334,26 +357,18 @@ internal static class KastnWorkbench
         }
     }
 
-    private static KastnTreeNode SlipNode(ZetlSlipSnapshot slip) => new()
+    private static KastnTreeNode SlipNode(ZetlSlipSnapshot slip, int maxSlipLabelLength) => new()
     {
         Kind = KastnTreeNodeKind.Slip,
         Id = slip.Id,
-        Label = SlipNodeLabel(slip),
+        Label = SlipNodeLabel(slip, maxSlipLabelLength),
         Slip = slip,
         IsPicture = slip.Type == ZetlSlipType.Picture,
         IsStructural = ZetlBlockKinds.IsStructural(slip.BlockKind),
         IsExcluded = slip.ExcludedFromViews
     };
 
-    // Keep slip leaves short so the tree stays scannable regardless of pane width.
-    // Read once per tree build — a per-label read hit settings.json on disk for
-    // every slip on every refresh.
-    private static int maxSlipLabelLength = 40;
-
-    private static void RefreshMaxSlipLabelLength() =>
-        maxSlipLabelLength = new ZETL.ZetlAppSettingsStore().Settings.MaxSlipLabelLength;
-
-    private static string SlipNodeLabel(ZetlSlipSnapshot slip)
+    private static string SlipNodeLabel(ZetlSlipSnapshot slip, int maxSlipLabelLength)
     {
         var label = SlipLabelText(slip);
         return label.Length <= maxSlipLabelLength
@@ -387,20 +402,7 @@ internal static class KastnWorkbench
     public static string BucketPathLabel(
         ZetlProjectSnapshot project,
         ZetlBucketSnapshot bucket)
-    {
-        var names = new Stack<string>();
-        var visited = new HashSet<string>(StringComparer.Ordinal);
-        ZetlBucketSnapshot? current = bucket;
-        while (current is not null && visited.Add(current.Id))
-        {
-            names.Push(current.Name);
-            current = current.ParentBucketId is null
-                ? null
-                : project.Buckets.FirstOrDefault(item => item.Id == current.ParentBucketId);
-        }
-
-        return string.Join(" > ", names);
-    }
+        => new KastnProjectIndex(project).BucketPathLabel(bucket);
 
     public static IReadOnlyList<ZetlSlipSnapshot> FilterSlips(
         ZetlProjectSnapshot project,
@@ -411,10 +413,22 @@ internal static class KastnWorkbench
         string? search,
         DateTimeOffset now,
         ZetlSlipType? type = null)
+        => FilterSlips(new KastnProjectIndex(project), bucketId, source, sessionId, dateFilter, search, now, type);
+
+    public static IReadOnlyList<ZetlSlipSnapshot> FilterSlips(
+        KastnProjectIndex index,
+        string? bucketId,
+        string? source,
+        string? sessionId,
+        KastnDateFilter dateFilter,
+        string? search,
+        DateTimeOffset now,
+        ZetlSlipType? type = null)
     {
         var bucketIds = bucketId is null
             ? null
-            : DescendantBucketIds(project, bucketId);
+            : index.DescendantBucketIds(bucketId);
+        var trimmedSearch = search?.Trim();
         var threshold = dateFilter switch
         {
             KastnDateFilter.Today => new DateTimeOffset(
@@ -429,7 +443,7 @@ internal static class KastnWorkbench
             KastnDateFilter.Last30Days => now.AddDays(-30),
             _ => DateTimeOffset.MinValue
         };
-        var query = project.Slips.Where(slip =>
+        var query = index.Project.Slips.Where(slip =>
             (bucketIds is null || bucketIds.Contains(slip.BucketId))
             && (type is null || slip.Type == type)
             && (string.IsNullOrWhiteSpace(source)
@@ -437,33 +451,10 @@ internal static class KastnWorkbench
             && (string.IsNullOrWhiteSpace(sessionId)
                 || string.Equals(slip.SessionId, sessionId, StringComparison.Ordinal))
             && slip.CapturedAtUtc >= threshold
-            && (string.IsNullOrWhiteSpace(search)
-                || slip.Text.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
-                || slip.Title.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)));
+            && (string.IsNullOrEmpty(trimmedSearch)
+                || slip.Text.Contains(trimmedSearch, StringComparison.OrdinalIgnoreCase)
+                || slip.Title.Contains(trimmedSearch, StringComparison.OrdinalIgnoreCase)));
         return query.ToList();
-    }
-
-    private static HashSet<string> DescendantBucketIds(
-        ZetlProjectSnapshot project,
-        string bucketId)
-    {
-        var result = new HashSet<string>(StringComparer.Ordinal) { bucketId };
-        var added = true;
-        while (added)
-        {
-            added = false;
-            foreach (var bucket in project.Buckets)
-            {
-                if (bucket.ParentBucketId is not null
-                    && result.Contains(bucket.ParentBucketId)
-                    && result.Add(bucket.Id))
-                {
-                    added = true;
-                }
-            }
-        }
-
-        return result;
     }
 
 }

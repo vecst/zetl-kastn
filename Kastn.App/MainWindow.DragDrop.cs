@@ -352,7 +352,7 @@ internal partial class MainWindow
         {
             var columnNode = targetNode.Kind == KastnTreeNodeKind.Bucket
                 ? targetNode
-                : FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, targetBucket.Id);
+                : treeProjection.Find(targetBucket.Id);
             return fractionX < 0.5
                 ? BucketReorderPlan(project, source, moving,
                     newParentId: targetBucket.ParentBucketId, beforeBucketId: targetBucket.Id,
@@ -552,7 +552,7 @@ internal partial class MainWindow
 
         var markerNode = targetNode.Kind == KastnTreeNodeKind.Bucket
             ? targetNode
-            : FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, targetBucket.Id);
+            : treeProjection.Find(targetBucket.Id);
         return new DropPlan(DropAction.BucketReparent, source, null, null, targetBucket.Id)
         {
             MarkerNode = markerNode
@@ -700,6 +700,7 @@ internal partial class MainWindow
         // Group the whole drag into one undo entry; it disposes at method end, after
         // the final refresh, so the recorded positions read from fresh project state.
         using var undoGesture = BeginGesture("Move slips");
+        await using var refreshBatch = connection.DeferRefresh();
         var moved = 0;
         string? failure = null;
         // Send every move/reorder as a batch: the service publishes a snapshot per
@@ -768,7 +769,7 @@ internal partial class MainWindow
             batching = false;
         }
 
-        await connection.RefreshAsync();
+        await connection.SynchronizeAsync();
         // Re-drive selection through the tree (not the snapshot/pending path): the tree
         // node is restored under the refresh guard, which never syncs the editor, so the
         // moved slip would otherwise show stale editor content. Selecting it here runs the
@@ -780,7 +781,7 @@ internal partial class MainWindow
 
     private void ReselectSlipNode(string slipId)
     {
-        var node = FindTreeNode(projectTree.ItemsSource as IEnumerable<KastnTreeNode>, slipId);
+        var node = treeProjection.Find(slipId);
         if (node is null)
         {
             return;
@@ -815,7 +816,7 @@ internal partial class MainWindow
             bucket.Revision));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
 
         HandleSimpleResponse(response, "Bucket moved.");
@@ -833,6 +834,7 @@ internal partial class MainWindow
 
         // The reparent + reorder pair is one drag, so it undoes as one entry.
         using var undoGesture = BeginGesture("Reorder bucket");
+        await using var refreshBatch = connection.DeferRefresh();
         pendingBucketSelectionId = bucket.Id;
         var revision = bucket.Revision;
 
@@ -872,7 +874,7 @@ internal partial class MainWindow
             revision);
         if (response.Status == ZetlResponseStatus.Success)
         {
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
 
         HandleSimpleResponse(response, "Bucket moved.");

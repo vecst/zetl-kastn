@@ -228,6 +228,7 @@ internal partial class MainWindow
         // One undo step for the whole batch; disposes at method end after the final
         // refresh.
         using var undoGesture = BeginGesture(ordered.Count == 1 ? $"{Capitalize(actionLabel)} slip" : $"{Capitalize(actionLabel)} slips");
+        await using var refreshBatch = connection.DeferRefresh();
         // Drop the per-mutation snapshot pushes during the loop so the tree/View
         // rebuild once at the end instead of flashing once per slip.
         batching = true;
@@ -254,7 +255,7 @@ internal partial class MainWindow
             }
 
             batching = false;
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
             statusText.Text = failed == 0
                 ? $"{changed} slip{Plural(changed)} {actionLabel}."
                 : $"{changed} {actionLabel}; {failed} failed.";

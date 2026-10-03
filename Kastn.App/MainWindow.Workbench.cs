@@ -80,6 +80,7 @@ internal partial class MainWindow
             var failed = 0;
             saving = true;
             SetEditingEnabled();
+            await using var refreshBatch = connection.DeferRefresh();
             foreach (var slip in targets.Where(slip => slip.ExcludedFromViews != exclude))
             {
                 var revision = string.Equals(slip.Id, editorState.SlipId, StringComparison.Ordinal)
@@ -114,7 +115,7 @@ internal partial class MainWindow
                 }
             }
 
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
             var action = exclude ? "hidden" : "shown";
             statusText.Text = failed == 0
                 ? $"{changed} slip{Plural(changed)} {action}."
@@ -679,7 +680,7 @@ internal partial class MainWindow
                 }
             }
 
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
             statusText.Text = successText;
         }
         catch (Exception ex) when (
@@ -1033,7 +1034,7 @@ internal partial class MainWindow
         {
             pendingBucketSelectionId = response.Payload?.Deserialize<ZetlBucketSnapshot>(
                 ZetlProtocolJson.Options)?.Id;
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
             statusText.Text = $"Bucket '{name}' created.";
         }
         else
@@ -1064,7 +1065,7 @@ internal partial class MainWindow
             pendingBucketSelectionId = existingDraft.BucketId;
             pendingSlipSelectionId = existingDraft.Id;
             pendingSlipFocus = true;
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
             SetDetailPaneMode(showDetails: false);
             statusText.Text = "Finish the current untitled slip before creating another.";
 
@@ -1119,7 +1120,7 @@ internal partial class MainWindow
                     pendingSlipSelectionId = created.Id;
                     pendingSlipFocus = true;
                     ResetSlipFilters();
-                    await connection.RefreshAsync();
+                    await connection.SynchronizeAsync();
                     SetDetailPaneMode(showDetails: false);
                     statusText.Text = "Slip created.";
                     if (boardModeActive)
@@ -1169,7 +1170,7 @@ internal partial class MainWindow
         {
             pendingBucketSelectionId = response.Payload?.Deserialize<ZetlBucketSnapshot>(
                 ZetlProtocolJson.Options)?.Id;
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
             statusText.Text = $"Group '{name}' added — drag slips or buckets into it.";
         }
         else
@@ -1213,6 +1214,7 @@ internal partial class MainWindow
 
             // The add and its follow-up reorder are one undo step.
             using var undoGesture = BeginGesture("Insert divider");
+            await using var refreshBatch = connection.DeferRefresh();
 
             // The note that follows the anchor in document order — the reorder target so
             // the new divider lands just after the anchor (null = keep it last).
@@ -1255,7 +1257,7 @@ internal partial class MainWindow
                 pendingSlipSelectionId = created.Id;
             }
 
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
             statusText.Text = "Divider added.";
         }
         finally
@@ -1315,7 +1317,7 @@ internal partial class MainWindow
                 bucket.Revision));
             if (response.Status == ZetlResponseStatus.Success)
             {
-                await connection.RefreshAsync();
+                await connection.SynchronizeAsync();
             }
 
             HandleSimpleResponse(response, BucketRenderKindStatus(target));
@@ -1367,7 +1369,7 @@ internal partial class MainWindow
             bucket.Revision));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
 
         HandleSimpleResponse(response, "Bucket saved.");
@@ -1400,7 +1402,7 @@ internal partial class MainWindow
         {
             editorState.Select(null);
             UpdateEditorFromState();
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
 
         HandleSimpleResponse(response, "Bucket deleted.");
@@ -1464,7 +1466,7 @@ internal partial class MainWindow
             project.MetadataRevision));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
 
         HandleSimpleResponse(response, $"Project renamed to '{name}'.");
@@ -1487,7 +1489,7 @@ internal partial class MainWindow
             currentProject.MetadataRevision));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
 
         HandleSimpleResponse(
@@ -1513,7 +1515,7 @@ internal partial class MainWindow
             project.MetadataRevision));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
 
         var verb = string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase)
@@ -1536,7 +1538,7 @@ internal partial class MainWindow
             project.Id));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
 
         HandleSimpleResponse(
@@ -1601,7 +1603,7 @@ internal partial class MainWindow
         {
             var created = response.Payload?.Deserialize<ZetlProjectSnapshot>(
                 ZetlProtocolJson.Options);
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
             if (created is not null)
             {
                 await connection.NavigateToProjectAsync(created.Id);
@@ -1650,7 +1652,7 @@ internal partial class MainWindow
                 await connection.NavigateToProjectAsync(null);
             }
 
-            await connection.RefreshAsync();
+            await connection.SynchronizeAsync();
         }
 
         HandleSimpleResponse(response, "Project deleted.");
@@ -1684,6 +1686,7 @@ internal partial class MainWindow
         var reselectSlipId = selected.Count == 1 ? selected[0].Id : null;
         pendingBucketSelectionId = destination.Id;
         using var undoGesture = BeginGesture(selected.Count == 1 ? "Move slip" : "Move slips");
+        await using var refreshBatch = connection.DeferRefresh();
         foreach (var slip in selected)
         {
             if (slip.BucketId == destination.Id)
@@ -1709,7 +1712,7 @@ internal partial class MainWindow
             }
         }
 
-        await connection.RefreshAsync();
+        await connection.SynchronizeAsync();
         if (reselectSlipId is not null)
         {
             ReselectSlipNode(reselectSlipId);
@@ -1790,6 +1793,7 @@ internal partial class MainWindow
         var failed = 0;
         var projectId = currentProject.Id;
         using var undoGesture = BeginGesture(selected.Count == 1 ? "Delete slip" : "Delete slips");
+        await using var refreshBatch = connection.DeferRefresh();
         foreach (var slip in selected)
         {
             var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
@@ -1815,7 +1819,7 @@ internal partial class MainWindow
         editorState.Select(null);
         ResetSlipFilters();
         UpdateEditorFromState();
-        await connection.RefreshAsync();
+        await connection.SynchronizeAsync();
         statusText.Text = failed == 0
             ? $"{moved} slip{Plural(moved)} moved to Deleted."
             : $"{moved} slip{Plural(moved)} moved to Deleted; {failed} failed.";
@@ -2044,8 +2048,7 @@ internal partial class MainWindow
             && !await SaveEditorAsync())
         {
             refreshing = true;
-            projectTree.SelectedItem = FindTreeNode(
-                projectTree.ItemsSource as IEnumerable<KastnTreeNode>, editingId);
+            projectTree.SelectedItem = treeProjection.Find(editingId);
             refreshing = false;
             return;
         }
@@ -2112,60 +2115,12 @@ internal partial class MainWindow
         SetEditingEnabled();
     }
 
-    // The first slip node in tree order, used as the default selection on opening a
-    // project so a slip (not a bucket title) is active to start.
-    private static KastnTreeNode? FirstSlipNode(IEnumerable<KastnTreeNode>? nodes)
-    {
-        if (nodes is null)
-        {
-            return null;
-        }
-
-        foreach (var node in nodes)
-        {
-            if (node.Kind == KastnTreeNodeKind.Slip)
-            {
-                return node;
-            }
-
-            if (FirstSlipNode(node.Children) is { } found)
-            {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
-    private static KastnTreeNode? FindTreeNode(IEnumerable<KastnTreeNode>? nodes, string? id)
-    {
-        if (nodes is null || id is null)
-        {
-            return null;
-        }
-
-        foreach (var node in nodes)
-        {
-            if (string.Equals(node.Id, id, StringComparison.Ordinal))
-            {
-                return node;
-            }
-
-            if (FindTreeNode(node.Children, id) is { } found)
-            {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
     private IReadOnlyList<ZetlSlipSnapshot> CurrentFilteredSlips()
     {
         return currentProject is null
             ? []
             : KastnWorkbench.FilterSlips(
-                currentProject,
+                ProjectIndex,
                 SelectedBucketId,
                 (sourceFilterBox.SelectedItem as FilterItem)?.Value,
                 (sessionFilterBox.SelectedItem as FilterItem)?.Value,
@@ -2188,7 +2143,7 @@ internal partial class MainWindow
         }
 
         return KastnWorkbench.FilterSlips(
-                currentProject,
+                ProjectIndex,
                 null,
                 (sourceFilterBox.SelectedItem as FilterItem)?.Value,
                 (sessionFilterBox.SelectedItem as FilterItem)?.Value,
@@ -2235,8 +2190,7 @@ internal partial class MainWindow
             return false;
         }
 
-        return KastnWorkbench.IsDeletedBucket(currentProject.Buckets.FirstOrDefault(
-            bucket => bucket.Id == slip.BucketId));
+        return KastnWorkbench.IsDeletedBucket(ProjectIndex.Bucket(slip.BucketId));
     }
 
     private string SlipMetadata(ZetlSlipSnapshot slip)
@@ -2294,7 +2248,7 @@ internal partial class MainWindow
             bucket => bucket.Id == selected.ParentBucketId);
         parentBucketHintText.Text = parent is null
             ? "Current parent: missing"
-            : $"Current parent: {KastnWorkbench.BucketPathLabel(currentProject, parent)}";
+            : $"Current parent: {ProjectIndex.BucketPathLabel(parent)}";
     }
 
     private static string BatchStatus(params string?[] parts)

@@ -158,10 +158,7 @@ public class ZetlUITests : IDisposable
         Assert.Equal("Test Project", window.projectTitle.Text);
 
         // 4. Find the node representing "slip-1" and select it
-        var findMethod = typeof(MainWindow).GetMethod("FindTreeNode", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(findMethod);
-        
-        var node = (KastnTreeNode?)findMethod.Invoke(null, new object?[] { window.projectTree.ItemsSource, "slip-1" });
+        var node = window.treeProjection.Find("slip-1");
         Assert.NotNull(node);
 
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -254,13 +251,10 @@ public class ZetlUITests : IDisposable
         Avalonia.Threading.Dispatcher.UIThread.Post(() => eventDelegate?.Invoke(connection, snapshot));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        var findMethod = typeof(MainWindow).GetMethod(
-            "FindTreeNode",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
         void Select(string slipId)
         {
-            var node = (KastnTreeNode?)findMethod.Invoke(null, new object?[] { window.projectTree.ItemsSource, slipId });
+            var node = window.treeProjection.Find(slipId);
             Assert.NotNull(node);
             Avalonia.Threading.Dispatcher.UIThread.Post(() => window.projectTree.SelectedItem = node);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -335,11 +329,8 @@ public class ZetlUITests : IDisposable
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.True(window.boardColumnsPanel.Children.Count >= 2, "The board should build a column per bucket.");
 
-        var findMethod = typeof(MainWindow).GetMethod(
-            "FindTreeNode",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
-        var slipNode = (KastnTreeNode?)findMethod.Invoke(null, new object?[] { window.projectTree.ItemsSource, "slip-a" });
-        var bucketNode = (KastnTreeNode?)findMethod.Invoke(null, new object?[] { window.projectTree.ItemsSource, "b-2" });
+        var slipNode = window.treeProjection.Find("slip-a");
+        var bucketNode = window.treeProjection.Find("b-2");
         Assert.NotNull(slipNode);
         Assert.NotNull(bucketNode);
 
@@ -616,10 +607,7 @@ public class ZetlUITests : IDisposable
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         // 3. Select "slip-source"
-        var findMethod = typeof(MainWindow).GetMethod("FindTreeNode", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(findMethod);
-        
-        var sourceNode = (KastnTreeNode?)findMethod.Invoke(null, new object?[] { window.projectTree.ItemsSource, "slip-source" });
+        var sourceNode = window.treeProjection.Find("slip-source");
         Assert.NotNull(sourceNode);
 
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -721,10 +709,7 @@ public class ZetlUITests : IDisposable
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         // 3. Select "slip-target"
-        var findMethod = typeof(MainWindow).GetMethod("FindTreeNode", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(findMethod);
-        
-        var targetNode = (KastnTreeNode?)findMethod.Invoke(null, new object?[] { window.projectTree.ItemsSource, "slip-target" });
+        var targetNode = window.treeProjection.Find("slip-target");
         Assert.NotNull(targetNode);
 
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -992,6 +977,88 @@ public class ZetlUITests : IDisposable
     private static void CloseWindow(MainWindow window)
     {
         window.CloseForShutdown();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    [AvaloniaFact]
+    public void SelectionChangesReuseDocumentAndExportText()
+    {
+        var connection = new KastnConnectionController(_ => Task.CompletedTask);
+        var window = new MainWindow(connection);
+        window.Show();
+        try
+        {
+            PublishRenderSnapshot(connection, RenderProject("render-project", "original text"));
+            var generation = WindowField<int>(window, "pictureRenderGeneration");
+            var export = WindowField<string>(window, "lastRenderedViewText");
+            var second = window.treeProjection.Find("render-two");
+            Assert.NotNull(second);
+
+            window.projectTree.SelectedItem = second;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("second text", window.slipEditor.Text);
+            Assert.Equal(generation, WindowField<int>(window, "pictureRenderGeneration"));
+            Assert.Same(export, WindowField<string>(window, "lastRenderedViewText"));
+        }
+        finally
+        {
+            CloseWindow(window);
+        }
+    }
+
+    [AvaloniaFact]
+    public void SwitchingProjectsWithMatchingRevisionsRebuildsTheDocument()
+    {
+        var connection = new KastnConnectionController(_ => Task.CompletedTask);
+        var window = new MainWindow(connection);
+        window.Show();
+        try
+        {
+            PublishRenderSnapshot(connection, RenderProject("first-project", "original text"));
+            var generation = WindowField<int>(window, "pictureRenderGeneration");
+
+            // Same slip ids, revisions, view id, and change sequence; only the
+            // project identity and content differ.
+            PublishRenderSnapshot(connection, RenderProject("second-project", "replacement text"));
+
+            Assert.True(WindowField<int>(window, "pictureRenderGeneration") > generation);
+            Assert.Contains("replacement text", WindowField<string>(window, "lastRenderedViewText"));
+            Assert.DoesNotContain("original text", WindowField<string>(window, "lastRenderedViewText"));
+        }
+        finally
+        {
+            CloseWindow(window);
+        }
+    }
+
+    private static T WindowField<T>(MainWindow window, string name) =>
+        (T)typeof(MainWindow).GetField(name,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(window)!;
+
+    private static ZETL.Contracts.ZetlProjectSnapshot RenderProject(string id, string text) => new()
+    {
+        Id = id, Name = id, MetadataRevision = 1, ChangeSequence = 1,
+        Buckets = [new() { Id = "render-bucket", Name = "Bucket", Revision = 1 }],
+        Slips = new[] { ("render-one", text), ("render-two", "second text") }
+            .Select(item => new ZETL.Contracts.ZetlSlipSnapshot
+            {
+                Id = item.Item1, Revision = 1, Type = ZETL.Contracts.ZetlSlipType.Text,
+                BucketId = "render-bucket", Text = item.Item2, Source = "copy",
+                CapturedAtUtc = DateTimeOffset.UtcNow
+            }).ToArray()
+    };
+
+    private static void PublishRenderSnapshot(KastnConnectionController connection, ZETL.Contracts.ZetlProjectSnapshot project)
+    {
+        var snapshot = new KastnSessionSnapshot(KastnConnectionState.Online, "Connected",
+        [
+            new() { Id = project.Id, Name = project.Name, MetadataRevision = project.MetadataRevision, ChangeSequence = project.ChangeSequence }
+        ], project);
+        var callback = (EventHandler<KastnSessionSnapshot>?)typeof(KastnConnectionController)
+            .GetField("SnapshotChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(connection);
+        callback?.Invoke(connection, snapshot);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
