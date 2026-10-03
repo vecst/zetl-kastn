@@ -8,7 +8,7 @@ namespace KASTN;
 internal sealed class KastnProjectIndex
 {
     private readonly Dictionary<string, ZetlBucketSnapshot> bucketsById;
-    private readonly Dictionary<string, ZetlSlipSnapshot> slipsById;
+    private readonly Dictionary<string, (ZetlSlipSnapshot Slip, int Position)> slipsById;
     private readonly ILookup<string, ZetlBucketSnapshot> childrenByParent;
     private readonly Dictionary<string, IReadOnlyList<ZetlSlipSnapshot>> slipsByBucket;
     private IReadOnlyDictionary<string, IReadOnlyList<ZetlSlipBacklink>>? backlinks;
@@ -17,7 +17,8 @@ internal sealed class KastnProjectIndex
     {
         Project = project;
         bucketsById = project.Buckets.ToDictionary(bucket => bucket.Id, StringComparer.Ordinal);
-        slipsById = project.Slips.ToDictionary(slip => slip.Id, StringComparer.Ordinal);
+        slipsById = project.Slips.Select((slip, position) => (Slip: slip, Position: position))
+            .ToDictionary(entry => entry.Slip.Id, StringComparer.Ordinal);
         childrenByParent = project.Buckets.ToLookup(bucket => bucket.ParentBucketId ?? "", StringComparer.Ordinal);
         slipsByBucket = project.Slips.GroupBy(slip => slip.BucketId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<ZetlSlipSnapshot>)group.ToList(), StringComparer.Ordinal);
@@ -32,7 +33,21 @@ internal sealed class KastnProjectIndex
         id is not null && bucketsById.TryGetValue(id, out var bucket) ? bucket : null;
 
     public ZetlSlipSnapshot? Slip(string? id) =>
-        id is not null && slipsById.TryGetValue(id, out var slip) ? slip : null;
+        id is not null && slipsById.TryGetValue(id, out var entry) ? entry.Slip : null;
+
+    public IReadOnlyList<ZetlSlipSnapshot> SlipsInDocumentOrder(IEnumerable<string> ids)
+    {
+        var selected = new List<(ZetlSlipSnapshot Slip, int Position)>();
+        foreach (var id in ids.Distinct(StringComparer.Ordinal))
+        {
+            if (slipsById.TryGetValue(id, out var entry))
+            {
+                selected.Add(entry);
+            }
+        }
+        selected.Sort((left, right) => left.Position.CompareTo(right.Position));
+        return selected.Select(entry => entry.Slip).ToArray();
+    }
 
     // Lookups retain snapshot order, including manually reordered siblings.
     public IEnumerable<ZetlBucketSnapshot> Children(string? parentId) => childrenByParent[parentId ?? ""];

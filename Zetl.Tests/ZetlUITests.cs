@@ -1118,6 +1118,85 @@ public class ZetlUITests : IDisposable
         }
     }
 
+    [AvaloniaFact]
+    public void ToolbarFollowsSingleBatchAndBucketSelection()
+    {
+        var connection = new KastnConnectionController(_ => Task.CompletedTask);
+        var project = RenderProject("selection-project", "first text");
+        project = project with
+        {
+            Buckets = [.. project.Buckets, new() { Id = "destination", Name = "Other", Revision = 1 }],
+            Slips = [project.Slips[0], project.Slips[1] with { BucketId = "destination" }]
+        };
+        typeof(KastnConnectionController).GetProperty(nameof(KastnConnectionController.Current))!
+            .SetValue(connection, new KastnSessionSnapshot(KastnConnectionState.Online, "Connected", [], project));
+        var window = new MainWindow(connection);
+        window.Show();
+        try
+        {
+            var first = window.treeProjection.Find("render-one")!;
+            var second = window.treeProjection.Find("render-two")!;
+            window.projectTree.SelectedItem = first;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(window.slipEditor.IsEnabled);
+            Assert.True(window.codeButton.IsEnabled);
+            Assert.True(window.alignLeftButton.IsEnabled);
+            Assert.True(window.moveSlipButton.IsEnabled);
+
+            window.projectTree.SelectedItems!.Add(second);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Null(window.editorState.SlipId);
+            Assert.False(window.slipEditor.IsEnabled);
+            Assert.False(window.codeButton.IsEnabled);
+            Assert.True(window.fontFamilyBox.IsEnabled);
+            Assert.True(window.alignLeftButton.IsEnabled);
+            Assert.True(window.deleteSlipButton.IsEnabled);
+
+            window.projectTree.SelectedItem = window.treeProjection.Find("render-bucket");
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.False(window.slipEditor.IsEnabled);
+            Assert.False(window.fontFamilyBox.IsEnabled);
+            Assert.True(window.boldButton.IsEnabled);
+            Assert.True(window.bulletListButton.IsEnabled);
+            Assert.True(window.alignLeftButton.IsEnabled);
+            Assert.False(window.deleteSlipButton.IsEnabled);
+        }
+        finally
+        {
+            CloseWindow(window);
+        }
+    }
+
+    [AvaloniaFact]
+    public void FailedOfflineSaveRestoresSelectionWithoutDiscardingDraft()
+    {
+        var connection = new KastnConnectionController(_ => Task.CompletedTask);
+        var window = new MainWindow(connection);
+        window.Show();
+        try
+        {
+            PublishRenderSnapshot(connection, RenderProject("selection-project", "first text"));
+            window.projectTree.SelectedItem = window.treeProjection.Find("render-one");
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            window.slipEditor.Text = "unsaved local writing";
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            // Publishing a snapshot does not connect the test controller. Leaving
+            // this dirty editor must fail the save and restore the original row.
+            window.projectTree.SelectedItem = window.treeProjection.Find("render-two");
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("render-one", Assert.IsType<KastnTreeNode>(window.projectTree.SelectedItem).Id);
+            Assert.Equal("render-one", window.editorState.SlipId);
+            Assert.Equal("unsaved local writing", window.slipEditor.Text);
+            Assert.True(window.editorState.IsDirty);
+        }
+        finally
+        {
+            CloseWindow(window);
+        }
+    }
+
     private static T WindowField<T>(MainWindow window, string name) =>
         (T)typeof(MainWindow).GetField(name,
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(window)!;

@@ -271,17 +271,4 @@ internal partial class MainWindow
         }
     }
 
-    private ZetlSlipSnapshot? SelectedSlip
-    {
-        get
-        {
-            var selected = SelectedSlips();
-            return selected.Count switch
-            {
-                0 => currentProject?.Slips.FirstOrDefault(slip => slip.Id == editorState.SlipId),
-                1 => selected[0],
-                _ => null
-            };
-        }
-    }
 }

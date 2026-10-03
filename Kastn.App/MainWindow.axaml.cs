@@ -1175,18 +1175,6 @@ internal partial class MainWindow : Window
         bucketHeadingUpdating = false;
     }
 
-    // The selected bucket when it is in "title mode" (a single bucket selected and
-    // not expanded to its slips), else null. In this mode the toolbar's alignment and
-    // the heading panel act on the bucket's title rather than its slips.
-    private ZetlBucketSnapshot? TitleModeBucket()
-    {
-        return CurrentSelection() is KastnSelection.BucketTitle { BucketId: var bucketId }
-            && currentProject?.Buckets.FirstOrDefault(bucket => bucket.Id == bucketId) is { } found
-            && !KastnWorkbench.IsDeletedBucket(found)
-            ? found
-            : null;
-    }
-
     private async Task OnBucketHeadingChangedAsync()
     {
         if (bucketHeadingUpdating
@@ -1729,7 +1717,7 @@ internal partial class MainWindow : Window
 
             return node.Kind == KastnTreeNodeKind.Bucket
                 ? node.Bucket
-                : currentProject.Buckets.FirstOrDefault(bucket => bucket.Id == node.Slip!.BucketId);
+                : ProjectIndex.Bucket(node.Slip!.BucketId);
         }
     }
 

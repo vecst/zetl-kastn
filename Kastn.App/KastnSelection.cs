@@ -5,7 +5,7 @@ namespace KASTN;
 // The one explicit interpretation of what the project tree has selected. Everything
 // the workbench derives from a selection — the editor binding, the toolbar target,
 // the batch set, the right-pane mode — reads this single value instead of poking at
-// the tree / hidden list / editor state independently.
+// the tree / editor state independently.
 //
 // A Slips selection holds a set: one id is single-slip editing, two or more is a
 // batch. A BucketTitle selection means a bucket is selected for editing its heading

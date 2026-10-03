@@ -209,26 +209,10 @@ internal partial class MainWindow
                 $"Slip aligned {align}.")
             : Task.CompletedTask;
 
-    private void UpdateAlignButtons()
+    private void UpdateAlignButtons(KastnSelectionContext context, bool canAlign)
     {
-        var selected = SelectedSlips();
-        var slip = selected.Count == 1 ? selected[0] : null;
-        var titleBucket = TitleModeBucket();
-        // Alignment applies to a bucket heading (title mode), a single text slip, or
-        // every selected text slip (batch). The active highlight is shown for a
-        // single slip or the title bucket.
-        var batchAlign = selected.Count >= 2
-            && selected.Any(item => item.Type == ZetlSlipType.Text
-                && !IsSlipInDeleted(item)
-                && !ZetlBlockKinds.IsStructural(item.BlockKind));
-        var canAlign = IsOnline
-            && !savingVisual
-            && editorState.ConflictCurrent is null
-            && (titleBucket is not null
-                || batchAlign
-                || (slip is { Type: ZetlSlipType.Text }
-                    && !IsSlipInDeleted(slip)
-                    && !ZetlBlockKinds.IsStructural(slip.BlockKind)));
+        var slip = context.SingleSlip;
+        var titleBucket = context.TitleBucket;
         alignLeftButton.IsEnabled = canAlign;
         alignCenterButton.IsEnabled = canAlign;
         alignRightButton.IsEnabled = canAlign;
@@ -244,11 +228,10 @@ internal partial class MainWindow
     // Highlight the list button matching either the selected bucket's default list
     // render kind or the single selected note's own kind, so the buttons read as
     // toggles (pressed when that kind is active) like alignment.
-    private void UpdateListButtons()
+    private void UpdateListButtons(KastnSelectionContext context)
     {
-        var selected = SelectedSlips();
-        var slip = selected.Count == 1 ? selected[0] : null;
-        var bucket = TitleModeBucket();
+        var slip = context.SingleSlip;
+        var bucket = context.TitleBucket;
         var active = bucket is not null
             ? ZetlViewRenderer.BucketRenderKind(bucket)
             : slip is { Type: ZetlSlipType.Text } && !IsSlipInDeleted(slip)
@@ -359,9 +342,10 @@ internal partial class MainWindow
         }
     }
 
-    private void UpdateInlineFormatButtons()
+    private void UpdateInlineFormatButtons(KastnSelectionContext? context = null)
     {
-        if (!CanReadInlineStyleState(out var slip))
+        context ??= CaptureSelectionContext();
+        if (!CanReadInlineStyleState(context, out var slip))
         {
             SetInlineFormatButtonActive(ZetlInlineStyleKinds.Bold, false);
             SetInlineFormatButtonActive(ZetlInlineStyleKinds.Italic, false);
@@ -851,15 +835,15 @@ internal partial class MainWindow
         return true;
     }
 
-    private bool CanReadInlineStyleState(out ZetlSlipSnapshot slip)
+    private bool CanReadInlineStyleState(KastnSelectionContext context, out ZetlSlipSnapshot slip)
     {
         slip = null!;
-        var selected = SelectedSlips();
+        var selected = context.Slips;
         if (selected.Count != 1
             || selected[0].Type != ZetlSlipType.Text
             || ZetlBlockKinds.IsStructural(selected[0].BlockKind)
-            || IsSlipInDeleted(selected[0])
-            || editorState.SlipId is null)
+            || context.IsDeleted(selected[0])
+            || context.EditorSlipId is null)
         {
             return false;
         }
@@ -1877,94 +1861,55 @@ internal partial class MainWindow
 
     private void SetEditingEnabled()
     {
-        var selectedSlips = SelectedSlips();
-        var hasSelectedSlips = selectedSlips.Count > 0;
-        var hasMultipleSelectedSlips = selectedSlips.Count > 1;
-        var allSelectedSlipsAreActive = hasSelectedSlips
-            && selectedSlips.All(slip => !IsSlipInDeleted(slip));
-        var selectedSlipIsDeleted = selectedSlips.Count == 1 && IsSlipInDeleted(selectedSlips[0]);
-        // A structural note (a divider, and later group/table/latex) is a Kastn-only
-        // element with no authored content, so the editor and content-format controls
-        // do not apply to it — only move/delete remain.
-        var selectedIsStructural = selectedSlips.Count == 1
-            && ZetlBlockKinds.IsStructural(selectedSlips[0].BlockKind);
-        var canEdit = IsOnline
-            && editorState.SlipId is not null
-            && !hasMultipleSelectedSlips
-            && !selectedIsStructural
-            && !savingVisual;
-        var canBatch = IsOnline
-            && hasSelectedSlips
-            && !savingVisual
-            && editorState.ConflictCurrent is null;
-        var canCreateSlip = IsOnline
-            && currentProject is not null
-            && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
-            && !addingSlip;
-        slipEditor.IsEnabled = canEdit && editorState.ConflictCurrent is null;
-        var canFormat = slipEditor.IsEnabled;
-        // The list markers, strikethrough, and alignment also work across a multi-slip
-        // selection (applied to every selected text slip). When a bucket title is
-        // selected, the three list buttons edit the bucket's default render mode.
-        var canBatchFormat = IsOnline
-            && !savingVisual
-            && editorState.ConflictCurrent is null
-            && hasMultipleSelectedSlips
-            && selectedSlips.Any(slip => slip.Type == ZetlSlipType.Text && !IsSlipInDeleted(slip));
-        var canBucketListFormat = IsOnline
-            && !savingVisual
-            && editorState.ConflictCurrent is null
-            && TitleModeBucket() is { } bucket
-            && !KastnWorkbench.IsDeletedBucket(bucket);
-        var canFormatOrBatch = canFormat || canBatchFormat;
+        var context = CaptureSelectionContext();
+        var enabled = KastnCommandAvailability.Compute(
+            context, online: IsOnline, busy: savingVisual,
+            hasConflict: editorState.ConflictCurrent is not null, addingSlip: addingSlip);
+        slipEditor.IsEnabled = enabled.EditorEnabled;
         // Bold/italic/strike are whole-slip properties, so they batch like the
         // list buttons; bold on a bucket title toggles the heading's bold.
-        boldButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
-        fontFamilyBox.IsEnabled = canFormatOrBatch;
-        fontSizeBox.IsEnabled = canFormatOrBatch;
-        textColorBox.IsEnabled = canFormatOrBatch;
-        italicButton.IsEnabled = canFormatOrBatch;
-        strikeButton.IsEnabled = canFormatOrBatch;
-        codeButton.IsEnabled = canFormat;
-        linkButton.IsEnabled = canFormat;
-        wikiLinkButton.IsEnabled = canFormat;
-        headingButton.IsEnabled = canFormatOrBatch;
-        quoteButton.IsEnabled = canFormatOrBatch;
-        codeBlockButton.IsEnabled = canFormatOrBatch;
+        boldButton.IsEnabled = enabled.FormatSelectionEnabled || enabled.FormatBucketEnabled;
+        fontFamilyBox.IsEnabled = enabled.FormatSelectionEnabled;
+        fontSizeBox.IsEnabled = enabled.FormatSelectionEnabled;
+        textColorBox.IsEnabled = enabled.FormatSelectionEnabled;
+        italicButton.IsEnabled = enabled.FormatSelectionEnabled;
+        strikeButton.IsEnabled = enabled.FormatSelectionEnabled;
+        codeButton.IsEnabled = enabled.EditorEnabled;
+        linkButton.IsEnabled = enabled.EditorEnabled;
+        wikiLinkButton.IsEnabled = enabled.EditorEnabled;
+        headingButton.IsEnabled = enabled.FormatSelectionEnabled;
+        quoteButton.IsEnabled = enabled.FormatSelectionEnabled;
+        codeBlockButton.IsEnabled = enabled.FormatSelectionEnabled;
         // The divider insert lives in the tree-side insert bar and creates a new
         // structural note, so it follows the new-slip rule rather than needing a note
         // in the editor.
-        insertDividerButton.IsEnabled = canCreateSlip && !showingDeleted;
+        insertDividerButton.IsEnabled = enabled.CreateSlipEnabled && !showingDeleted;
         // A group is a bucket, so it follows the add-bucket rule.
         insertGroupButton.IsEnabled = IsOnline && currentProject is not null && !showingDeleted;
-        bulletListButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
-        numberListButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
-        taskListButton.IsEnabled = canFormatOrBatch || canBucketListFormat;
-        ignoreBucketRenderKindCheck.IsEnabled = canEdit
-            && selectedSlips.Count == 1
-            && !selectedIsStructural
-            && !selectedSlipIsDeleted
-            && editorState.ConflictCurrent is null;
+        bulletListButton.IsEnabled = enabled.FormatSelectionEnabled || enabled.FormatBucketEnabled;
+        numberListButton.IsEnabled = enabled.FormatSelectionEnabled || enabled.FormatBucketEnabled;
+        taskListButton.IsEnabled = enabled.FormatSelectionEnabled || enabled.FormatBucketEnabled;
+        ignoreBucketRenderKindCheck.IsEnabled = enabled.SlipPropertiesEnabled;
         representationToggleButton.IsEnabled = ignoreBucketRenderKindCheck.IsEnabled;
         attachPictureButton.IsEnabled = ignoreBucketRenderKindCheck.IsEnabled;
         removePictureButton.IsEnabled = ignoreBucketRenderKindCheck.IsEnabled;
-        saveSlipButton.IsEnabled = canEdit && editorState.ConflictCurrent is null;
+        saveSlipButton.IsEnabled = enabled.EditorEnabled;
         saveSlipMenuItem.IsEnabled = false;
-        deleteSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive;
+        deleteSlipButton.IsEnabled = enabled.MoveOrDeleteEnabled;
         deleteSlipMenuItem.IsEnabled = false;
-        restoreSlipButton.IsEnabled = canEdit && selectedSlipIsDeleted && moveBuckets.Count > 0;
-        moveSlipButton.IsEnabled = canBatch && allSelectedSlipsAreActive && moveBuckets.Count > 0;
+        restoreSlipButton.IsEnabled = enabled.RestoreSlipEnabled && moveBuckets.Count > 0;
+        moveSlipButton.IsEnabled = enabled.MoveOrDeleteEnabled && moveBuckets.Count > 0;
         moveBucketBox.IsEnabled = moveSlipButton.IsEnabled || restoreSlipButton.IsEnabled;
         // The Deleted view is for browsing/restoring; bucket and slip creation are
         // hidden there.
         addBucketButton.IsEnabled = IsOnline && currentProject is not null && !showingDeleted;
         closeProjectButton.IsEnabled = currentProject is not null;
         saveAsTemplateMenuItem.IsEnabled = currentProject is not null;
-        newSlipButton.IsEnabled = canCreateSlip && !showingDeleted;
+        newSlipButton.IsEnabled = enabled.CreateSlipEnabled && !showingDeleted;
         newSlipMenuItem.IsEnabled = newSlipButton.IsEnabled;
-        UpdateAlignButtons();
-        UpdateListButtons();
-        UpdateInlineFormatButtons();
+        UpdateAlignButtons(context, enabled.AlignEnabled);
+        UpdateListButtons(context);
+        UpdateInlineFormatButtons(context);
     }
 
     private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -2032,19 +1977,6 @@ internal partial class MainWindow
         }
     }
 
-    // The one explicit interpretation of the tree's selection, computed fresh from
-    // the tree. SelectedSlips / TitleModeBucket / the batch logic all read this
-    // rather than poking the tree independently.
-    private KastnSelection CurrentSelection()
-    {
-        var nodes = projectTree.SelectedItems?.OfType<KastnTreeNode>().ToList()
-            ?? (SelectedTreeNode is { } single ? [single] : []);
-        return KastnSelection.Compute(nodes, SelectedTreeNode);
-    }
-
-    private IReadOnlyList<string> SelectedTreeSlipIds() =>
-        CurrentSelection() is KastnSelection.Slips slips ? slips.SlipIds : [];
-
     // The center View is persistent; this toggle changes only the right Detail pane.
     private void SetDetailPaneMode(bool showDetails)
     {
@@ -2095,34 +2027,6 @@ internal partial class MainWindow
                 (typeFilterBox.SelectedItem as TypeFilterItem)?.Value)
             .Where(slip => !IsSlipInDeleted(slip))
             .ToList();
-    }
-
-    private IReadOnlyList<ZetlSlipSnapshot> SelectedSlips()
-    {
-        if (currentProject is null)
-        {
-            return [];
-        }
-
-        // The tree is the selection surface: resolve explicit slip selections
-        // project-wide so a batch survives crossing buckets. Bucket selections edit
-        // the bucket itself, not the slips inside it.
-        if (CurrentSelection() is KastnSelection.Slips { SlipIds: var ids })
-        {
-            var idSet = ids.ToHashSet(StringComparer.Ordinal);
-            return currentProject.Slips.Where(slip => idSet.Contains(slip.Id)).ToList();
-        }
-
-        if (CurrentSelection() is KastnSelection.BucketTitle)
-        {
-            return [];
-        }
-
-        // Fall back to the single editor slip (e.g. a freshly created/selected one).
-        return editorState.SlipId is { } editingId
-            && currentProject.Slips.FirstOrDefault(slip => slip.Id == editingId) is { } slip
-            ? [slip]
-            : [];
     }
 
     private bool IsSlipInDeleted(ZetlSlipSnapshot? slip)

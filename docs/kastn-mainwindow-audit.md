@@ -20,6 +20,20 @@ extracting undo or the renderers.
 - Validation: solution build with zero warnings/errors; 131 focused Kastn and
   Avalonia UI tests passed. The responsibility map below remains the historical
   audit baseline.
+- Extracted `KastnSelectionContext` and `KastnCommandAvailability`: selection
+  targets resolve against one snapshot, and toolbar updates reuse those targets
+  for availability, alignment, list state, and inline formatting. Selected slips
+  use indexed document positions instead of scanning the whole project.
+- Moved window selection adapters into `MainWindow.Selection.cs`, including the
+  detail-pane fallback previously housed in the creation-type partial. Existing
+  deleted, structural, batch, and bucket-heading policies are preserved.
+- Added coverage for snapshot ordering, command availability, toolbar selection
+  transitions, and failed offline saves retaining the original dirty draft.
+  Navigation orchestration and editor-safe formatting/picture mutations remain
+  follow-up work.
+- Validation after the selection extraction: solution build with zero
+  warnings/errors; 548 tests passed, with the same two intentional latency-probe
+  skips.
 
 ## Responsibility Map
 
