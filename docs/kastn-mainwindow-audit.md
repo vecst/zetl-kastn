@@ -226,6 +226,17 @@ extracting undo or the renderers.
   warnings/errors; 838 tests passed, with the same two intentional latency-probe
   skips. View catalog/editor ownership remains the next extraction target.
 
+- Unified equivalent tree drop edges: below the previous slip and above the next
+  now share one insertion marker. Crossing that gap no longer toggles marker
+  flags on different rows. Explicit board marker hints retain visible card edges.
+- Shared hover/release resolution retains the last valid slot through actual
+  spacing, but clears it on unchanged or invalid targets. This prevents an old
+  slot from remaining active while hovering over a no-op position.
+- Added pure single/multi-slip placement tests and headless routed tree-hover
+  regressions for stable markers, spacing, and stale-target clearing. Validation:
+  solution build with zero warnings/errors; 842 tests passed, with the same two
+  intentional latency-probe skips. View catalog/editor ownership remains next.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

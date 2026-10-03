@@ -201,13 +201,7 @@ internal partial class MainWindow
         // while the pointer is held still at the edge (DragOver only fires on movement).
         lastDragPointerY = args.GetPosition(projectTree).Y;
         dragPointerInsideTree = true;
-        var resolved = PlanDrop(args);
-        if (resolved is not null)
-        {
-            stickyDropPlan = resolved;
-        }
-
-        var plan = resolved ?? stickyDropPlan;
+        var plan = ResolveDrop(args);
         args.DragEffects = plan is not null ? DragDropEffects.Move : DragDropEffects.None;
         ApplyDropMarker(plan);
         args.Handled = true;
@@ -264,7 +258,7 @@ internal partial class MainWindow
 
     private async void OnTreeDrop(object? sender, DragEventArgs args)
     {
-        if ((PlanDrop(args) ?? stickyDropPlan) is not { } plan)
+        if (ResolveDrop(args) is not { } plan)
         {
             return;
         }
@@ -273,8 +267,20 @@ internal partial class MainWindow
         await ApplyDropAsync(plan);
     }
 
-    private KastnDropPlan? PlanDrop(DragEventArgs args)
+    private KastnDropPlan? ResolveDrop(DragEventArgs args)
     {
+        var resolved = PlanDrop(args, out var isGap);
+        if (resolved is not null) stickyDropPlan = resolved;
+        else if (!isGap || stickyDropPlan is { } previous
+            && (!KastnDropPlanner.IsValid(ProjectIndex, previous)
+                || previous.Action == KastnDropAction.SlipMove && KastnDropPlanner.IsSlipNoOp(ProjectIndex, previous)))
+            stickyDropPlan = null;
+        return stickyDropPlan;
+    }
+
+    private KastnDropPlan? PlanDrop(DragEventArgs args, out bool isGap)
+    {
+        isGap = false;
         if (draggingNode is not { } source || currentProject is null || !IsOnline
             || draggingProjectId != currentProject.Id || !args.DataTransfer.Contains(DragNodeFormat)) return null;
         var ids = (draggingNodes.Count > 0 ? draggingNodes : [source])
@@ -282,9 +288,13 @@ internal partial class MainWindow
         KastnDropPosition position;
         if (RowUnderPointer(args) is not { } row)
         {
-            // Tree empty space promotes/appends a bucket. Board gaps retain the
-            // sticky slot, whose project and targets are revalidated at execution.
-            if (boardDragInProgress) return null;
+            // Tree empty space promotes/appends a bucket. Slip and board gaps
+            // retain the last valid slot; unchanged or invalid rows clear it.
+            if (boardDragInProgress || source.Kind == KastnTreeNodeKind.Slip)
+            {
+                isGap = true;
+                return null;
+            }
             position = new(KastnDropTargetKind.Empty);
         }
         else
@@ -302,7 +312,8 @@ internal partial class MainWindow
             else
                 position = new(target.Kind == KastnTreeNodeKind.Slip ? KastnDropTargetKind.Slip : KastnDropTargetKind.Bucket,
                     target.Id, source.Kind == KastnTreeNodeKind.Slip && target.Kind == KastnTreeNodeKind.Bucket
-                        ? KastnDropEdge.None : EdgeFromFraction(fraction, target.Kind == KastnTreeNodeKind.Bucket));
+                        ? KastnDropEdge.None : EdgeFromFraction(fraction, target.Kind == KastnTreeNodeKind.Bucket),
+                    MarkerId: boardDragInProgress ? target.Id : null);
         }
         return KastnDropPlanner.Plan(ProjectIndex, source.Id, source.Kind == KastnTreeNodeKind.Slip, ids, position);
     }
@@ -623,13 +634,7 @@ internal partial class MainWindow
         lastBoardDragPointerX = args.GetPosition(boardScrollViewer).X;
         boardDragPointerInsideBoard = true;
 
-        var resolved = PlanDrop(args);
-        if (resolved is not null)
-        {
-            stickyDropPlan = resolved;
-        }
-
-        var plan = resolved ?? stickyDropPlan;
+        var plan = ResolveDrop(args);
         args.DragEffects = plan is not null ? DragDropEffects.Move : DragDropEffects.None;
         ApplyDropMarker(plan);
         args.Handled = true;
@@ -643,7 +648,7 @@ internal partial class MainWindow
 
     private async void OnBoardDrop(object? sender, DragEventArgs args)
     {
-        if ((PlanDrop(args) ?? stickyDropPlan) is not { } plan)
+        if (ResolveDrop(args) is not { } plan)
         {
             return;
         }

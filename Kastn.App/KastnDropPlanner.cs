@@ -47,10 +47,21 @@ internal static class KastnDropPlanner
                 before = position.Kind == KastnDropTargetKind.BoardSlot ? position.BeforeSlipId : null;
             }
             else return null;
+            var markerId = position.MarkerId ?? position.TargetId;
+            var markerEdge = position.Edge;
+            if (position.Kind == KastnDropTargetKind.Slip && position.MarkerId is null)
+            {
+                // One insertion slot gets one marker: after the previous row and
+                // before the next row must not toggle two lines in the same gap.
+                // Explicit marker hints let filtered board cards keep a visible edge.
+                markerId = before ?? index.Slips(destination!).LastOrDefault(slip => !dragged.Contains(slip.Id))?.Id;
+                markerEdge = before is not null ? KastnDropEdge.Before : KastnDropEdge.After;
+                if (markerId is null) { markerId = destination; markerEdge = KastnDropEdge.None; }
+            }
             var plan = new KastnDropPlan(index.Project.Id, KastnDropAction.SlipMove, sourceId)
             {
                 SlipIds = ids, DestinationBucketId = destination, BeforeSlipId = before,
-                MarkerId = position.MarkerId ?? position.TargetId, MarkerEdge = position.Edge
+                MarkerId = markerId, MarkerEdge = markerEdge
             };
             return IsValid(index, plan) && !IsSlipNoOp(index, plan) ? plan : null;
         }

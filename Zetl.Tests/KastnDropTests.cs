@@ -10,6 +10,25 @@ public class KastnDropTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void EquivalentTreeEdgesUseOneInsertionMarker(bool multiple)
+    {
+        var index = WithSlips(Index(), [Slip("one", "a"), Slip("two", "a"), Slip("three", "a"), Slip("four", "a")]);
+        var ids = multiple ? new[] { "three", "four" } : ["three"];
+        var belowOne = KastnDropPlanner.Plan(index, "three", true, ids,
+            new(KastnDropTargetKind.Slip, "one", KastnDropEdge.After))!;
+        var aboveTwo = KastnDropPlanner.Plan(index, "three", true, ids,
+            new(KastnDropTargetKind.Slip, "two", KastnDropEdge.Before))!;
+        Assert.Equal(aboveTwo.DestinationBucketId, belowOne.DestinationBucketId);
+        Assert.Equal(aboveTwo.BeforeSlipId, belowOne.BeforeSlipId);
+        Assert.Equal(aboveTwo.MarkerId, belowOne.MarkerId);
+        Assert.Equal(aboveTwo.MarkerEdge, belowOne.MarkerEdge);
+        Assert.Equal("two", belowOne.MarkerId);
+        Assert.Equal(KastnDropEdge.Before, belowOne.MarkerEdge);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void TreeAndBoardCaptureDocumentOrderAndTheSameInsertionSlot(bool board)
     {
         var index = Index();
@@ -31,6 +50,8 @@ public class KastnDropTests
             new(KastnDropTargetKind.Slip, "anchor", KastnDropEdge.After));
         Assert.NotNull(plan);
         Assert.Equal("tail", plan.BeforeSlipId);
+        Assert.Equal("tail", plan.MarkerId);
+        Assert.Equal(KastnDropEdge.Before, plan.MarkerEdge);
         Assert.Null(KastnDropPlanner.Plan(index, "two", true, ["two"],
             new(KastnDropTargetKind.Slip, "anchor", KastnDropEdge.After)));
         Assert.Null(KastnDropPlanner.Plan(index, "tail", true, ["tail"], new(KastnDropTargetKind.Bucket, "a")));
