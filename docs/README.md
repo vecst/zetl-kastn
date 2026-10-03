@@ -43,6 +43,8 @@ These are the authoritative places to answer “what remains?”
 
 ## Focused Design Records
 
+- [`kastn-mainwindow-audit.md`](kastn-mainwindow-audit.md) — MainWindow ownership
+  map, confirmed stale code, and the proposed cleanup sequence
 - [`hold-shortcut-ideas-discussion.md`](hold-shortcut-ideas-discussion.md) — post-RC
   Hold-shortcut and portable text-interaction ideas; discussion only
 - [`hold-routing-discussion.md`](hold-routing-discussion.md) — routing held
