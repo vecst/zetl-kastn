@@ -39,7 +39,16 @@ internal partial class MainWindow
             return false;
         }
 
-        return draftStore.Save(editorState.ToDraftDocument(currentProject.Id));
+        var draft = editorState.ToDraftDocument(currentProject.Id);
+        if (!draftStore.Save(draft))
+        {
+            return false;
+        }
+
+        // This journal came from the live editor. A following snapshot must not
+        // restore it over newer typing as though it came from a previous session.
+        restoredDraftKey = DraftRecoveryKey(draft);
+        return true;
     }
 
     private bool ClearDraftJournal(string? projectId, string? slipId)
@@ -54,6 +63,19 @@ internal partial class MainWindow
         }
 
         return true;
+    }
+
+    private void PersistEditorAfterSave(string projectId)
+    {
+        if (editorState.IsDirty)
+        {
+            FlushDraftJournal();
+        }
+        else
+        {
+            recoveredDraftActive = false;
+            ClearDraftJournal(projectId, editorState.SlipId);
+        }
     }
 
     private void AcceptEditorSaved(ZetlSlipSnapshot saved)
@@ -100,7 +122,7 @@ internal partial class MainWindow
             return;
         }
 
-        var key = $"{draft.ProjectId}|{draft.SlipId}|{draft.UpdatedAtUtc.UtcTicks}";
+        var key = DraftRecoveryKey(draft);
         if (string.Equals(restoredDraftKey, key, StringComparison.Ordinal))
         {
             return;
@@ -133,6 +155,9 @@ internal partial class MainWindow
             statusText.Text = "Recovered an unsaved local draft. It has not yet been saved to Zetl.";
         }
     }
+
+    private static string DraftRecoveryKey(KastnDraftDocument draft) =>
+        $"{draft.ProjectId}|{draft.SlipId}|{draft.UpdatedAtUtc.UtcTicks}";
 
     private async Task<bool> PrepareEditorForExitAsync()
     {

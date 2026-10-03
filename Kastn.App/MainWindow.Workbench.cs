@@ -161,76 +161,38 @@ internal partial class MainWindow
             return false;
         }
 
-        var refreshedText = ZetlSlipLinks.RefreshCachedTitles(editorState.DraftText, currentProject);
-        var text = refreshedText.Trim();
-        if (text.Length == 0
-            && string.IsNullOrWhiteSpace(SelectedSlip?.Title)
-            && SelectedSlip?.Type != ZetlSlipType.Picture)
+        var operation = KastnEditorSaveOperation.Create(editorState, currentProject);
+        if (operation is null)
         {
             statusText.Text = "A slip needs a title or body.";
             return false;
         }
 
         saving = true;
-        pendingSaveText = text;
+        pendingEditorSave = operation;
         SetEditingEnabled();
         try
         {
-            var response = await ExecuteMutationAsync(
-                ZetlCommandEnvelope.Create(
-                    Guid.NewGuid().ToString("N"),
-                    ZetlCommandKind.UpdateSlip,
-                    new UpdateSlipCommand
-                    {
-                        Text = text,
-                        InlineStyles = editorState.InlineStylesAreDirty
-                            ? InlineStylesForTrimmedCommand(
-                                refreshedText,
-                                editorState.DraftInlineStyles)
-                            : null
-                    },
-                    currentProject.Id,
-                    editorState.SlipId,
-                    editorState.Revision));
-            if (response.Status == ZetlResponseStatus.Conflict)
+            var result = await operation.ExecuteAsync(ExecuteMutationAsync);
+            if (result.Saved && operation.IsCurrentEditor)
             {
-                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
-                    ZetlProtocolJson.Options);
-                if (current is not null)
-                {
-                    editorState.Reconcile(current);
-                    ShowConflict();
-                }
-
-                return false;
-            }
-
-            if (response.Status != ZetlResponseStatus.Success)
-            {
-                statusText.Text = response.Error?.Message ?? $"Save failed: {response.Status}.";
-                return false;
-            }
-
-            var saved = response.Payload?.Deserialize<ZetlSlipSnapshot>(
-                ZetlProtocolJson.Options);
-            if (saved is not null)
-            {
-                AcceptEditorSaved(saved);
+                PersistEditorAfterSave(operation.ProjectId);
                 UpdateEditorFromState();
             }
 
-            statusText.Text = "Slip saved.";
-            return true;
-        }
-        catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or OperationCanceledException)
-        {
-            statusText.Text = $"Slip was not saved. {ex.Message}";
-            return false;
+            if (editorState.ConflictCurrent is not null)
+            {
+                ShowConflict();
+            }
+            if (result.Message is { } message)
+            {
+                statusText.Text = message;
+            }
+            return result.CanLeaveEditor;
         }
         finally
         {
-            pendingSaveText = null;
+            pendingEditorSave = null;
             saving = false;
             SetEditingEnabled();
         }
@@ -650,11 +612,8 @@ internal partial class MainWindow
                 revision));
             if (response.Status == ZetlResponseStatus.Conflict)
             {
-                var current = response.Conflict?.Current.Deserialize<ZetlSlipSnapshot>(
-                    ZetlProtocolJson.Options);
-                if (current is not null && isEditing)
+                if (isEditing && editorState.ReconcileConflict(response))
                 {
-                    editorState.Reconcile(current);
                     ShowConflict();
                 }
 
@@ -967,7 +926,7 @@ internal partial class MainWindow
         string successText)
     {
         var commandText = text.Trim();
-        var commandStyles = InlineStylesForTrimmedCommand(text, styles);
+        var commandStyles = KastnInlineStyleEditing.ForTrimmedCommand(text, styles);
         editorState.SetDraft(text);
         editorState.SetInlineStyles(commandStyles);
         FlushDraftJournal();
@@ -979,22 +938,6 @@ internal partial class MainWindow
                 InlineStyles = commandStyles
             },
             successText);
-    }
-
-    private static IReadOnlyList<ZetlInlineStyleRange> InlineStylesForTrimmedCommand(
-        string text,
-        IReadOnlyList<ZetlInlineStyleRange> styles)
-    {
-        var leadingTrim = text.Length - text.TrimStart().Length;
-        var trimmed = text.Trim();
-        if (leadingTrim == 0)
-        {
-            return ZetlInlineStyles.Normalize(trimmed, styles);
-        }
-
-        return ZetlInlineStyles.Normalize(
-            trimmed,
-            styles.Select(style => style with { Start = style.Start - leadingTrim }).ToList());
     }
 
     private static string InlineStyleLabel(string kind) => ZetlInlineStyleKinds.Normalize(kind) switch

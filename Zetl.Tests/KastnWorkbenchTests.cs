@@ -122,14 +122,6 @@ public class KastnWorkbenchTests
         AssertEqual("newer remote", editor.DraftText, "Use Zetl should adopt the current version.");
         AssertTrue(!editor.IsDirty, "Using Zetl should leave a clean editor.");
 
-        var localSave = new KastnEditorState();
-        localSave.Select(original);
-        localSave.SetDraft("saved locally");
-        localSave.Reconcile(
-            original with { Text = "saved locally", Revision = 3 },
-            pendingSaveText: "saved locally");
-        AssertEqual(null, localSave.ConflictCurrent, "A local save event must not create a conflict.");
-        AssertTrue(!localSave.IsDirty, "An acknowledged local save event should clean the editor.");
     }
 
     [Fact] public void EmptyEditorPendingStyleAppliesToTypedSlipText()

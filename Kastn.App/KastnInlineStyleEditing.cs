@@ -5,6 +5,23 @@ namespace KASTN;
 
 internal static class KastnInlineStyleEditing
 {
+    public static IReadOnlyList<ZetlInlineStyleRange> ForTrimmedCommand(
+        string text,
+        IReadOnlyList<ZetlInlineStyleRange> styles)
+    {
+        var leadingTrim = text.Length - text.TrimStart().Length;
+        var trimmed = text.Trim();
+        if (leadingTrim == 0)
+        {
+            return ZetlInlineStyles.Normalize(trimmed, styles);
+        }
+
+        return ZetlInlineStyles.Normalize(
+            trimmed,
+            styles.Select(style => style with { Start = style.Start - leadingTrim }).ToList());
+    }
+
+
     public static IReadOnlyList<ZetlInlineStyleRange> ToggleTextStyle(
         string text,
         IReadOnlyList<ZetlInlineStyleRange> inlineStyles,

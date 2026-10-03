@@ -210,7 +210,7 @@ internal partial class MainWindow : Window
     private bool recoveredDraftActive;
     private bool addingSlip;
     private bool visibilityUpdating;
-    private string? pendingSaveText;
+    private KastnEditorSaveOperation? pendingEditorSave;
     private string? pendingBucketSelectionId;
     private string? pendingSlipSelectionId;
     private bool pendingSlipFocus;
@@ -676,7 +676,10 @@ internal partial class MainWindow : Window
                 var currentSlip = selectedSlipId is null
                     ? null
                     : projectSnapshot.Slips.FirstOrDefault(slip => slip.Id == selectedSlipId);
-                editorState.Reconcile(currentSlip, pendingSaveText);
+                if (pendingEditorSave?.TryAcknowledgeSnapshot(currentSlip) != true)
+                {
+                    editorState.Reconcile(currentSlip);
+                }
                 UpdateEditorFromState();
                 RefreshSlipView(force: true);
                 RestoreDraftIfAvailable(projectSnapshot);
@@ -1529,11 +1532,8 @@ internal partial class MainWindow : Window
         if (response.Status == ZetlResponseStatus.Conflict
             && response.Conflict?.TargetKind == ZetlEntityKind.Slip)
         {
-            var current = response.Conflict.Current.Deserialize<ZetlSlipSnapshot>(
-                ZetlProtocolJson.Options);
-            if (current is not null)
+            if (editorState.ReconcileConflict(response))
             {
-                editorState.Reconcile(current);
                 UpdateEditorFromState();
             }
 

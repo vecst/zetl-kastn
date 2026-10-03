@@ -1032,6 +1032,92 @@ public class ZetlUITests : IDisposable
         }
     }
 
+    [AvaloniaFact]
+    public async Task SavingPreservesLaterTypingAndRebasesItsRecoveryJournal()
+    {
+        var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "KastnUiTests", Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        MainWindow? window = null;
+        using var releaseResponse = new System.Threading.ManualResetEventSlim();
+        var commandArrived = new TaskCompletionSource<ZETL.Contracts.ZetlCommandEnvelope>();
+        try
+        {
+            var store = new ZetlStateStore(System.IO.Path.Combine(directory, "state.json"), "kastn-ui");
+            var project = store.CreateProject("Save race", ["Inbox"], "Inbox");
+            var slip = store.AddSlip(project.Buckets[0], "baseline", "copy");
+            var pipeName = $"kastn-ui-{Guid.NewGuid():N}";
+            using var server = new ZetlIpcServer(new ZetlProjectService(store), pipeName, log: null,
+                dropResponseForTesting: command =>
+                {
+                    if (command.Kind == ZETL.Contracts.ZetlCommandKind.UpdateSlip
+                        && commandArrived.TrySetResult(command))
+                    {
+                        releaseResponse.Wait(TimeSpan.FromSeconds(5));
+                    }
+                    return false;
+                });
+            server.Start();
+            await using var controller = new KastnConnectionController(
+                _ => throw new InvalidOperationException("Zetl was already running."), pipeName,
+                TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(25));
+            controller.Start(project.Id);
+            await WaitForConditionAsync(() => controller.Current.Project?.Id == project.Id, "Project should load.");
+
+            var drafts = new KastnDraftStore(System.IO.Path.Combine(directory, "draft.json"));
+            window = new MainWindow(controller, drafts);
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var saveMethod = typeof(MainWindow).GetMethod("SaveEditorAsync",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var flushMethod = typeof(MainWindow).GetMethod("FlushDraftJournal",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            window.slipEditor.Text = "sent draft";
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True((bool)flushMethod.Invoke(window, null)!);
+            var saving = (Task<bool>)saveMethod.Invoke(window, null)!;
+            Assert.Same(saving, saveMethod.Invoke(window, null));
+            try
+            {
+                await commandArrived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                window.slipEditor.Text = "sent draft plus later typing";
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                var snapshot = controller.Current.Project!;
+                PublishRenderSnapshot(controller, snapshot with
+                {
+                    ChangeSequence = project.ChangeSequence,
+                    Slips = [snapshot.Slips[0] with { Text = "sent draft", Revision = slip.Revision }]
+                });
+                Assert.Equal("sent draft plus later typing", window.slipEditor.Text);
+                Assert.Null(window.editorState.ConflictCurrent);
+            }
+            finally
+            {
+                releaseResponse.Set();
+            }
+
+            Assert.False(await saving.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal("sent draft plus later typing", window.slipEditor.Text);
+            Assert.Equal(slip.Revision, drafts.Draft?.BaselineRevision);
+            Assert.Equal("sent draft", drafts.Draft?.BaselineText);
+            Assert.Equal("sent draft plus later typing", drafts.Draft?.DraftText);
+            Assert.True(window.editorState.IsDirty);
+
+            Assert.True(await ((Task<bool>)saveMethod.Invoke(window, null)!).WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal("sent draft plus later typing", slip.Text);
+            Assert.Null(drafts.Draft);
+            Assert.False(window.editorState.IsDirty);
+        }
+        finally
+        {
+            releaseResponse.Set();
+            if (window is not null)
+            {
+                CloseWindow(window);
+            }
+            System.IO.Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static T WindowField<T>(MainWindow window, string name) =>
         (T)typeof(MainWindow).GetField(name,
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(window)!;
