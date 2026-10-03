@@ -7,6 +7,7 @@ using System.Collections.Generic;
 
 namespace ZETL.Tests;
 
+[Collection(RealTimeCollection.Name)]
 public class ChordlKeyboardTests
 {
     [Fact(DisplayName = "Ctrl+C pass-through suppresses later repeats")]

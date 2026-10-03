@@ -11,6 +11,7 @@ using static ZETL.Tests.XunitAsserts;
 namespace ZETL.Tests;
 
 // The combo lifetime callbacks that drive the hold indicator.
+[Collection(RealTimeCollection.Name)]
 public class ChordlComboEventTests
 {
     private readonly List<string> events = [];

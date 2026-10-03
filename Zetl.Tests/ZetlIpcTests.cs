@@ -11,6 +11,7 @@ using static ZETL.Tests.XunitAsserts;
 
 namespace ZETL.Tests;
 
+[Collection(RealTimeCollection.Name)]
 public class ZetlIpcTests
 {
     [Fact] public void CancellationAfterCommandWriteReportsOutcomeUnknown()

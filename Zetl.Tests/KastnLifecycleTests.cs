@@ -7,6 +7,7 @@ using static ZETL.Tests.XunitAsserts;
 
 namespace ZETL.Tests;
 
+[Collection(RealTimeCollection.Name)]
 public class KastnLifecycleTests
 {
     [Fact] public void RefreshPumpCollapsesBurstIntoOneDirtyRerun()
@@ -398,8 +399,12 @@ public class KastnLifecycleTests
             AssertTrue(
                 refreshed.Project!.Slips.Any(slip => slip.Text == "burst-39"),
                 "The refresh pump should converge on the newest durable snapshot.");
+            // Coalescing means far fewer refreshes than invalidations. The writes
+            // spread out on a loaded machine, letting a few more refreshes slip in
+            // between them (10 was seen), so the bound is half the burst, not a
+            // tight count.
             AssertTrue(
-                burstRequests < 10,
+                burstRequests < 20,
                 $"Forty invalidations should require a bounded refresh count, not one task each (actual {burstRequests}).");
         });
     }
