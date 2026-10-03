@@ -208,6 +208,7 @@ internal partial class MainWindow : Window
     private bool addingSlip;
     private bool visibilityUpdating;
     private KastnEditorSaveOperation? pendingEditorSave;
+    private KastnEditorMutationAcceptance? pendingEditorMutation;
     private string? pendingBucketSelectionId;
     private string? pendingSlipSelectionId;
     private bool pendingSlipFocus;
@@ -672,7 +673,11 @@ internal partial class MainWindow : Window
                 var currentSlip = selectedSlipId is null
                     ? null
                     : projectSnapshot.Slips.FirstOrDefault(slip => slip.Id == selectedSlipId);
-                if (pendingEditorSave?.TryAcknowledgeSnapshot(currentSlip) != true)
+                var acknowledged = pendingEditorSave is { } save && save.ProjectId == projectSnapshot.Id
+                    && save.TryAcknowledgeSnapshot(currentSlip)
+                    || pendingEditorMutation is { } mutation && mutation.Command.ProjectId == projectSnapshot.Id
+                        && mutation.TryAcknowledgeSnapshot(currentSlip);
+                if (!acknowledged)
                 {
                     editorState.Reconcile(currentSlip);
                 }

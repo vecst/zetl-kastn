@@ -1,4 +1,3 @@
-using System.Text.Json;
 using ZETL;
 using ZETL.Contracts;
 
@@ -14,11 +13,7 @@ internal sealed record KastnEditorSaveResult(
 internal sealed class KastnEditorSaveOperation
 {
     private readonly KastnEditorState editor;
-    private readonly long selectionVersion;
-    private readonly string draftText;
-    private readonly IReadOnlyList<ZetlInlineStyleRange> draftStyles;
-    private readonly IReadOnlySet<string> pendingStyleKinds;
-    private readonly UpdateSlipCommand payload;
+    private readonly KastnEditorMutationAcceptance acceptance;
 
     private KastnEditorSaveOperation(
         KastnEditorState editor,
@@ -26,11 +21,6 @@ internal sealed class KastnEditorSaveOperation
         UpdateSlipCommand payload)
     {
         this.editor = editor;
-        this.payload = payload;
-        selectionVersion = editor.SelectionVersion;
-        draftText = editor.DraftText;
-        draftStyles = editor.DraftInlineStyles.Select(style => style with { }).ToList();
-        pendingStyleKinds = new HashSet<string>(editor.PendingInlineStyleKinds, StringComparer.Ordinal);
         Command = ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.UpdateSlip,
@@ -38,11 +28,12 @@ internal sealed class KastnEditorSaveOperation
             project.Id,
             editor.SlipId,
             editor.Revision);
+        acceptance = new(editor, Command, payload);
     }
 
     public ZetlCommandEnvelope Command { get; }
     public string ProjectId => Command.ProjectId!;
-    public bool IsCurrentEditor => editor.SelectionVersion == selectionVersion;
+    public bool IsCurrentEditor => acceptance.IsCurrentEditor;
 
     public static KastnEditorSaveOperation? Create(
         KastnEditorState editor,
@@ -73,22 +64,8 @@ internal sealed class KastnEditorSaveOperation
         });
     }
 
-    public bool TryAcknowledgeSnapshot(ZetlSlipSnapshot? current)
-    {
-        if (!IsCurrentEditor
-            || current is null
-            || current.Id != Command.TargetId
-            || current.Revision != Command.ExpectedTargetRevision + 1
-            || !string.Equals(current.Text, payload.Text, StringComparison.Ordinal)
-            || payload.InlineStyles is { } styles
-                && !KastnInlineStyleEditing.StyleListsEqual(current.InlineStyles, styles))
-        {
-            return false;
-        }
-
-        Accept(current);
-        return true;
-    }
+    public bool TryAcknowledgeSnapshot(ZetlSlipSnapshot? current) =>
+        acceptance.TryAcknowledgeSnapshot(current);
 
     public async Task<KastnEditorSaveResult> ExecuteAsync(
         Func<ZetlCommandEnvelope, Task<ZetlResponseEnvelope>> execute)
@@ -98,10 +75,7 @@ internal sealed class KastnEditorSaveOperation
             var response = await execute(Command);
             if (response.Status == ZetlResponseStatus.Conflict)
             {
-                if (IsCurrentEditor)
-                {
-                    editor.ReconcileConflict(response);
-                }
+                acceptance.ReconcileConflict(response);
                 return new(false);
             }
 
@@ -110,8 +84,7 @@ internal sealed class KastnEditorSaveOperation
                 return new(false, Message: response.Error?.Message ?? $"Save failed: {response.Status}.");
             }
 
-            var saved = response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options);
-            if (saved is null || saved.Id != Command.TargetId || saved.Revision <= Command.ExpectedTargetRevision)
+            if (!acceptance.TryAcceptResponse(response))
             {
                 return new(false, Message: "The save response did not confirm the updated slip.");
             }
@@ -121,7 +94,6 @@ internal sealed class KastnEditorSaveOperation
                 return new(false, Saved: true);
             }
 
-            Accept(saved);
             var canLeave = !editor.IsDirty && editor.ConflictCurrent is null;
             return new(canLeave, Saved: true, Message: editor.ConflictCurrent is not null
                 ? "Resolve the slip conflict before continuing."
@@ -131,34 +103,6 @@ internal sealed class KastnEditorSaveOperation
             ex is IOException or InvalidOperationException or OperationCanceledException)
         {
             return new(false, Message: $"Slip was not saved. {ex.Message}");
-        }
-    }
-
-    private void Accept(ZetlSlipSnapshot saved)
-    {
-        // A snapshot may have already acknowledged this command, or a newer
-        // authoritative revision may have arrived while its response was delayed.
-        if (saved.Revision <= editor.Revision)
-        {
-            return;
-        }
-
-        var newerConflict = editor.ConflictCurrent;
-        var draftChanged = !string.Equals(editor.DraftText, draftText, StringComparison.Ordinal)
-            || !KastnInlineStyleEditing.StyleListsEqual(editor.DraftInlineStyles, draftStyles)
-            || !editor.PendingInlineStyleKinds.SetEquals(pendingStyleKinds);
-        if (draftChanged)
-        {
-            editor.AcceptSavedKeepDraft(saved);
-        }
-        else
-        {
-            editor.AcceptSaved(saved);
-        }
-
-        if (newerConflict is { } conflict && conflict.Revision > saved.Revision)
-        {
-            editor.Reconcile(conflict);
         }
     }
 }

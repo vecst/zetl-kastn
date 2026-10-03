@@ -34,6 +34,19 @@ extracting undo or the renderers.
 - Validation after the selection extraction: solution build with zero
   warnings/errors; 548 tests passed, with the same two intentional latency-probe
   skips.
+- Extracted `KastnEditorMutationAcceptance`, shared by ordinary saves and
+  single-slip formatting/picture commands. It captures the editor session and
+  draft, acknowledges matching early snapshots, validates response identity and
+  revision, and preserves later typing/styles and newer remote conflicts.
+- Formatting commands now carry dirty inline styles with the submitted text.
+  Picture loading is separate from submission, which revalidates project,
+  selection session, and the current target after the picker/file read.
+- Added delayed real-IPC UI coverage for formatting and picture mutations,
+  journal rebasing, and project switching with a reused slip ID; picker tests
+  cover project changes and selecting away and back. Visibility loops and
+  asynchronous link dialogs still need their own captured workflow context.
+- Validation after mutation acceptance: solution build with zero warnings/errors;
+  568 tests passed, with the same two intentional latency-probe skips.
 
 ## Responsibility Map
 
@@ -123,10 +136,11 @@ provide consistent busy scopes, refresh deferrals, and typed mutation outcomes.
 Operation-specific workflows can use it without reproducing the guard/catch/
 refresh/accept sequence.
 
-**Gap to verify first:** `SendSlipCommandAsync` still calls `AcceptEditorSaved`
-for text-carrying formatting actions. That path does not capture later typing
-as normal editor saves now do. Picture commands preserve drafts, but do not
-have the save operation's selection-version and response-order checks.
+**Gap identified at the audit baseline, now addressed:** `SendSlipCommandAsync`
+called `AcceptEditorSaved` for text-carrying formatting actions without
+capturing later typing. Picture commands preserved drafts, but lacked the save
+operation's selection-version and response-order checks. Both paths now use
+the shared acceptance component described in Cleanup Progress.
 
 Checks: delayed formatting/picture responses, typing and selection changes
 during them, early snapshots, offline transitions, and journal rebasing.

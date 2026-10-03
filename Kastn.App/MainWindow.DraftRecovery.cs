@@ -85,24 +85,6 @@ internal partial class MainWindow
         ClearDraftJournal(currentProject?.Id, saved.Id);
     }
 
-    // A save that did not carry the editor's text (attaching or removing a
-    // picture) advances the revision under a surviving draft. Re-record the
-    // journal against that revision, or recovery after a crash would see a
-    // spurious conflict with the slip's own newer save.
-    private void AcceptEditorSavedKeepDraft(ZetlSlipSnapshot saved)
-    {
-        editorState.AcceptSavedKeepDraft(saved);
-        if (editorState.IsDirty)
-        {
-            FlushDraftJournal();
-        }
-        else
-        {
-            recoveredDraftActive = false;
-            ClearDraftJournal(currentProject?.Id, saved.Id);
-        }
-    }
-
     private string? RecoverySlipId(ZetlProjectSnapshot project)
     {
         var draft = draftStore.Draft;

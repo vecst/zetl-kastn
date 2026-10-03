@@ -1,12 +1,14 @@
 using System;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Text.Json;
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using KASTN;
+using ZETL.Contracts;
 using Xunit;
 
 [assembly: AvaloniaTestApplication(typeof(ZETL.Tests.TestAppBuilder))]
@@ -1118,6 +1120,132 @@ public class ZetlUITests : IDisposable
         }
     }
 
+    [AvaloniaTheory]
+    [InlineData(ZetlCommandKind.UpdateSlip, false)]
+    [InlineData(ZetlCommandKind.SetSlipPicture, false)]
+    [InlineData(ZetlCommandKind.RemoveSlipPicture, false)]
+    [InlineData(ZetlCommandKind.UpdateSlip, true)]
+    public async Task DelayedSlipMutationPreservesDraftAndEditorSession(ZetlCommandKind kind, bool switchProject)
+    {
+        var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "KastnMutationUi", Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        MainWindow? window = null;
+        using var releaseResponse = new System.Threading.ManualResetEventSlim();
+        var commandArrived = new TaskCompletionSource<ZetlCommandEnvelope>();
+        try
+        {
+            var store = new ZetlStateStore(System.IO.Path.Combine(directory, "state.json"), "kastn-ui");
+            var project = store.CreateProject("Mutation race", ["Inbox"], "Inbox");
+            var slip = store.AddSlip(project.Buckets[0], "baseline", "copy");
+            // A real PNG keeps the headless picture render path valid.
+            var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jk1sAAAAASUVORK5CYII=");
+            if (kind == ZetlCommandKind.RemoveSlipPicture)
+            {
+                store.SetSlipImage(project, slip, new ZetlClipboardImage(png, 1, 1));
+            }
+            var replacementProject = store.CreateProject("Other project", ["Inbox"], "Inbox");
+            var replacementSlip = store.AddSlip(replacementProject.Buckets[0], "replacement baseline", "copy");
+            replacementSlip.Id = slip.Id;
+            store.UpdateSlip(replacementSlip, replacementSlip.Text);
+            var pipeName = $"kastn-mutation-{Guid.NewGuid():N}";
+            using var server = new ZetlIpcServer(new ZetlProjectService(store), pipeName, log: null,
+                dropResponseForTesting: command =>
+                {
+                    if (command.Kind == kind && commandArrived.TrySetResult(command))
+                    {
+                        releaseResponse.Wait(TimeSpan.FromSeconds(5));
+                    }
+                    return false;
+                });
+            server.Start();
+            await using var controller = new KastnConnectionController(
+                _ => throw new InvalidOperationException("Zetl was already running."), pipeName,
+                TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(25));
+            controller.Start(project.Id);
+            await WaitForConditionAsync(() => controller.Current.Project?.Id == project.Id, "Project should load.");
+            var drafts = new KastnDraftStore(System.IO.Path.Combine(directory, "draft.json"));
+            window = new MainWindow(controller, drafts);
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            window.projectTree.SelectedItem = window.treeProjection.Find(slip.Id);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Equal(slip.Id, window.editorState.SlipId);
+            window.slipEditor.Text = "sent draft";
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            window.editorState.SetInlineStyles([new() { Start = 0, Length = 4, Kind = ZetlInlineStyleKinds.Italic }]);
+            Task mutation;
+            if (kind == ZetlCommandKind.UpdateSlip)
+            {
+                var method = typeof(MainWindow).GetMethod("ToggleSlipStyleAsync",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                mutation = (Task)method.Invoke(window, [ZetlInlineStyleKinds.Bold])!;
+            }
+            else
+            {
+                // Exercise the exact picture-command adapter without opening a native picker.
+                var method = typeof(MainWindow).GetMethod("SendSlipCommandAsync",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .MakeGenericMethod(typeof(object));
+                object payload = kind == ZetlCommandKind.SetSlipPicture
+                    ? new SetSlipPictureCommand { Bytes = png, Width = 1, Height = 1 }
+                    : new RemoveSlipPictureCommand();
+                mutation = (Task)method.Invoke(window,
+                    [controller.Current.Project!.Slips[0], kind, (Func<string, object>)(_ => payload), "Picture updated."])!;
+            }
+            var command = await commandArrived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (kind == ZetlCommandKind.UpdateSlip)
+            {
+                var payload = command.Payload!.Value.Deserialize<UpdateSlipCommand>(ZetlProtocolJson.Options)!;
+                Assert.Equal("sent draft", payload.Text);
+                Assert.Equal(ZetlInlineStyleKinds.Italic, Assert.Single(payload.InlineStyles!).Kind);
+                Assert.True(payload.Bold);
+            }
+            window.slipEditor.Text = "sent draft plus newer typing";
+            var saved = ZetlProjectSnapshotMapper.ToSnapshot(project);
+            PublishRenderSnapshot(controller, saved);
+            Assert.Equal("sent draft plus newer typing", window.slipEditor.Text);
+            Assert.Null(window.editorState.ConflictCurrent);
+            Task? navigation = null;
+            if (switchProject)
+            {
+                // Reuse the same slip ID to prove project/session identity matters.
+                navigation = controller.NavigateToProjectAsync(replacementProject.Id);
+                var replacement = ZetlProjectSnapshotMapper.ToSnapshot(replacementProject);
+                PublishRenderSnapshot(controller, replacement);
+                window.slipEditor.Text = "replacement draft";
+            }
+            releaseResponse.Set();
+            await mutation.WaitAsync(TimeSpan.FromSeconds(5));
+            if (navigation is not null) await navigation.WaitAsync(TimeSpan.FromSeconds(5));
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(switchProject ? "replacement draft" : "sent draft plus newer typing", window.slipEditor.Text);
+            Assert.True(window.editorState.IsDirty);
+            Assert.Null(window.editorState.ConflictCurrent);
+            if (!switchProject)
+            {
+                Assert.Equal(slip.Revision, window.editorState.Revision);
+                Assert.Equal(kind == ZetlCommandKind.UpdateSlip ? "sent draft" : "baseline", drafts.Draft?.BaselineText);
+                Assert.Equal(slip.Revision, drafts.Draft?.BaselineRevision);
+                Assert.Equal("sent draft plus newer typing", drafts.Draft?.DraftText);
+                Assert.Equal(ZetlInlineStyleKinds.Italic, Assert.Single(window.editorState.DraftInlineStyles).Kind);
+                var history = WindowField<KastnUndoHistory>(window, "undoStack");
+                Assert.Equal(kind == ZetlCommandKind.UpdateSlip ? 1 : 0, history.Count);
+            }
+            else
+            {
+                Assert.Equal(replacementSlip.Revision, window.editorState.Revision);
+                Assert.Equal("replacement baseline", window.editorState.BaselineText);
+            }
+        }
+        finally
+        {
+            releaseResponse.Set();
+            if (window is not null) CloseWindow(window);
+            System.IO.Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [AvaloniaFact]
     public void ToolbarFollowsSingleBatchAndBucketSelection()
     {
@@ -1189,6 +1317,57 @@ public class ZetlUITests : IDisposable
             Assert.Equal("render-one", Assert.IsType<KastnTreeNode>(window.projectTree.SelectedItem).Id);
             Assert.Equal("render-one", window.editorState.SlipId);
             Assert.Equal("unsaved local writing", window.slipEditor.Text);
+            Assert.True(window.editorState.IsDirty);
+        }
+        finally
+        {
+            CloseWindow(window);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PicturePickerCannotSubmitIntoAChangedEditorSession(bool switchProject)
+    {
+        var connection = new KastnConnectionController(_ => Task.CompletedTask);
+        var project = RenderProject("picture-project", "baseline");
+        typeof(KastnConnectionController).GetProperty(nameof(KastnConnectionController.Current))!
+            .SetValue(connection, new KastnSessionSnapshot(KastnConnectionState.Online, "Connected", [], project));
+        var window = new MainWindow(connection);
+        window.Show();
+        try
+        {
+            window.projectTree.SelectedItem = window.treeProjection.Find("render-one");
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var picked = new TaskCompletionSource<SetSlipPictureCommand?>();
+            var method = typeof(MainWindow).GetMethod("AttachSlipPictureAsync",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                [typeof(Func<Task<SetSlipPictureCommand?>>)])!;
+            var attaching = (Task)method.Invoke(window, [(Func<Task<SetSlipPictureCommand?>>)(() => picked.Task)])!;
+            if (switchProject)
+            {
+                PublishRenderSnapshot(connection, project with { Id = "replacement" });
+            }
+            else
+            {
+                window.projectTree.SelectedItem = window.treeProjection.Find("render-two");
+                window.projectTree.SelectedItem = window.treeProjection.Find("render-one");
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            }
+            window.projectTree.SelectedItem = window.treeProjection.Find("render-one");
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Equal("render-one", window.editorState.SlipId);
+            window.slipEditor.Text = "new session writing";
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var status = window.statusText.Text;
+            picked.SetResult(new() { Bytes = [1], Width = 1, Height = 1 });
+            await attaching;
+
+            // The controller has no IPC connection; an accidental submission
+            // would report "Zetl is offline" here instead of leaving the UI alone.
+            Assert.Equal(status, window.statusText.Text);
+            Assert.Equal("new session writing", window.slipEditor.Text);
             Assert.True(window.editorState.IsDirty);
         }
         finally

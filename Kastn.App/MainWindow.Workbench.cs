@@ -437,7 +437,9 @@ internal partial class MainWindow
             requireTextType: false);
     }
 
-    private async Task AttachSlipPictureAsync()
+    private Task AttachSlipPictureAsync() => AttachSlipPictureAsync(PickSlipPictureAsync);
+
+    private async Task AttachSlipPictureAsync(Func<Task<SetSlipPictureCommand?>> pickPicture)
     {
         if (!IsOnline || saving || currentProject is null
             || SelectedSlips() is not [var slip]
@@ -447,6 +449,32 @@ internal partial class MainWindow
             return;
         }
 
+        var projectId = currentProject.Id;
+        var selectionVersion = editorState.SelectionVersion;
+        var picture = await pickPicture();
+        if (picture is null)
+        {
+            return;
+        }
+
+        // The picker and file stream can outlive the selected editor/project.
+        // Re-resolve the original target in its original editor session before IPC.
+        if (currentProject?.Id != projectId || editorState.SelectionVersion != selectionVersion
+            || SelectedSlips() is not [var selected] || selected.Id != slip.Id
+            || ProjectIndex.Slip(slip.Id) is not { } currentSlip
+            || ZetlBlockKinds.IsStructural(currentSlip.BlockKind))
+        {
+            return;
+        }
+        await SendSlipCommandAsync(
+            currentSlip,
+            ZetlCommandKind.SetSlipPicture,
+            _ => picture,
+            currentSlip.Picture is null ? "Picture attached." : "Picture replaced.");
+    }
+
+    private async Task<SetSlipPictureCommand?> PickSlipPictureAsync()
+    {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "Add picture",
@@ -455,7 +483,7 @@ internal partial class MainWindow
         });
         if (files.Count != 1)
         {
-            return;
+            return null;
         }
 
         byte[] pngBytes;
@@ -477,22 +505,16 @@ internal partial class MainWindow
             ex is IOException or ArgumentException or InvalidOperationException or UnauthorizedAccessException)
         {
             statusText.Text = $"Could not read the picture: {ex.Message}";
-            return;
+            return null;
         }
 
         if (pngBytes.Length > 25 * 1024 * 1024)
         {
             statusText.Text = "The picture exceeds the 25 MB limit.";
-            return;
+            return null;
         }
 
-        var picture = new SetSlipPictureCommand { Bytes = pngBytes, Width = width, Height = height };
-        await SendSlipCommandAsync(
-            slip,
-            ZetlCommandKind.SetSlipPicture,
-            _ => picture,
-            slip.Picture is null ? "Picture attached." : "Picture replaced.",
-            carriesText: false);
+        return new SetSlipPictureCommand { Bytes = pngBytes, Width = width, Height = height };
     }
 
     private Task RemoveSlipPictureAsync()
@@ -506,8 +528,7 @@ internal partial class MainWindow
             slip,
             ZetlCommandKind.RemoveSlipPicture,
             _ => new RemoveSlipPictureCommand(),
-            "Picture removed.",
-            carriesText: false);
+            "Picture removed.");
     }
 
     private async Task OnIgnoreBucketRenderKindChangedAsync()
@@ -554,7 +575,7 @@ internal partial class MainWindow
         bool requireTextType = true) =>
         requireTextType && slip.Type != ZetlSlipType.Text
             ? Task.CompletedTask
-            : SendSlipCommandAsync(slip, ZetlCommandKind.UpdateSlip, buildWithText, successText, carriesText: true);
+            : SendSlipCommandAsync(slip, ZetlCommandKind.UpdateSlip, buildWithText, successText);
 
     // Send one revision-checked command for a single slip with the editor-aware
     // handling every slip action shares: skip while the slip has an unresolved
@@ -566,8 +587,7 @@ internal partial class MainWindow
         ZetlSlipSnapshot slip,
         ZetlCommandKind kind,
         Func<string, TPayload> buildWithText,
-        string successText,
-        bool carriesText)
+        string successText)
     {
         if (!IsOnline || saving || currentProject is null || IsSlipInDeleted(slip))
         {
@@ -582,25 +602,32 @@ internal partial class MainWindow
 
         var revision = isEditing ? editorState.Revision : slip.Revision;
         var text = isEditing ? editorState.DraftText.Trim() : slip.Text;
+        object payload = buildWithText(text)!;
+        if (isEditing && payload is UpdateSlipCommand { InlineStyles: null } update
+            && editorState.InlineStylesAreDirty)
+        {
+            payload = update with
+            {
+                InlineStyles = KastnInlineStyleEditing.ForTrimmedCommand(
+                    editorState.DraftText, editorState.DraftInlineStyles)
+            };
+        }
+        var command = ZetlCommandEnvelope.Create(
+            Guid.NewGuid().ToString("N"), kind, payload, currentProject.Id, slip.Id, revision);
+        var acceptance = new KastnEditorMutationAcceptance(editorState, command, payload);
 
         saving = true;
+        pendingEditorMutation = acceptance;
         SetEditingEnabled();
         try
         {
-            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                kind,
-                buildWithText(text),
-                currentProject.Id,
-                slip.Id,
-                revision));
+            var response = await ExecuteMutationAsync(command);
             if (response.Status == ZetlResponseStatus.Conflict)
             {
-                if (isEditing && editorState.ReconcileConflict(response))
+                if (acceptance.ReconcileConflict(response))
                 {
                     ShowConflict();
                 }
-
                 return;
             }
 
@@ -610,21 +637,30 @@ internal partial class MainWindow
                 return;
             }
 
-            if (response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } saved
-                && isEditing)
+            if (!acceptance.TryAcceptResponse(response))
             {
-                if (carriesText)
+                statusText.Text = "The update response did not confirm the updated slip.";
+                return;
+            }
+            if (acceptance.IsCurrentEditor)
+            {
+                PersistEditorAfterSave(command.ProjectId!);
+                UpdateEditorFromState();
+                if (editorState.ConflictCurrent is not null)
                 {
-                    AcceptEditorSaved(saved);
-                }
-                else
-                {
-                    AcceptEditorSavedKeepDraft(saved);
+                    ShowConflict();
                 }
             }
 
             await connection.SynchronizeAsync();
-            statusText.Text = successText;
+            if (currentProject?.Id == command.ProjectId
+                && (!isEditing || acceptance.IsCurrentEditor))
+            {
+                statusText.Text = editorState.ConflictCurrent is not null
+                    ? "Resolve the slip conflict before continuing."
+                    : acceptance.IsCurrentEditor && editorState.IsDirty
+                        ? $"{successText} Newer edits are still unsaved." : successText;
+            }
         }
         catch (Exception ex) when (
             ex is IOException or InvalidOperationException or OperationCanceledException)
@@ -633,6 +669,7 @@ internal partial class MainWindow
         }
         finally
         {
+            pendingEditorMutation = null;
             saving = false;
             SetEditingEnabled();
         }
