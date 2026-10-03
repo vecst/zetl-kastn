@@ -172,6 +172,24 @@ extracting undo or the renderers.
   intentional latency-probe skips. The reader presenter is next, followed by the
   board presenter; window lifetime remains open.
 
+- Extracted `KastnReaderPresenter`: it owns reader grouping, heading and block
+  reuse, reconciliation, selection highlights, scroll restoration, and picture
+  assignment. MainWindow supplies captured render inputs, a cloned view, theme
+  resources, and project/generation-guarded ID callbacks. The shared picture cache
+  retains bitmap ownership; `KastnPanelReconciler` now serves reader and board.
+- Pending pictures now follow their live block rather than a global render
+  generation. An unrelated rebuild no longer strands a reused picture block at
+  "Loading picture…". Replaced, filtered, cleared, and disposed blocks cannot
+  receive late assignments. Retired reader controls cannot navigate or toggle
+  tasks, and queued scrolling checks the latest selection and control lifetime.
+- Removed about 400 lines from MainWindow, including its reader caches and
+  picture generation. Added headless coverage for control identity across
+  grouping/reorder, scroll preservation/clamping, empty views, delayed pictures,
+  retired actions, queued scrolling, and reader/board switching. Validation:
+  solution build with zero warnings/errors; 792 tests passed, with the same two
+  intentional latency-probe skips. The board presenter is next; broader window
+  lifetime cleanup remains open.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

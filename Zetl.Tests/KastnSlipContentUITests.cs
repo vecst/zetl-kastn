@@ -159,7 +159,7 @@ public partial class ZetlUITests
                 FontFamily = "Georgia", FontSize = 18, Align = "center"
             };
             PublishRenderSnapshot(controller, original with { ChangeSequence = 2, Slips = [source, original.Slips[1]] });
-            var reader = WindowField<Dictionary<string, Border>>(window, "viewSlipBlocks")[source.Id];
+            var reader = WindowField<KastnReaderPresenter>(window, "readerPresenter").Blocks[source.Id];
             typeof(MainWindow).GetMethod("OpenViewEditor", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(window, [ZetlViewDefaults.Clone(ZetlViewDefaults.CreateAll()[0]), false]);
             Dispatcher.UIThread.RunJobs();
@@ -180,7 +180,7 @@ public partial class ZetlUITests
             var unrelated = source with { Id = "unrelated", Text = "unrelated" };
             var project = original with { ChangeSequence = 2, Slips = [source, original.Slips[1], unrelated] };
             PublishRenderSnapshot(controller, project);
-            var blocks = WindowField<Dictionary<string, Border>>(window, "viewSlipBlocks");
+            var blocks = WindowField<KastnReaderPresenter>(window, "readerPresenter").Blocks;
             var firstSource = blocks[source.Id];
             var stable = blocks[unrelated.Id];
             Assert.Contains(ContentControls(firstSource).OfType<TextBlock>(), block => block.Text == "Target");
@@ -212,7 +212,7 @@ public partial class ZetlUITests
         {
             var source = original.Slips[0] with { Revision = 2, Text = "[[render-two|Target]]", BlockKind = task ? ZetlBlockKinds.Task : "" };
             PublishRenderSnapshot(controller, original with { ChangeSequence = 2, Slips = [source, original.Slips[1]] });
-            var block = WindowField<Dictionary<string, Border>>(window, "viewSlipBlocks")[source.Id];
+            var block = WindowField<KastnReaderPresenter>(window, "readerPresenter").Blocks[source.Id];
             var action = ContentControls(block).OfType<TextBlock>().Single(text => text.Text == (task ? "☐" : "Target"));
             PublishRenderSnapshot(controller, original with { Id = "replacement" });
             if (returnToOriginal) PublishRenderSnapshot(controller, original);

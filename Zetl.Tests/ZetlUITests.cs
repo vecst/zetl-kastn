@@ -991,7 +991,7 @@ public partial class ZetlUITests : IDisposable
         try
         {
             PublishRenderSnapshot(connection, RenderProject("render-project", "original text"));
-            var generation = WindowField<int>(window, "pictureRenderGeneration");
+            var block = WindowField<KastnReaderPresenter>(window, "readerPresenter").Blocks["render-one"];
             var export = WindowField<string>(window, "lastRenderedViewText");
             var second = window.treeProjection.Find("render-two");
             Assert.NotNull(second);
@@ -1000,7 +1000,7 @@ public partial class ZetlUITests : IDisposable
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
             Assert.Equal("second text", window.slipEditor.Text);
-            Assert.Equal(generation, WindowField<int>(window, "pictureRenderGeneration"));
+            Assert.Same(block, WindowField<KastnReaderPresenter>(window, "readerPresenter").Blocks["render-one"]);
             Assert.Same(export, WindowField<string>(window, "lastRenderedViewText"));
         }
         finally
@@ -1018,13 +1018,13 @@ public partial class ZetlUITests : IDisposable
         try
         {
             PublishRenderSnapshot(connection, RenderProject("first-project", "original text"));
-            var generation = WindowField<int>(window, "pictureRenderGeneration");
+            var block = WindowField<KastnReaderPresenter>(window, "readerPresenter").Blocks["render-one"];
 
             // Same slip ids, revisions, view id, and change sequence; only the
             // project identity and content differ.
             PublishRenderSnapshot(connection, RenderProject("second-project", "replacement text"));
 
-            Assert.True(WindowField<int>(window, "pictureRenderGeneration") > generation);
+            Assert.NotSame(block, WindowField<KastnReaderPresenter>(window, "readerPresenter").Blocks["render-one"]);
             Assert.Contains("replacement text", WindowField<string>(window, "lastRenderedViewText"));
             Assert.DoesNotContain("original text", WindowField<string>(window, "lastRenderedViewText"));
         }

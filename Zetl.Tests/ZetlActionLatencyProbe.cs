@@ -93,12 +93,15 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
         watch.Stop();
         output.WriteLine($"  ZetlViewRenderer.Render (copy text): {watch.Elapsed.TotalMilliseconds:F1} ms");
 
-        var buildView = typeof(KASTN.MainWindow).GetMethod("BuildViewDocument", flags)!;
+        var key = KASTN.KastnViewRenderKey.Create(current, current.Slips, view, new ZetlAppSettings());
+        var capture = typeof(KASTN.MainWindow).GetMethod("CaptureReaderInputs", flags)!;
+        var inputs = (KASTN.KastnReaderRenderInputs)capture.Invoke(window, [current.Slips, key])!;
+        var reader = (KASTN.KastnReaderPresenter)typeof(KASTN.MainWindow).GetField("readerPresenter", flags)!.GetValue(window)!;
         watch.Restart();
-        buildView.Invoke(window, [(IReadOnlyList<ZetlSlipSnapshot>)current.Slips]);
+        reader.Render(inputs, selectedSlipId: null, force: true);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         watch.Stop();
-        output.WriteLine($"  BuildViewDocument (warm block cache): {watch.Elapsed.TotalMilliseconds:F1} ms");
+        output.WriteLine($"  Reader render (warm block cache): {watch.Elapsed.TotalMilliseconds:F1} ms");
 
         window.Close();
     }

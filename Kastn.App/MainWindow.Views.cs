@@ -21,7 +21,7 @@ namespace KASTN;
 internal partial class MainWindow
 {
     private bool lastBoardModeActive;
-    private bool lastViewerDeletedOnly;
+    private bool lastBoardDeletedOnly;
 
     private void RefreshViewer()
     {
@@ -30,7 +30,8 @@ internal partial class MainWindow
             viewerSummaryText.Text = "No project selected.";
             lastRenderedViewText = "";
             viewRenderCache.Clear();
-            ClearViewDocument();
+            readerPresenter.Clear();
+            lastBoardRenderKey = null;
             ClearBoard();
             RefreshSlipInspector();
             copyViewButton.IsEnabled = false;
@@ -52,35 +53,25 @@ internal partial class MainWindow
         var view = SelectedView;
         var settings = CurrentAppSettings();
         var inputs = KastnViewRenderKey.Create(currentProject, visible, view, settings);
-        var rebuilt = inputs != lastViewRenderKey || boardModeActive != lastBoardModeActive
-            || showingDeleted != lastViewerDeletedOnly;
-        var sameProject = string.Equals(lastViewerProjectId, currentProject.Id, StringComparison.Ordinal);
-        lastViewerProjectId = currentProject.Id;
-        var savedOffset = viewerDocumentScroll.Offset;
-        if (rebuilt)
+        var selectedId = SelectedTreeNode?.Slip?.Id ?? editorState.SlipId;
+        if (boardModeActive)
         {
-            if (boardModeActive)
+            readerPresenter.Suspend();
+            var rebuilt = inputs != lastBoardRenderKey || !lastBoardModeActive
+                || showingDeleted != lastBoardDeletedOnly;
+            if (rebuilt)
             {
                 BuildBoardView(visible);
+                lastBoardRenderKey = inputs;
+                lastBoardDeletedOnly = showingDeleted;
             }
-            else
-            {
-                BuildViewDocument(visible);
-            }
-            lastViewRenderKey = inputs;
-            lastBoardModeActive = boardModeActive;
-            lastViewerDeletedOnly = showingDeleted;
+            UpdateBoardSelectionHighlight(scrollIntoView: !rebuilt);
         }
-
-        // A rebuild resets the document scroll to the top. For an in-place change to
-        // the same project (e.g. hiding a slip), preserve the reader's position
-        // instead of flashing to the top and snapping back; only a pure selection
-        // change (no rebuild) scrolls the selected block into view.
-        UpdateViewSelectionHighlight(scrollIntoView: !rebuilt);
-        if (rebuilt && sameProject)
+        else
         {
-            RestoreViewScroll(savedOffset);
+            readerPresenter.Render(CaptureReaderInputs(visible, inputs), selectedId, force: lastBoardModeActive);
         }
+        lastBoardModeActive = boardModeActive;
 
         if (view.Kind == ZetlViewKinds.Pdf)
         {
@@ -277,300 +268,26 @@ internal partial class MainWindow
         }
     }
 
-    // Build the whole-project readable document: one addressable block per slip,
-    // grouped/nested by the chosen view's BuildGroups (which drops excluded slips).
-    // Reusable per-slip view blocks, group headings, and group boxes: each is
-    // rebuilt only when its render inputs change, and the document panel is
-    // reconciled with minimal moves instead of cleared — so the refresh that
-    // follows every mutation touches only the affected controls. A full
-    // clear-and-re-add re-measured every block and cost hundreds of ms per
-    // action on a few-hundred-slip project.
-    private readonly Dictionary<string, (Border Block, string RenderKey, KastnRenderedSlipContent? Content)> viewSlipBlockCache =
-        new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (TextBlock Heading, string RenderKey)> viewHeadingCache =
-        new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (Border Box, StackPanel Content)> viewGroupBoxCache =
-        new(StringComparer.Ordinal);
-
-    private void BuildViewDocument(IReadOnlyList<ZetlSlipSnapshot> visible)
-    {
-        var generation = ++pictureRenderGeneration;
-        viewSlipBlocks.Clear();
-        if (currentProject is null)
-        {
-            ClearViewDocument();
-            return;
-        }
-
-        var groups = ZetlViewRenderer.BuildGroups(currentProject, visible, SelectedView);
-        if (groups.Count == 0)
-        {
-            SyncPanelChildren(viewerDocumentPanel.Children,
-            [
-                new TextBlock
-                {
-                    Text = visible.Count == 0
-                        ? "No slips match the current filters."
-                        : "Every slip in view is hidden from views.",
-                    Classes = { "muted" },
-                    TextWrapping = TextWrapping.Wrap
-                }
-            ]);
-            return;
-        }
-
-        var preferSlipKindOverBucketKind = CurrentAppSettings().KastnPreferSlipKindOverBucketKind;
-        var contentRenderer = CreateSlipContentRenderer();
-        var renderedSlipIds = new HashSet<string>(StringComparer.Ordinal);
-        var renderedGroupKeys = new HashSet<string>(StringComparer.Ordinal);
-        var desiredChildren = new List<Control>();
-        foreach (var group in groups)
-        {
-            // A container bucket ("group") wraps its heading and slips in a bordered box;
-            // otherwise they go straight into the document.
-            var isGroup = group.RenderKind == ZetlBucketRenderKinds.Group;
-            var groupKey = group.HeaderBucket?.Id ?? $"heading:{group.Heading}";
-            renderedGroupKeys.Add(groupKey);
-
-            var headingText = ZetlViewRenderer.HeadingText(group, SelectedView);
-            var headingKey =
-                $"{headingText}|{group.EffectiveLevel}|{group.HeadingBold}|{group.HeadingAlign}|{group.Depth}|{isGroup}";
-            if (!viewHeadingCache.TryGetValue(groupKey, out var heading)
-                || !string.Equals(heading.RenderKey, headingKey, StringComparison.Ordinal))
-            {
-                heading = (new TextBlock
-                {
-                    Text = headingText,
-                    FontSize = Math.Max(14, 27 - (3 * group.EffectiveLevel)),
-                    FontWeight = group.HeadingBold ? FontWeight.Bold : FontWeight.SemiBold,
-                    TextAlignment = ZetlViewRenderer.NormalizeHeadingAlign(group.HeadingAlign) switch
-                    {
-                        "center" => TextAlignment.Center,
-                        "right" => TextAlignment.Right,
-                        _ => TextAlignment.Left,
-                    },
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Avalonia.Thickness(isGroup ? 0 : group.Depth * 14, isGroup ? 0 : 8, 0, 2)
-                }, headingKey);
-                viewHeadingCache[groupKey] = heading;
-            }
-
-            var groupChildren = isGroup ? new List<Control>() : desiredChildren;
-            groupChildren.Add(heading.Heading);
-
-            // Each note carries its own list kind (authoritative, not a view-wide
-            // style); ordered notes count up over their run and any non-ordered note
-            // or picture restarts it.
-            var orderedRun = 0;
-            foreach (var slip in group.Slips)
-            {
-                var listKinds = ZetlViewRenderer.ResolveListKinds(
-                    currentProject, slip, preferSlipKindOverBucketKind);
-                var marker = KastnSlipContentRenderer.OuterListMarker(listKinds.Outer, slip.Checked, ref orderedRun)
-                    + KastnSlipContentRenderer.InnerListMarker(listKinds.Inner, slip.Checked);
-                var checkable = listKinds.IsCheckable;
-
-                var depth = isGroup ? 0 : group.Depth;
-                var renderKey = $"{slip.Revision}|{depth}|{marker}|{checkable}";
-                if (!viewSlipBlockCache.TryGetValue(slip.Id, out var cached)
-                    || !string.Equals(cached.RenderKey, renderKey, StringComparison.Ordinal)
-                    || cached.Content?.MatchesLinks(ProjectIndex) == false)
-                {
-                    var block = BuildSlipBlock(slip, depth, generation, marker, contentRenderer,
-                        out var renderedContent, checkable: checkable);
-                    cached = (block, renderKey, renderedContent);
-                    viewSlipBlockCache[slip.Id] = cached;
-                }
-
-                viewSlipBlocks[slip.Id] = cached.Block;
-                renderedSlipIds.Add(slip.Id);
-                groupChildren.Add(cached.Block);
-            }
-
-            if (isGroup)
-            {
-                if (!viewGroupBoxCache.TryGetValue(groupKey, out var box))
-                {
-                    var content = new StackPanel { Spacing = 2 };
-                    box = (new Border
-                    {
-                        BorderThickness = new Avalonia.Thickness(1),
-                        BorderBrush = ThemeBrush("ZetlBorderBrush") ?? Brushes.Gray,
-                        CornerRadius = new Avalonia.CornerRadius(6),
-                        Padding = new Avalonia.Thickness(12, 8),
-                        Child = content
-                    }, content);
-                    viewGroupBoxCache[groupKey] = box;
-                }
-
-                box.Box.Margin = new Avalonia.Thickness(group.Depth * 14, 10, 0, 4);
-                SyncPanelChildren(box.Content.Children, groupChildren);
-                desiredChildren.Add(box.Box);
-            }
-        }
-
-        SyncPanelChildren(viewerDocumentPanel.Children, desiredChildren);
-
-        foreach (var staleId in viewSlipBlockCache.Keys.Where(id => !renderedSlipIds.Contains(id)).ToList())
-        {
-            viewSlipBlockCache.Remove(staleId);
-        }
-
-        foreach (var staleKey in viewHeadingCache.Keys.Where(key => !renderedGroupKeys.Contains(key)).ToList())
-        {
-            viewHeadingCache.Remove(staleKey);
-        }
-
-        foreach (var staleKey in viewGroupBoxCache.Keys.Where(key => !renderedGroupKeys.Contains(key)).ToList())
-        {
-            viewGroupBoxCache.Remove(staleKey);
-        }
-    }
-
-    private Border BuildSlipBlock(
-        ZetlSlipSnapshot slip, int depth, int generation, string marker, KastnSlipContentRenderer renderer,
-        out KastnRenderedSlipContent? renderedContent, bool checkable = false)
-    {
-        renderedContent = null;
-        StackPanel content;
-        if (slip.Type == ZetlSlipType.Picture)
-        {
-            content = new StackPanel { Spacing = 5 };
-            var image = new Avalonia.Controls.Image
-            {
-                Stretch = Stretch.Uniform,
-                MaxHeight = 520,
-                HorizontalAlignment = HorizontalAlignment.Left
-            };
-            var loading = new TextBlock
-            {
-                Text = "Loading picture…",
-                Classes = { "muted" },
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            var preview = new Grid
-            {
-                MinHeight = 150,
-                Children = { image, loading }
-            };
-            content.Children.Add(new Border
-            {
-                Classes = { "surface" },
-                Padding = new Avalonia.Thickness(8),
-                Child = preview
-            });
-            KastnSlipContentRenderer.AddPictureCaption(content, slip);
-
-            if (CachedDecodedPicture(slip, 1100) is { } cachedBitmap)
-            {
-                image.Source = cachedBitmap;
-                loading.IsVisible = false;
-            }
-            else
-            {
-                _ = LoadPicturePreviewAsync(slip, image, loading, generation);
-            }
-        }
-        else
-        {
-            renderedContent = renderer.CreateTextContent(slip);
-            content = renderedContent.Panel;
-        }
-
-        var child = renderer.WithListMarker(content, slip, marker, checkable);
-
-        var block = new Border
-        {
-            Tag = slip.Id,
-            Child = child,
-            Padding = new Avalonia.Thickness(8, 6),
-            Margin = new Avalonia.Thickness((depth + 1) * 14, 0, 0, 4),
-            CornerRadius = new Avalonia.CornerRadius(4),
-            BorderThickness = new Avalonia.Thickness(1),
-            BorderBrush = Brushes.Transparent,
-            Background = Brushes.Transparent,
-            Cursor = new Cursor(StandardCursorType.Hand)
-        };
-        block.PointerPressed += OnViewSlipBlockPressed;
-        viewSlipBlocks[slip.Id] = block;
-        return block;
-    }
-
-    // A block click selects that slip in the tree, which drives the editor, inspector,
-    // and (back through RefreshViewer) the View highlight — the View ⇄ tree bridge.
-    private void OnViewSlipBlockPressed(object? sender, PointerPressedEventArgs args)
-    {
-        if ((sender as Control)?.Tag is not string slipId)
-        {
-            return;
-        }
-
-        var node = treeProjection.Find(slipId);
-        if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
-        {
-            projectTree.SelectedItem = node;
-        }
-    }
-
-    // Highlight the tree-selected slip's block and scroll it into view (the tree → View
-    // half of the bridge). A pure selection change reaches here without a rebuild.
-    private void UpdateViewSelectionHighlight(bool scrollIntoView = true)
-    {
-        if (boardModeActive)
-        {
-            UpdateBoardSelectionHighlight(scrollIntoView);
-            return;
-        }
-
-        if (highlightedViewSlipId is not null
-            && viewSlipBlocks.TryGetValue(highlightedViewSlipId, out var previous))
-        {
-            ApplyBlockHighlight(previous, on: false);
-        }
-
-        highlightedViewSlipId = null;
-        var selectedId = SelectedTreeNode?.Slip?.Id ?? editorState.SlipId;
-        if (selectedId is null || !viewSlipBlocks.TryGetValue(selectedId, out var block))
-        {
-            return;
-        }
-
-        ApplyBlockHighlight(block, on: true);
-        highlightedViewSlipId = selectedId;
-        if (scrollIntoView)
-        {
-            block.BringIntoView();
-            // A freshly rebuilt block may not be laid out yet; retry after layout.
-            Dispatcher.UIThread.Post(block.BringIntoView, DispatcherPriority.Background);
-        }
-    }
-
-    // Restore the document scroll after a rebuild. Runs after layout (so the new
-    // extent is known) and before paint, so the rebuild's momentary reset to the
-    // top is never visible.
-    private void RestoreViewScroll(Vector savedOffset)
-    {
-        // Force a synchronous layout so the rebuilt content's extent is known, then
-        // restore the offset immediately — before the frame paints — so the rebuild
-        // never visibly flashes to the top. (Posting it a frame later showed the flash.)
-        viewerDocumentScroll.UpdateLayout();
-        var maxY = Math.Max(
-            0,
-            viewerDocumentScroll.Extent.Height - viewerDocumentScroll.Viewport.Height);
-        viewerDocumentScroll.Offset = new Vector(
-            savedOffset.X,
-            Math.Min(savedOffset.Y, maxY));
-    }
-
-    private void ApplyBlockHighlight(Border block, bool on)
-    {
-        block.BorderBrush = on ? ThemeBrush("ZetlAccentBrush") ?? Brushes.Transparent : Brushes.Transparent;
-        block.Background = on ? ThemeBrush("ZetlSurfaceBrush") ?? Brushes.Transparent : Brushes.Transparent;
-    }
-
     private IBrush? ThemeBrush(string key) =>
         this.TryFindResource(key, out var value) && value is IBrush brush ? brush : null;
+
+    private KastnReaderRenderInputs CaptureReaderInputs(IReadOnlyList<ZetlSlipSnapshot> visible, KastnViewRenderKey key) =>
+        new(ProjectIndex, visible, ZetlViewDefaults.Clone(SelectedView), key, showingDeleted,
+            CreateSlipContentRenderer(), new(ThemeBrush("ZetlBorderBrush"), ThemeBrush("ZetlAccentBrush"),
+                ThemeBrush("ZetlSurfaceBrush")), CaptureSlipSelectionAction());
+
+    private Action<string> CaptureSlipSelectionAction()
+    {
+        var projectId = currentProject?.Id;
+        var generation = editHistory.Generation;
+        return slipId =>
+        {
+            if (projectId is null || currentProject?.Id != projectId || generation != editHistory.Generation) return;
+            var node = treeProjection.Find(slipId);
+            if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
+                projectTree.SelectedItem = node;
+        };
+    }
 
     private KastnSlipContentRenderer CreateSlipContentRenderer()
     {
@@ -579,63 +296,10 @@ internal partial class MainWindow
         var generation = editHistory.Generation;
         var mono = this.TryFindResource("ZetlMonoFontFamily", out var value) ? value as FontFamily : null;
         return new(project, new(ThemeBrush("ZetlBorderBrush"), ThemeBrush("ZetlAccentBrush"),
-            ThemeBrush("ZetlMutedTextBrush"), mono),
-            slipId =>
-            {
-                if (projectId is null || currentProject?.Id != projectId || generation != editHistory.Generation) return;
-                var node = treeProjection.Find(slipId);
-                if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
-                    projectTree.SelectedItem = node;
-            },
+            ThemeBrush("ZetlMutedTextBrush"), mono), CaptureSlipSelectionAction(),
             slipId => projectId is not null && currentProject?.Id == projectId && generation == editHistory.Generation
                 ? ToggleSlipCheckedAsync(slipId) : Task.CompletedTask);
     }
-
-    private async Task LoadPicturePreviewAsync(
-        ZetlSlipSnapshot slip,
-        Avalonia.Controls.Image image,
-        TextBlock status,
-        int generation)
-    {
-        try
-        {
-            var content = await GetPictureContentAsync(slip);
-            if (generation != pictureRenderGeneration || content is null)
-            {
-                if (generation == pictureRenderGeneration)
-                {
-                    status.Text = "Picture unavailable.";
-                }
-                return;
-            }
-
-            // The cache owns the bitmap, so a stale load neither disposes nor
-            // assigns — the next rebuild picks the decoded bitmap up synchronously.
-            var bitmap = pictureCache.Decode(content, 1100);
-            if (generation != pictureRenderGeneration)
-            {
-                return;
-            }
-
-            image.Source = bitmap;
-            status.IsVisible = false;
-        }
-        catch (Exception ex) when (
-            IsPictureLoadFailure(ex))
-        {
-            if (generation == pictureRenderGeneration)
-            {
-                status.Text = "Picture unavailable.";
-            }
-        }
-    }
-
-    // What a picture load reports as "unavailable" rather than letting escape:
-    // IPC and cancellation failures, plus the ArgumentException Skia throws for
-    // image data it cannot decode.
-    private static bool IsPictureLoadFailure(Exception ex) =>
-        ex is IOException or InvalidOperationException or OperationCanceledException
-            or ArgumentException or NotSupportedException;
 
     private Task<ZetlPictureContent?> GetPictureContentAsync(ZetlSlipSnapshot slip) =>
         currentProject is null
@@ -654,18 +318,6 @@ internal partial class MainWindow
         return response.Status == ZetlResponseStatus.Success
             ? response.Payload?.Deserialize<ZetlPictureContent>(ZetlProtocolJson.Options)
             : null;
-    }
-
-    private void ClearViewDocument()
-    {
-        pictureRenderGeneration++;
-        lastViewRenderKey = null;
-        viewerDocumentPanel.Children.Clear();
-        viewSlipBlocks.Clear();
-        viewSlipBlockCache.Clear();
-        viewHeadingCache.Clear();
-        viewGroupBoxCache.Clear();
-        highlightedViewSlipId = null;
     }
 
     // A cached decoded bitmap for the slip's picture at the given decode width,
@@ -1197,7 +849,7 @@ internal partial class MainWindow
             expandedBoardPictures.Remove(staleId);
         }
 
-        SyncPanelChildren(boardColumnsPanel.Children, desiredColumns);
+        KastnPanelReconciler.SyncChildren(boardColumnsPanel.Children, desiredColumns);
     }
 
     private void ClearBoard()
@@ -1251,7 +903,7 @@ internal partial class MainWindow
             desiredCards.Add(card.Wrapper);
         }
 
-        SyncPanelChildren(column.CardsPanel.Children, desiredCards);
+        KastnPanelReconciler.SyncChildren(column.CardsPanel.Children, desiredCards);
     }
 
     // The inputs a rendered card depends on beyond its position: the slip's own
@@ -1271,45 +923,6 @@ internal partial class MainWindow
         if (card.Wrapper.Parent is Panel parent)
         {
             parent.Children.Remove(card.Wrapper);
-        }
-    }
-
-    // Make the panel's children match the desired sequence with minimal moves, so
-    // untouched controls keep their layout and scroll state. A control arriving
-    // from another panel (a card moved across columns) is detached first.
-    private static void SyncPanelChildren(Avalonia.Controls.Controls children, IReadOnlyList<Control> desired)
-    {
-        var desiredSet = new HashSet<Control>(desired);
-        for (var i = children.Count - 1; i >= 0; i--)
-        {
-            if (!desiredSet.Contains(children[i]))
-            {
-                children.RemoveAt(i);
-            }
-        }
-
-        for (var i = 0; i < desired.Count; i++)
-        {
-            var control = desired[i];
-            if (i < children.Count && ReferenceEquals(children[i], control))
-            {
-                continue;
-            }
-
-            if (control.Parent is Panel elsewhere && !ReferenceEquals(elsewhere.Children, children))
-            {
-                elsewhere.Children.Remove(control);
-            }
-
-            var existing = children.IndexOf(control);
-            if (existing >= 0)
-            {
-                children.Move(existing, i);
-            }
-            else
-            {
-                children.Insert(i, control);
-            }
         }
     }
 
@@ -1878,7 +1491,7 @@ internal partial class MainWindow
             status.IsVisible = false;
         }
         catch (Exception ex) when (
-            IsPictureLoadFailure(ex))
+            KastnPictureCache.IsLoadFailure(ex))
         {
             if (IsCurrent())
             {

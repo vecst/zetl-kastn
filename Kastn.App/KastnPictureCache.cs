@@ -30,6 +30,10 @@ internal sealed class KastnPictureCache : IDisposable
         this.contentBudget = contentBudget;
     }
 
+    internal static bool IsLoadFailure(Exception ex) =>
+        ex is IOException or InvalidOperationException or OperationCanceledException
+            or ArgumentException or NotSupportedException;
+
     public Task<ZetlPictureContent?> GetContentAsync(string projectId, ZetlSlipSnapshot slip) =>
         GetContentAsync(projectId, slip, allowRetiredGeneration: false);
 

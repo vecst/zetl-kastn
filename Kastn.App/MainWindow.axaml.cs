@@ -134,6 +134,7 @@ internal partial class MainWindow : Window
     ];
     internal readonly KastnEditorState editorState = new();
     private readonly KastnPictureCache pictureCache;
+    private readonly KastnReaderPresenter readerPresenter;
     private ZetlProjectSnapshot? currentProject;
     private KastnProjectIndex? projectIndex;
     private KastnProjectIndex ProjectIndex
@@ -231,18 +232,8 @@ internal partial class MainWindow : Window
     private bool landingShowArchived;
     private IReadOnlyList<ZetlProjectSummary> lastProjectSummaries = [];
     private bool suppressLandingProjectSelection;
-    private int pictureRenderGeneration;
-    // The center View is one addressable per-slip document: each slip id maps to its
-    // rendered block so the tree can scroll/highlight it and a block click can select
-    // it back in the tree. The signature lets a pure selection change skip a rebuild
-    // (so picture blocks don't reload) while content changes still re-render.
-    private readonly Dictionary<string, Border> viewSlipBlocks = new(StringComparer.Ordinal);
-    private KastnViewRenderKey? lastViewRenderKey;
+    private KastnViewRenderKey? lastBoardRenderKey;
     private readonly KastnViewRenderCache viewRenderCache = new();
-    private string? highlightedViewSlipId;
-    // The project the center View was last built for, so an in-place rebuild
-    // (e.g. hiding a slip) preserves scroll while switching projects resets it.
-    private string? lastViewerProjectId;
     private bool allowWindowClose;
     private bool closeRequestInProgress;
 
@@ -253,6 +244,7 @@ internal partial class MainWindow : Window
         editHistory = CreateEditHistory();
         pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
+        readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
     }
 
     public MainWindow(
@@ -264,6 +256,7 @@ internal partial class MainWindow : Window
         pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         this.draftStore = draftStore ?? new KastnDraftStore(log: Console.Error.WriteLine);
         InitializeComponent();
+        readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
         Icon = KastnIcon.Create();
         landingLaneItems.ItemsSource = laneCards;
         landingProjectList.ItemsSource = recentProjects;
@@ -454,6 +447,7 @@ internal partial class MainWindow : Window
         Closed += (_, _) =>
         {
             connection.SnapshotChanged -= OnSnapshotChanged;
+            readerPresenter.Dispose();
             pictureCache.Dispose();
         };
         ApplySnapshot(connection.Current);
@@ -600,7 +594,8 @@ internal partial class MainWindow : Window
         // Rendered controls and decoded pictures belong to this project/server.
         if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal) || serverChanged)
         {
-            ClearViewDocument();
+            readerPresenter.Clear();
+            lastBoardRenderKey = null;
             ClearBoard();
             viewRenderCache.Clear();
             pictureCache.Reset();

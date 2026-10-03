@@ -33,6 +33,10 @@ internal sealed class KastnSlipContentRenderer(
     Action<string>? navigateToSlip = null,
     Func<string, Task>? toggleChecked = null)
 {
+    public KastnSlipContentRenderer WithActionGuard(Func<bool> canAct) => new(project, resources,
+        id => { if (canAct()) navigateToSlip?.Invoke(id); },
+        id => canAct() && toggleChecked is not null ? toggleChecked(id) : Task.CompletedTask);
+
     public KastnRenderedSlipContent CreateTextContent(ZetlSlipSnapshot slip, double spacing = 5)
     {
         var content = new StackPanel { Spacing = spacing };
