@@ -1541,7 +1541,7 @@ internal partial class MainWindow
 
         HandleSimpleResponse(
             response,
-            shifted ? "Project set as Alternate." : "Project set as Main.");
+            shifted ? "Project set as Shift." : "Project set as Main.");
     }
 
     private async Task CreateTemporaryProjectFromReplayAsync(ProjectListItem project)

@@ -1,17 +1,17 @@
 # Kastn Undo
 
 Kastn's in-app undo is landed (see Status). Zetl's session undo stack lives in
-the shortcut coordinator and is fed only by the coldkey capture, quick-note,
+the shortcut coordinator and is fed only by the held-shortcut capture, quick-note,
 compile, Pop, and Replay handlers; Kastn's edits flow through
 `ZetlProjectService` and never reach it, so Kastn keeps its own history.
 
 This record fixes the approach for an in-Kastn undo that stays out of Zetl's
-coldkey undo.
+held-Ctrl+Z undo.
 
 ## Boundary
 
 - In-app `Ctrl+Z` undoes the last Kastn edit. Held `Ctrl+Z` (and
-  `Ctrl+Shift+Z`) remain Zetl coldkeys for the capture lanes and are unchanged.
+  `Ctrl+Shift+Z`) remain Zetl hold shortcuts for the capture lanes and are unchanged.
 - Undo is a Kastn-local history of **inverse domain commands**, replayed over the
   existing IPC. Zetl stays the sole writer; an undo is just another
   revision-checked command.
@@ -20,7 +20,7 @@ coldkey undo.
   no new wire contract or protocol version is required.
 - A server-side undo log is explicitly rejected: it would force Zetl to track
   per-client history across its multi-client model and would entangle Kastn's
-  undo with the coldkey stack. Keeping undo client-side keeps the two histories
+  undo with Zetl's undo stack. Keeping undo client-side keeps the two histories
   isolated.
 
 ## Scope (v1)
@@ -82,7 +82,7 @@ A conflicted entry is consumed either way; it is not silently retried.
 ## Undo History
 
 - A bounded client-side stack of entries, each pairing a description with an
-  async inverse closure. Capacity matches Zetl's coldkey stack (100).
+  async inverse closure. Capacity matches Zetl's undo stack (100).
 - A single user gesture that issues several commands (multi-slip delete, batch
   formatting) pushes one compound entry whose inverses replay in reverse order,
   so one `Ctrl+Z` reverts the whole gesture.
@@ -141,9 +141,9 @@ hunting afterwards for which record changed.
 
 - `Ctrl+Z` undoes and `Ctrl+Y` redoes, from the main `OnKeyDown` handler.
 - `Ctrl+Shift+Z` is deliberately **not** a redo binding: held `Ctrl+Shift+Z` is
-  Zetl's Shift-lane undo coldkey, so mapping its tap to redo would overload one
+  Zetl's Shift-lane undo hold shortcut, so mapping its tap to redo would overload one
   chord with opposite meanings (tap redo vs hold undo). `Ctrl+Y` is free of any
-  Zetl coldkey.
+  Zetl hold shortcut.
 - Kastn keeps **one ordered history** covering the slip editor. The editor's
   native TextBox undo is disabled (an earlier focus-split model made Ctrl+Z
   answer differently mid-edit and could resurrect another slip's text from the
@@ -171,7 +171,7 @@ Slices 1 and 2 landed: full slip undo/redo.
 - `Ctrl+Z` / `Ctrl+Y` drive one ordered history from every surface, including
   the slip editor (whose native text-box undo is disabled — see Keybinding).
   `Ctrl+Shift+Z` is avoided so it does not overload Zetl's Shift-lane undo
-  coldkey. History clears on project switch or loss of a live connection.
+  hold shortcut. History clears on project switch or loss of a live connection.
 - Stacked entries on one slip re-thread their expected revisions as history
   steps apply (`KastnUndoHistory.RethreadRevision`), so a run of undos or redos
   walks the whole history for that slip. A change made outside the history

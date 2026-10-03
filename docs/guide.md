@@ -4,7 +4,7 @@ Everything Zetl and Kastn can do, in detail. For a quick introduction, start
 with the [README](../README.md).
 
 - [The basics](#the-basics)
-- [Coldkeys: tap and hold](#coldkeys-tap-and-hold)
+- [Tap and hold](#tap-and-hold)
 - [Projects, buckets, and slips](#projects-buckets-and-slips)
 - [Capturing](#capturing)
 - [Replay and pass-through](#replay-and-pass-through)
@@ -62,12 +62,11 @@ one and exits.
 > administrator, run Zetl as administrator too. Windows' secure desktop (the
 > sign-in and UAC screens) can't be reached at all.
 
-## Coldkeys: Tap And Hold
+## Tap And Hold
 
-Zetl's shortcuts are called **Coldkeys**: tap for the ordinary shortcut, hold
-for the Zetl action.
+Tap a shortcut for what it always does; hold it for the Zetl action.
 
-| Coldkey | Tap | Hold |
+| Shortcut | Tap | Hold |
 | --- | --- | --- |
 | `Ctrl+A` | Normal select-all | Select all and capture it |
 | `Ctrl+B` | Normal `Ctrl+B` | Open the Board |
@@ -80,7 +79,7 @@ for the Zetl action.
 | `Ctrl+V` | Normal paste, or the next Replay item | Open Compose |
 | `Ctrl+Z` | Normal undo | Undo the latest Zetl action |
 
-**Lanes.** Add `Shift` to use the independent Shift lane: `Ctrl+Shift+C`,
+**Lanes.** Zetl has two lanes, Main and Shift. Add `Shift` to use the Shift lane: `Ctrl+Shift+C`,
 `Ctrl+Shift+X`, `Ctrl+Shift+V`, and so on. Each lane has its own active
 project, so you can keep a Replay or data-entry project on one lane while the
 other captures ordinary notes, or stays inactive. Lane names are configurable

@@ -1,16 +1,16 @@
-# Coldkey Ideas Discussion
+# Hold Shortcut Ideas Discussion
 
 > **Status — design backlog:** This discussion was recovered and reviewed in
 > September 2026. It records possible post-RC directions, not committed release
-> work. The root README is authoritative for implemented Coldkeys, and
+> work. The root README is authoritative for implemented hold shortcuts, and
 > [kastn-roadmap.md](kastn-roadmap.md) remains the product queue.
 
 
-Coldkeys are Zetl's tap-versus-hold shortcuts. The tap keeps the user's normal
+Hold shortcuts are Zetl's tap-or-hold keys. The tap keeps the user's normal
 muscle memory intact; the hold asks Zetl to do the larger, project-aware action.
 
-This note captures possible next coldkeys and the larger idea of advanced
-user-defined coldkeys. It is intentionally a discussion record, not a committed
+This note captures possible next hold shortcuts and the larger idea of advanced
+user-defined hold shortcuts. It is intentionally a discussion record, not a committed
 implementation plan.
 
 ## Current Baseline
@@ -121,7 +121,7 @@ Suggested first slice:
 - No deltas, partial restore, or automatic pruning in v1.
 - Optional prompt for a checkpoint name, defaulting to timestamp plus project.
 
-## Advanced Custom Coldkeys
+## Advanced Custom Hold Shortcuts
 
 Longer term, users could define a chord by choosing separate tap and hold
 behaviors. This is probably more valuable than hard-coding many more defaults.
@@ -181,7 +181,7 @@ Wins:
   internal configuration.
 - Could become a portable workflow layer across applications.
 - Lets Zetl interaction grow out of better text interaction instead of requiring
-  every coldkey to open a Zetl surface.
+  every hold shortcut to open a Zetl surface.
 
 Challenges:
 
@@ -202,11 +202,11 @@ Challenges:
 
 Potential guardrails:
 
-- Keep default coldkeys blessed and small.
-- Put custom coldkeys behind Advanced Settings.
+- Keep default hold shortcuts blessed and small.
+- Put custom hold shortcuts behind Advanced Settings.
 - Show a plain-language preview: "Tap passes through Ctrl+A immediately; hold
   captures the selected text."
-- Require explicit confirmation when overriding a default coldkey.
+- Require explicit confirmation when overriding a default hold shortcut.
 - Add a "test this hotkey" panel that shows tap, hold, pass-through, and
   dispatch behavior before saving.
 
@@ -230,7 +230,7 @@ workflow demands them.
 Linux gives `Ctrl+T` a text-editing meaning: transpose characters. Zetl already
 uses held `Ctrl+T` for template/project creation, so changing the default would
 be disruptive. Still, transpose is a useful example for advanced custom
-coldkeys:
+hold shortcuts:
 
 - Tap `Ctrl+T`: keep or synthesize transpose characters.
 - Hold `Ctrl+T`: transpose words.
@@ -241,14 +241,14 @@ Wins:
 
 - Natural "same family, larger unit" mapping: character transpose becomes word
   transpose.
-- A good proof case for custom coldkeys that fire synthetic editing actions
+- A good proof case for custom hold shortcuts that fire synthetic editing actions
   instead of only Zetl commands.
 - Could make cross-platform editing behavior more consistent for users who move
   between Linux and Windows.
 
 Challenges:
 
-- Conflicts with the current template picker coldkey.
+- Conflicts with the current template picker hold shortcut.
 - Transpose behavior depends heavily on the target control and app. Zetl may
   need to synthesize keystrokes, edit selected text through clipboard-style
   replacement, or do nothing when the target cannot be safely inferred.
@@ -258,11 +258,11 @@ Challenges:
 
 ## Recommended Priority
 
-1. Add held `Ctrl+F` as the next first-class coldkey.
+1. Add held `Ctrl+F` as the next first-class hold shortcut.
 2. Keep held `Ctrl+S` as a checkpoint/snapshot design candidate, but do not
    implement until the restore/import contract is deliberately boring and safe.
-3. Treat broader custom coldkeys as an Advanced Settings feature after the
-   default coldkey model has settled.
+3. Treat broader custom hold shortcuts as an Advanced Settings feature after the
+   default hold shortcut model has settled.
 
 ## Open Questions
 
@@ -274,5 +274,5 @@ Challenges:
   project?
 - Should snapshot restore always import as a copy, or should there eventually be
   an explicit destructive restore path?
-- Should custom coldkeys be global only at first, or should per-app profiles be
+- Should custom hold shortcuts be global only at first, or should per-app profiles be
   part of the initial design?

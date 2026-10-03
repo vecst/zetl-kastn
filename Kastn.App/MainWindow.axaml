@@ -466,7 +466,7 @@
                                     PointerPressed="OnProjectCardActionPointerPressed">
                               <Button.Flyout>
                                 <MenuFlyout>
-                                  <MenuItem Header="Set as Alternate"
+                                  <MenuItem Header="Set as Shift"
                                             IsEnabled="{Binding CanSetAlternateActive}"
                                             Tag="{Binding}"
                                             Click="OnProjectCardSetAlternateClick" />

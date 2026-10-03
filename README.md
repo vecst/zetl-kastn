@@ -64,8 +64,9 @@ exactly where a tap ends and a hold begins.
 | `Ctrl+P` | Pass-through for now: a copy you paste straight away doesn't stay in your project |
 | `Ctrl+Z` | Undo Zetl's last action |
 
-Add `Shift` (`Ctrl+Shift+C`, `Ctrl+Shift+X`, …) for a second, separate
-workspace, so a work project and a personal one can run side by side.
+Add `Shift` (`Ctrl+Shift+C`, `Ctrl+Shift+X`, …) to use the **Shift lane**, a
+second lane beside the Main one with its own project, so a work project and a
+personal one can run side by side.
 
 You can change what each hold does in **Settings → Hold Actions**.
 

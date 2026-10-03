@@ -43,8 +43,8 @@ These are the authoritative places to answer “what remains?”
 
 ## Focused Design Records
 
-- [`coldkey-ideas-discussion.md`](coldkey-ideas-discussion.md) — post-RC
-  Coldkey and portable text-interaction ideas; discussion only
+- [`hold-shortcut-ideas-discussion.md`](hold-shortcut-ideas-discussion.md) — post-RC
+  Hold-shortcut and portable text-interaction ideas; discussion only
 - [`hold-routing-discussion.md`](hold-routing-discussion.md) — routing held
   gestures by context, file-reference slips, and move tracking; discussion only
 - [`kastn-compile-split.md`](kastn-compile-split.md) — historical product
@@ -55,7 +55,7 @@ These are the authoritative places to answer “what remains?”
   creation-type design, including temporary consumables
 
 - [`kastn-undo-roadmap.md`](kastn-undo-roadmap.md) — in-Kastn undo via
-  client-side inverse commands, distinct from Zetl's coldkey undo
+  client-side inverse commands, distinct from Zetl's held-Ctrl+Z undo
 
 - [`kastn-project-board-roadmap.md`](kastn-project-board-roadmap.md) - proposed
   project-level board, workspace asset store, and cross-project link/export

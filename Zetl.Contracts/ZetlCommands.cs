@@ -41,7 +41,7 @@ public sealed record RenameProjectCommand
 
 public sealed record SetActiveProjectCommand
 {
-    // False selects the Main lane; true selects the Alternate lane.
+    // False selects the Main lane; true selects the Shift lane.
     public bool ActivateShifted { get; init; }
 }
 

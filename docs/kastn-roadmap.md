@@ -226,17 +226,17 @@ The overhaul is sequenced as four slices (design in
 ### Kastn Undo
 
 Kastn-local slip undo/redo is landed as one ordered history over the existing
-IPC, isolated from Zetl's coldkey stack.
+IPC, isolated from Zetl's undo stack.
 
 - [x] Add a client-side undo history of inverse domain commands bound to in-app
-      `Ctrl+Z` and isolated from the held-`Ctrl+Z` coldkey stack. All mutations
+      `Ctrl+Z` and isolated from the held-`Ctrl+Z` undo stack. All mutations
       route through a single `ExecuteMutationAsync` choke point; the planner and
       history are unit-tested.
 - [x] Add gesture grouping (coalesce by slip id) and enable `AddSlip`, `MoveSlip`,
       and `ReorderSlip` undo. Divider insert, drag, the per-card edit dialog, and
       the batch loops each record as one entry.
 - [x] Add redo via a symmetric undo/redo model, bound to `Ctrl+Y` (not
-      `Ctrl+Shift+Z`, which would overload Zetl's Shift-lane undo coldkey).
+      `Ctrl+Shift+Z`, which would overload Zetl's Shift-lane undo hold shortcut).
 - [x] One ordered history covering the editor: the slip editor's native TextBox
       undo is disabled, `Ctrl+Z`/`Ctrl+Y` there drive Kastn history (pending
       typing flushes in as one entry), and stacked same-slip entries re-thread
@@ -279,7 +279,7 @@ ship before cross-project mutation or asset-store migration.
       changing ordinary tap-`Ctrl+F` behavior in the foreground application.
 
 The held-shortcut entry point is discussed in
-[`coldkey-ideas-discussion.md`](coldkey-ideas-discussion.md#held-ctrlf-find-in-zetl).
+[`hold-shortcut-ideas-discussion.md`](hold-shortcut-ideas-discussion.md#held-ctrlf-find-in-zetl).
 The search and Calendar surfaces should share one query/result model.
 
 Open decisions:

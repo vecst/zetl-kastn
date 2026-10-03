@@ -226,13 +226,13 @@
                        Watermark="Main" />
 
               <TextBlock Grid.Row="3" Grid.Column="0"
-                         Text="Alternate lane label"
+                         Text="Shift lane label"
                          VerticalAlignment="Center" />
               <TextBox Grid.Row="3" Grid.Column="1" x:Name="kastnAlternateLaneLabelBox"
                        Width="220"
                        HorizontalAlignment="Left"
                        MaxLength="20"
-                       Watermark="Alternate" />
+                       Watermark="Shift" />
 
               <TextBlock Grid.Row="4" Grid.Column="0"
                          Text="Default reading view"

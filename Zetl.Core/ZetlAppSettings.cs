@@ -145,7 +145,7 @@ internal static class ZetlLaneLabels
     // Short enough that card headers, buttons, and menus stay predictable.
     public const int MaxLength = 20;
     public const string DefaultMain = "Main";
-    public const string DefaultAlternate = "Alternate";
+    public const string DefaultShift = "Shift";
 
     public static string Trim(string? value)
     {
@@ -158,7 +158,7 @@ internal static class ZetlLaneLabels
         var trimmed = Trim(value);
         return trimmed.Length > 0
             ? trimmed
-            : shifted ? DefaultAlternate : DefaultMain;
+            : shifted ? DefaultShift : DefaultMain;
     }
 }
 

@@ -1723,7 +1723,7 @@ internal partial class MainWindow : Window
             // In-app undo. An incidental text box (bucket name, search) keeps its
             // own Ctrl+Z; the slip editor's tunnel handler already claimed the key
             // for Kastn's history before this ever runs. Held Ctrl+Z remains a
-            // Zetl coldkey and never reaches Kastn.
+            // Zetl hold shortcut and never reaches Kastn.
             if (IsTextInputFocused())
             {
                 return;
@@ -1735,7 +1735,7 @@ internal partial class MainWindow : Window
         else if (args.KeyModifiers == KeyModifiers.Control && args.Key == Key.Y)
         {
             // In-app redo. Ctrl+Y only — Ctrl+Shift+Z is deliberately avoided because
-            // held Ctrl+Shift+Z is Zetl's Shift-lane undo coldkey, and mapping its tap
+            // held Ctrl+Shift+Z is Zetl's Shift-lane undo hold shortcut, and mapping its tap
             // to redo would overload one chord with opposite meanings.
             if (IsTextInputFocused())
             {

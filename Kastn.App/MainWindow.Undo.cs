@@ -7,7 +7,7 @@ namespace KASTN;
 
 internal partial class MainWindow
 {
-    // Kastn-local edit history, distinct from Zetl's held-Ctrl+Z coldkey stack.
+    // Kastn-local edit history, distinct from Zetl's held-Ctrl+Z undo stack.
     // This is the only undo surface: the slip editor's native TextBox undo is
     // disabled, so typing, style toggles, and moves all undo in one ordered run.
     private readonly KastnUndoHistory undoStack = new();
