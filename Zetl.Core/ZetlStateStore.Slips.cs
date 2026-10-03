@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using ZETL.Contracts;
 using static ZETL.ZetlStateRules;
 
@@ -8,7 +7,7 @@ namespace ZETL;
 // Compose and the Board show.
 internal sealed partial class ZetlStateStore
 {
-    [MethodImpl(MethodImplOptions.Synchronized)]
+    // Forwards to the overload below, which takes the lock.
     public ZetlSlip AddSlip(
         ZetlBucket bucket,
         string text,
@@ -16,7 +15,6 @@ internal sealed partial class ZetlStateStore
         ZetlCaptureOrigin? captureOrigin) =>
         AddSlip(bucket, text, source, null, null, captureOrigin);
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlSlip AddSlip(
         ZetlBucket bucket,
         string text,
@@ -30,23 +28,26 @@ internal sealed partial class ZetlStateStore
         string? richHtml = null,
         IReadOnlyList<ZetlClipboardFormatData>? replayFormats = null)
     {
-        var note = new ZetlSlip
+        lock (stateGate)
         {
-            Id = NewId(),
-            Title = (title ?? "").Trim(),
-            Text = text.Trim(),
-            RichHtml = string.IsNullOrWhiteSpace(richHtml) ? null : richHtml,
-            ReplayFormats = CloneReplayFormats(replayFormats),
-            Source = source,
-            SessionId = noteSessionId ?? sessionId,
-            CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow,
-            CaptureOrigin = captureOrigin,
-            BlockKind = ZetlBlockKinds.Normalize(blockKind),
-            IgnoreBucketRenderKind = ignoreBucketRenderKind == true
-        };
-        bucket.Slips.Add(note);
-        PersistBucket(bucket);
-        return note;
+            var note = new ZetlSlip
+            {
+                Id = NewId(),
+                Title = (title ?? "").Trim(),
+                Text = text.Trim(),
+                RichHtml = string.IsNullOrWhiteSpace(richHtml) ? null : richHtml,
+                ReplayFormats = CloneReplayFormats(replayFormats),
+                Source = source,
+                SessionId = noteSessionId ?? sessionId,
+                CreatedAtUtc = createdAtUtc ?? DateTime.UtcNow,
+                CaptureOrigin = captureOrigin,
+                BlockKind = ZetlBlockKinds.Normalize(blockKind),
+                IgnoreBucketRenderKind = ignoreBucketRenderKind == true
+            };
+            bucket.Slips.Add(note);
+            PersistBucket(bucket);
+            return note;
+        }
     }
 
     // With preferTextContent, the caption is the slip's text *content* and the
@@ -98,22 +99,26 @@ internal sealed partial class ZetlStateStore
     // Attach or replace a slip's picture. The Image setter keeps a slip with
     // text content presenting as text (a dual slip) and turns a text-less slip
     // into a picture slip. The prior asset file stays content-addressed on disk.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetSlipImage(ZetlProject project, ZetlSlip note, ZetlClipboardImage image)
     {
-        note.Image = CreateImageAsset(project, image, sourceUrl: null);
-        note.Revision++;
-        PersistProject(project);
+        lock (stateGate)
+        {
+            note.Image = CreateImageAsset(project, image, sourceUrl: null);
+            note.Revision++;
+            PersistProject(project);
+        }
     }
 
     // Detach a slip's picture. The Image setter returns a picture-presenting
     // slip to its text (or URL) representation.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void RemoveSlipImage(ZetlProject project, ZetlSlip note)
     {
-        note.Image = null;
-        note.Revision++;
-        PersistProject(project);
+        lock (stateGate)
+        {
+            note.Image = null;
+            note.Revision++;
+            PersistProject(project);
+        }
     }
 
     private ZetlImageAsset CreateImageAsset(
@@ -154,36 +159,38 @@ internal sealed partial class ZetlStateStore
     // Adds one note per non-blank text, preserving order, with a single save.
     // Used by a structured compile-to-bucket that keeps notes separate instead
     // of flattening them into one combined note.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public IReadOnlyList<ZetlSlip> AddSlips(ZetlBucket bucket, IEnumerable<string> texts, string source)
     {
-        var added = new List<ZetlSlip>();
-        foreach (var text in texts)
+        lock (stateGate)
         {
-            var trimmed = (text ?? "").Trim();
-            if (trimmed.Length == 0)
+            var added = new List<ZetlSlip>();
+            foreach (var text in texts)
             {
-                continue;
+                var trimmed = (text ?? "").Trim();
+                if (trimmed.Length == 0)
+                {
+                    continue;
+                }
+
+                var note = new ZetlSlip
+                {
+                    Id = NewId(),
+                    Text = trimmed,
+                    Source = source,
+                    SessionId = sessionId,
+                    CreatedAtUtc = DateTime.UtcNow
+                };
+                bucket.Slips.Add(note);
+                added.Add(note);
             }
 
-            var note = new ZetlSlip
+            if (added.Count > 0)
             {
-                Id = NewId(),
-                Text = trimmed,
-                Source = source,
-                SessionId = sessionId,
-                CreatedAtUtc = DateTime.UtcNow
-            };
-            bucket.Slips.Add(note);
-            added.Add(note);
-        }
+                PersistBucket(bucket);
+            }
 
-        if (added.Count > 0)
-        {
-            PersistBucket(bucket);
+            return added;
         }
-
-        return added;
     }
 
     // Appends activity-log lines as notes in a dedicated "Zetl Logs" project,
@@ -192,83 +199,86 @@ internal sealed partial class ZetlStateStore
     // bounded (the day bucket is capped and stale day buckets are dropped) so the
     // file cannot grow without limit, and it saves once per call -- the caller
     // batches lines so logging stays off the per-keystroke path.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void AppendLogSlips(IReadOnlyCollection<string> messages, int maxDayBuckets, int maxNotesPerBucket)
     {
-        if (messages.Count == 0)
+        lock (stateGate)
         {
-            return;
-        }
-
-        var project = State.Projects.FirstOrDefault(item =>
-            string.Equals(item.Name, LogProjectName, StringComparison.OrdinalIgnoreCase));
-        if (project is null)
-        {
-            project = new ZetlProject { Id = NewId(), Name = LogProjectName };
-            State.Projects.Add(project);
-        }
-
-        var dayName = DateTime.Now.ToString("yyyy-MM-dd");
-        var bucket = project.Buckets.FirstOrDefault(item =>
-            string.Equals(item.Name, dayName, StringComparison.OrdinalIgnoreCase));
-        if (bucket is null)
-        {
-            bucket = CreateBucket(dayName);
-            ApplyBucketDefaults(bucket);
-            project.Buckets.Add(bucket);
-        }
-
-        foreach (var message in messages)
-        {
-            var trimmed = (message ?? "").Trim();
-            if (trimmed.Length == 0)
+            if (messages.Count == 0)
             {
-                continue;
+                return;
             }
 
-            bucket.Slips.Add(new ZetlSlip
+            var project = State.Projects.FirstOrDefault(item =>
+                string.Equals(item.Name, LogProjectName, StringComparison.OrdinalIgnoreCase));
+            if (project is null)
             {
-                Id = NewId(),
-                Text = trimmed,
-                Source = "log",
-                SessionId = sessionId,
-                CreatedAtUtc = DateTime.UtcNow
-            });
-        }
+                project = new ZetlProject { Id = NewId(), Name = LogProjectName };
+                State.Projects.Add(project);
+            }
 
-        if (bucket.Slips.Count > maxNotesPerBucket)
-        {
-            bucket.Slips.RemoveRange(0, bucket.Slips.Count - maxNotesPerBucket);
-        }
+            var dayName = DateTime.Now.ToString("yyyy-MM-dd");
+            var bucket = project.Buckets.FirstOrDefault(item =>
+                string.Equals(item.Name, dayName, StringComparison.OrdinalIgnoreCase));
+            if (bucket is null)
+            {
+                bucket = CreateBucket(dayName);
+                ApplyBucketDefaults(bucket);
+                project.Buckets.Add(bucket);
+            }
 
-        // Day-bucket names are yyyy-MM-dd, so ordinal-descending order is newest
-        // first. Keep only the most recent day buckets; never drop Scratch.
-        foreach (var stale in project.Buckets
-            .Where(item => !IsScratchBucket(item))
-            .OrderByDescending(item => item.Name, StringComparer.Ordinal)
-            .Skip(maxDayBuckets)
-            .ToList())
-        {
-            project.Buckets.Remove(stale);
-        }
+            foreach (var message in messages)
+            {
+                var trimmed = (message ?? "").Trim();
+                if (trimmed.Length == 0)
+                {
+                    continue;
+                }
 
-        PersistProject(project);
+                bucket.Slips.Add(new ZetlSlip
+                {
+                    Id = NewId(),
+                    Text = trimmed,
+                    Source = "log",
+                    SessionId = sessionId,
+                    CreatedAtUtc = DateTime.UtcNow
+                });
+            }
+
+            if (bucket.Slips.Count > maxNotesPerBucket)
+            {
+                bucket.Slips.RemoveRange(0, bucket.Slips.Count - maxNotesPerBucket);
+            }
+
+            // Day-bucket names are yyyy-MM-dd, so ordinal-descending order is newest
+            // first. Keep only the most recent day buckets; never drop Scratch.
+            foreach (var stale in project.Buckets
+                .Where(item => !IsScratchBucket(item))
+                .OrderByDescending(item => item.Name, StringComparer.Ordinal)
+                .Skip(maxDayBuckets)
+                .ToList())
+            {
+                project.Buckets.Remove(stale);
+            }
+
+            PersistProject(project);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void DeleteSlip(ZetlBucket bucket, string noteId)
     {
-        var note = bucket.Slips.FirstOrDefault(item => item.Id == noteId);
-        if (note is null)
+        lock (stateGate)
         {
-            return;
-        }
+            var note = bucket.Slips.FirstOrDefault(item => item.Id == noteId);
+            if (note is null)
+            {
+                return;
+            }
 
-        bucket.Slips.Remove(note);
-        PersistBucket(bucket);
+            bucket.Slips.Remove(note);
+            PersistBucket(bucket);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void UpdateSlip(
         ZetlSlip note,
         string text,
@@ -287,175 +297,182 @@ internal sealed partial class ZetlStateStore
         int? fontSize = null,
         string? textColor = null)
     {
-        var normalizedText = text.Trim();
-        if (!string.Equals(note.Text, normalizedText, StringComparison.Ordinal))
+        lock (stateGate)
         {
-            // Once the visible text is edited, the source application's HTML no
-            // longer describes it and must not be replayed as stale content.
-            note.RichHtml = null;
-            note.ReplayFormats = null;
-        }
-        note.Text = normalizedText;
-        // The preferred representation of a dual slip. Picture requires an
-        // attached picture (the caller validates); a text preference is
-        // re-classified so a bare link presents as Url.
-        if (type is { } preferredType)
-        {
-            note.Type = preferredType == ZetlSlipType.Picture && note.Image is not null
-                ? ZetlSlipType.Picture
-                : ZetlSlipClassifier.LooksLikeUrl(note.Text)
-                    ? ZetlSlipType.Url
-                    : ZetlSlipType.Text;
-        }
+            var normalizedText = text.Trim();
+            if (!string.Equals(note.Text, normalizedText, StringComparison.Ordinal))
+            {
+                // Once the visible text is edited, the source application's HTML no
+                // longer describes it and must not be replayed as stale content.
+                note.RichHtml = null;
+                note.ReplayFormats = null;
+            }
+            note.Text = normalizedText;
+            // The preferred representation of a dual slip. Picture requires an
+            // attached picture (the caller validates); a text preference is
+            // re-classified so a bare link presents as Url.
+            if (type is { } preferredType)
+            {
+                note.Type = preferredType == ZetlSlipType.Picture && note.Image is not null
+                    ? ZetlSlipType.Picture
+                    : ZetlSlipClassifier.LooksLikeUrl(note.Text)
+                        ? ZetlSlipType.Url
+                        : ZetlSlipType.Text;
+            }
 
-        if (title is not null)
-        {
-            note.Title = title.Trim();
+            if (title is not null)
+            {
+                note.Title = title.Trim();
+            }
+
+            if (excludedFromViews is { } excluded)
+            {
+                note.ExcludedFromViews = excluded;
+            }
+
+            if (align is not null)
+            {
+                // Normalize to keep JSON clean: left is the implicit default (null).
+                var normalized = align.Trim().ToLowerInvariant();
+                note.Align = normalized is "center" or "right" ? normalized : null;
+            }
+
+            if (blockKind is not null)
+            {
+                // Normalize to a known kind; anything else (including "paragraph"/"none")
+                // clears it back to a plain paragraph.
+                note.BlockKind = ZetlBlockKinds.Normalize(blockKind);
+            }
+
+            if (ignoreBucketRenderKind is { } ignoreBucket)
+            {
+                note.IgnoreBucketRenderKind = ignoreBucket;
+            }
+
+            if (@checked is { } isChecked)
+            {
+                note.Checked = isChecked;
+            }
+
+            // Checked can be rendered by explicit task notes or by a task bucket composed
+            // with another slip kind. Clearing happens only when a command explicitly
+            // changes the slip kind away from task.
+            if (blockKind is not null && note.BlockKind != ZetlBlockKinds.Task)
+            {
+                note.Checked = false;
+            }
+
+            if (bold is { } isBold)
+            {
+                note.Bold = isBold;
+            }
+
+            if (italic is { } isItalic)
+            {
+                note.Italic = isItalic;
+            }
+
+            if (strike is { } isStrike)
+            {
+                note.Strike = isStrike;
+            }
+
+            if (fontFamily is not null)
+            {
+                note.FontFamily = ZetlSlipTypography.NormalizeFontFamily(fontFamily);
+            }
+
+            if (fontSize is { } authoredFontSize)
+            {
+                note.FontSize = ZetlSlipTypography.NormalizeFontSize(authoredFontSize);
+            }
+
+            if (textColor is not null)
+            {
+                note.TextColor = ZetlSlipTypography.NormalizeTextColor(textColor);
+            }
+
+            note.InlineStyles = ZetlInlineStyles.Normalize(
+                note.Text,
+                inlineStyles ?? note.InlineStyles);
+
+            note.Revision++;
+            PersistSlip(note);
         }
-
-        if (excludedFromViews is { } excluded)
-        {
-            note.ExcludedFromViews = excluded;
-        }
-
-        if (align is not null)
-        {
-            // Normalize to keep JSON clean: left is the implicit default (null).
-            var normalized = align.Trim().ToLowerInvariant();
-            note.Align = normalized is "center" or "right" ? normalized : null;
-        }
-
-        if (blockKind is not null)
-        {
-            // Normalize to a known kind; anything else (including "paragraph"/"none")
-            // clears it back to a plain paragraph.
-            note.BlockKind = ZetlBlockKinds.Normalize(blockKind);
-        }
-
-        if (ignoreBucketRenderKind is { } ignoreBucket)
-        {
-            note.IgnoreBucketRenderKind = ignoreBucket;
-        }
-
-        if (@checked is { } isChecked)
-        {
-            note.Checked = isChecked;
-        }
-
-        // Checked can be rendered by explicit task notes or by a task bucket composed
-        // with another slip kind. Clearing happens only when a command explicitly
-        // changes the slip kind away from task.
-        if (blockKind is not null && note.BlockKind != ZetlBlockKinds.Task)
-        {
-            note.Checked = false;
-        }
-
-        if (bold is { } isBold)
-        {
-            note.Bold = isBold;
-        }
-
-        if (italic is { } isItalic)
-        {
-            note.Italic = isItalic;
-        }
-
-        if (strike is { } isStrike)
-        {
-            note.Strike = isStrike;
-        }
-
-        if (fontFamily is not null)
-        {
-            note.FontFamily = ZetlSlipTypography.NormalizeFontFamily(fontFamily);
-        }
-
-        if (fontSize is { } authoredFontSize)
-        {
-            note.FontSize = ZetlSlipTypography.NormalizeFontSize(authoredFontSize);
-        }
-
-        if (textColor is not null)
-        {
-            note.TextColor = ZetlSlipTypography.NormalizeTextColor(textColor);
-        }
-
-        note.InlineStyles = ZetlInlineStyles.Normalize(
-            note.Text,
-            inlineStyles ?? note.InlineStyles);
-
-        note.Revision++;
-        PersistSlip(note);
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public bool MoveSlip(ZetlProject project, ZetlSlip note, ZetlBucket destination)
     {
-        var source = project.Buckets.FirstOrDefault(bucket =>
-            bucket.Slips.Any(item => item.Id == note.Id));
-        if (source is null
-            || project.Buckets.All(bucket => bucket.Id != destination.Id)
-            || source.Id == destination.Id)
+        lock (stateGate)
         {
-            return false;
-        }
-
-        source.Slips.RemoveAll(item => item.Id == note.Id);
-        destination.Slips.Add(note);
-        if (IsDeletedBucket(destination))
-        {
-            note.DeletedFromBucketId = source.Id;
-            note.DeletedAtUtc = DateTime.UtcNow;
-        }
-        else if (IsDeletedBucket(source))
-        {
-            note.DeletedFromBucketId = null;
-            note.DeletedAtUtc = null;
-        }
-
-        note.Revision++;
-        PersistProject(project);
-        return true;
-    }
-
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool ReorderSlip(ZetlProject project, ZetlSlip note, string? beforeNoteId)
-    {
-        var bucket = project.Buckets.FirstOrDefault(bucket =>
-            bucket.Slips.Any(item => item.Id == note.Id));
-        if (bucket is null)
-        {
-            return false;
-        }
-
-        var currentIndex = bucket.Slips.FindIndex(item => item.Id == note.Id);
-        int targetIndex;
-        if (beforeNoteId is null)
-        {
-            targetIndex = bucket.Slips.Count;
-        }
-        else
-        {
-            var anchorIndex = bucket.Slips.FindIndex(item => item.Id == beforeNoteId);
-            if (anchorIndex < 0)
+            var source = project.Buckets.FirstOrDefault(bucket =>
+                bucket.Slips.Any(item => item.Id == note.Id));
+            if (source is null
+                || project.Buckets.All(bucket => bucket.Id != destination.Id)
+                || source.Id == destination.Id)
             {
                 return false;
             }
 
-            targetIndex = anchorIndex;
-        }
+            source.Slips.RemoveAll(item => item.Id == note.Id);
+            destination.Slips.Add(note);
+            if (IsDeletedBucket(destination))
+            {
+                note.DeletedFromBucketId = source.Id;
+                note.DeletedAtUtc = DateTime.UtcNow;
+            }
+            else if (IsDeletedBucket(source))
+            {
+                note.DeletedFromBucketId = null;
+                note.DeletedAtUtc = null;
+            }
 
-        bucket.Slips.RemoveAt(currentIndex);
-        if (targetIndex > currentIndex)
+            note.Revision++;
+            PersistProject(project);
+            return true;
+        }
+    }
+
+    public bool ReorderSlip(ZetlProject project, ZetlSlip note, string? beforeNoteId)
+    {
+        lock (stateGate)
         {
-            targetIndex--;
-        }
+            var bucket = project.Buckets.FirstOrDefault(bucket =>
+                bucket.Slips.Any(item => item.Id == note.Id));
+            if (bucket is null)
+            {
+                return false;
+            }
 
-        targetIndex = Math.Clamp(targetIndex, 0, bucket.Slips.Count);
-        bucket.Slips.Insert(targetIndex, note);
-        note.Revision++;
-        PersistProject(project);
-        return true;
+            var currentIndex = bucket.Slips.FindIndex(item => item.Id == note.Id);
+            int targetIndex;
+            if (beforeNoteId is null)
+            {
+                targetIndex = bucket.Slips.Count;
+            }
+            else
+            {
+                var anchorIndex = bucket.Slips.FindIndex(item => item.Id == beforeNoteId);
+                if (anchorIndex < 0)
+                {
+                    return false;
+                }
+
+                targetIndex = anchorIndex;
+            }
+
+            bucket.Slips.RemoveAt(currentIndex);
+            if (targetIndex > currentIndex)
+            {
+                targetIndex--;
+            }
+
+            targetIndex = Math.Clamp(targetIndex, 0, bucket.Slips.Count);
+            bucket.Slips.Insert(targetIndex, note);
+            note.Revision++;
+            PersistProject(project);
+            return true;
+        }
     }
 
     // Compile operates on the whole project by default. Passing

@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using ZETL.Contracts;
 using static ZETL.ZetlStateRules;
 

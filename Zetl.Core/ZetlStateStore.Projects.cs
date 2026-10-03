@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using ZETL.Contracts;
 using static ZETL.ZetlStateRules;
 
@@ -8,7 +7,6 @@ namespace ZETL;
 // queries that find the latest one.
 internal sealed partial class ZetlStateStore
 {
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlProject CreateProject(
         string name,
         IEnumerable<string> bucketNames,
@@ -19,234 +17,255 @@ internal sealed partial class ZetlStateStore
         string? temporaryLane = null,
         bool consumable = false)
     {
-        var normalizedName = NormalizeName(name, "Untitled Project");
-        if (string.Equals(normalizedName, DefaultProjectName(shifted), StringComparison.OrdinalIgnoreCase))
+        lock (stateGate)
         {
-            var existingDefaultProject = ConsolidateProjectsNamed(normalizedName);
-            if (existingDefaultProject is not null)
+            var normalizedName = NormalizeName(name, "Untitled Project");
+            if (string.Equals(normalizedName, DefaultProjectName(shifted), StringComparison.OrdinalIgnoreCase))
             {
-                EnsureBuckets(existingDefaultProject, bucketNames);
-                var existingActiveBucket = existingDefaultProject.Buckets.FirstOrDefault(bucket =>
-                    string.Equals(bucket.Name, activeBucketName, StringComparison.OrdinalIgnoreCase));
-                if (existingActiveBucket is not null)
+                var existingDefaultProject = ConsolidateProjectsNamed(normalizedName);
+                if (existingDefaultProject is not null)
                 {
-                    existingDefaultProject.ActiveBucketId = existingActiveBucket.Id;
+                    EnsureBuckets(existingDefaultProject, bucketNames);
+                    var existingActiveBucket = existingDefaultProject.Buckets.FirstOrDefault(bucket =>
+                        string.Equals(bucket.Name, activeBucketName, StringComparison.OrdinalIgnoreCase));
+                    if (existingActiveBucket is not null)
+                    {
+                        existingDefaultProject.ActiveBucketId = existingActiveBucket.Id;
+                    }
+
+                    SetActiveProjectId(existingDefaultProject.Id, shifted);
+                    PersistProject(existingDefaultProject, workspace: true);
+                    return existingDefaultProject;
                 }
-
-                SetActiveProjectId(existingDefaultProject.Id, shifted);
-                PersistProject(existingDefaultProject, workspace: true);
-                return existingDefaultProject;
             }
+
+            var buckets = NormalizeBucketNames(bucketNames)
+                .Select(CreateBucket)
+                .ToList();
+            EnsureScratchBucket(buckets);
+            foreach (var bucket in buckets)
+            {
+                ApplyBucketDefaults(bucket);
+            }
+
+            var activeBucket = buckets.FirstOrDefault(bucket =>
+                string.Equals(bucket.Name, activeBucketName, StringComparison.OrdinalIgnoreCase))
+                ?? buckets.First();
+
+            var project = new ZetlProject
+            {
+                Id = NewId(),
+                Name = normalizedName,
+                Kind = NormalizeProjectKind(kind),
+                SourceTemplateId = string.IsNullOrWhiteSpace(sourceTemplateId) ? null : sourceTemplateId.Trim(),
+                TemporaryLane = CanonicalTemporaryLane(temporaryLane) ?? (shifted ? ShiftLane : NormalLane),
+                ActiveBucketId = activeBucket.Id,
+                Buckets = buckets
+            };
+            if (!IsTemporaryConsumableProject(project))
+            {
+                project.SourceTemplateId = null;
+                project.TemporaryLane = null;
+            }
+
+            project.Consumable = consumable || IsTemporaryConsumableProject(project);
+            if (project.Consumable)
+            {
+                project.ReturnProjectId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
+            }
+
+            State.Projects.Add(project);
+            SetActiveProjectId(project.Id, shifted);
+            PersistProject(project, workspace: true);
+            DisposeInactiveTemporaryProjects(persistWorkspace: true);
+            return project;
         }
-
-        var buckets = NormalizeBucketNames(bucketNames)
-            .Select(CreateBucket)
-            .ToList();
-        EnsureScratchBucket(buckets);
-        foreach (var bucket in buckets)
-        {
-            ApplyBucketDefaults(bucket);
-        }
-
-        var activeBucket = buckets.FirstOrDefault(bucket =>
-            string.Equals(bucket.Name, activeBucketName, StringComparison.OrdinalIgnoreCase))
-            ?? buckets.First();
-
-        var project = new ZetlProject
-        {
-            Id = NewId(),
-            Name = normalizedName,
-            Kind = NormalizeProjectKind(kind),
-            SourceTemplateId = string.IsNullOrWhiteSpace(sourceTemplateId) ? null : sourceTemplateId.Trim(),
-            TemporaryLane = CanonicalTemporaryLane(temporaryLane) ?? (shifted ? ShiftLane : NormalLane),
-            ActiveBucketId = activeBucket.Id,
-            Buckets = buckets
-        };
-        if (!IsTemporaryConsumableProject(project))
-        {
-            project.SourceTemplateId = null;
-            project.TemporaryLane = null;
-        }
-
-        project.Consumable = consumable || IsTemporaryConsumableProject(project);
-        if (project.Consumable)
-        {
-            project.ReturnProjectId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
-        }
-
-        State.Projects.Add(project);
-        SetActiveProjectId(project.Id, shifted);
-        PersistProject(project, workspace: true);
-        DisposeInactiveTemporaryProjects(persistWorkspace: true);
-        return project;
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void ConsolidateDefaultProject(bool shifted = false)
     {
-        // ConsolidateProjectsNamed persists the merged project and removes the
-        // duplicates' files itself, so there is nothing extra to save here.
-        ConsolidateProjectsNamed(DefaultProjectName(shifted));
+        lock (stateGate)
+        {
+            // ConsolidateProjectsNamed persists the merged project and removes the
+            // duplicates' files itself, so there is nothing extra to save here.
+            ConsolidateProjectsNamed(DefaultProjectName(shifted));
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void UpdateProjectName(ZetlProject project, string name, bool shifted = false)
     {
-        project.Name = NormalizeName(name, DefaultProjectName(shifted));
-        project.MetadataRevision++;
-        PersistProject(project);
+        lock (stateGate)
+        {
+            project.Name = NormalizeName(name, DefaultProjectName(shifted));
+            project.MetadataRevision++;
+            PersistProject(project);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetProjectStatus(ZetlProject project, string status)
     {
-        project.Status = NormalizeProjectStatus(status);
-        project.MetadataRevision++;
-
-        // Invariant: a non-Active project is never lane-active. Whether a project
-        // is sealed via Zetl's Finish button or archived from Kastn, it leaves its
-        // lane so capture advances instead of landing in a put-away project.
-        var clearedLane = false;
-        if (!IsActiveStatus(project))
+        lock (stateGate)
         {
-            if (State.ActiveProjectId == project.Id)
+            project.Status = NormalizeProjectStatus(status);
+            project.MetadataRevision++;
+
+            // Invariant: a non-Active project is never lane-active. Whether a project
+            // is sealed via Zetl's Finish button or archived from Kastn, it leaves its
+            // lane so capture advances instead of landing in a put-away project.
+            var clearedLane = false;
+            if (!IsActiveStatus(project))
             {
-                State.ActiveProjectId = null;
-                clearedLane = true;
+                if (State.ActiveProjectId == project.Id)
+                {
+                    State.ActiveProjectId = null;
+                    clearedLane = true;
+                }
+
+                if (State.ShiftActiveProjectId == project.Id)
+                {
+                    State.ShiftActiveProjectId = null;
+                    clearedLane = true;
+                }
             }
 
-            if (State.ShiftActiveProjectId == project.Id)
+            PersistProject(project, workspace: clearedLane);
+            if (clearedLane)
             {
-                State.ShiftActiveProjectId = null;
-                clearedLane = true;
+                DisposeInactiveTemporaryProjects(persistWorkspace: true);
             }
-        }
-
-        PersistProject(project, workspace: clearedLane);
-        if (clearedLane)
-        {
-            DisposeInactiveTemporaryProjects(persistWorkspace: true);
         }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetProjectDefaultView(ZetlProject project, string? viewId)
     {
-        project.DefaultViewId = string.IsNullOrWhiteSpace(viewId) ? null : viewId.Trim();
-        project.MetadataRevision++;
-        PersistProject(project);
+        lock (stateGate)
+        {
+            project.DefaultViewId = string.IsNullOrWhiteSpace(viewId) ? null : viewId.Trim();
+            project.MetadataRevision++;
+            PersistProject(project);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void SaveProjectView(ZetlProject project, ZetlViewDocument view)
     {
-        var index = project.Views.FindIndex(item =>
-            string.Equals(item.Id, view.Id, StringComparison.Ordinal));
-        if (index >= 0)
+        lock (stateGate)
         {
-            project.Views[index] = ZetlViewDefaults.Clone(view);
-        }
-        else
-        {
-            project.Views.Add(ZetlViewDefaults.Clone(view));
-        }
+            var index = project.Views.FindIndex(item =>
+                string.Equals(item.Id, view.Id, StringComparison.Ordinal));
+            if (index >= 0)
+            {
+                project.Views[index] = ZetlViewDefaults.Clone(view);
+            }
+            else
+            {
+                project.Views.Add(ZetlViewDefaults.Clone(view));
+            }
 
-        project.MetadataRevision++;
-        PersistProject(project);
+            project.MetadataRevision++;
+            PersistProject(project);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void DeleteProjectView(ZetlProject project, string viewId)
     {
-        project.Views.RemoveAll(view => string.Equals(view.Id, viewId, StringComparison.Ordinal));
-        if (string.Equals(project.DefaultViewId, viewId, StringComparison.Ordinal))
+        lock (stateGate)
         {
-            project.DefaultViewId = null;
-        }
+            project.Views.RemoveAll(view => string.Equals(view.Id, viewId, StringComparison.Ordinal));
+            if (string.Equals(project.DefaultViewId, viewId, StringComparison.Ordinal))
+            {
+                project.DefaultViewId = null;
+            }
 
-        project.MetadataRevision++;
-        PersistProject(project);
+            project.MetadataRevision++;
+            PersistProject(project);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void ClearActiveProject(bool shifted = false)
     {
-        SetActiveProjectId(null, shifted);
-        PersistWorkspace();
-        DisposeInactiveTemporaryProjects(persistWorkspace: true);
+        lock (stateGate)
+        {
+            SetActiveProjectId(null, shifted);
+            PersistWorkspace();
+            DisposeInactiveTemporaryProjects(persistWorkspace: true);
+        }
     }
 
     // Seal a project by id: mark it Finished and clear it from whichever lane(s)
     // it occupies, so the next capture advances to a fresh dated session. Used by
     // the compile dialog, whose source project may be any project (not just the
     // current lane's). No-op (returns null) for an unknown id.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlProject? FinishProject(string projectId)
     {
-        var project = State.Projects.FirstOrDefault(item => item.Id == projectId);
-        if (project is null)
+        lock (stateGate)
         {
-            return null;
-        }
+            var project = State.Projects.FirstOrDefault(item => item.Id == projectId);
+            if (project is null)
+            {
+                return null;
+            }
 
-        // SetProjectStatus owns the lane-clearing invariant for any non-Active
-        // status, so finishing is just sealing to Finished.
-        SetProjectStatus(project, FinishedStatus);
-        return project;
+            // SetProjectStatus owns the lane-clearing invariant for any non-Active
+            // status, so finishing is just sealing to Finished.
+            SetProjectStatus(project, FinishedStatus);
+            return project;
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void DeleteProject(string projectId)
     {
-        var project = State.Projects.FirstOrDefault(item => item.Id == projectId);
-        if (project is null)
+        lock (stateGate)
         {
-            return;
-        }
-
-        State.Projects.Remove(project);
-        IZetlProjectRemoval? removal = null;
-        try
-        {
-            removal = projectDirectories.PrepareProjectRemoval(projectId);
-            if (State.ActiveProjectId == projectId)
+            var project = State.Projects.FirstOrDefault(item => item.Id == projectId);
+            if (project is null)
             {
-                State.ActiveProjectId = State.Projects.FirstOrDefault()?.Id;
+                return;
             }
 
-            if (State.ShiftActiveProjectId == projectId)
+            State.Projects.Remove(project);
+            IZetlProjectRemoval? removal = null;
+            try
             {
-                State.ShiftActiveProjectId = State.Projects.FirstOrDefault()?.Id;
-            }
-
-            PersistWorkspace();
-            removal.Commit();
-        }
-        catch
-        {
-            if (removal is not null)
-            {
-                try
+                removal = projectDirectories.PrepareProjectRemoval(projectId);
+                if (State.ActiveProjectId == projectId)
                 {
-                    removal.RollBack();
+                    State.ActiveProjectId = State.Projects.FirstOrDefault()?.Id;
                 }
-                catch (Exception rollbackError)
+
+                if (State.ShiftActiveProjectId == projectId)
                 {
-                    log?.Invoke(
-                        $"Could not restore project directory '{projectId}' after a failed delete: {rollbackError.Message}");
+                    State.ShiftActiveProjectId = State.Projects.FirstOrDefault()?.Id;
                 }
+
+                PersistWorkspace();
+                removal.Commit();
+            }
+            catch
+            {
+                if (removal is not null)
+                {
+                    try
+                    {
+                        removal.RollBack();
+                    }
+                    catch (Exception rollbackError)
+                    {
+                        log?.Invoke(
+                            $"Could not restore project directory '{projectId}' after a failed delete: {rollbackError.Message}");
+                    }
+                }
+
+                persistence.RollBackProjectFile(projectId);
+                RestoreDurableState();
+                throw;
+            }
+            finally
+            {
+                removal?.Dispose();
             }
 
-            persistence.RollBackProjectFile(projectId);
-            RestoreDurableState();
-            throw;
+            persistence.CommitProjectRemoval(projectId);
         }
-        finally
-        {
-            removal?.Dispose();
-        }
-
-        persistence.CommitProjectRemoval(projectId);
     }
 
     // The project most recently written to (its latest note), ignoring the

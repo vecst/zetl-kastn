@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using ZETL.Contracts;
 using static ZETL.ZetlStateRules;
 
@@ -17,10 +16,14 @@ internal sealed partial class ZetlStateStore
     private readonly string sessionId;
     private readonly Action<string>? log;
 
-    // Current UI/runtime mutations and the Kastn command service share this
-    // instance monitor. Synchronized public mutators therefore cannot interleave
-    // their in-memory changes before an atomic project write.
-    internal object MutationSyncRoot => this;
+    // Every read-modify-write of the state takes this lock, and the Kastn
+    // command service takes it too (MutationSyncRoot), so no two changes can
+    // interleave their in-memory edits before an atomic project write. It's a
+    // private object rather than the store itself, so nothing outside can take
+    // the lock by accident.
+    private readonly object stateGate = new();
+
+    internal object MutationSyncRoot => stateGate;
 
     public ZetlStateStore(string? statePath = null, string? sessionId = null, Action<string>? log = null)
         : this(CreateStorage(statePath, log), sessionId, log)
@@ -119,24 +122,28 @@ internal sealed partial class ZetlStateStore
             bucket.Id == project.ActiveBucketId && !IsDeletedBucket(bucket));
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetActiveProject(string projectId, bool shifted = false)
     {
-        if (State.Projects.Any(project => project.Id == projectId))
+        lock (stateGate)
         {
-            SetActiveProjectId(projectId, shifted);
-            PersistWorkspace();
-            DisposeInactiveTemporaryProjects(persistWorkspace: true);
+            if (State.Projects.Any(project => project.Id == projectId))
+            {
+                SetActiveProjectId(projectId, shifted);
+                PersistWorkspace();
+                DisposeInactiveTemporaryProjects(persistWorkspace: true);
+            }
         }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetActiveBucket(ZetlProject project, string bucketId)
     {
-        if (project.Buckets.Any(bucket => bucket.Id == bucketId && !IsDeletedBucket(bucket)))
+        lock (stateGate)
         {
-            project.ActiveBucketId = bucketId;
-            PersistProject(project);
+            if (project.Buckets.Any(bucket => bucket.Id == bucketId && !IsDeletedBucket(bucket)))
+            {
+                project.ActiveBucketId = bucketId;
+                PersistProject(project);
+            }
         }
     }
 

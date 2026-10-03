@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using ZETL.Contracts;
 using static ZETL.ZetlStateRules;
 
@@ -8,106 +7,110 @@ namespace ZETL;
 // them, and the temporary projects Replay runs from.
 internal sealed partial class ZetlStateStore
 {
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlProject? CreateTemporaryProjectFromReplaySource(
         ZetlProject sourceProject,
         string name,
         string temporaryLane,
         out int replayItemCount)
     {
-        replayItemCount = 0;
-        var lane = CanonicalTemporaryLane(temporaryLane);
-        if (lane is null || !CanCreateTemporaryFromReplay(sourceProject))
+        lock (stateGate)
         {
-            return null;
-        }
-
-        var sources = ReplaySourceBuckets(sourceProject)
-            .Select(bucket => new
+            replayItemCount = 0;
+            var lane = CanonicalTemporaryLane(temporaryLane);
+            if (lane is null || !CanCreateTemporaryFromReplay(sourceProject))
             {
-                SourceBucket = bucket,
-                Slips = ReplaySourceSlips(sourceProject, bucket).ToList()
-            })
-            .Where(source => source.Slips.Count > 0)
-            .ToList();
-        if (sources.Count == 0)
-        {
-            return null;
-        }
-
-        var shifted = string.Equals(lane, ShiftLane, StringComparison.Ordinal);
-        var project = CreateProject(
-            name,
-            sources.Select(source => source.SourceBucket.Name),
-            sources[0].SourceBucket.Name,
-            shifted,
-            kind: TemporaryConsumableProjectKind,
-            temporaryLane: lane);
-        foreach (var source in sources)
-        {
-            var targetBucket = project.Buckets.FirstOrDefault(bucket =>
-                string.Equals(bucket.Name, source.SourceBucket.Name, StringComparison.OrdinalIgnoreCase));
-            if (targetBucket is null)
-            {
-                continue;
+                return null;
             }
 
-            targetBucket.Settings.Kind = "Replay";
-            targetBucket.Settings.DefaultKind = "Replay";
-            targetBucket.Settings.DefaultCompileMode = NormalizeCompileMode(
-                source.SourceBucket.Settings.DefaultCompileMode);
-            targetBucket.Settings.DefaultStartingText =
-                (source.SourceBucket.Settings.DefaultStartingText ?? "").Trim();
-            targetBucket.Settings.DefaultTsvRowLength =
-                source.SourceBucket.Settings.DefaultTsvRowLength <= 0
-                    ? 5
-                    : source.SourceBucket.Settings.DefaultTsvRowLength;
-            targetBucket.Settings.ReplayReviewBucketId = null;
-            targetBucket.Slips.Clear();
-
-            foreach (var note in source.Slips)
+            var sources = ReplaySourceBuckets(sourceProject)
+                .Select(bucket => new
+                {
+                    SourceBucket = bucket,
+                    Slips = ReplaySourceSlips(sourceProject, bucket).ToList()
+                })
+                .Where(source => source.Slips.Count > 0)
+                .ToList();
+            if (sources.Count == 0)
             {
-                targetBucket.Slips.Add(CloneSlip(note, "temporary-replay", CopyImageAssetAcross(sourceProject, project, note.Image)));
-                replayItemCount++;
+                return null;
             }
 
-            targetBucket.Revision++;
-        }
+            var shifted = string.Equals(lane, ShiftLane, StringComparison.Ordinal);
+            var project = CreateProject(
+                name,
+                sources.Select(source => source.SourceBucket.Name),
+                sources[0].SourceBucket.Name,
+                shifted,
+                kind: TemporaryConsumableProjectKind,
+                temporaryLane: lane);
+            foreach (var source in sources)
+            {
+                var targetBucket = project.Buckets.FirstOrDefault(bucket =>
+                    string.Equals(bucket.Name, source.SourceBucket.Name, StringComparison.OrdinalIgnoreCase));
+                if (targetBucket is null)
+                {
+                    continue;
+                }
 
-        PersistProject(project, workspace: true);
-        return project;
+                targetBucket.Settings.Kind = "Replay";
+                targetBucket.Settings.DefaultKind = "Replay";
+                targetBucket.Settings.DefaultCompileMode = NormalizeCompileMode(
+                    source.SourceBucket.Settings.DefaultCompileMode);
+                targetBucket.Settings.DefaultStartingText =
+                    (source.SourceBucket.Settings.DefaultStartingText ?? "").Trim();
+                targetBucket.Settings.DefaultTsvRowLength =
+                    source.SourceBucket.Settings.DefaultTsvRowLength <= 0
+                        ? 5
+                        : source.SourceBucket.Settings.DefaultTsvRowLength;
+                targetBucket.Settings.ReplayReviewBucketId = null;
+                targetBucket.Slips.Clear();
+
+                foreach (var note in source.Slips)
+                {
+                    targetBucket.Slips.Add(CloneSlip(note, "temporary-replay", CopyImageAssetAcross(sourceProject, project, note.Image)));
+                    replayItemCount++;
+                }
+
+                targetBucket.Revision++;
+            }
+
+            PersistProject(project, workspace: true);
+            return project;
+        }
     }
 
     // A Replay bucket ran out. When it belongs to the consumable occupying this
     // lane, the lane goes back to the project active before the consumable
     // started (or to none), and a temporary consumable is deleted. Any other
     // Replay bucket just turns back into a Standard bucket.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlReplayFinish FinishReplayBucket(ZetlBucket activeBucket, bool shifted)
     {
-        var project = OwnerProject(activeBucket);
-        var activeProjectId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
-        var occupiesLane = project is not null
-            && IsConsumableProject(project)
-            && string.Equals(activeProjectId, project.Id, StringComparison.Ordinal);
-        if (occupiesLane
-            && IsTemporaryConsumableProject(project!)
-            && string.Equals(project!.TemporaryLane, shifted ? ShiftLane : NormalLane, StringComparison.OrdinalIgnoreCase))
+        lock (stateGate)
         {
-            var returnedTo = ReturnFromConsumable(project, shifted);
-            DisposeInactiveTemporaryProjects(persistWorkspace: true);
-            return new ZetlReplayFinish(project.Name, Deleted: true, returnedTo);
-        }
+            var project = OwnerProject(activeBucket);
+            var activeProjectId = shifted ? State.ShiftActiveProjectId : State.ActiveProjectId;
+            var occupiesLane = project is not null
+                && IsConsumableProject(project)
+                && string.Equals(activeProjectId, project.Id, StringComparison.Ordinal);
+            if (occupiesLane
+                && IsTemporaryConsumableProject(project!)
+                && string.Equals(project!.TemporaryLane, shifted ? ShiftLane : NormalLane, StringComparison.OrdinalIgnoreCase))
+            {
+                var returnedTo = ReturnFromConsumable(project, shifted);
+                DisposeInactiveTemporaryProjects(persistWorkspace: true);
+                return new ZetlReplayFinish(project.Name, Deleted: true, returnedTo);
+            }
 
-        SetBucketKind(activeBucket, "Standard");
-        if (occupiesLane)
-        {
-            var returnedTo = ReturnFromConsumable(project!, shifted);
-            PersistWorkspace();
-            return new ZetlReplayFinish(activeBucket.Name, Deleted: false, returnedTo);
-        }
+            SetBucketKind(activeBucket, "Standard");
+            if (occupiesLane)
+            {
+                var returnedTo = ReturnFromConsumable(project!, shifted);
+                PersistWorkspace();
+                return new ZetlReplayFinish(activeBucket.Name, Deleted: false, returnedTo);
+            }
 
-        return new ZetlReplayFinish(activeBucket.Name, Deleted: false, ReturnedTo: null);
+            return new ZetlReplayFinish(activeBucket.Name, Deleted: false, ReturnedTo: null);
+        }
     }
 
     private string? ReturnFromConsumable(ZetlProject consumable, bool shifted)
@@ -125,7 +128,6 @@ internal sealed partial class ZetlStateStore
     // set aside in the project's Passed Through bucket when the paste matches
     // it (on its picture, else its exact text). Held captures and quick notes
     // never pass through, and older copies are never reached back for.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryPassThroughLatestCopy(
         string? text,
         string? imageSha256,
@@ -135,55 +137,58 @@ internal sealed partial class ZetlStateStore
         out ZetlBucket? reviewBucket,
         out ZetlSlip? reviewSlip)
     {
-        bucket = null;
-        slip = null;
-        reviewBucket = null;
-        reviewSlip = null;
-        if (GetTapCaptureProject(shifted) is not { } project)
+        lock (stateGate)
         {
-            return false;
-        }
-
-        ZetlBucket? latestBucket = null;
-        ZetlSlip? latest = null;
-        foreach (var candidateBucket in project.Buckets)
-        {
-            if (IsReplayBucket(candidateBucket) || IsDeletedBucket(candidateBucket))
+            bucket = null;
+            slip = null;
+            reviewBucket = null;
+            reviewSlip = null;
+            if (GetTapCaptureProject(shifted) is not { } project)
             {
-                continue;
+                return false;
             }
 
-            foreach (var candidate in candidateBucket.Slips)
+            ZetlBucket? latestBucket = null;
+            ZetlSlip? latest = null;
+            foreach (var candidateBucket in project.Buckets)
             {
-                if (IsAutoCopy(candidate)
-                    && IsCurrentSessionSlip(candidate)
-                    && !IsStructuralSlip(candidate)
-                    && (latest is null || candidate.CreatedAtUtc >= latest.CreatedAtUtc))
+                if (IsReplayBucket(candidateBucket) || IsDeletedBucket(candidateBucket))
                 {
-                    latest = candidate;
-                    latestBucket = candidateBucket;
+                    continue;
+                }
+
+                foreach (var candidate in candidateBucket.Slips)
+                {
+                    if (IsAutoCopy(candidate)
+                        && IsCurrentSessionSlip(candidate)
+                        && !IsStructuralSlip(candidate)
+                        && (latest is null || candidate.CreatedAtUtc >= latest.CreatedAtUtc))
+                    {
+                        latest = candidate;
+                        latestBucket = candidateBucket;
+                    }
                 }
             }
-        }
 
-        if (latest is null || latestBucket is null)
-        {
-            return false;
-        }
+            if (latest is null || latestBucket is null)
+            {
+                return false;
+            }
 
-        // A dual (text + picture) copy matches on its picture too.
-        var matches =
-            (imageSha256 is not null
-                && latest.Image is not null
-                && string.Equals(latest.Image.Sha256, imageSha256, StringComparison.OrdinalIgnoreCase))
-            || (text is not null && string.Equals(latest.Text, text.Trim(), StringComparison.Ordinal));
-        if (!matches)
-        {
-            return false;
-        }
+            // A dual (text + picture) copy matches on its picture too.
+            var matches =
+                (imageSha256 is not null
+                    && latest.Image is not null
+                    && string.Equals(latest.Image.Sha256, imageSha256, StringComparison.OrdinalIgnoreCase))
+                || (text is not null && string.Equals(latest.Text, text.Trim(), StringComparison.Ordinal));
+            if (!matches)
+            {
+                return false;
+            }
 
-        bucket = latestBucket;
-        return TryArchivePassedThroughSlip(latestBucket, latest, out slip, out reviewBucket, out reviewSlip);
+            bucket = latestBucket;
+            return TryArchivePassedThroughSlip(latestBucket, latest, out slip, out reviewBucket, out reviewSlip);
+        }
     }
 
     public bool TryPeekNextReplaySlip(ZetlBucket? bucket, out ZetlSlip? note)
@@ -200,45 +205,50 @@ internal sealed partial class ZetlStateStore
         return note is not null;
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryConsumeReplaySlip(ZetlBucket bucket, string noteId)
     {
-        return TryConsumeReplaySlip(bucket, noteId, out _);
+        lock (stateGate)
+        {
+            return TryConsumeReplaySlip(bucket, noteId, out _);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryConsumeReplaySlip(ZetlBucket bucket, string noteId, out ZetlSlip? consumedNote)
     {
-        if (!IsReplayBucket(bucket))
+        lock (stateGate)
         {
-            consumedNote = null;
-            return false;
-        }
+            if (!IsReplayBucket(bucket))
+            {
+                consumedNote = null;
+                return false;
+            }
 
-        var note = bucket.Slips.FirstOrDefault(item =>
-            item.Id == noteId
-            && !IsStructuralSlip(item)
-            && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
-        if (note is null)
-        {
-            consumedNote = null;
-            return false;
-        }
+            var note = bucket.Slips.FirstOrDefault(item =>
+                item.Id == noteId
+                && !IsStructuralSlip(item)
+                && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
+            if (note is null)
+            {
+                consumedNote = null;
+                return false;
+            }
 
-        note.Revision++;
-        bucket.Slips.Remove(note);
-        consumedNote = note;
-        PersistBucket(bucket);
-        return true;
+            note.Revision++;
+            bucket.Slips.Remove(note);
+            consumedNote = note;
+            PersistBucket(bucket);
+            return true;
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryConsumeReplaySlipToReview(ZetlProject project, ZetlBucket bucket, string noteId, out ZetlBucket? reviewBucket)
     {
-        return TryConsumeReplaySlipToReview(project, bucket, noteId, out reviewBucket, out _, out _);
+        lock (stateGate)
+        {
+            return TryConsumeReplaySlipToReview(project, bucket, noteId, out reviewBucket, out _, out _);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public bool TryConsumeReplaySlipToReview(
         ZetlProject project,
         ZetlBucket bucket,
@@ -247,69 +257,76 @@ internal sealed partial class ZetlStateStore
         out ZetlSlip? consumedNote,
         out ZetlSlip? reviewNote)
     {
-        reviewBucket = null;
-        consumedNote = null;
-        reviewNote = null;
-        if (!IsReplayBucket(bucket))
+        lock (stateGate)
         {
-            return false;
-        }
+            reviewBucket = null;
+            consumedNote = null;
+            reviewNote = null;
+            if (!IsReplayBucket(bucket))
+            {
+                return false;
+            }
 
-        var note = bucket.Slips.FirstOrDefault(item =>
-            item.Id == noteId
-            && !IsStructuralSlip(item)
-            && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
-        if (note is null)
-        {
-            return false;
-        }
+            var note = bucket.Slips.FirstOrDefault(item =>
+                item.Id == noteId
+                && !IsStructuralSlip(item)
+                && (item.IsImage || !string.IsNullOrWhiteSpace(item.Text)));
+            if (note is null)
+            {
+                return false;
+            }
 
-        note.Revision++;
-        bucket.Slips.Remove(note);
-        consumedNote = note;
-        if (note.IsImage || !string.IsNullOrWhiteSpace(note.Text))
-        {
-            reviewBucket = GetOrCreateReplayReviewBucket(project, bucket);
-            reviewNote = CloneSlip(note, "replay", CloneImageAssetReference(note.Image), trimText: true);
-            reviewBucket.Slips.Add(reviewNote);
-        }
+            note.Revision++;
+            bucket.Slips.Remove(note);
+            consumedNote = note;
+            if (note.IsImage || !string.IsNullOrWhiteSpace(note.Text))
+            {
+                reviewBucket = GetOrCreateReplayReviewBucket(project, bucket);
+                reviewNote = CloneSlip(note, "replay", CloneImageAssetReference(note.Image), trimText: true);
+                reviewBucket.Slips.Add(reviewNote);
+            }
 
-        PersistProject(project);
-        return true;
+            PersistProject(project);
+            return true;
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void RestoreReplayConsumedSlip(ZetlBucket bucket, ZetlSlip note, ZetlBucket? reviewBucket, string? reviewNoteId)
     {
-        bucket.Settings.Kind = "Replay";
-        bucket.Revision++;
-        if (reviewBucket is not null && reviewNoteId is not null)
+        lock (stateGate)
         {
-            reviewBucket.Slips.RemoveAll(item => item.Id == reviewNoteId);
-        }
+            bucket.Settings.Kind = "Replay";
+            bucket.Revision++;
+            if (reviewBucket is not null && reviewNoteId is not null)
+            {
+                reviewBucket.Slips.RemoveAll(item => item.Id == reviewNoteId);
+            }
 
-        if (bucket.Slips.All(item => item.Id != note.Id))
-        {
-            bucket.Slips.Insert(0, note);
-        }
+            if (bucket.Slips.All(item => item.Id != note.Id))
+            {
+                bucket.Slips.Insert(0, note);
+            }
 
-        PersistBucket(bucket);
+            PersistBucket(bucket);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void RestorePassedThroughSlip(ZetlBucket bucket, ZetlSlip note, ZetlBucket? reviewBucket, string? reviewNoteId)
     {
-        if (reviewBucket is not null && reviewNoteId is not null)
+        lock (stateGate)
         {
-            reviewBucket.Slips.RemoveAll(item => item.Id == reviewNoteId);
-        }
+            if (reviewBucket is not null && reviewNoteId is not null)
+            {
+                reviewBucket.Slips.RemoveAll(item => item.Id == reviewNoteId);
+            }
 
-        if (bucket.Slips.All(item => item.Id != note.Id))
-        {
-            bucket.Slips.Add(note);
-        }
+            if (bucket.Slips.All(item => item.Id != note.Id))
+            {
+                bucket.Slips.Add(note);
+            }
 
-        PersistBucket(bucket);
+            PersistBucket(bucket);
+        }
     }
 
     public static bool CanCreateTemporaryFromReplay(ZetlProject project)

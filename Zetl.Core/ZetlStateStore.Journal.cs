@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using ZETL.Contracts;
 using static ZETL.ZetlStateRules;
 
@@ -12,30 +11,34 @@ internal sealed partial class ZetlStateStore
     // lane's active project, or the Journal when none is active. Looking this up
     // never changes which project is active; activation is only ever the user's
     // decision (a dialog saved with its Activate toggle on, the Board, Ctrl+J).
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlProject GetCaptureHome(bool shifted = false)
     {
-        var project = ResolveActiveCaptureProject(shifted)
-            ?? GetOrCreateJournalProject(shifted, activate: false);
-        // A journal always has today's day bucket present before the capture path
-        // resolves a target, highlighted unless the user picked a bucket of their
-        // own. Its Capture / Quick Note children stay lazy.
-        EnsureJournalDayBucket(
-            project,
-            DateTime.Now,
-            setActive: UserSelectedJournalBucket(project) is null);
-        return project;
+        lock (stateGate)
+        {
+            var project = ResolveActiveCaptureProject(shifted)
+                ?? GetOrCreateJournalProject(shifted, activate: false);
+            // A journal always has today's day bucket present before the capture path
+            // resolves a target, highlighted unless the user picked a bucket of their
+            // own. Its Capture / Quick Note children stay lazy.
+            EnsureJournalDayBucket(
+                project,
+                DateTime.Now,
+                setActive: UserSelectedJournalBucket(project) is null);
+            return project;
+        }
     }
 
     // Where a tapped Ctrl+C is auto-captured: the lane's active project, else the
     // Journal when the idle-copy setting captures there, else nowhere (null).
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlProject? GetTapCaptureProject(bool shifted = false)
     {
-        return ResolveActiveCaptureProject(shifted)
-            ?? (ZetlIdleCopyCapture.CapturesToJournal(Defaults.IdleCopyCapture)
-                ? GetOrCreateJournalProject(shifted, activate: false)
-                : null);
+        lock (stateGate)
+        {
+            return ResolveActiveCaptureProject(shifted)
+                ?? (ZetlIdleCopyCapture.CapturesToJournal(Defaults.IdleCopyCapture)
+                    ? GetOrCreateJournalProject(shifted, activate: false)
+                    : null);
+        }
     }
 
     // Count a capture into <project> as activity for the auto-return window. Call
@@ -155,65 +158,71 @@ internal sealed partial class ZetlStateStore
     // Held Ctrl+J toggles the lane between the Journal and the last-used deliberate
     // project: on a deliberate project it returns to the Journal; on the Journal it
     // reactivates the last deliberate project (when one is still Active).
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public (ZetlProjectToggleOutcome Outcome, string? ProjectName) ToggleActiveProject(bool shifted = false)
     {
-        if (GetActiveProject(shifted) is { JournalMode: false } active)
+        lock (stateGate)
         {
-            // The deactivated project stays recorded as the last deliberate project
-            // (set when it was activated), so the next toggle brings it back.
-            var journal = GetOrCreateJournalProject(shifted, activate: true);
-            return (ZetlProjectToggleOutcome.ReturnedToJournal, journal.Name);
-        }
+            if (GetActiveProject(shifted) is { JournalMode: false } active)
+            {
+                // The deactivated project stays recorded as the last deliberate project
+                // (set when it was activated), so the next toggle brings it back.
+                var journal = GetOrCreateJournalProject(shifted, activate: true);
+                return (ZetlProjectToggleOutcome.ReturnedToJournal, journal.Name);
+            }
 
-        var lastId = shifted ? State.ShiftLastDeliberateProjectId : State.LastDeliberateProjectId;
-        var last = lastId is null
-            ? null
-            : State.Projects.FirstOrDefault(project =>
-                project.Id == lastId && IsDeliberateProject(project));
-        if (last is null)
-        {
-            return (ZetlProjectToggleOutcome.NoProjectToActivate, null);
-        }
+            var lastId = shifted ? State.ShiftLastDeliberateProjectId : State.LastDeliberateProjectId;
+            var last = lastId is null
+                ? null
+                : State.Projects.FirstOrDefault(project =>
+                    project.Id == lastId && IsDeliberateProject(project));
+            if (last is null)
+            {
+                return (ZetlProjectToggleOutcome.NoProjectToActivate, null);
+            }
 
-        SetActiveProjectId(last.Id, shifted);
-        PersistWorkspace();
-        return (ZetlProjectToggleOutcome.Activated, last.Name);
+            SetActiveProjectId(last.Id, shifted);
+            PersistWorkspace();
+            return (ZetlProjectToggleOutcome.Activated, last.Name);
+        }
     }
 
     // Ensure the day-parent bucket for <localNow> exists (named e.g. "Mon 07-06",
     // shifted by the configured day-start hour). Returns it; optionally highlights it
     // as the active bucket. No-op (returns null) for a non-journal project.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlBucket? EnsureJournalDayBucket(ZetlProject project, DateTime localNow, bool setActive = false)
     {
-        if (!project.JournalMode)
+        lock (stateGate)
         {
-            return null;
-        }
+            if (!project.JournalMode)
+            {
+                return null;
+            }
 
-        return GetOrCreateChildBucket(project, null, JournalBucketName(localNow, Defaults.DayStartHour), setActive);
+            return GetOrCreateChildBucket(project, null, JournalBucketName(localNow, Defaults.DayStartHour), setActive);
+        }
     }
 
     // The copy-capture target for a journal: a bucket the user selected, else
     // today's day parent's "Capture" child, created on first use and made the
     // active bucket. No-op (null) for a non-journal project. Named RollJournalBucket
     // because it also advances the active day.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlBucket? RollJournalBucket(ZetlProject project, DateTime localNow)
     {
-        if (!project.JournalMode)
+        lock (stateGate)
         {
-            return null;
-        }
+            if (!project.JournalMode)
+            {
+                return null;
+            }
 
-        if (UserSelectedJournalBucket(project) is { } selected)
-        {
-            return selected;
-        }
+            if (UserSelectedJournalBucket(project) is { } selected)
+            {
+                return selected;
+            }
 
-        var day = EnsureJournalDayBucket(project, localNow)!;
-        return GetOrCreateChildBucket(project, day.Id, JournalCaptureBucketName, setActive: true);
+            var day = EnsureJournalDayBucket(project, localNow)!;
+            return GetOrCreateChildBucket(project, day.Id, JournalCaptureBucketName, setActive: true);
+        }
     }
 
     // The journal's active bucket when the user chose it: anything other than the
@@ -244,16 +253,18 @@ internal sealed partial class ZetlStateStore
 
     // The quick-note target for a journal: today's day parent's "Quick Note" child,
     // created on first use. Does not steal the active bucket from the copy target.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlBucket? ResolveJournalQuickNoteBucket(ZetlProject project, DateTime localNow)
     {
-        if (!project.JournalMode)
+        lock (stateGate)
         {
-            return null;
-        }
+            if (!project.JournalMode)
+            {
+                return null;
+            }
 
-        var day = EnsureJournalDayBucket(project, localNow)!;
-        return GetOrCreateChildBucket(project, day.Id, JournalQuickNoteBucketName, setActive: false);
+            var day = EnsureJournalDayBucket(project, localNow)!;
+            return GetOrCreateChildBucket(project, day.Id, JournalQuickNoteBucketName, setActive: false);
+        }
     }
 
     // Seed the whole period's day-parent buckets up front — Mon–Sun for Weekly, the
@@ -300,27 +311,31 @@ internal sealed partial class ZetlStateStore
         }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public void SetJournalMode(ZetlProject project, bool journalMode)
     {
-        project.JournalMode = journalMode;
-        project.MetadataRevision++;
-        PersistProject(project);
+        lock (stateGate)
+        {
+            project.JournalMode = journalMode;
+            project.MetadataRevision++;
+            PersistProject(project);
+        }
     }
 
     // The bucket a copy capture (auto, held, or image) should land in for <project>.
     // Journals roll to today's Capture child; deliberate projects use their active
     // bucket, falling back to Scratch. Centralizes copy-target routing so the shortcut
     // coordinator does not branch on journal mode itself.
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public ZetlBucket ResolveCaptureBucket(ZetlProject project, bool shifted)
     {
-        if (project.JournalMode)
+        lock (stateGate)
         {
-            return RollJournalBucket(project, DateTime.Now)!;
-        }
+            if (project.JournalMode)
+            {
+                return RollJournalBucket(project, DateTime.Now)!;
+            }
 
-        return GetActiveBucket(shifted) ?? GetScratchBucket(project);
+            return GetActiveBucket(shifted) ?? GetScratchBucket(project);
+        }
     }
 
     public string ExpectedJournalProjectName(DateTime localNow, bool shifted)
@@ -345,10 +360,12 @@ internal sealed partial class ZetlStateStore
         }
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
     public string DefaultProjectName(bool shifted = false)
     {
-        return ExpectedJournalProjectName(DateTime.Now, shifted);
+        lock (stateGate)
+        {
+            return ExpectedJournalProjectName(DateTime.Now, shifted);
+        }
     }
 
     public bool IsFormattedJournalName(string name, bool shifted)
