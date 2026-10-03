@@ -135,6 +135,7 @@ internal partial class MainWindow : Window
     internal readonly KastnEditorState editorState = new();
     private readonly KastnPictureCache pictureCache;
     private readonly KastnReaderPresenter readerPresenter;
+    private readonly KastnBoardPresenter boardPresenter;
     private ZetlProjectSnapshot? currentProject;
     private KastnProjectIndex? projectIndex;
     private KastnProjectIndex ProjectIndex
@@ -221,8 +222,6 @@ internal partial class MainWindow : Window
     // restore), instead of the normal working tree.
     private bool showingDeleted;
     private bool boardModeActive;
-    private readonly Dictionary<string, Border> boardSlipCards = new(StringComparer.Ordinal);
-    private string? highlightedBoardSlipId;
     private GridLength treeColumnWidth = new GridLength(300, GridUnitType.Pixel);
     private GridLength leftSplitterWidth = new GridLength(8, GridUnitType.Pixel);
     private GridLength rightColumnWidth = new GridLength(360, GridUnitType.Pixel);
@@ -232,7 +231,6 @@ internal partial class MainWindow : Window
     private bool landingShowArchived;
     private IReadOnlyList<ZetlProjectSummary> lastProjectSummaries = [];
     private bool suppressLandingProjectSelection;
-    private KastnViewRenderKey? lastBoardRenderKey;
     private readonly KastnViewRenderCache viewRenderCache = new();
     private bool allowWindowClose;
     private bool closeRequestInProgress;
@@ -245,6 +243,7 @@ internal partial class MainWindow : Window
         pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
         readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
+        boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
     }
 
     public MainWindow(
@@ -257,6 +256,7 @@ internal partial class MainWindow : Window
         this.draftStore = draftStore ?? new KastnDraftStore(log: Console.Error.WriteLine);
         InitializeComponent();
         readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
+        boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
         Icon = KastnIcon.Create();
         landingLaneItems.ItemsSource = laneCards;
         landingProjectList.ItemsSource = recentProjects;
@@ -448,6 +448,7 @@ internal partial class MainWindow : Window
         {
             connection.SnapshotChanged -= OnSnapshotChanged;
             readerPresenter.Dispose();
+            boardPresenter.Dispose();
             pictureCache.Dispose();
         };
         ApplySnapshot(connection.Current);
@@ -595,8 +596,7 @@ internal partial class MainWindow : Window
         if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal) || serverChanged)
         {
             readerPresenter.Clear();
-            lastBoardRenderKey = null;
-            ClearBoard();
+            boardPresenter.Clear();
             viewRenderCache.Clear();
             pictureCache.Reset();
         }

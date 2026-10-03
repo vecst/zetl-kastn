@@ -190,6 +190,29 @@ extracting undo or the renderers.
   intentional latency-probe skips. The board presenter is next; broader window
   lifetime cleanup remains open.
 
+- Extracted `KastnBoardPresenter`: it owns columns/cards, reconciliation, picture
+  expansion, selection highlights, scroll preservation/clamping, and independent
+  per-column composer drafts. Captured inputs include settings, theme resources,
+  indexed snapshots, live node contexts for drop overlays, and ID callbacks.
+  Removed the parallel card-border/panel lookup dictionaries; drag hit testing
+  accesses owned column records. Native drag gestures and project mutations stay
+  in `MainWindow.BoardPresentation.cs` and their existing workflow adapters.
+- Composer completion now clears only the submitted draft version. Later typing
+  and discard/reopen survive a delayed response; overlapping submits are rejected,
+  failed submissions retain the text, and completion does not steal focus. Add
+  commands and completion status stay scoped to the captured project/generation.
+  Retired columns cannot submit, and retired cards cannot select, edit, toggle
+  tasks/picture expansion, or drive native drag handlers. Queued scrolling and
+  picture assignments check live control identity and presenter lifetime.
+- Removed about 690 net lines from MainWindow; its Views partial is now 729 lines.
+  Added headless regressions for reuse/reorder/cross-column moves, marker contexts,
+  settings invalidation, scroll restoration, delayed pictures, composer survival,
+  and mode switching/close. Delayed real-IPC composer tests cover original-project
+  targeting, early snapshots, newer writing, navigation, focus, and undo recording.
+  Validation: solution build with zero warnings/errors; 832 tests passed, with
+  the same two intentional latency-probe skips. View catalog/editor ownership is
+  the next extraction target; broader window lifetime cleanup remains open.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

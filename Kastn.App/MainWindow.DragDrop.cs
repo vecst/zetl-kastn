@@ -309,7 +309,7 @@ internal partial class MainWindow
 
     private KastnDropPosition BoardColumnSlipPosition(DragEventArgs args, string bucketId, HashSet<string> draggedIds)
     {
-        if (!boardColumnCardPanels.TryGetValue(bucketId, out var cardsPanel))
+        if (boardPresenter.ColumnCards(bucketId) is not { } cardsPanel)
             return new(KastnDropTargetKind.Bucket, bucketId);
         var y = args.GetPosition(cardsPanel).Y;
         string? last = null;
