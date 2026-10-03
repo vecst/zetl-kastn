@@ -503,6 +503,8 @@ internal partial class MainWindow
             return;
         }
 
+        var contentRenderer = CreateSlipContentRenderer();
+        var preferSlipKindOverBucketKind = CurrentAppSettings().KastnPreferSlipKindOverBucketKind;
         foreach (var group in groups)
         {
             viewLivePreviewPanel.Children.Add(new TextBlock
@@ -525,11 +527,11 @@ internal partial class MainWindow
             foreach (var slip in group.Slips)
             {
                 var listKinds = ZetlViewRenderer.ResolveListKinds(
-                    currentProject, slip, CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
-                var marker = ViewOuterListMarker(listKinds.Outer, slip.Checked, ref orderedRun)
-                    + ViewInnerListMarker(listKinds.Inner, slip.Checked);
+                    currentProject, slip, preferSlipKindOverBucketKind);
+                var marker = KastnSlipContentRenderer.OuterListMarker(listKinds.Outer, slip.Checked, ref orderedRun)
+                    + KastnSlipContentRenderer.InnerListMarker(listKinds.Inner, slip.Checked);
 
-                viewLivePreviewPanel.Children.Add(BuildViewPreviewSlip(slip, group.Depth, marker));
+                viewLivePreviewPanel.Children.Add(BuildViewPreviewSlip(slip, group.Depth, marker, contentRenderer));
             }
         }
 
@@ -545,11 +547,13 @@ internal partial class MainWindow
         }
     }
 
-    private Control BuildViewPreviewSlip(ZetlSlipSnapshot slip, int depth, string marker)
+    private static Control BuildViewPreviewSlip(ZetlSlipSnapshot slip, int depth, string marker,
+        KastnSlipContentRenderer renderer)
     {
-        var content = new StackPanel { Spacing = 4 };
+        StackPanel content;
         if (slip.Type == ZetlSlipType.Picture)
         {
+            content = new StackPanel { Spacing = 4 };
             content.Children.Add(new Border
             {
                 Background = new SolidColorBrush(Color.FromArgb(35, 139, 124, 246)),
@@ -562,28 +566,14 @@ internal partial class MainWindow
                     HorizontalAlignment = HorizontalAlignment.Center
                 }
             });
-            AddPictureCaption(content, slip);
+            KastnSlipContentRenderer.AddPictureCaption(content, slip);
         }
         else
         {
-            AppendSlipBlocks(content, slip, ZetlViewRenderer.TextOrTitle(slip).Trim());
+            content = renderer.CreateTextContent(slip, spacing: 4).Panel;
         }
 
-        Control child = content;
-        if (marker.Length > 0)
-        {
-            var row = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("Auto,*"),
-                ColumnSpacing = 5
-            };
-            var markerBlock = new TextBlock { Text = marker, MinWidth = 16 };
-            ApplySlipTypography(markerBlock, slip);
-            Grid.SetColumn(content, 1);
-            row.Children.Add(markerBlock);
-            row.Children.Add(content);
-            child = row;
-        }
+        var child = renderer.WithListMarker(content, slip, marker, preview: true);
 
         return new Border
         {

@@ -146,6 +146,31 @@ extracting undo or the renderers.
   grouped undo/redo. Validation: solution build with zero warnings/errors;
   753 tests passed, with the same two intentional latency-probe skips. Shared slip
   content and reader/board presenters are next; window lifetime remains open.
+- Extracted `KastnSlipContentRenderer`: it owns Markdown blocks/inlines, authored
+  typography, picture captions, hanging list markers and task interactions, and
+  compact board text/footer markers. Reader and view-editor preview share rich
+  content; board cards retain their existing three-line plain-text presentation.
+  The renderer receives an indexed snapshot, theme resources, and ID callbacks.
+  MainWindow supplies settings/placement and guards callback project/generation;
+  stale links and checkboxes cannot act in another project or a revisited session.
+- Wiki resolution now uses indexed ID lookups instead of scanning every slip for
+  each inline link. Rendered content retains only its actual wiki dependencies;
+  losing or restoring a target invalidates its source reader blocks while
+  unrelated controls retain identity. Target content changes preserve authored
+  cached link labels and do not rebuild those source blocks. Live view previews
+  capture the list-kind preference once per render rather than once per slip.
+- Removed about 350 lines from the window partials. Picture loading, bitmap cache
+  ownership, reader/board reconciliation, selection/highlights, scroll restoration,
+  and the board composer still belong to their existing adapters; presenter
+  ownership is the next extraction. Corrected the remaining board thumbnail
+  comment that incorrectly described its decoded bitmap as card-owned.
+- Added headless rendering regressions for Markdown/whole-note kinds, inline
+  ranges, typography, link styling/resolution, task click routing, compact cards,
+  captions, reader/live-preview parity, selective wiki dependency invalidation,
+  and retired callbacks across project changes and return navigation. Validation:
+  solution build with zero warnings/errors; 768 tests passed, with the same two
+  intentional latency-probe skips. The reader presenter is next, followed by the
+  board presenter; window lifetime remains open.
 
 ## Responsibility Map
 

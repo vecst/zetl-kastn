@@ -5,7 +5,6 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -286,7 +285,7 @@ internal partial class MainWindow
     // follows every mutation touches only the affected controls. A full
     // clear-and-re-add re-measured every block and cost hundreds of ms per
     // action on a few-hundred-slip project.
-    private readonly Dictionary<string, (Border Block, string RenderKey)> viewSlipBlockCache =
+    private readonly Dictionary<string, (Border Block, string RenderKey, KastnRenderedSlipContent? Content)> viewSlipBlockCache =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, (TextBlock Heading, string RenderKey)> viewHeadingCache =
         new(StringComparer.Ordinal);
@@ -321,6 +320,7 @@ internal partial class MainWindow
         }
 
         var preferSlipKindOverBucketKind = CurrentAppSettings().KastnPreferSlipKindOverBucketKind;
+        var contentRenderer = CreateSlipContentRenderer();
         var renderedSlipIds = new HashSet<string>(StringComparer.Ordinal);
         var renderedGroupKeys = new HashSet<string>(StringComparer.Ordinal);
         var desiredChildren = new List<Control>();
@@ -366,16 +366,19 @@ internal partial class MainWindow
             {
                 var listKinds = ZetlViewRenderer.ResolveListKinds(
                     currentProject, slip, preferSlipKindOverBucketKind);
-                var marker = ViewOuterListMarker(listKinds.Outer, slip.Checked, ref orderedRun)
-                    + ViewInnerListMarker(listKinds.Inner, slip.Checked);
+                var marker = KastnSlipContentRenderer.OuterListMarker(listKinds.Outer, slip.Checked, ref orderedRun)
+                    + KastnSlipContentRenderer.InnerListMarker(listKinds.Inner, slip.Checked);
                 var checkable = listKinds.IsCheckable;
 
                 var depth = isGroup ? 0 : group.Depth;
                 var renderKey = $"{slip.Revision}|{depth}|{marker}|{checkable}";
                 if (!viewSlipBlockCache.TryGetValue(slip.Id, out var cached)
-                    || !string.Equals(cached.RenderKey, renderKey, StringComparison.Ordinal))
+                    || !string.Equals(cached.RenderKey, renderKey, StringComparison.Ordinal)
+                    || cached.Content?.MatchesLinks(ProjectIndex) == false)
                 {
-                    cached = (BuildSlipBlock(slip, depth, generation, marker, checkable: checkable), renderKey);
+                    var block = BuildSlipBlock(slip, depth, generation, marker, contentRenderer,
+                        out var renderedContent, checkable: checkable);
+                    cached = (block, renderKey, renderedContent);
                     viewSlipBlockCache[slip.Id] = cached;
                 }
 
@@ -424,36 +427,15 @@ internal partial class MainWindow
         }
     }
 
-    private static string ViewOuterListMarker(string kind, bool isChecked, ref int orderedRun)
-    {
-        if (kind == ZetlBlockKinds.Ordered)
-        {
-            return $"{++orderedRun}.";
-        }
-
-        orderedRun = 0;
-        return kind switch
-        {
-            ZetlBlockKinds.Task => isChecked ? "☑" : "☐",
-            ZetlBlockKinds.Bullet => "•",
-            _ => ""
-        };
-    }
-
-    private static string ViewInnerListMarker(string kind, bool isChecked) => kind switch
-    {
-        ZetlBlockKinds.Task => isChecked ? " ☑" : " ☐",
-        ZetlBlockKinds.Bullet => " •",
-        ZetlBlockKinds.Ordered => " 1.",
-        _ => ""
-    };
-
     private Border BuildSlipBlock(
-        ZetlSlipSnapshot slip, int depth, int generation, string marker, bool checkable = false)
+        ZetlSlipSnapshot slip, int depth, int generation, string marker, KastnSlipContentRenderer renderer,
+        out KastnRenderedSlipContent? renderedContent, bool checkable = false)
     {
-        var content = new StackPanel { Spacing = 5 };
+        renderedContent = null;
+        StackPanel content;
         if (slip.Type == ZetlSlipType.Picture)
         {
+            content = new StackPanel { Spacing = 5 };
             var image = new Avalonia.Controls.Image
             {
                 Stretch = Stretch.Uniform,
@@ -478,7 +460,7 @@ internal partial class MainWindow
                 Padding = new Avalonia.Thickness(8),
                 Child = preview
             });
-            AddPictureCaption(content, slip);
+            KastnSlipContentRenderer.AddPictureCaption(content, slip);
 
             if (CachedDecodedPicture(slip, 1100) is { } cachedBitmap)
             {
@@ -492,45 +474,11 @@ internal partial class MainWindow
         }
         else
         {
-            AppendSlipBlocks(content, slip, ZetlViewRenderer.TextOrTitle(slip).Trim());
+            renderedContent = renderer.CreateTextContent(slip);
+            content = renderedContent.Panel;
         }
 
-        // The view's list style puts a marker beside each slip (the slip's content may
-        // still hold its own item-7 lists). A hanging-indent grid keeps wraps aligned.
-        Control child = content;
-        if (marker.Length > 0)
-        {
-            var grid = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("Auto,*"),
-                ColumnSpacing = 6
-            };
-            var markerBlock = new TextBlock
-            {
-                Text = marker,
-                MinWidth = 18,
-                VerticalAlignment = VerticalAlignment.Top
-            };
-            ApplySlipTypography(markerBlock, slip);
-            if (checkable)
-            {
-                // The task checkbox toggles the note's checked property in place; mark
-                // the event handled so it does not also fall through to slip selection.
-                markerBlock.Cursor = new Cursor(StandardCursorType.Hand);
-                var slipId = slip.Id;
-                markerBlock.PointerPressed += async (_, args) =>
-                {
-                    args.Handled = true;
-                    await ToggleSlipCheckedAsync(slipId);
-                };
-            }
-
-            Grid.SetColumn(markerBlock, 0);
-            Grid.SetColumn(content, 1);
-            grid.Children.Add(markerBlock);
-            grid.Children.Add(content);
-            child = grid;
-        }
+        var child = renderer.WithListMarker(content, slip, marker, checkable);
 
         var block = new Border
         {
@@ -624,281 +572,24 @@ internal partial class MainWindow
     private IBrush? ThemeBrush(string key) =>
         this.TryFindResource(key, out var value) && value is IBrush brush ? brush : null;
 
-    private static void ApplySlipTypography(
-        TextBlock block,
-        ZetlSlipSnapshot slip,
-        bool applyFontFamily = true)
+    private KastnSlipContentRenderer CreateSlipContentRenderer()
     {
-        if (applyFontFamily && KastnSlipTypography.FamilyOf(slip) is { } fontFamily)
-        {
-            block.FontFamily = fontFamily;
-        }
-
-        if (KastnSlipTypography.SizeOf(slip) is { } fontSize)
-        {
-            block.FontSize = fontSize;
-        }
-
-        if (KastnSlipTypography.ForegroundOf(slip) is { } foreground)
-        {
-            block.Foreground = foreground;
-        }
+        var project = currentProject is null ? null : ProjectIndex;
+        var projectId = project?.Project.Id;
+        var generation = editHistory.Generation;
+        var mono = this.TryFindResource("ZetlMonoFontFamily", out var value) ? value as FontFamily : null;
+        return new(project, new(ThemeBrush("ZetlBorderBrush"), ThemeBrush("ZetlAccentBrush"),
+            ThemeBrush("ZetlMutedTextBrush"), mono),
+            slipId =>
+            {
+                if (projectId is null || currentProject?.Id != projectId || generation != editHistory.Generation) return;
+                var node = treeProjection.Find(slipId);
+                if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
+                    projectTree.SelectedItem = node;
+            },
+            slipId => projectId is not null && currentProject?.Id == projectId && generation == editHistory.Generation
+                ? ToggleSlipCheckedAsync(slipId) : Task.CompletedTask);
     }
-
-    // The italic caption under a picture in the View and the view-editor preview.
-    private static void AddPictureCaption(Panel content, ZetlSlipSnapshot slip)
-    {
-        var caption = ZetlViewRenderer.TextOrTitle(slip);
-        if (string.IsNullOrWhiteSpace(caption))
-        {
-            return;
-        }
-
-        var captionBlock = new TextBlock
-        {
-            Text = caption.Trim(),
-            Classes = { "muted" },
-            FontStyle = FontStyle.Italic,
-            TextWrapping = TextWrapping.Wrap
-        };
-        ApplySlipTypography(captionBlock, slip);
-        content.Children.Add(captionBlock);
-    }
-
-    private static TextAlignment SlipTextAlignment(ZetlSlipSnapshot slip) =>
-        ZetlViewRenderer.SlipAlignment(slip) switch
-        {
-            "center" => TextAlignment.Center,
-            "right" => TextAlignment.Right,
-            _ => TextAlignment.Left
-        };
-
-    // Render a slip's Markdown blocks into the slip block: paragraphs as wrapped text
-    // (honoring alignment) and lists as marker + content rows with a hanging indent.
-    private void AppendSlipBlocks(StackPanel content, ZetlSlipSnapshot slip, string text)
-    {
-        var alignment = SlipTextAlignment(slip);
-        // A whole-note kind (heading/quote/code/divider) synthesizes its one block; any
-        // other kind parses the body normally.
-        foreach (var block in ZetlMarkdown.BlocksForNote(
-            slip.BlockKind, text, ZetlViewRenderer.EffectiveInlineStyles(slip, text)))
-        {
-            if (block is ZetlParagraphBlock paragraph)
-            {
-                var textBlock = new TextBlock
-                {
-                    TextWrapping = TextWrapping.Wrap,
-                    TextAlignment = alignment
-                };
-                ApplySlipTypography(textBlock, slip);
-                for (var line = 0; line < paragraph.Lines.Count; line++)
-                {
-                    if (line > 0)
-                    {
-                        textBlock.Inlines!.Add(new LineBreak());
-                    }
-
-                    AppendInlines(textBlock.Inlines!, paragraph.Lines[line]);
-                }
-
-                content.Children.Add(textBlock);
-            }
-            else if (block is ZetlListBlock list)
-            {
-                var number = list.Start;
-                foreach (var item in list.Items)
-                {
-                    var marker = list.Kind switch
-                    {
-                        "ordered" => $"{number++}.",
-                        "task" => item.Checked ? "☑" : "☐",
-                        _ => "•"
-                    };
-                    var row = new Grid
-                    {
-                        ColumnDefinitions = new ColumnDefinitions("Auto,*"),
-                        Margin = new Avalonia.Thickness(8, 1, 0, 1)
-                    };
-                    var markerBlock = new TextBlock
-                    {
-                        Text = marker,
-                        MinWidth = 16,
-                        Margin = new Avalonia.Thickness(0, 0, 6, 0)
-                    };
-                    ApplySlipTypography(markerBlock, slip);
-                    Grid.SetColumn(markerBlock, 0);
-                    var itemBlock = new TextBlock { TextWrapping = TextWrapping.Wrap };
-                    ApplySlipTypography(itemBlock, slip);
-                    AppendInlines(itemBlock.Inlines!, item.Inlines);
-                    Grid.SetColumn(itemBlock, 1);
-                    row.Children.Add(markerBlock);
-                    row.Children.Add(itemBlock);
-                    content.Children.Add(row);
-                }
-            }
-            else if (block is ZetlHeadingBlock heading)
-            {
-                // Softened sub-heading: bold and slightly larger, never a section heading.
-                var headingBlock = new TextBlock
-                {
-                    TextWrapping = TextWrapping.Wrap,
-                    TextAlignment = alignment,
-                    FontWeight = FontWeight.Bold,
-                    FontSize = heading.Level <= 1 ? 17 : heading.Level == 2 ? 15.5 : 14,
-                    Margin = new Avalonia.Thickness(0, 6, 0, 1)
-                };
-                // An authored size is an explicit override; without one, retain the
-                // heading kind's existing semantic size above.
-                ApplySlipTypography(headingBlock, slip);
-                AppendInlines(headingBlock.Inlines!, heading.Inlines);
-                content.Children.Add(headingBlock);
-            }
-            else if (block is ZetlQuoteBlock quote)
-            {
-                var quoteText = new TextBlock
-                {
-                    TextWrapping = TextWrapping.Wrap,
-                    TextAlignment = alignment,
-                    FontStyle = FontStyle.Italic
-                };
-                ApplySlipTypography(quoteText, slip);
-                for (var line = 0; line < quote.Lines.Count; line++)
-                {
-                    if (line > 0)
-                    {
-                        quoteText.Inlines!.Add(new LineBreak());
-                    }
-
-                    AppendInlines(quoteText.Inlines!, quote.Lines[line]);
-                }
-
-                content.Children.Add(new Border
-                {
-                    BorderThickness = new Avalonia.Thickness(3, 0, 0, 0),
-                    BorderBrush = ThemeBrush("ZetlBorderBrush") ?? Brushes.Gray,
-                    Padding = new Avalonia.Thickness(8, 2, 0, 2),
-                    Margin = new Avalonia.Thickness(2, 2, 0, 2),
-                    Child = quoteText
-                });
-            }
-            else if (block is ZetlCodeBlock code)
-            {
-                var codeText = new TextBlock
-                {
-                    Text = code.Text,
-                    TextWrapping = TextWrapping.Wrap
-                };
-                ApplySlipTypography(codeText, slip, applyFontFamily: false);
-                if (ThemeFont("ZetlMonoFontFamily") is { } mono)
-                {
-                    codeText.FontFamily = mono;
-                }
-
-                content.Children.Add(new Border
-                {
-                    Classes = { "surface" },
-                    Padding = new Avalonia.Thickness(8, 6),
-                    Margin = new Avalonia.Thickness(0, 2, 0, 2),
-                    Child = codeText
-                });
-            }
-            else if (block is ZetlDividerBlock)
-            {
-                content.Children.Add(new Border
-                {
-                    Height = 1,
-                    Background = ThemeBrush("ZetlBorderBrush") ?? Brushes.Gray,
-                    Margin = new Avalonia.Thickness(0, 6, 0, 6)
-                });
-            }
-        }
-    }
-
-    // Walk the Markdown inline AST into Avalonia inlines. Links render as accent
-    // underlined text (visual only on-screen; exported HTML/PDF carry the href).
-    private void AppendInlines(InlineCollection target, IReadOnlyList<ZetlInline> inlines)
-    {
-        foreach (var inline in inlines)
-        {
-            switch (inline)
-            {
-                case ZetlTextRun run:
-                    target.Add(new Run(run.Text));
-                    break;
-                case ZetlCodeRun code:
-                    var codeRun = new Run(code.Text);
-                    if (ThemeFont("ZetlMonoFontFamily") is { } mono)
-                    {
-                        codeRun.FontFamily = mono;
-                    }
-                    target.Add(codeRun);
-                    break;
-                case ZetlEmphasis emphasis:
-                    var span = new Span();
-                    AppendInlines(span.Inlines, emphasis.Children);
-                    switch (emphasis.Kind)
-                    {
-                        case "bold":
-                            span.FontWeight = FontWeight.Bold;
-                            break;
-                        case "italic":
-                            span.FontStyle = FontStyle.Italic;
-                            break;
-                        case "strike":
-                            span.TextDecorations = TextDecorations.Strikethrough;
-                            break;
-                    }
-                    target.Add(span);
-                    break;
-                case ZetlLink link:
-                    var linkSpan = new Span();
-                    if (ZetlLinkSafety.TryNormalizeTarget(link.Url, out _))
-                    {
-                        linkSpan.TextDecorations = TextDecorations.Underline;
-                        if (ThemeBrush("ZetlAccentBrush") is { } accent)
-                        {
-                            linkSpan.Foreground = accent;
-                        }
-                    }
-                    AppendInlines(linkSpan.Inlines, link.Children);
-                    target.Add(linkSpan);
-                    break;
-                case ZetlWikiLink wiki:
-                    var resolved = currentProject?.Slips.Any(s => s.Id == wiki.TargetId) ?? false;
-                    if (resolved)
-                    {
-                        var linkBlock = new TextBlock
-                        {
-                            Text = wiki.CachedTitle,
-                            TextDecorations = TextDecorations.Underline,
-                            Cursor = new Cursor(StandardCursorType.Hand),
-                            Foreground = ThemeBrush("ZetlAccentBrush") ?? Brushes.Blue
-                        };
-                        var targetId = wiki.TargetId;
-                        linkBlock.PointerPressed += (s, e) =>
-                        {
-                            e.Handled = true;
-                            var node = treeProjection.Find(targetId);
-                            if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
-                            {
-                                projectTree.SelectedItem = node;
-                            }
-                        };
-                        target.Add(new InlineUIContainer(linkBlock));
-                    }
-                    else
-                    {
-                        var unresolvedSpan = new Span { Foreground = Brushes.Gray };
-                        unresolvedSpan.Inlines.Add(new Run(wiki.CachedTitle));
-                        target.Add(unresolvedSpan);
-                    }
-                    break;
-            }
-        }
-    }
-
-    private FontFamily? ThemeFont(string key) =>
-        this.TryFindResource(key, out var value) && value is FontFamily font ? font : null;
 
     private async Task LoadPicturePreviewAsync(
         ZetlSlipSnapshot slip,
@@ -1910,17 +1601,8 @@ internal partial class MainWindow
     // DataContext lives on the wrapper and is repointed by the reconcile pass.
     private BoardCardUi CreateBoardCard(ZetlSlipSnapshot slip, string renderKey)
     {
-        // Preview text
-        var previewText = new TextBlock
-        {
-            Text = string.IsNullOrWhiteSpace(slip.Text) ? UntitledSlipTitle : slip.Text,
-            TextWrapping = TextWrapping.Wrap,
-            MaxLines = 3,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            FontSize = 13,
-            Margin = new Thickness(0, 0, 0, 4)
-        };
-        ApplySlipTypography(previewText, slip);
+        var contentRenderer = CreateSlipContentRenderer();
+        var previewText = KastnSlipContentRenderer.CreateBoardPreview(slip, UntitledSlipTitle);
 
         var listKinds = currentProject is null
             ? new ZetlSlipListKinds("", "", "")
@@ -1937,31 +1619,8 @@ internal partial class MainWindow
 
         void AddFooterMarker(string kind)
         {
-            if (kind == ZetlBlockKinds.Task)
-            {
-                var taskCheck = new TextBlock
-                {
-                    Text = slip.Checked ? "☑" : "☐",
-                    FontWeight = FontWeight.Bold,
-                    Foreground = slip.Checked ? ThemeBrush("ZetlAccentBrush") : ThemeBrush("ZetlMutedTextBrush"),
-                    Cursor = new Cursor(StandardCursorType.Hand),
-                    Margin = new Thickness(0, 0, 4, 0)
-                };
-                taskCheck.PointerPressed += async (sender, args) =>
-                {
-                    args.Handled = true;
-                    await ToggleSlipCheckedAsync(slip.Id);
-                };
-                footer.Children.Add(taskCheck);
-            }
-            else if (kind == ZetlBlockKinds.Bullet)
-            {
-                footer.Children.Add(new TextBlock { Text = "•", Classes = { "muted" } });
-            }
-            else if (kind == ZetlBlockKinds.Ordered)
-            {
-                footer.Children.Add(new TextBlock { Text = "1.", Classes = { "muted" } });
-            }
+            if (contentRenderer.CreateBoardListMarker(kind, slip) is { } marker)
+                footer.Children.Add(marker);
         }
 
         AddFooterMarker(listKinds.Outer);
@@ -2054,8 +1713,8 @@ internal partial class MainWindow
             mainPanel.Children.Add(previewText);
         }
 
-        // Picture thumbnail; the async load starts once the card exists so the
-        // bitmap can be card-owned (disposed when the card is rebuilt or removed).
+        // Start loading once the card exists so retired-card guards can reject
+        // stale assignments. Decoded bitmaps remain owned by KastnPictureCache.
         if (slip.Type == ZetlSlipType.Picture && slip.Picture is not null)
         {
             var image = new Image
