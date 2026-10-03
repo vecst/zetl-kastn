@@ -78,6 +78,24 @@ extracting undo or the renderers.
   covered. Window lifetime and board edit workflows remain follow-up work.
 - Validation after export extraction: solution build with zero warnings/errors;
   625 tests passed, with the same two intentional latency-probe skips.
+- Extracted `KastnBoardEditOperation` to own captured dialog values, original
+  project/target identity, command construction, and confirmed revision threading
+  from a column move into its content update. The window's board-edit adapter
+  joins prerequisite autosaves, settles a queued saved snapshot, re-resolves
+  stale card targets, and rechecks draft/session/revision and destination validity
+  after the dialog. An interrupted move stops before sending the content update.
+- Board save/move/delete responses now share editor-safe acceptance. Matching
+  early move/deletion snapshots advance the baseline without losing later writing
+  or styles; deletion acknowledges a lazily created Deleted bucket. A late delete
+  only clears an unchanged original editor session. Removed the unused direct
+  `AcceptEditorSaved` wrapper, and reject old-project undo records/gestures after
+  navigation while retaining grouped move-and-edit undo/redo.
+- Added delayed dialog and real IPC regressions for typing, formatting intent,
+  reselection, reused IDs across projects, remote revisions/conflicts, offline
+  transitions, prerequisite saves, early snapshots, recovery journals, and
+  interrupted moves. Validation: solution build with zero warnings/errors;
+  669 tests passed, with the same two intentional latency-probe skips. The next
+  extraction target is edit-history ownership; window lifetime remains open.
 
 ## Responsibility Map
 

@@ -78,13 +78,6 @@ internal partial class MainWindow
         }
     }
 
-    private void AcceptEditorSaved(ZetlSlipSnapshot saved)
-    {
-        editorState.AcceptSaved(saved);
-        recoveredDraftActive = false;
-        ClearDraftJournal(currentProject?.Id, saved.Id);
-    }
-
     private string? RecoverySlipId(ZetlProjectSnapshot project)
     {
         var draft = draftStore.Draft;

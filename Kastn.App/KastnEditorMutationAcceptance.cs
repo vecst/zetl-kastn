@@ -5,8 +5,8 @@ using ZETL.Contracts;
 
 namespace KASTN;
 
-// One command's editor session and draft. Shared by autosaves, formatting, and
-// picture changes so responses and early snapshots obey the same acceptance rules.
+// One command's editor session and draft. Autosaves, formatting, pictures, and
+// board edits share response and early-snapshot acceptance rules.
 internal sealed class KastnEditorMutationAcceptance
 {
     private readonly KastnEditorState editor;
@@ -19,6 +19,7 @@ internal sealed class KastnEditorMutationAcceptance
     private readonly IReadOnlyList<ZetlInlineStyleRange> baselineStyles;
     private readonly UpdateSlipCommand? update;
     private readonly string? pictureHash;
+    private readonly string? destinationBucketId;
 
     public KastnEditorMutationAcceptance(KastnEditorState editor, ZetlCommandEnvelope command, object payload)
     {
@@ -31,6 +32,7 @@ internal sealed class KastnEditorMutationAcceptance
         pendingStyleKinds = new HashSet<string>(editor.PendingInlineStyleKinds, StringComparer.Ordinal);
         baselineText = editor.BaselineText;
         baselineStyles = editor.BaselineInlineStyles.Select(style => style with { }).ToArray();
+        destinationBucketId = (payload as MoveSlipCommand)?.DestinationBucketId;
         if (command.Kind == ZetlCommandKind.UpdateSlip)
         {
             update = payload as UpdateSlipCommand;
@@ -159,6 +161,12 @@ internal sealed class KastnEditorMutationAcceptance
         return current.Text == baselineText
             && KastnInlineStyleEditing.StyleListsEqual(current.InlineStyles, baselineStyles)
             && (Command.Kind == ZetlCommandKind.RemoveSlipPicture && current.Picture is null
+                || Command.Kind == ZetlCommandKind.MoveSlip
+                    && destinationBucketId is not null && current.BucketId == destinationBucketId
+                // Deleted is created lazily, so its bucket ID may not yet be
+                // present in the captured project. Check soft-delete metadata.
+                || Command.Kind == ZetlCommandKind.DeleteSlip && current.DeletedAtUtc is not null
+                    && current.DeletedFromBucketId is not null
                 || Command.Kind == ZetlCommandKind.SetSlipPicture && pictureHash is not null
                     && string.Equals(current.Picture?.Sha256, pictureHash, StringComparison.OrdinalIgnoreCase));
     }

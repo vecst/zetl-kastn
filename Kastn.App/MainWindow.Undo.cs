@@ -89,7 +89,7 @@ internal partial class MainWindow
     {
         var accumulated = activeGesture.Value;
         activeGesture.Value = null;
-        if (accumulated is null || currentProject is null)
+        if (accumulated is null || currentProject?.Id != accumulated.ProjectId)
         {
             return;
         }
@@ -302,6 +302,9 @@ internal partial class MainWindow
     // A fresh user action invalidates the redo stack.
     private void RecordEntry(KastnUndoEntry entry)
     {
+        // Project navigation clears history. A late old-project response must
+        // not repopulate the new project's stack or discard its redo entries.
+        if (entry.ProjectId != currentProject?.Id) return;
         undoStack.Push(entry);
         redoStack.Clear();
     }
