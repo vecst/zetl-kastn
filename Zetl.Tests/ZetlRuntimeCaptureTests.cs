@@ -35,7 +35,7 @@ public class ZetlRuntimeCaptureTests
 
         var note = store.GetActiveBucket()!.Slips.Single();
         AssertEqual("copied text", note.Text, "Auto-capture should trim and save copied text.");
-        AssertEqual(ZetlStateStore.AutoCopySource, note.Source, "Auto-capture marks the copy as automatic, so pass-through can tell it from a held capture.");
+        AssertEqual(ZetlStateRules.AutoCopySource, note.Source, "Auto-capture marks the copy as automatic, so pass-through can tell it from a held capture.");
         AssertEqual("Editor", note.CaptureOrigin?.ApplicationName, "Auto-capture should retain its keydown origin.");
         AssertEqual(
             "Captured to Inbox in Demo.",
@@ -90,7 +90,7 @@ public class ZetlRuntimeCaptureTests
 
         var journal = store.State.Projects.Single(project => project.JournalMode);
         var capture = journal.Buckets.Single(bucket =>
-            bucket.Name == ZetlStateStore.JournalCaptureBucketName);
+            bucket.Name == ZetlStateRules.JournalCaptureBucketName);
         AssertEqual("copied text", capture.Slips.Single().Text, "The copy lands in today's Journal Capture bucket.");
         AssertTrue(store.GetActiveProject() is null, "Capturing to the Journal while idle does not activate it.");
     }
@@ -254,7 +254,7 @@ public class ZetlRuntimeCaptureTests
         var today = store.EnsureJournalDayBucket(journal, DateTime.Now)!;
         store.SetActiveBucket(journal, today.Id);
         AssertEqual(
-            ZetlStateStore.JournalCaptureBucketName,
+            ZetlStateRules.JournalCaptureBucketName,
             store.RollJournalBucket(journal, DateTime.Now)!.Name,
             "Choosing a day bucket returns copies to today's Capture.");
     }

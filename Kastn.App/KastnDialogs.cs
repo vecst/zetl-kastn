@@ -374,7 +374,7 @@ internal static class KastnDialogs
         };
         var cancel = new Button { Content = "Cancel", Width = 84, IsCancel = true };
         use.Click += (_, _) => dialog.Close(new TemporaryTemplateLaneResult(
-            alternate.IsChecked == true ? ZetlStateStore.ShiftLane : ZetlStateStore.NormalLane,
+            alternate.IsChecked == true ? ZetlStateRules.ShiftLane : ZetlStateRules.NormalLane,
             remember.IsChecked == true));
         cancel.Click += (_, _) => dialog.Close(null);
         dialog.Content = new StackPanel

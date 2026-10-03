@@ -186,7 +186,7 @@ internal partial class CompileWindow : ZetlPopupWindow
             {
                 var noteCheckBox = new CheckBox
                 {
-                    Content = ZetlStateStore.PreviewText(item.Slip.Text),
+                    Content = ZetlStateRules.PreviewText(item.Slip.Text),
                     IsChecked = defaultChecked,
                     HorizontalContentAlignment = HorizontalAlignment.Stretch
                 };
@@ -284,10 +284,10 @@ internal partial class CompileWindow : ZetlPopupWindow
     {
         return SelectedCompileMode switch
         {
-            "Plain" => store.CompileUnformattedFromSlips(selected),
-            "TSV" => store.CompileTsvFromSlips(sourceProject, selected, TsvRowLength),
-            _ when !Headings => store.CompileUnformattedFromSlips(selected),
-            _ => store.CompilePlainTextFromSlips(sourceProject, selected)
+            "Plain" => ZetlComposeOutput.Unformatted(selected),
+            "TSV" => ZetlComposeOutput.Tsv(selected, TsvRowLength),
+            _ when !Headings => ZetlComposeOutput.Unformatted(selected),
+            _ => ZetlComposeOutput.PlainText(sourceProject, selected)
         };
     }
 
@@ -296,8 +296,8 @@ internal partial class CompileWindow : ZetlPopupWindow
     private string? BuildCompiledHtml(IReadOnlyList<SlipDisplayItem> selected) =>
         SelectedCompileMode switch
         {
-            "Formatted" => store.CompileHtmlFromSlips(sourceProject, selected, Headings),
-            "TSV" => ZetlTsv.HtmlTable(store.CompileTsvLinesFromSlips(selected, TsvRowLength)),
+            "Formatted" => ZetlComposeOutput.Html(sourceProject, selected, Headings),
+            "TSV" => ZetlTsv.HtmlTable(ZetlComposeOutput.TsvLines(selected, TsvRowLength)),
             _ => null
         };
 
@@ -322,7 +322,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         if (bucket is not null)
         {
             tsvRowLengthBox.Value = Math.Clamp(
-                store.GetBucketTsvRowLength(bucket),
+                ZetlComposeOutput.TsvRowLength(bucket),
                 1,
                 1000);
         }
@@ -368,7 +368,7 @@ internal partial class CompileWindow : ZetlPopupWindow
         PasteNow = pasteNow;
         SaveToBucket = saveToBucket;
         CompiledText = unformatted
-            ? store.CompileUnformattedFromSlips(selected)
+            ? ZetlComposeOutput.Unformatted(selected)
             : BuildCompiledText(selected);
         CompiledHtml = !saveToBucket && !unformatted
             ? BuildCompiledHtml(selected)
@@ -406,7 +406,7 @@ internal partial class CompileWindow : ZetlPopupWindow
     // store mutation is the sole-writer FinishProject and persists on its own.
     private void FinishProject()
     {
-        if (!ZetlStateStore.IsActiveStatus(sourceProject))
+        if (!ZetlStateRules.IsActiveStatus(sourceProject))
         {
             ShowValidation("This project is already finished.");
             return;
@@ -420,10 +420,10 @@ internal partial class CompileWindow : ZetlPopupWindow
     private void UpdateFinishButton()
     {
         // Only an Active, non-infrastructure project can be finished.
-        finishButton.IsEnabled = ZetlStateStore.IsActiveStatus(sourceProject)
+        finishButton.IsEnabled = ZetlStateRules.IsActiveStatus(sourceProject)
             && !string.Equals(
                 sourceProject.Name,
-                ZetlStateStore.LogProjectName,
+                ZetlStateRules.LogProjectName,
                 StringComparison.OrdinalIgnoreCase);
     }
 

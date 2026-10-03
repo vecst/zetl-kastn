@@ -68,11 +68,11 @@ public class ZetlRuntimeHoldTests
         AssertTrue(request is ZetlNoteCaptureRequest, "Cut hold should always open note capture.");
         var note = (ZetlNoteCaptureRequest)request!;
         AssertEqual(
-            ZetlStateStore.JournalQuickNoteBucketName,
+            ZetlStateRules.JournalQuickNoteBucketName,
             note.PreferredBucket!.Name,
             "First quick note defaults to today's Quick Note child.");
         AssertEqual(
-            ZetlStateStore.JournalBucketName(DateTime.Now, 0),
+            ZetlStateRules.JournalBucketName(DateTime.Now, 0),
             note.Project.Buckets.Single(bucket => bucket.Id == note.PreferredBucket!.ParentBucketId).Name,
             "The Quick Note child sits under today's day parent.");
         AssertFalse(note.ProjectWasActive, "First quick note sees no active project.");
@@ -722,7 +722,7 @@ public class ZetlRuntimeHoldTests
                 Flatten: false,
                 SelectedNoteTexts: ["compiled task"],
                 PasteNow: false,
-                CompiledHtml: store.CompileHtmlFromSlips(source, selected)));
+                CompiledHtml: ZetlComposeOutput.Html(source, selected)));
 
         AssertEqual(ZetlCompileOutcome.RestoreTarget, outcome, "Rich copy should restore the target.");
         AssertEqual("Source\r\n\r\nInbox\r\n\tcompiled task", clipboard.Text, "Rich copy should keep the plain fallback.");

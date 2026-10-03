@@ -108,7 +108,7 @@ internal sealed class ZetlAppSettings
     {
         if (DefaultProjectBuckets is { Count: 2 } buckets
             && string.Equals(buckets[0].Trim(), "Inbox", StringComparison.OrdinalIgnoreCase)
-            && ZetlStateStore.IsScratchBucketName(buckets[1]))
+            && ZetlStateRules.IsScratchBucketName(buckets[1]))
         {
             DefaultProjectBuckets = ZetlBucketDefaults.Standard.ProjectBuckets.ToList();
         }
@@ -179,7 +179,7 @@ internal static class ZetlKastnTemplateLaneDefault
 
     public static string Normalize(string? value)
     {
-        var lane = ZetlStateStore.CanonicalTemporaryLane(value);
+        var lane = ZetlStateRules.CanonicalTemporaryLane(value);
         return lane ?? Ask;
     }
 }

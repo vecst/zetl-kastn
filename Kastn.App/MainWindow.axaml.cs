@@ -842,8 +842,8 @@ internal partial class MainWindow : Window
         projects.Clear();
         var allProjects = lastProjectSummaries.Select(CreateProjectListItem).ToList();
 
-        AddLaneCard(allProjects, ZetlStateStore.NormalLane, LaneLabel(ZetlStateStore.NormalLane));
-        AddLaneCard(allProjects, ZetlStateStore.ShiftLane, LaneLabel(ZetlStateStore.ShiftLane));
+        AddLaneCard(allProjects, ZetlStateRules.NormalLane, LaneLabel(ZetlStateRules.NormalLane));
+        AddLaneCard(allProjects, ZetlStateRules.ShiftLane, LaneLabel(ZetlStateRules.ShiftLane));
 
         var laneProjectIds = laneCards
             .SelectMany(card => new[] { card.Project?.Id, card.OverlayProject?.Id })
@@ -888,7 +888,7 @@ internal partial class MainWindow : Window
             project.CanCreateTemporaryFromReplay,
             string.Equals(
                 project.Kind,
-                ZetlStateStore.TemporaryConsumableProjectKind,
+                ZetlStateRules.TemporaryConsumableProjectKind,
                 StringComparison.Ordinal));
     }
 
@@ -934,7 +934,7 @@ internal partial class MainWindow : Window
     {
         var detail = $"{project.VisibleSlipCount} slip{Plural(project.VisibleSlipCount)}"
             + $" | {project.VisibleBucketCount} bucket{Plural(project.VisibleBucketCount)}";
-        if (string.Equals(project.Kind, ZetlStateStore.TemporaryConsumableProjectKind, StringComparison.Ordinal))
+        if (string.Equals(project.Kind, ZetlStateRules.TemporaryConsumableProjectKind, StringComparison.Ordinal))
         {
             detail = $"Temporary | {detail}";
         }
@@ -952,7 +952,7 @@ internal partial class MainWindow : Window
     }
 
     private string LaneLabel(string lane) =>
-        CurrentAppSettings().LaneLabel(string.Equals(lane, ZetlStateStore.ShiftLane, StringComparison.Ordinal));
+        CurrentAppSettings().LaneLabel(string.Equals(lane, ZetlStateRules.ShiftLane, StringComparison.Ordinal));
 
     private void RefreshFilterChoices(ZetlProjectSnapshot project)
     {
@@ -1846,13 +1846,13 @@ internal partial class MainWindow : Window
         public bool CanUseTemporarily => IsArchived && CanCreateTemporaryFromReplay;
 
         public bool CanSetActive =>
-            IsActive && !string.Equals(ActiveLane, ZetlStateStore.NormalLane, StringComparison.Ordinal);
+            IsActive && !string.Equals(ActiveLane, ZetlStateRules.NormalLane, StringComparison.Ordinal);
 
         public bool CanSetAlternateActive =>
-            IsActive && !string.Equals(ActiveLane, ZetlStateStore.ShiftLane, StringComparison.Ordinal);
+            IsActive && !string.Equals(ActiveLane, ZetlStateRules.ShiftLane, StringComparison.Ordinal);
 
         public string SetActiveActionLabel =>
-            string.Equals(ActiveLane, ZetlStateStore.NormalLane, StringComparison.Ordinal)
+            string.Equals(ActiveLane, ZetlStateRules.NormalLane, StringComparison.Ordinal)
                 ? "Active"
                 : "Set Active";
     }

@@ -83,7 +83,7 @@ public class ZetlReplayStateTests
         store.SetBucketKind(queue, "Standard");
         store.RestoreReplayConsumedSlip(queue, consumedNote!, reviewBucket, reviewNote?.Id);
 
-        AssertTrue(ZetlStateStore.IsReplayBucket(queue), "Replay undo should restore Replay kind.");
+        AssertTrue(ZetlStateRules.IsReplayBucket(queue), "Replay undo should restore Replay kind.");
         AssertEqual("posted", queue.Slips.Single().Text, "Replay undo should restore the consumed slip.");
         AssertEqual(0, reviewBucket!.Slips.Count, "Replay undo should remove the review copy.");
     }
@@ -104,7 +104,7 @@ public class ZetlReplayStateTests
         AssertEqual("Queue", queue.Name, "Legacy bucket should load.");
         AssertEqual("Replay", queue.Settings.Kind, "Legacy Fifo kind should load as Replay.");
         AssertEqual("Replay", queue.Settings.DefaultKind, "Legacy Fifo default kind should load as Replay.");
-        AssertTrue(ZetlStateStore.IsReplayBucket(queue), "Legacy Fifo bucket should still be a Replay bucket.");
+        AssertTrue(ZetlStateRules.IsReplayBucket(queue), "Legacy Fifo bucket should still be a Replay bucket.");
         AssertEqual("b2", queue.Settings.ReplayReviewBucketId, "Legacy Replay review links should load.");
 
         store.SetBucketKind(queue, queue.Settings.Kind);

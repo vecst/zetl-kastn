@@ -69,7 +69,7 @@ internal static class ZetlParityScenario
             NormalizeProject(store.GetActiveProject()),
             NormalizeProject(store.GetActiveProject(shifted: true)),
             store.State.Projects
-                .Where(item => item.Name == ZetlStateStore.LogProjectName)
+                .Where(item => item.Name == ZetlStateRules.LogProjectName)
                 .Select(NormalizeProject)
                 .Single());
         JsonFile.WriteAtomic(

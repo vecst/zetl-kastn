@@ -180,33 +180,33 @@ public class ZetlTemplateDocumentTests
         template.Type = ZetlTemplateTypes.Consumable;
         template.Temporary = true;
 
-        var command = template.ToCreateProjectCommand("One Shot", ZetlStateStore.NormalLane);
+        var command = template.ToCreateProjectCommand("One Shot", ZetlStateRules.NormalLane);
 
-        AssertEqual(ZetlStateStore.TemporaryConsumableProjectKind, command.Kind, "Temporary flag should project to the create command.");
+        AssertEqual(ZetlStateRules.TemporaryConsumableProjectKind, command.Kind, "Temporary flag should project to the create command.");
         AssertEqual(template.Id, command.SourceTemplateId, "Temporary projects should remember their source template.");
-        AssertEqual(ZetlStateStore.NormalLane, command.TemporaryLane, "Temporary projects should carry their owning lane.");
+        AssertEqual(ZetlStateRules.NormalLane, command.TemporaryLane, "Temporary projects should carry their owning lane.");
 
         template.Temporary = false;
         var useTimeTemporary = template.ToCreateProjectCommand(
             "One Shot",
-            ZetlStateStore.ShiftLane,
+            ZetlStateRules.ShiftLane,
             temporary: true);
         AssertEqual(
-            ZetlStateStore.TemporaryConsumableProjectKind,
+            ZetlStateRules.TemporaryConsumableProjectKind,
             useTimeTemporary.Kind,
             "Use-time temporary choice should override a durable template default.");
         AssertEqual(
-            ZetlStateStore.ShiftLane,
+            ZetlStateRules.ShiftLane,
             useTimeTemporary.TemporaryLane,
             "Use-time temporary choice should keep the selected lane.");
 
         template.Temporary = true;
         var useTimeDurable = template.ToCreateProjectCommand(
             "Keep This",
-            ZetlStateStore.NormalLane,
+            ZetlStateRules.NormalLane,
             temporary: false);
         AssertEqual(
-            ZetlStateStore.StandardProjectKind,
+            ZetlStateRules.StandardProjectKind,
             useTimeDurable.Kind,
             "Use-time durable choice should override a temporary template default.");
         AssertEqual(null, useTimeDurable.TemporaryLane, "Durable projects should not retain a temporary lane.");

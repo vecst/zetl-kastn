@@ -122,9 +122,9 @@ internal partial class ProjectSetupWindow : Window
     {
         var previous = ActiveBucketName;
         var names = BucketNames.ToList();
-        if (!names.Any(ZetlStateStore.IsScratchBucketName))
+        if (!names.Any(ZetlStateRules.IsScratchBucketName))
         {
-            names.Add(ZetlStateStore.ScratchBucketName);
+            names.Add(ZetlStateRules.ScratchBucketName);
         }
 
         activeBucketBox.ItemsSource = names;

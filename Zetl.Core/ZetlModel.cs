@@ -35,10 +35,10 @@ internal sealed class ZetlProject
     public long ChangeSequence { get; set; }
     // Lifecycle status: "Active" (default), "Finished", or "Archived". Distinct
     // from lane-active state, which lives in the workspace pointers. Reversible.
-    public string Status { get; set; } = ZetlStateStore.ActiveStatus;
+    public string Status { get; set; } = ZetlStateRules.ActiveStatus;
     // Project kind: Standard projects are durable; TemporaryConsumable projects
     // are deleted when they stop occupying their assigned active lane.
-    public string Kind { get; set; } = ZetlStateStore.StandardProjectKind;
+    public string Kind { get; set; } = ZetlStateRules.StandardProjectKind;
     public string? SourceTemplateId { get; set; }
     public string? TemporaryLane { get; set; }
     // Made from a consumable template: a queue to paste out rather than notes to
@@ -71,7 +71,7 @@ internal sealed class ZetlProject
     // clearly without a value converter.
     [System.Text.Json.Serialization.JsonIgnore]
     public string DisplayNameWithStatus =>
-        string.Equals(Status, ZetlStateStore.ActiveStatus, StringComparison.OrdinalIgnoreCase)
+        string.Equals(Status, ZetlStateRules.ActiveStatus, StringComparison.OrdinalIgnoreCase)
             ? Name
             : $"{Name}  ·  {Status}";
 }
@@ -350,7 +350,7 @@ internal sealed record ZetlBucketDefaults(IReadOnlyList<string> ProjectBuckets, 
     // New projects start with the same Capture / Quick Note pair as a journal day,
     // plus the protected Scratch bucket every project gets.
     public static ZetlBucketDefaults Standard { get; } = new(
-        new[] { ZetlStateStore.JournalCaptureBucketName, ZetlStateStore.JournalQuickNoteBucketName },
+        new[] { ZetlStateRules.JournalCaptureBucketName, ZetlStateRules.JournalQuickNoteBucketName },
         "Formatted",
         5);
 

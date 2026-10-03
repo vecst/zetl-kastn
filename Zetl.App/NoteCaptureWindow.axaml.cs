@@ -58,7 +58,7 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
         InitializeComponent();
 
         var projects = store.State.Projects
-            .Where(item => !string.Equals(item.Name, ZetlStateStore.LogProjectName, StringComparison.OrdinalIgnoreCase))
+            .Where(item => !string.Equals(item.Name, ZetlStateRules.LogProjectName, StringComparison.OrdinalIgnoreCase))
             .ToList();
         newProjectSentinel = new ZetlProject { Id = "", Name = "+ New project…" };
         projectBox.ItemsSource = new List<ZetlProject>(projects) { newProjectSentinel };
@@ -313,7 +313,7 @@ internal partial class NoteCaptureWindow : ZetlPopupWindow
     private IReadOnlyList<BucketDisplayItem> GetNewProjectBucketItems()
     {
         var bucketNames = store.Defaults.ResolvedProjectBuckets
-            .Append(ZetlStateStore.ScratchBucketName)
+            .Append(ZetlStateRules.ScratchBucketName)
             .Select(name => name.Trim())
             .Where(name => name.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)

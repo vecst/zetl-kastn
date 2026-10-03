@@ -146,7 +146,7 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         var activeBucket = store.GetActiveBucket(shiftLane);
-        if (activeBucket is not null && ZetlStateStore.IsReplayBucket(activeBucket))
+        if (activeBucket is not null && ZetlStateRules.IsReplayBucket(activeBucket))
         {
             // The hook callback needs the handled decision synchronously, but the
             // replay clipboard read/write and synthetic paste must not run on the
@@ -639,7 +639,7 @@ internal sealed class ZetlShortcutCoordinator
             return null;
         }
 
-        if (ZetlStateStore.IsReplayBucket(bucket))
+        if (ZetlStateRules.IsReplayBucket(bucket))
         {
             store.SetBucketKind(bucket, "Standard");
             if (replayResumeClipboard())
@@ -839,7 +839,7 @@ internal sealed class ZetlShortcutCoordinator
                     project,
                     bucket,
                     image,
-                    ZetlStateStore.AutoCopySource,
+                    ZetlStateRules.AutoCopySource,
                     pending.CaptureOrigin,
                     caption: text,
                     sourceUrl: imageSourceUrl,
@@ -849,7 +849,7 @@ internal sealed class ZetlShortcutCoordinator
                 : store.AddSlip(
                     bucket,
                     text!,
-                    ZetlStateStore.AutoCopySource,
+                    ZetlStateRules.AutoCopySource,
                     captureOrigin: pending.CaptureOrigin,
                     richHtml: richHtml,
                     replayFormats: replayFormats);
@@ -902,7 +902,7 @@ internal sealed class ZetlShortcutCoordinator
             // run the empty-queue pass-through after the first tap finalized.
             if (replayLanes.IsRestoring(shifted)
                 || !ReferenceEquals(store.GetActiveBucket(shifted), activeBucket)
-                || !ZetlStateStore.IsReplayBucket(activeBucket))
+                || !ZetlStateRules.IsReplayBucket(activeBucket))
             {
                 return;
             }
@@ -1159,7 +1159,7 @@ internal sealed class ZetlShortcutCoordinator
         // undoable into a project that is no longer active.
         var finishingConsumable = replayComplete
             && project is not null
-            && ZetlStateStore.IsConsumableProject(project);
+            && ZetlStateRules.IsConsumableProject(project);
         if (consumedSlip is not null && !finishingConsumable)
         {
             var undoReviewBucket = reviewBucket;

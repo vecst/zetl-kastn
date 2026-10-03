@@ -401,7 +401,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             return TrayIconState.Active;
         }
 
-        if (ZetlStateStore.IsReplayBucket(bucket))
+        if (ZetlStateRules.IsReplayBucket(bucket))
         {
             return TrayIconState.Replay;
         }
@@ -1104,7 +1104,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         var name = store.State.Projects
             .FirstOrDefault(project => project.Id == change.ProjectId)?.Name;
         if (string.IsNullOrEmpty(name)
-            || string.Equals(name, ZetlStateStore.LogProjectName, StringComparison.OrdinalIgnoreCase))
+            || string.Equals(name, ZetlStateRules.LogProjectName, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -1117,7 +1117,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         string name,
         bool shifted = false)
     {
-        var lane = shifted ? ZetlStateStore.ShiftLane : ZetlStateStore.NormalLane;
+        var lane = shifted ? ZetlStateRules.ShiftLane : ZetlStateRules.NormalLane;
         var response = projectService.Execute(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.CreateProject,

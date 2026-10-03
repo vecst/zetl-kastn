@@ -101,10 +101,10 @@ internal partial class BoardWindow : ZetlPopupWindow
         {
             if (!refreshing
                 && ActiveProject is { } project
-                && !ZetlStateStore.IsActiveStatus(project))
+                && !ZetlStateRules.IsActiveStatus(project))
             {
                 // The store raises Changed, so OnStoreChanged refreshes the Board.
-                store.SetProjectStatus(project, ZetlStateStore.ActiveStatus);
+                store.SetProjectStatus(project, ZetlStateRules.ActiveStatus);
             }
         };
         openKastnButton.Click += (_, _) =>
@@ -228,7 +228,7 @@ internal partial class BoardWindow : ZetlPopupWindow
             exportProjectButton.IsEnabled = hasProject;
             // A non-Active project cannot be lane-active (the invariant): reactivate
             // it first. The status marker and Reactivate button surface that path.
-            var isActiveStatus = project is null || ZetlStateStore.IsActiveStatus(project);
+            var isActiveStatus = project is null || ZetlStateRules.IsActiveStatus(project);
             activeProjectBox.IsEnabled = hasProject && isActiveStatus;
             projectStatusText.Text = project is null ? "" : project.Status;
             projectStatusText.IsVisible = hasProject && !isActiveStatus;
@@ -272,14 +272,14 @@ internal partial class BoardWindow : ZetlPopupWindow
                 return;
             }
 
-            var isScratch = ZetlStateStore.IsScratchBucket(bucket);
+            var isScratch = ZetlStateRules.IsScratchBucket(bucket);
             bucketNameBox.Text = bucket.Name;
             bucketNameBox.IsEnabled = !isScratch;
             saveBucketButton.IsEnabled = !isScratch;
             deleteBucketButton.IsEnabled = !isScratch;
             bucketSettingsButton.IsEnabled = true;
             bucketKindBox.IsEnabled = true;
-            bucketKindBox.SelectedItem = ZetlStateStore.IsReplayBucket(bucket)
+            bucketKindBox.SelectedItem = ZetlStateRules.IsReplayBucket(bucket)
                 ? "Replay"
                 : "Standard";
             createNoteButton.IsEnabled = true;

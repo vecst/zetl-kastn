@@ -210,7 +210,7 @@ public class ZetlSettingsAndThemeTests
         store.Settings.KastnAlternateLaneLabel = "Queue";
         store.Settings.KastnMinimizeAfterTemplate = false;
         store.Settings.KastnCloseToTray = false;
-        store.Settings.KastnTemporaryTemplateLaneDefault = ZetlStateStore.ShiftLane;
+        store.Settings.KastnTemporaryTemplateLaneDefault = ZetlStateRules.ShiftLane;
         store.Settings.KastnPreferSlipKindOverBucketKind = true;
         store.Save();
 
@@ -244,7 +244,7 @@ public class ZetlSettingsAndThemeTests
             loaded.Settings.KastnCloseToTray,
             "Kastn close-to-tray flag should round-trip.");
         AssertEqual(
-            ZetlStateStore.ShiftLane,
+            ZetlStateRules.ShiftLane,
             loaded.Settings.KastnTemporaryTemplateLaneDefault,
             "Kastn temporary template lane default should round-trip.");
         AssertTrue(

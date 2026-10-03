@@ -172,18 +172,18 @@ public class ZetlProjectServiceTests
             new CreateProjectCommand
             {
                 Name = "One Shot",
-                Kind = ZetlStateStore.TemporaryConsumableProjectKind,
+                Kind = ZetlStateRules.TemporaryConsumableProjectKind,
                 SourceTemplateId = "template",
-                TemporaryLane = ZetlStateStore.NormalLane,
+                TemporaryLane = ZetlStateRules.NormalLane,
                 Buckets = [new CreateBucketDefinition { Name = "Queue" }]
             }));
         var snapshot = response.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
             ?? throw new InvalidOperationException("Create did not return a project snapshot.");
 
         AssertEqual(ZetlResponseStatus.Success, response.Status, "Normal-lane temporary creation should succeed.");
-        AssertEqual(ZetlStateStore.TemporaryConsumableProjectKind, snapshot.Kind, "Snapshot should expose the project kind.");
+        AssertEqual(ZetlStateRules.TemporaryConsumableProjectKind, snapshot.Kind, "Snapshot should expose the project kind.");
         AssertEqual("template", snapshot.SourceTemplateId, "Snapshot should expose the source template id.");
-        AssertEqual(ZetlStateStore.NormalLane, snapshot.TemporaryLane, "Snapshot should expose the owning lane.");
+        AssertEqual(ZetlStateRules.NormalLane, snapshot.TemporaryLane, "Snapshot should expose the owning lane.");
         AssertEqual(snapshot.Id, store.ActiveProject?.Id, "The created temporary project should be normal-lane active.");
     }
 
@@ -209,8 +209,8 @@ public class ZetlProjectServiceTests
             new CreateProjectCommand
             {
                 Name = "Temporary",
-                Kind = ZetlStateStore.TemporaryConsumableProjectKind,
-                TemporaryLane = ZetlStateStore.NormalLane,
+                Kind = ZetlStateRules.TemporaryConsumableProjectKind,
+                TemporaryLane = ZetlStateRules.NormalLane,
                 Buckets = [new CreateBucketDefinition { Name = "Queue" }]
             })).Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
             ?? throw new InvalidOperationException("Temporary create did not return a project snapshot.");
@@ -223,11 +223,11 @@ public class ZetlProjectServiceTests
             ?? throw new InvalidOperationException("List did not return project summaries.");
 
         AssertEqual(
-            ZetlStateStore.NormalLane,
+            ZetlStateRules.NormalLane,
             list.Single(project => project.Id == temporary.Id).ActiveLane,
             "The temporary project should be the active normal-lane overlay.");
         AssertEqual(
-            ZetlStateStore.NormalLane,
+            ZetlStateRules.NormalLane,
             list.Single(project => project.Id == durable.Id).UnderlyingLane,
             "The previous durable project should be shown behind the temporary normal lane.");
     }
@@ -277,7 +277,7 @@ public class ZetlProjectServiceTests
 
         AssertEqual(ZetlResponseStatus.Success, response.Status, "Setting the active lane should succeed.");
         AssertEqual(
-            ZetlStateStore.ShiftLane,
+            ZetlStateRules.ShiftLane,
             list.Single(item => item.Id == project.Id).ActiveLane,
             "The project summary should report the requested active lane after moving lanes.");
     }
@@ -294,9 +294,9 @@ public class ZetlProjectServiceTests
             new CreateProjectCommand
             {
                 Name = "One Shot",
-                Kind = ZetlStateStore.TemporaryConsumableProjectKind,
+                Kind = ZetlStateRules.TemporaryConsumableProjectKind,
                 SourceTemplateId = "template",
-                TemporaryLane = ZetlStateStore.ShiftLane,
+                TemporaryLane = ZetlStateRules.ShiftLane,
                 ActivateShifted = true,
                 Buckets = [new CreateBucketDefinition { Name = "Queue" }]
             }));
@@ -304,8 +304,8 @@ public class ZetlProjectServiceTests
             ?? throw new InvalidOperationException("Create did not return a project snapshot.");
 
         AssertEqual(ZetlResponseStatus.Success, response.Status, "Shift-lane temporary creation should succeed when activated in Shift.");
-        AssertEqual(ZetlStateStore.TemporaryConsumableProjectKind, snapshot.Kind, "Snapshot should expose the project kind.");
-        AssertEqual(ZetlStateStore.ShiftLane, snapshot.TemporaryLane, "Snapshot should expose the owning lane.");
+        AssertEqual(ZetlStateRules.TemporaryConsumableProjectKind, snapshot.Kind, "Snapshot should expose the project kind.");
+        AssertEqual(ZetlStateRules.ShiftLane, snapshot.TemporaryLane, "Snapshot should expose the owning lane.");
         AssertEqual(snapshot.Id, store.ShiftActiveProject?.Id, "The created temporary project should be Shift-lane active.");
         AssertEqual<ZetlProject?>(null, store.ActiveProject, "Creating in Shift should not activate the normal lane.");
     }
@@ -322,9 +322,9 @@ public class ZetlProjectServiceTests
             new CreateProjectCommand
             {
                 Name = "One Shot",
-                Kind = ZetlStateStore.TemporaryConsumableProjectKind,
+                Kind = ZetlStateRules.TemporaryConsumableProjectKind,
                 SourceTemplateId = "template",
-                TemporaryLane = ZetlStateStore.ShiftLane,
+                TemporaryLane = ZetlStateRules.ShiftLane,
                 Buckets = [new CreateBucketDefinition { Name = "Queue" }]
             }));
 
@@ -346,7 +346,7 @@ public class ZetlProjectServiceTests
             store.TryConsumeReplaySlipToReview(source, queue, first.Id, out var reviewBucket),
             "Replay consume should create a review bucket.");
         store.SetBucketKind(queue, "Standard");
-        store.SetProjectStatus(source, ZetlStateStore.ArchivedStatus);
+        store.SetProjectStatus(source, ZetlStateRules.ArchivedStatus);
         var service = new ZetlProjectService(store);
 
         var list = service.Execute(new ZetlCommandEnvelope
@@ -362,7 +362,7 @@ public class ZetlProjectServiceTests
             new CreateTemporaryProjectFromReplayCommand
             {
                 Name = "Temporary Replay",
-                TemporaryLane = ZetlStateStore.NormalLane,
+                TemporaryLane = ZetlStateRules.NormalLane,
                 ActivateShifted = false
             },
             source.Id));
@@ -379,8 +379,8 @@ public class ZetlProjectServiceTests
             sourceSummary?.CanCreateTemporaryFromReplay == true,
             "Archived projects with only a replay review link should be eligible.");
         AssertEqual(ZetlResponseStatus.Success, create.Status, "Replay source should create a temporary project.");
-        AssertEqual(ZetlStateStore.TemporaryConsumableProjectKind, created.Kind, "Created project should be temporary.");
-        AssertEqual(ZetlStateStore.NormalLane, created.TemporaryLane, "Created project should use the requested lane.");
+        AssertEqual(ZetlStateRules.TemporaryConsumableProjectKind, created.Kind, "Created project should be temporary.");
+        AssertEqual(ZetlStateRules.NormalLane, created.TemporaryLane, "Created project should use the requested lane.");
         AssertEqual(created.Id, store.State.ActiveProjectId, "Created temporary project should occupy the requested lane.");
         AssertEqual("Replay", targetQueue.Settings.Kind, "Recovered queue should be replayable.");
         AssertTrue(
@@ -395,7 +395,7 @@ public class ZetlProjectServiceTests
         AssertTrue(
             created.Slips.All(slip => string.Equals(slip.SessionId, "service-session", StringComparison.Ordinal)),
             "Recovered slips need the current session id so Replay can consume them immediately.");
-        AssertEqual(ZetlStateStore.ArchivedStatus, source.Status, "The source archived project should remain archived.");
+        AssertEqual(ZetlStateRules.ArchivedStatus, source.Status, "The source archived project should remain archived.");
     }
 
     [Fact] public void SlipInclusionToggleRoundTrips()
@@ -748,8 +748,8 @@ public class ZetlProjectServiceTests
         // An automatic copy followed by a divider.
         store.SetActiveProject(project.Id);
         store.SetActiveBucket(project, bucket.Id);
-        var note = store.AddSlip(bucket, "value", ZetlStateStore.AutoCopySource);
-        store.AddSlip(bucket, "", ZetlStateStore.AutoCopySource, blockKind: "divider");
+        var note = store.AddSlip(bucket, "value", ZetlStateRules.AutoCopySource);
+        store.AddSlip(bucket, "", ZetlStateRules.AutoCopySource, blockKind: "divider");
 
         // A trailing divider must not shadow the copy above it: pass-through only
         // looks at the latest copy, and a structural slip isn't one.
@@ -850,7 +850,7 @@ public class ZetlProjectServiceTests
         AssertEqual(note.Id, reloadedInbox.Slips.Single().Id, "The bucket's slips should stay live.");
         AssertEqual(
             1,
-            reloadedProject.Buckets.Count(ZetlStateStore.IsScratchBucket),
+            reloadedProject.Buckets.Count(ZetlStateRules.IsScratchBucket),
             "There should still be exactly one Scratch bucket.");
     }
 
@@ -1348,11 +1348,11 @@ public class ZetlProjectServiceTests
 
         AssertEqual(ZetlResponseStatus.Success, response.Status, "ListProjects should succeed.");
         AssertEqual(
-            ZetlStateStore.NormalLane,
+            ZetlStateRules.NormalLane,
             summaries.Single(project => project.Id == main.Id).ActiveLane,
             "The normal active project should be marked Main/Normal.");
         AssertEqual(
-            ZetlStateStore.ShiftLane,
+            ZetlStateRules.ShiftLane,
             summaries.Single(project => project.Id == alternate.Id).ActiveLane,
             "The Shift active project should be marked Alternate/Shift.");
         AssertEqual(
@@ -1465,13 +1465,13 @@ public class ZetlProjectServiceTests
         var service = new ZetlProjectService(store);
 
         AssertEqual(
-            ZetlStateStore.ActiveStatus,
+            ZetlStateRules.ActiveStatus,
             project.Status,
             "A new project should start Active.");
 
         // Finish the project (revision-checked).
         var finish = service.Execute(SetStatusCommand(
-            "status-finish", project.Id, ZetlStateStore.FinishedStatus, project.MetadataRevision));
+            "status-finish", project.Id, ZetlStateRules.FinishedStatus, project.MetadataRevision));
         var finished = finish.Payload?.Deserialize<ZetlProjectSnapshot>(ZetlProtocolJson.Options)
             ?? throw new InvalidOperationException("SetProjectStatus returned no snapshot.");
         AssertEqual(ZetlResponseStatus.Success, finish.Status, "Finishing should succeed.");
@@ -1484,7 +1484,7 @@ public class ZetlProjectServiceTests
 
         // A stale revision is rejected and leaves the status untouched.
         var stale = service.Execute(SetStatusCommand(
-            "status-stale", project.Id, ZetlStateStore.ArchivedStatus, finished.MetadataRevision - 1));
+            "status-stale", project.Id, ZetlStateRules.ArchivedStatus, finished.MetadataRevision - 1));
         AssertEqual(ZetlResponseStatus.Conflict, stale.Status, "A stale status edit should conflict.");
         AssertEqual("Finished", project.Status, "A stale status edit must not change the project.");
 
@@ -1497,7 +1497,7 @@ public class ZetlProjectServiceTests
         // Reactivating restores the status but not the lane: making a lane active
         // again is an explicit Zetl choice, not a side effect of un-sealing.
         var reactivate = service.Execute(SetStatusCommand(
-            "status-reactivate", project.Id, ZetlStateStore.ActiveStatus, finished.MetadataRevision));
+            "status-reactivate", project.Id, ZetlStateRules.ActiveStatus, finished.MetadataRevision));
         AssertEqual(ZetlResponseStatus.Success, reactivate.Status, "Reactivating should succeed.");
         AssertEqual("Active", project.Status, "Reactivating should restore Active.");
         AssertEqual<ZetlProject?>(

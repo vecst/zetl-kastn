@@ -560,7 +560,7 @@ internal partial class MainWindow
             temporary: useTemporary);
         create = create with
         {
-            ActivateShifted = string.Equals(temporaryLane, ZetlStateStore.ShiftLane, StringComparison.Ordinal)
+            ActivateShifted = string.Equals(temporaryLane, ZetlStateRules.ShiftLane, StringComparison.Ordinal)
         };
 
         var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
@@ -623,15 +623,15 @@ internal partial class MainWindow
         var choice = await KastnDialogs.PickTemporaryTemplateLaneAsync(
             this,
             template.Name,
-            LaneLabel(ZetlStateStore.NormalLane),
-            LaneLabel(ZetlStateStore.ShiftLane));
+            LaneLabel(ZetlStateRules.NormalLane),
+            LaneLabel(ZetlStateRules.ShiftLane));
         if (choice is null)
         {
             return null;
         }
 
-        var lane = ZetlStateStore.CanonicalTemporaryLane(choice.Lane)
-            ?? ZetlStateStore.NormalLane;
+        var lane = ZetlStateRules.CanonicalTemporaryLane(choice.Lane)
+            ?? ZetlStateRules.NormalLane;
         if (choice.Remember)
         {
             settingsStore.Settings.KastnTemporaryTemplateLaneDefault = lane;

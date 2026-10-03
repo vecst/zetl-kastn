@@ -7,13 +7,13 @@ internal static class ZetlProjectSnapshotMapper
     public static ZetlProjectSummary ToSummary(ZetlProject project)
     {
         var visibleBuckets = project.Buckets
-            .Where(bucket => !ZetlStateStore.IsDeletedBucket(bucket))
+            .Where(bucket => !ZetlStateRules.IsDeletedBucket(bucket))
             .ToList();
         var visibleSlips = visibleBuckets
             .SelectMany(bucket => bucket.Slips)
             .ToList();
         var deletedSlipCount = project.Buckets
-            .Where(ZetlStateStore.IsDeletedBucket)
+            .Where(ZetlStateRules.IsDeletedBucket)
             .Sum(bucket => bucket.Slips.Count);
 
         return new ZetlProjectSummary
@@ -188,12 +188,12 @@ internal static class ZetlProjectSnapshotMapper
     private static string SummaryPreviewText(ZetlProject project)
     {
         var snippets = project.Buckets
-            .Where(bucket => !ZetlStateStore.IsDeletedBucket(bucket))
+            .Where(bucket => !ZetlStateRules.IsDeletedBucket(bucket))
             .SelectMany(bucket => bucket.Slips)
             .Where(slip => !string.IsNullOrWhiteSpace(slip.Title) || !string.IsNullOrWhiteSpace(slip.Text))
             .OrderByDescending(slip => slip.CreatedAtUtc)
             .Take(3)
-            .Select(slip => ZetlStateStore.PreviewText(
+            .Select(slip => ZetlStateRules.PreviewText(
                 string.IsNullOrWhiteSpace(slip.Title) ? slip.Text : slip.Title))
             .ToList();
 

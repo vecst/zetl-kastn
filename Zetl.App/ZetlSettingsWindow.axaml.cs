@@ -140,8 +140,8 @@ internal partial class ZetlSettingsWindow : Window
         kastnTemporaryTemplateLaneBox.SelectedIndex =
             ZetlKastnTemplateLaneDefault.Normalize(settings.KastnTemporaryTemplateLaneDefault) switch
             {
-                ZetlStateStore.NormalLane => 1,
-                ZetlStateStore.ShiftLane => 2,
+                ZetlStateRules.NormalLane => 1,
+                ZetlStateRules.ShiftLane => 2,
                 _ => 0
             };
         kastnMainLaneLabelBox.TextChanged += (_, _) => RefreshKastnLaneChoices();
@@ -406,8 +406,8 @@ internal partial class ZetlSettingsWindow : Window
     public bool KastnCloseToTray => kastnCloseToTrayBox.IsChecked == true;
     public string KastnTemporaryTemplateLaneDefault => kastnTemporaryTemplateLaneBox.SelectedIndex switch
     {
-        1 => ZetlStateStore.NormalLane,
-        2 => ZetlStateStore.ShiftLane,
+        1 => ZetlStateRules.NormalLane,
+        2 => ZetlStateRules.ShiftLane,
         _ => ZetlKastnTemplateLaneDefault.Ask
     };
     public bool KastnPreferSlipKindOverBucketKind => kastnPreferSlipKindOverBucketKindBox.IsChecked == true;

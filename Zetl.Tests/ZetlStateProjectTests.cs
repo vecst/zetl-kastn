@@ -29,9 +29,9 @@ public class ZetlStateProjectTests
             "One Shot",
             ["Queue"],
             "Queue",
-            kind: ZetlStateStore.TemporaryConsumableProjectKind,
+            kind: ZetlStateRules.TemporaryConsumableProjectKind,
             sourceTemplateId: "template",
-            temporaryLane: ZetlStateStore.NormalLane);
+            temporaryLane: ZetlStateRules.NormalLane);
 
         AssertEqual(project.Id, store.ActiveProject?.Id, "The temporary project should stay active in its lane.");
         AssertTrue(
@@ -54,9 +54,9 @@ public class ZetlStateProjectTests
             "One Shot",
             ["Queue"],
             "Queue",
-            kind: ZetlStateStore.TemporaryConsumableProjectKind,
+            kind: ZetlStateRules.TemporaryConsumableProjectKind,
             sourceTemplateId: "template",
-            temporaryLane: ZetlStateStore.NormalLane);
+            temporaryLane: ZetlStateRules.NormalLane);
 
         store.ClearActiveProject();
 
@@ -81,9 +81,9 @@ public class ZetlStateProjectTests
             ["Queue"],
             "Queue",
             shifted: true,
-            kind: ZetlStateStore.TemporaryConsumableProjectKind,
+            kind: ZetlStateRules.TemporaryConsumableProjectKind,
             sourceTemplateId: "template",
-            temporaryLane: ZetlStateStore.ShiftLane);
+            temporaryLane: ZetlStateRules.ShiftLane);
         JsonFile.WriteAtomic(
             System.IO.Path.Combine(System.IO.Path.GetDirectoryName(temp.Path)!, "workspace.json"),
             new ZetlWorkspaceFile { Version = 1 });
@@ -105,9 +105,9 @@ public class ZetlStateProjectTests
             "Personal info",
             ["Fields"],
             "Fields",
-            kind: ZetlStateStore.TemporaryConsumableProjectKind,
+            kind: ZetlStateRules.TemporaryConsumableProjectKind,
             sourceTemplateId: "personal-info",
-            temporaryLane: ZetlStateStore.NormalLane);
+            temporaryLane: ZetlStateRules.NormalLane);
         var fields = form.Buckets.First(bucket => bucket.Name == "Fields");
         store.SetBucketKind(fields, "Replay");
 
@@ -145,7 +145,7 @@ public class ZetlStateProjectTests
         AssertFalse(finish.Deleted, "A kept consumable stays.");
         AssertEqual<string?>(null, finish.ReturnedTo, "There was nothing to go back to.");
         AssertEqual<ZetlProject?>(null, store.ActiveProject, "The lane goes back to no project.");
-        AssertFalse(ZetlStateStore.IsReplayBucket(fields), "Its emptied bucket turns Standard.");
+        AssertFalse(ZetlStateRules.IsReplayBucket(fields), "Its emptied bucket turns Standard.");
         AssertTrue(store.State.Projects.Any(item => item.Id == form.Id), "The kept project stays for review.");
 
         var reloaded = new ZetlStateStore(temp.Path);
@@ -166,8 +166,8 @@ public class ZetlStateProjectTests
             ["Fields"],
             "Fields",
             shifted: true,
-            kind: ZetlStateStore.TemporaryConsumableProjectKind,
-            temporaryLane: ZetlStateStore.ShiftLane);
+            kind: ZetlStateRules.TemporaryConsumableProjectKind,
+            temporaryLane: ZetlStateRules.ShiftLane);
         var fields = form.Buckets.First(bucket => bucket.Name == "Fields");
         store.SetBucketKind(fields, "Replay");
 
@@ -192,7 +192,7 @@ public class ZetlStateProjectTests
 
         AssertEqual<string?>(null, finish.ReturnedTo, "An ordinary project has nowhere to return to.");
         AssertEqual(work.Id, store.ActiveProject?.Id, "It stays active.");
-        AssertFalse(ZetlStateStore.IsReplayBucket(queue), "The bucket turns Standard.");
+        AssertFalse(ZetlStateRules.IsReplayBucket(queue), "The bucket turns Standard.");
     }
 
     [Fact(DisplayName = "Zetl state finds the most recently written project")]
@@ -332,7 +332,7 @@ public class ZetlStateProjectTests
         AssertEqual("Newer", names[0], "The latest note leads.");
         AssertEqual("Older", names[1], "Older notes follow.");
         AssertTrue(
-            names.IndexOf("Blank") > 1 && names.IndexOf(ZetlStateStore.LogProjectName) > 1,
+            names.IndexOf("Blank") > 1 && names.IndexOf(ZetlStateRules.LogProjectName) > 1,
             $"Projects without notes, and the logs, come after written ones (got {string.Join(", ", names)}).");
         AssertEqual("Newer", store.GetMostRecentCompilableProject()?.Name, "The latest written project compiles.");
 
@@ -535,10 +535,10 @@ public class ZetlStateProjectTests
             3);
 
         AssertEqual("Vehicle Entry", bucket.Name, "Bucket settings should rename the bucket.");
-        AssertTrue(ZetlStateStore.IsReplayBucket(bucket), "Bucket settings should set the current kind.");
+        AssertTrue(ZetlStateRules.IsReplayBucket(bucket), "Bucket settings should set the current kind.");
         AssertEqual("Replay", bucket.Settings.DefaultKind, "Default kind should persist in memory.");
         AssertEqual("TSV", bucket.Settings.DefaultCompileMode, "Compile mode should persist in memory.");
-        AssertEqual(3, store.GetBucketTsvRowLength(bucket), "Header count should infer TSV row length.");
+        AssertEqual(3, ZetlComposeOutput.TsvRowLength(bucket), "Header count should infer TSV row length.");
 
         store.SetBucketKind(bucket, "Standard");
         AssertEqual("Replay", bucket.Settings.DefaultKind, "Changing current kind should not erase default kind.");
@@ -549,7 +549,7 @@ public class ZetlStateProjectTests
         AssertEqual("Replay", loadedBucket.Settings.DefaultKind, "Default kind should round-trip.");
         AssertEqual("TSV", loadedBucket.Settings.DefaultCompileMode, "Compile mode should round-trip.");
         AssertEqual("VIN\nMake\nModel", loadedBucket.Settings.DefaultStartingText.ReplaceLineEndings("\n"), "Starting text should round-trip.");
-        AssertEqual(3, loaded.GetBucketTsvRowLength(loadedBucket), "Inferred TSV length should round-trip.");
+        AssertEqual(3, ZetlComposeOutput.TsvRowLength(loadedBucket), "Inferred TSV length should round-trip.");
     }
 
     [Fact(DisplayName = "Zetl state finds last active note")]
@@ -580,7 +580,7 @@ public class ZetlStateProjectTests
 
         store.AppendLogSlips(["[09:00:00] one", "[09:00:01] two"], maxDayBuckets: 14, maxNotesPerBucket: 1000);
 
-        var logProject = store.State.Projects.Single(project => project.Name == ZetlStateStore.LogProjectName);
+        var logProject = store.State.Projects.Single(project => project.Name == ZetlStateRules.LogProjectName);
         AssertEqual(activeBefore, store.State.ActiveProjectId, "Logging should not change the active project.");
         var today = DateTime.Now.ToString("yyyy-MM-dd");
         var dayBucket = logProject.Buckets.Single(bucket => bucket.Name == today);
@@ -592,7 +592,7 @@ public class ZetlStateProjectTests
         AssertEqual("e", logProject.Buckets.Single(bucket => bucket.Name == today).Slips[^1].Text, "Capping should keep the newest notes.");
 
         var reloaded = new ZetlStateStore(temp.Path);
-        AssertTrue(reloaded.State.Projects.Any(project => project.Name == ZetlStateStore.LogProjectName), "Log project should persist across reload.");
+        AssertTrue(reloaded.State.Projects.Any(project => project.Name == ZetlStateRules.LogProjectName), "Log project should persist across reload.");
         AssertEqual("Work", reloaded.ActiveProject?.Name, "Logging should leave the real active project untouched across reload.");
     }
 

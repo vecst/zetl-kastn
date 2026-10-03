@@ -16,8 +16,8 @@ public class ZetlPassThroughTests
         var store = new ZetlStateStore(temp.Path);
         store.CreateProject("Demo", ["Inbox"], "Inbox");
         var bucket = store.ActiveBucket!;
-        store.AddSlip(bucket, "alpha", ZetlStateStore.AutoCopySource);
-        store.AddSlip(bucket, "beta", ZetlStateStore.AutoCopySource);
+        store.AddSlip(bucket, "alpha", ZetlStateRules.AutoCopySource);
+        store.AddSlip(bucket, "beta", ZetlStateRules.AutoCopySource);
         AssertFalse(PassThrough(store, "alpha"), "Only the latest automatic copy passes through.");
         AssertTrue(PassThrough(store, "beta"), "Pasting the latest automatic copy passes it through.");
         AssertEqual("alpha", bucket.Slips.Single().Text, "The earlier copy stays.");
@@ -36,7 +36,7 @@ public class ZetlPassThroughTests
             "Behind a held capture, alpha is still the latest automatic copy.");
         AssertEqual(bucket.Id, passedBucket?.Id, "Pass-through reports the source bucket.");
         AssertEqual("alpha", passedSlip?.Text, "Pass-through reports the slip it set aside.");
-        AssertEqual(ZetlStateStore.PassedThroughBucketName, reviewBucket?.Name, "Set aside in Passed Through.");
+        AssertEqual(ZetlStateRules.PassedThroughBucketName, reviewBucket?.Name, "Set aside in Passed Through.");
         store.RestorePassedThroughSlip(passedBucket!, passedSlip!, reviewBucket, reviewSlip?.Id);
         AssertEqual(2, bucket.Slips.Count, "Undo puts the copy back beside the held capture.");
         AssertEqual(1, reviewBucket!.Slips.Count, "Undo takes it back out of Passed Through.");
@@ -49,12 +49,12 @@ public class ZetlPassThroughTests
         var store = new ZetlStateStore(temp.Path);
         var project = store.CreateProject("Demo", ["Inbox"], "Inbox");
         var source = store.ActiveBucket!;
-        store.AddSlip(source, "durable text", ZetlStateStore.AutoCopySource);
+        store.AddSlip(source, "durable text", ZetlStateRules.AutoCopySource);
 
         AssertTrue(
             store.TryPassThroughLatestCopy("durable text", null, false, out _, out _, out var review, out _),
             "Passing text through should set the slip aside.");
-        AssertEqual(ZetlStateStore.PassedThroughBucketName, review?.Name, "Set aside in Passed Through.");
+        AssertEqual(ZetlStateRules.PassedThroughBucketName, review?.Name, "Set aside in Passed Through.");
 
         var reloaded = new ZetlStateStore(temp.Path);
         var loadedProject = reloaded.State.Projects.Single(item => item.Id == project.Id);
@@ -77,7 +77,7 @@ public class ZetlPassThroughTests
             project,
             source,
             new ZetlClipboardImage(bytes, 7, 1),
-            ZetlStateStore.AutoCopySource);
+            ZetlStateRules.AutoCopySource);
 
         AssertTrue(
             store.TryPassThroughLatestCopy(null, image.Image!.Sha256, false, out _, out _, out _, out _),
@@ -107,7 +107,7 @@ public class ZetlPassThroughTests
             project,
             source,
             new ZetlClipboardImage(bytes, 2, 2),
-            ZetlStateStore.AutoCopySource,
+            ZetlStateRules.AutoCopySource,
             caption: "mixed",
             preferTextContent: true,
             richHtml: html,
@@ -150,7 +150,7 @@ public class ZetlPassThroughTests
         var store = new ZetlStateStore(temp.Path);
         store.CreateProject("Demo", ["Queue"], "Queue");
         var queue = store.ActiveBucket!;
-        store.AddSlip(queue, "queued", ZetlStateStore.AutoCopySource);
+        store.AddSlip(queue, "queued", ZetlStateRules.AutoCopySource);
         store.SetBucketKind(queue, "Replay");
 
         AssertFalse(PassThrough(store, "queued"), "Replay owns its queue; pass-through leaves it alone.");
@@ -169,7 +169,7 @@ public class ZetlPassThroughTests
             project,
             bucket,
             new ZetlClipboardImage(bytes, 3, 1),
-            ZetlStateStore.AutoCopySource,
+            ZetlStateRules.AutoCopySource,
             caption: "A1\tB1",
             preferTextContent: true);
         // The paste re-offers both formats, exactly as the original copy did.
@@ -199,7 +199,7 @@ public class ZetlPassThroughTests
         var store = new ZetlStateStore(temp.Path);
         store.CreateProject("Demo", ["Inbox"], "Inbox");
         var bucket = store.GetActiveBucket()!;
-        store.AddSlip(bucket, "paste once", ZetlStateStore.AutoCopySource);
+        store.AddSlip(bucket, "paste once", ZetlStateRules.AutoCopySource);
         var clipboard = new FakeClipboard("paste once", changeToken: 1);
         var notifications = new FakeNotificationSink();
         var coordinator = CreateShortcutCoordinator(
@@ -215,7 +215,7 @@ public class ZetlPassThroughTests
         AssertFalse(handled, "The physical paste goes through.");
         AssertEqual(0, bucket.Slips.Count, "The pasted copy doesn't stay in the bucket.");
         AssertEqual(
-            ZetlStateStore.PassedThroughBucketName,
+            ZetlStateRules.PassedThroughBucketName,
             store.ActiveProject!.Buckets.Single(item => item.Slips.Count == 1).Name,
             "It's set aside in Passed Through.");
         AssertEqual(
@@ -235,7 +235,7 @@ public class ZetlPassThroughTests
         var store = new ZetlStateStore(temp.Path);
         store.CreateProject("Demo", ["Inbox"], "Inbox");
         var bucket = store.GetActiveBucket()!;
-        store.AddSlip(bucket, "work quote", ZetlStateStore.AutoCopySource);
+        store.AddSlip(bucket, "work quote", ZetlStateRules.AutoCopySource);
         var clipboard = new FakeClipboard("work quote", changeToken: 1);
         var notifications = new FakeNotificationSink();
         var now = DateTimeOffset.Parse("2026-10-02T12:00:00Z");
@@ -260,7 +260,7 @@ public class ZetlPassThroughTests
             "The toast says it's for now.");
         AssertFalse(coordinator.Inner.IsPassThroughOn(true), "The Shift lane keeps its own state.");
 
-        store.AddSlip(bucket, "link for a friend", ZetlStateStore.AutoCopySource);
+        store.AddSlip(bucket, "link for a friend", ZetlStateRules.AutoCopySource);
         clipboard.SetState("link for a friend", changeToken: 2);
         coordinator.OnTapDispatched(ShortcutContext(VK_V));
         AssertEqual("work quote", bucket.Slips.Single().Text, "The friend's link passes through.");
@@ -300,7 +300,7 @@ public class ZetlPassThroughTests
             project,
             bucket,
             new ZetlClipboardImage(bytes, 5, 1),
-            ZetlStateStore.AutoCopySource);
+            ZetlStateRules.AutoCopySource);
         var clipboard = new FakeClipboard(null, changeToken: 1)
         {
             Image = new ZetlClipboardImage(bytes, 5, 1)

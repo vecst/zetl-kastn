@@ -15,9 +15,9 @@ internal partial class BucketSettingsWindow : Window
         ZetlWindowPlacement.Track(this);
 
         bucketNameBox.Text = bucket.Name;
-        bucketNameBox.IsEnabled = !ZetlStateStore.IsScratchBucket(bucket);
+        bucketNameBox.IsEnabled = !ZetlStateRules.IsScratchBucket(bucket);
         defaultKindBox.ItemsSource = new[] { "Standard", "Replay" };
-        defaultKindBox.SelectedItem = ZetlStateStore.IsReplayKind(bucket.Settings.DefaultKind)
+        defaultKindBox.SelectedItem = ZetlStateRules.IsReplayKind(bucket.Settings.DefaultKind)
             ? "Replay"
             : "Standard";
         compileModeBox.ItemsSource = new[] { "Formatted", "Plain", "TSV" };
@@ -25,7 +25,7 @@ internal partial class BucketSettingsWindow : Window
             ? bucket.Settings.DefaultCompileMode
             : "Formatted";
         defaultStartingTextBox.Text = bucket.Settings.DefaultStartingText ?? "";
-        tsvRowLengthBox.Value = Math.Clamp(store.GetBucketTsvRowLength(bucket), 1, 1000);
+        tsvRowLengthBox.Value = Math.Clamp(ZetlComposeOutput.TsvRowLength(bucket), 1, 1000);
 
         defaultStartingTextBox.TextChanged += (_, _) =>
         {

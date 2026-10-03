@@ -1428,7 +1428,7 @@ internal partial class MainWindow
             false,
             string.Equals(
                 currentProject.Kind,
-                ZetlStateStore.TemporaryConsumableProjectKind,
+                ZetlStateRules.TemporaryConsumableProjectKind,
                 StringComparison.Ordinal)));
     }
 
@@ -1560,8 +1560,8 @@ internal partial class MainWindow
         var laneChoice = await KastnDialogs.PickTemporaryTemplateLaneAsync(
             this,
             project.Name,
-            LaneLabel(ZetlStateStore.NormalLane),
-            LaneLabel(ZetlStateStore.ShiftLane),
+            LaneLabel(ZetlStateRules.NormalLane),
+            LaneLabel(ZetlStateRules.ShiftLane),
             title: "Use Temporarily",
             prompt: $"Create a temporary project from '{project.Name}' in which lane?",
             confirmText: "Create Temporary",
@@ -1571,8 +1571,8 @@ internal partial class MainWindow
             return;
         }
 
-        var lane = ZetlStateStore.CanonicalTemporaryLane(laneChoice.Lane)
-            ?? ZetlStateStore.NormalLane;
+        var lane = ZetlStateRules.CanonicalTemporaryLane(laneChoice.Lane)
+            ?? ZetlStateRules.NormalLane;
         var name = await KastnDialogs.PromptAsync(
             this,
             "Temporary Project",
@@ -1594,7 +1594,7 @@ internal partial class MainWindow
             {
                 Name = name.Trim(),
                 TemporaryLane = lane,
-                ActivateShifted = string.Equals(lane, ZetlStateStore.ShiftLane, StringComparison.Ordinal)
+                ActivateShifted = string.Equals(lane, ZetlStateRules.ShiftLane, StringComparison.Ordinal)
             },
             project.Id));
         if (response.Status == ZetlResponseStatus.Success)

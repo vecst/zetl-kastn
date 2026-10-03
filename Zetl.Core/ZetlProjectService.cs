@@ -146,7 +146,7 @@ internal sealed class ZetlProjectService
         var summaries = store.State.Projects
             .Where(project => !string.Equals(
                 project.Name,
-                ZetlStateStore.LogProjectName,
+                ZetlStateRules.LogProjectName,
                 StringComparison.OrdinalIgnoreCase))
             .OrderBy(project => project.Name, StringComparer.OrdinalIgnoreCase)
             .Select(project => ZetlProjectSnapshotMapper.ToSummary(project) with
@@ -162,12 +162,12 @@ internal sealed class ZetlProjectService
     {
         if (string.Equals(store.State.ActiveProjectId, projectId, StringComparison.Ordinal))
         {
-            return ZetlStateStore.NormalLane;
+            return ZetlStateRules.NormalLane;
         }
 
         if (string.Equals(store.State.ShiftActiveProjectId, projectId, StringComparison.Ordinal))
         {
-            return ZetlStateStore.ShiftLane;
+            return ZetlStateRules.ShiftLane;
         }
 
         return "";
@@ -177,17 +177,17 @@ internal sealed class ZetlProjectService
     {
         // The project a consumable will hand its lane back to when it finishes.
         if (store.GetActiveProject() is { } main
-            && ZetlStateStore.IsConsumableProject(main)
+            && ZetlStateRules.IsConsumableProject(main)
             && string.Equals(main.ReturnProjectId, projectId, StringComparison.Ordinal))
         {
-            return ZetlStateStore.NormalLane;
+            return ZetlStateRules.NormalLane;
         }
 
         if (store.GetActiveProject(shifted: true) is { } alternate
-            && ZetlStateStore.IsConsumableProject(alternate)
+            && ZetlStateRules.IsConsumableProject(alternate)
             && string.Equals(alternate.ReturnProjectId, projectId, StringComparison.Ordinal))
         {
-            return ZetlStateStore.ShiftLane;
+            return ZetlStateRules.ShiftLane;
         }
 
         return "";
@@ -260,15 +260,15 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "bucket_name_required", "Every initial bucket requires a name.");
         }
 
-        var kind = ZetlStateStore.NormalizeProjectKind(payload.Kind);
-        var temporaryLane = ZetlStateStore.CanonicalTemporaryLane(payload.TemporaryLane);
-        if (string.Equals(kind, ZetlStateStore.TemporaryConsumableProjectKind, StringComparison.Ordinal)
+        var kind = ZetlStateRules.NormalizeProjectKind(payload.Kind);
+        var temporaryLane = ZetlStateRules.CanonicalTemporaryLane(payload.TemporaryLane);
+        if (string.Equals(kind, ZetlStateRules.TemporaryConsumableProjectKind, StringComparison.Ordinal)
             && temporaryLane is null)
         {
             return ValidationError(command, "temporary_lane_required", "Temporary projects require a valid lane.");
         }
-        var activationLane = payload.ActivateShifted ? ZetlStateStore.ShiftLane : ZetlStateStore.NormalLane;
-        if (string.Equals(kind, ZetlStateStore.TemporaryConsumableProjectKind, StringComparison.Ordinal)
+        var activationLane = payload.ActivateShifted ? ZetlStateRules.ShiftLane : ZetlStateRules.NormalLane;
+        if (string.Equals(kind, ZetlStateRules.TemporaryConsumableProjectKind, StringComparison.Ordinal)
             && !string.Equals(temporaryLane, activationLane, StringComparison.Ordinal))
         {
             return ValidationError(command, "temporary_lane_mismatch", "Temporary project lane must match the activation lane.");
@@ -348,13 +348,13 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "project_name_required", "A project name is required.");
         }
 
-        var temporaryLane = ZetlStateStore.CanonicalTemporaryLane(payload.TemporaryLane);
+        var temporaryLane = ZetlStateRules.CanonicalTemporaryLane(payload.TemporaryLane);
         if (temporaryLane is null)
         {
             return ValidationError(command, "temporary_lane_required", "Temporary projects require a valid lane.");
         }
 
-        var activationLane = payload.ActivateShifted ? ZetlStateStore.ShiftLane : ZetlStateStore.NormalLane;
+        var activationLane = payload.ActivateShifted ? ZetlStateRules.ShiftLane : ZetlStateRules.NormalLane;
         if (!string.Equals(temporaryLane, activationLane, StringComparison.Ordinal))
         {
             return ValidationError(
@@ -397,7 +397,7 @@ internal sealed class ZetlProjectService
             return NotFound(command, ZetlEntityKind.Project, command.ProjectId!);
         }
 
-        if (!ZetlStateStore.IsActiveStatus(project))
+        if (!ZetlStateRules.IsActiveStatus(project))
         {
             return ValidationError(
                 command,
@@ -446,7 +446,7 @@ internal sealed class ZetlProjectService
         }
 
         var payload = Payload<SetProjectStatusCommand>(command);
-        var status = ZetlStateStore.CanonicalProjectStatus(payload.Status);
+        var status = ZetlStateRules.CanonicalProjectStatus(payload.Status);
         if (status is null)
         {
             return ValidationError(
@@ -649,7 +649,7 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "bucket_name_required", "A bucket name is required.");
         }
 
-        if (ZetlStateStore.IsReservedBucketName(payload.Name))
+        if (ZetlStateRules.IsReservedBucketName(payload.Name))
         {
             return ReservedBucketName(command);
         }
@@ -690,9 +690,9 @@ internal sealed class ZetlProjectService
 
         // The protected buckets keep their own names; only another bucket taking
         // a reserved name is refused.
-        if (ZetlStateStore.IsReservedBucketName(payload.Name)
-            && !ZetlStateStore.IsScratchBucket(bucket)
-            && !ZetlStateStore.IsDeletedBucket(bucket))
+        if (ZetlStateRules.IsReservedBucketName(payload.Name)
+            && !ZetlStateRules.IsScratchBucket(bucket)
+            && !ZetlStateRules.IsDeletedBucket(bucket))
         {
             return ReservedBucketName(command);
         }
@@ -734,7 +734,7 @@ internal sealed class ZetlProjectService
             return conflict;
         }
 
-        if (ZetlStateStore.IsDeletedBucket(bucket))
+        if (ZetlStateRules.IsDeletedBucket(bucket))
         {
             return ValidationError(command, "deleted_bucket_protected", "The Deleted bucket has no heading.");
         }
@@ -766,12 +766,12 @@ internal sealed class ZetlProjectService
             return conflict;
         }
 
-        if (ZetlStateStore.IsScratchBucket(bucket))
+        if (ZetlStateRules.IsScratchBucket(bucket))
         {
             return ValidationError(command, "scratch_protected", "The Scratch bucket cannot be deleted.");
         }
 
-        if (ZetlStateStore.IsDeletedBucket(bucket))
+        if (ZetlStateRules.IsDeletedBucket(bucket))
         {
             return ValidationError(command, "deleted_bucket_protected", "The Deleted bucket cannot be deleted.");
         }
@@ -855,7 +855,7 @@ internal sealed class ZetlProjectService
             return ValidationError(command, "slip_content_required", "A slip title or note is required.");
         }
 
-        if (ZetlStateStore.IsDeletedBucket(bucket))
+        if (ZetlStateRules.IsDeletedBucket(bucket))
         {
             return ValidationError(command, "deleted_bucket_protected", "Deleted is not a capture target.");
         }
@@ -1140,7 +1140,7 @@ internal sealed class ZetlProjectService
             return conflict;
         }
 
-        if (ZetlStateStore.IsDeletedBucket(bucket))
+        if (ZetlStateRules.IsDeletedBucket(bucket))
         {
             return ValidationError(
                 command,
@@ -1166,7 +1166,7 @@ internal sealed class ZetlProjectService
         ValidationError(
             command,
             "bucket_name_reserved",
-            $"\"{ZetlStateStore.ScratchBucketName}\" and \"{ZetlStateStore.DeletedBucketName}\" are reserved bucket names.");
+            $"\"{ZetlStateRules.ScratchBucketName}\" and \"{ZetlStateRules.DeletedBucketName}\" are reserved bucket names.");
 
     private static ZetlBucketDefinition BucketDefinition(
         string name,

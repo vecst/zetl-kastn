@@ -101,7 +101,7 @@ public class ZetlRuntimeReplayTests
         AssertEqual("queued value", queue.Slips.Single().Text, "The Replay item waits for a text target.");
 
         store.SetBucketKind(queue, "Standard");
-        store.AddSlip(queue, "copied value", ZetlStateStore.AutoCopySource);
+        store.AddSlip(queue, "copied value", ZetlStateRules.AutoCopySource);
         clipboard.SetState("copied value", changeToken: 2);
         AssertFalse(coordinator.OnTapDispatched(ShortcutContext(VK_V)), "The file paste goes through.");
         AssertEqual(2, queue.Slips.Count, "A paste of files doesn't pass a copy through.");

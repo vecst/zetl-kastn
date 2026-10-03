@@ -65,14 +65,14 @@ internal sealed class ZetlTemplateDocument
         string? temporaryLane = null,
         bool? temporary = null)
     {
-        var lane = ZetlStateStore.CanonicalTemporaryLane(temporaryLane);
+        var lane = ZetlStateRules.CanonicalTemporaryLane(temporaryLane);
         var shouldCreateTemporary = (temporary ?? Temporary) && IsConsumable && lane is not null;
         return new CreateProjectCommand
         {
             Name = projectName,
             Kind = shouldCreateTemporary
-                ? ZetlStateStore.TemporaryConsumableProjectKind
-                : ZetlStateStore.StandardProjectKind,
+                ? ZetlStateRules.TemporaryConsumableProjectKind
+                : ZetlStateRules.StandardProjectKind,
             SourceTemplateId = shouldCreateTemporary ? Id : null,
             TemporaryLane = shouldCreateTemporary ? lane : null,
             Consumable = IsConsumable,
@@ -375,7 +375,7 @@ internal static class ZetlTemplateValidator
     // Bucket names Zetl manages itself; templates must not define them. Scratch is
     // always added to a new project, and Deleted is the protected soft-delete
     // bucket.
-    public static bool ReservedName(string name) => ZetlStateStore.IsReservedBucketName(name);
+    public static bool ReservedName(string name) => ZetlStateRules.IsReservedBucketName(name);
 
     private static void ValidateSettings(ZetlTemplateBucketDocument bucket, List<string> errors)
     {

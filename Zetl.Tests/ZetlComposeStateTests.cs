@@ -56,7 +56,7 @@ public class ZetlComposeStateTests
         store.AddSlip(ideas, "third", "copy");
 
         var notes = store.GetSlipDisplayItems(project);
-        var compiled = store.CompilePlainTextFromSlips(project,
+        var compiled = ZetlComposeOutput.PlainText(project,
         [
             notes.Single(item => item.Slip.Text == "first"),
             notes.Single(item => item.Slip.Text == "third")
@@ -81,7 +81,7 @@ public class ZetlComposeStateTests
         store.AddSlip(ideas, "third", "copy");
 
         var notes = store.GetSlipDisplayItems(project);
-        var compiled = store.CompileUnformattedFromSlips(
+        var compiled = ZetlComposeOutput.Unformatted(
         [
             notes.Single(item => item.Slip.Text == "first"),
             notes.Single(item => item.Slip.Text == "third")
@@ -103,7 +103,7 @@ public class ZetlComposeStateTests
         store.AddSlip(queue, $"four{Environment.NewLine}line", "copy");
         store.AddSlip(queue, "five\tcell", "copy");
 
-        var compiled = store.CompileTsvFromSlips(project, store.GetSlipDisplayItems(project), 3);
+        var compiled = ZetlComposeOutput.Tsv(store.GetSlipDisplayItems(project), 3);
         var expected = string.Join(Environment.NewLine,
         [
             "one\ttwo\tthree",
@@ -132,7 +132,7 @@ public class ZetlComposeStateTests
         store.AddSlip(vehicles, "f150", "copy");
         store.AddSlip(vehicles, "vin-2", "copy");
 
-        var compiled = store.CompileTsvFromSlips(project, store.GetSlipDisplayItems(project), store.GetBucketTsvRowLength(vehicles));
+        var compiled = ZetlComposeOutput.Tsv(store.GetSlipDisplayItems(project), ZetlComposeOutput.TsvRowLength(vehicles));
         var expected = string.Join(Environment.NewLine,
         [
             "VIN\tMake\tModel",
@@ -190,12 +190,12 @@ public class ZetlComposeStateTests
 
         var sessionNotes = newStore.GetSlipDisplayItems(loadedProject, null, currentSessionOnly: true);
         AssertEqual(1, sessionNotes.Count, "Session-only compile should list just the current-session note.");
-        var sessionCompiled = newStore.CompilePlainTextFromSlips(loadedProject, sessionNotes);
+        var sessionCompiled = ZetlComposeOutput.PlainText(loadedProject, sessionNotes);
         AssertFalse(sessionCompiled.Contains("old note"), "Session-only compile should omit old-session notes.");
         AssertTrue(sessionCompiled.Contains("new note"), "Session-only compile should include current-session notes.");
 
         var allNotes = newStore.GetSlipDisplayItems(loadedProject);
-        var allCompiled = newStore.CompilePlainTextFromSlips(loadedProject, allNotes);
+        var allCompiled = ZetlComposeOutput.PlainText(loadedProject, allNotes);
         AssertEqual(2, allNotes.Count, "Whole-project compile should list both notes.");
         AssertTrue(allCompiled.Contains("old note"), "Whole-project compile should include old-session notes.");
         AssertTrue(allCompiled.Contains("new note"), "Whole-project compile should include current-session notes.");
