@@ -460,13 +460,16 @@ public partial class ZetlUITests
         public Dictionary<string, KastnTreeNode> Nodes = [];
         public ZetlProjectSnapshot? Project;
         private readonly Func<string, string, Task<bool>> add;
+        private readonly bool ownsPictures;
         public BoardHarness(Func<string, string, Task<bool>>? add = null,
-            Func<string, ZetlSlipSnapshot, Task<ZetlPictureContent?>>? fetch = null)
+            Func<string, ZetlSlipSnapshot, Task<ZetlPictureContent?>>? fetch = null,
+            KastnPictureCache? pictures = null)
         {
             this.add = (id, text) => { Added.Add((id, text)); return add?.Invoke(id, text) ?? Task.FromResult(false); };
             Scroll = new() { Content = Panel, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
             Window = new() { Width = 600, Height = 320, Content = Scroll };
-            Pictures = new(fetch ?? ((_, _) => Task.FromResult<ZetlPictureContent?>(null)));
+            ownsPictures = pictures is null;
+            Pictures = pictures ?? new(fetch ?? ((_, _) => Task.FromResult<ZetlPictureContent?>(null)));
             Board = new(Panel, Scroll, Pictures);
             Window.Show();
             Dispatcher.UIThread.RunJobs();
@@ -500,7 +503,7 @@ public partial class ZetlUITests
         public void Dispose()
         {
             Board.Dispose();
-            Pictures.Dispose();
+            if (ownsPictures) Pictures.Dispose();
             Window.Close();
             Dispatcher.UIThread.RunJobs();
         }

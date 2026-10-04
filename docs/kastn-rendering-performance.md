@@ -326,6 +326,10 @@ remain eager; project changes and cleared selections retire their controls.
 
 Further incremental work could target filtered/render row models, snapshot
 transport and ID dictionaries if measurements justify it.
-Preserve bitmap ownership while measuring
-picture-heavy projects separately; this text-only probe does not characterize
-image decoding or a suitable bitmap retention budget.
+The first picture pass now uses leased decoded images, a 64 MiB soft residency
+budget, one background decoder and a 16-picture viewport threshold. Its separate
+native probe reduced retained decoded pixels from 350.9 to 62.3 MiB for 96
+synthetic PNGs. See [`kastn-picture-performance.md`](kastn-picture-performance.md)
+for native measurements, ownership, cancellation, revisit costs and the remaining
+disk/IPC/JPEG/frame-delivery measurements. This text-only probe does not measure
+those costs.

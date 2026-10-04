@@ -254,10 +254,10 @@ public partial class ZetlUITests
         });
         await load.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Contains(ContentControls(h.Reader.Blocks["render-one"]).OfType<TextBlock>(), text => text.Text == "Picture unavailable.");
-        var cached = h.Pictures.Decode(ReaderPictureContent(), 1100);
+        using var cached = h.Pictures.AcquireDecoded(ReaderPictureContent(), 1100);
         h.Reader.Clear(); // The presenter retires its controls without disposing shared bitmaps.
         h.Render(project);
-        Assert.Same(cached, Assert.Single(ContentControls(h.Reader.Blocks["render-one"]).OfType<Image>()).Source);
+        Assert.Same(cached.Bitmap, Assert.Single(ContentControls(h.Reader.Blocks["render-one"]).OfType<Image>()).Source);
         Assert.Equal(1, requests);
     }
 
@@ -303,11 +303,14 @@ public partial class ZetlUITests
         public readonly KastnReaderPresenter Reader;
         public readonly List<string> Selected = [];
         public readonly List<string> Checked = [];
-        public ReaderHarness(Func<string, ZetlSlipSnapshot, Task<ZetlPictureContent?>>? fetch = null)
+        private readonly bool ownsPictures;
+        public ReaderHarness(Func<string, ZetlSlipSnapshot, Task<ZetlPictureContent?>>? fetch = null,
+            KastnPictureCache? pictures = null)
         {
             Scroll = new() { Content = Panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             Window = new() { Width = 600, Height = 320, Content = Scroll };
-            Pictures = new(fetch ?? ((_, _) => Task.FromResult<ZetlPictureContent?>(null)));
+            ownsPictures = pictures is null;
+            Pictures = pictures ?? new(fetch ?? ((_, _) => Task.FromResult<ZetlPictureContent?>(null)));
             Reader = new(Panel, Scroll, Pictures);
             Window.Show();
             Dispatcher.UIThread.RunJobs();
@@ -328,7 +331,7 @@ public partial class ZetlUITests
         public void Dispose()
         {
             Reader.Dispose();
-            Pictures.Dispose();
+            if (ownsPictures) Pictures.Dispose();
             Window.Close();
             Dispatcher.UIThread.RunJobs();
         }

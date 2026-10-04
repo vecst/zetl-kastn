@@ -5,7 +5,7 @@ using ZETL.Contracts;
 
 namespace ZETL.Tests;
 
-public class KastnPictureCacheTests
+public partial class KastnPictureCacheTests
 {
     [Fact]
     public async Task ExportSharesPreviewFetchButCanFinishAfterResetWithoutRecachingOldContent()
@@ -141,15 +141,18 @@ public class KastnPictureCacheTests
         {
             Bytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
         };
-        var small = cache.Decode(picture, 260);
-        Assert.Same(small, cache.Decode(picture, 260));
-        Assert.Same(small, cache.FindDecoded("a", 260));
-        Assert.NotSame(small, cache.Decode(picture, 1100));
+        using var small = cache.AcquireDecoded(picture, 260);
+        using var same = cache.AcquireDecoded(picture, 260);
+        Assert.Same(small.Bitmap, same.Bitmap);
+        Assert.Same(small.Bitmap, cache.FindDecoded("a", 260));
+        using var large = cache.AcquireDecoded(picture, 1100);
+        Assert.NotSame(small.Bitmap, large.Bitmap);
         cache.Reset();
         Assert.Null(cache.FindDecoded("a", 260));
-        Assert.NotSame(small, cache.Decode(picture, 260));
+        using var next = cache.AcquireDecoded(picture, 260);
+        Assert.NotSame(small.Bitmap, next.Bitmap);
         cache.Dispose();
-        Assert.Throws<ObjectDisposedException>(() => cache.Decode(picture, 260));
+        Assert.Throws<ObjectDisposedException>(() => cache.AcquireDecoded(picture, 260));
     }
 
     private static ZetlSlipSnapshot Slip(string sha) => new()

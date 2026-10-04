@@ -621,6 +621,20 @@ allocation fell from 2,906 to 26 KiB and visible Details edits from 13,325 to
 shells and picture-heavy memory/loading remain measurement targets; see the
 performance document for the timing limits and first-open tradeoff.
 
+The first picture-performance pass is complete. Reader/board controls hold leases
+on shared decoded bitmaps and clear their sources before retirement. A 64 MiB soft
+budget evicts idle images while protecting displayed images; reset/close retain
+outstanding leased bitmaps until release. Misses decode through one background
+slot, with cache rechecks and cancellation/generation guards. Picture-heavy views
+activate viewport rendering at 16 pictures, including board dual-image cards.
+Fifteen owner/UI cases cover shared lifetimes, budget pressure, decode concurrency,
+retirement, failure retries and 96-picture scrolling/peeks. A separate native
+Skia probe retained 62.3 MiB rather than 350.9 MiB after 96 synthetic PNGs;
+process private bytes fell from 399.1 to 110.6 MiB. Decoding remains about 25 ms
+per miss but runs off the UI thread; evicted distant previews decode again.
+See [`kastn-picture-performance.md`](kastn-picture-performance.md) for the fixture
+limits and remaining real disk/IPC/JPEG/native-frame measurements.
+
 1. Remove unused slip-list presentation work before adding more caches.
 2. Derive selection and availability once per UI update. Reuse project indexes
    for target resolution instead of repeatedly scanning all slips and buckets.

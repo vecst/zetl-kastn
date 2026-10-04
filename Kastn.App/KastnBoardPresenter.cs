@@ -68,7 +68,7 @@ internal sealed class KastnBoardPresenter : IDisposable
             var offset = scroll.Offset;
             var columnOffsets = boardColumns.Select(pair =>
                 (Column: pair.Value, Offset: pair.Value.Scroll.Offset, Anchor: CaptureColumnAnchor(pair.Key, pair.Value))).ToArray();
-            var useViewport = inputs.Slips.Count >= 128;
+            var useViewport = inputs.Slips.Count >= 128 || inputs.Slips.Count(slip => slip.Picture is not null) >= 16;
             if (usesViewport != useViewport)
             {
                 foreach (var column in boardColumns.Values) column.Viewport.Release();
@@ -163,6 +163,9 @@ internal sealed class KastnBoardPresenter : IDisposable
         // card also feeds its click-to-peek expanded image from the same bitmap.
         public (Image Image, Image? ExpandedImage, TextBlock Status)? PendingPictureLoad { get; set; }
         public Task? PictureLoad { get; set; }
+        public KastnPictureCache.DecodedLease? PictureLease { get; set; }
+        public IReadOnlyList<Image> PictureImages { get; init; } = [];
+        public CancellationTokenSource? PictureCancellation { get; set; }
     }
 
     private readonly Dictionary<string, BoardColumnUi> boardColumns = new(StringComparer.Ordinal);
@@ -235,6 +238,7 @@ internal sealed class KastnBoardPresenter : IDisposable
         projectId = null;
         foreach (var column in boardColumns.Values) column.Viewport.Release();
         usesViewport = false;
+        foreach (var card in boardCards.Values) ReleasePicture(card);
         boardCards.Clear();
         boardColumns.Clear();
         orderedColumns = [];
@@ -293,7 +297,10 @@ internal sealed class KastnBoardPresenter : IDisposable
                 row.Retire = control =>
                 {
                     if (boardCards.TryGetValue(slip.Id, out var current) && ReferenceEquals(current.Wrapper, control))
+                    {
                         boardCards.Remove(slip.Id);
+                        ReleasePicture(current);
+                    }
                 };
                 rows.Add(row);
             }
@@ -344,11 +351,23 @@ internal sealed class KastnBoardPresenter : IDisposable
         }
 
         boardCards.Remove(slipId);
+        ReleasePicture(card);
         if (card.Wrapper.Parent is Panel parent)
         {
             parent.Children.Remove(card.Wrapper);
         }
         else if (card.Wrapper.Parent is Decorator decorator) decorator.Child = null;
+    }
+
+    private static void ReleasePicture(BoardCardUi card)
+    {
+        var cancellation = card.PictureCancellation;
+        card.PictureCancellation = null;
+        cancellation?.Cancel();
+        cancellation?.Dispose();
+        foreach (var image in card.PictureImages) image.Source = null;
+        card.PictureLease?.Dispose();
+        card.PictureLease = null;
     }
 
     // The reusable column shell: header, cards panel, drag wiring, and drop
@@ -649,6 +668,8 @@ internal sealed class KastnBoardPresenter : IDisposable
         // attached picture below the text. The peek is view state only — the
         // slip's preferred representation is unchanged.
         (Image Image, Image? ExpandedImage, TextBlock Status)? pendingPictureLoad = null;
+        KastnPictureCache.DecodedLease? pictureLease = null;
+        IReadOnlyList<Image> pictureImages = [];
         if (slip.Type != ZetlSlipType.Picture && slip.Picture is not null)
         {
             var thumbnail = new Image
@@ -685,6 +706,7 @@ internal sealed class KastnBoardPresenter : IDisposable
             };
             mainPanel.Children.Add(expandedImage);
             mainPanel.Children.Add(pictureStatus);
+            pictureImages = [thumbnail, expandedImage];
 
             thumbnail.PointerPressed += (_, args) =>
             {
@@ -699,10 +721,11 @@ internal sealed class KastnBoardPresenter : IDisposable
                 UpdateCardLayout(slip, () => expandedImage.IsVisible = expanded);
             };
 
-            if (pictures.FindDecoded(slip.Picture.Sha256, 260) is { } cachedDual)
+            if (pictures.TryAcquireDecoded(slip.Picture.Sha256, 260) is { } cachedDual)
             {
-                thumbnail.Source = cachedDual;
-                expandedImage.Source = cachedDual;
+                pictureLease = cachedDual;
+                thumbnail.Source = cachedDual.Bitmap;
+                expandedImage.Source = cachedDual.Bitmap;
             }
             else
             {
@@ -733,9 +756,11 @@ internal sealed class KastnBoardPresenter : IDisposable
             };
             mainPanel.Children.Add(image);
             mainPanel.Children.Add(statusText);
-            if (pictures.FindDecoded(slip.Picture.Sha256, 260) is { } cachedThumbnail)
+            pictureImages = [image];
+            if (pictures.TryAcquireDecoded(slip.Picture.Sha256, 260) is { } cachedThumbnail)
             {
-                image.Source = cachedThumbnail;
+                pictureLease = cachedThumbnail;
+                image.Source = cachedThumbnail.Bitmap;
                 statusText.IsVisible = false;
             }
             else
@@ -785,6 +810,9 @@ internal sealed class KastnBoardPresenter : IDisposable
             Wrapper = cardWrapper,
             CardBorder = cardBorder,
             RenderKey = renderKey,
+            PictureLease = pictureLease,
+            PictureImages = pictureImages,
+            PictureCancellation = pictureImages.Count > 0 ? new() : null,
             PendingPictureLoad = pendingPictureLoad
         };
         return result;
@@ -965,6 +993,7 @@ internal sealed class KastnBoardPresenter : IDisposable
         Avalonia.Controls.Image? expandedImage,
         TextBlock status)
     {
+        var cancellationToken = card.PictureCancellation!.Token;
         bool IsCurrent() =>
             projectId == capturedProjectId && IsLive(slip.Id, card);
 
@@ -994,16 +1023,18 @@ internal sealed class KastnBoardPresenter : IDisposable
             }
 
             // 260: smaller decode width for board card thumbnails.
-            var bitmap = pictures.Decode(content, 260);
+            var lease = await pictures.AcquireDecodedAsync(content, 260, cancellationToken);
             if (!IsCurrent())
             {
+                lease.Dispose();
                 return;
             }
 
+            card.PictureLease = lease;
             UpdateCardLayout(slip, () =>
             {
-                image.Source = bitmap;
-                if (expandedImage is not null) expandedImage.Source = bitmap;
+                image.Source = lease.Bitmap;
+                if (expandedImage is not null) expandedImage.Source = lease.Bitmap;
                 status.IsVisible = false;
             });
         }

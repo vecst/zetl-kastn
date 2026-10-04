@@ -20,10 +20,13 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 {
     // Keep the simpler, identity-preserving reconciliation for small documents.
     private const int ViewportThreshold = 128;
+    private const int PictureViewportThreshold = 16;
     private sealed record ReaderBlock(string Id, Border Block, string RenderKey, KastnRenderedSlipContent? Content,
         Image? Image, TextBlock? PictureStatus)
     {
         public Task? PictureLoad { get; set; }
+        public KastnPictureCache.DecodedLease? PictureLease { get; set; }
+        public CancellationTokenSource? PictureCancellation { get; set; }
     }
     private readonly Dictionary<string, ReaderBlock> slipCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (TextBlock Heading, string RenderKey)> headingCache = new(StringComparer.Ordinal);
@@ -86,7 +89,7 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         viewportStructureChanged = false;
         panel.Children.Clear();
         blocks.Clear();
-        slipCache.Clear();
+        ReleaseCachedBlocks();
         headingCache.Clear();
         groupCache.Clear();
         scroll.Offset = Vector.Zero;
@@ -106,16 +109,17 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         var visible = inputs.Slips;
         blocks.Clear();
         var groups = ZetlViewRenderer.BuildGroups(project, visible, inputs.View);
-        var useViewport = groups.Sum(group => group.Slips.Count) >= ViewportThreshold;
+        var useViewport = groups.Sum(group => group.Slips.Count) >= ViewportThreshold
+            || groups.Sum(group => group.Slips.Count(slip => slip.Type == ZetlSlipType.Picture)) >= PictureViewportThreshold;
         if (useViewport != usesViewport)
         {
             ClearViewport();
-            slipCache.Clear();
+            ReleaseCachedBlocks();
             usesViewport = useViewport;
         }
         if (groups.Count == 0)
         {
-            slipCache.Clear();
+            ReleaseCachedBlocks();
             headingCache.Clear();
             groupCache.Clear();
             highlightedSlipId = null;
@@ -193,9 +197,12 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
                         || !string.Equals(cached.RenderKey, renderKey, StringComparison.Ordinal)
                         || cached.Content?.MatchesLinks(inputs.Index) == false)
                     {
+                        var previous = cached;
                         cached = BuildSlipBlock(slip, depth, marker, contentRenderer, renderKey, inputs.SelectSlip, checkable);
+                        if (previous is not null) ReleasePicture(previous);
                         slipCache[slip.Id] = cached;
-                        if (cached.Image is not null) cached.PictureLoad = LoadPictureAsync(project.Id, slip, cached);
+                        if (cached.Image is not null && cached.PictureLease is null)
+                            cached.PictureLoad = LoadPictureAsync(project.Id, slip, cached);
                     }
                     blocks[slip.Id] = cached.Block;
                     ApplyHighlight(cached.Block, highlightedSlipId == slip.Id);
@@ -256,7 +263,7 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 
         foreach (var staleId in slipCache.Keys.Where(id => !renderedSlipIds.Contains(id)).ToList())
         {
-            slipCache.Remove(staleId);
+            if (slipCache.Remove(staleId, out var retired)) ReleasePicture(retired);
         }
 
         foreach (var staleKey in headingCache.Keys.Where(key => !renderedGroupKeys.Contains(key)).ToList())
@@ -276,7 +283,25 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         {
             slipCache.Remove(id);
             blocks.Remove(id);
+            ReleasePicture(current);
         }
+    }
+
+    private static void ReleasePicture(ReaderBlock block)
+    {
+        var cancellation = block.PictureCancellation;
+        block.PictureCancellation = null;
+        cancellation?.Cancel();
+        cancellation?.Dispose();
+        if (block.Image is not null) block.Image.Source = null;
+        block.PictureLease?.Dispose();
+        block.PictureLease = null;
+    }
+
+    private void ReleaseCachedBlocks()
+    {
+        foreach (var block in slipCache.Values) ReleasePicture(block);
+        slipCache.Clear();
     }
 
     private void ClearViewport()
@@ -295,6 +320,7 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         KastnRenderedSlipContent? renderedContent = null;
         Image? pictureImage = null;
         TextBlock? pictureStatus = null;
+        KastnPictureCache.DecodedLease? pictureLease = null;
         StackPanel content;
         if (slip.Type == ZetlSlipType.Picture)
         {
@@ -325,15 +351,13 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
             });
             KastnSlipContentRenderer.AddPictureCaption(content, slip);
 
-            if (slip.Picture is { } picture && pictures.FindDecoded(picture.Sha256, 1100) is { } cachedBitmap)
+            pictureImage = image;
+            pictureStatus = loading;
+            if (slip.Picture is { } picture && pictures.TryAcquireDecoded(picture.Sha256, 1100) is { } cachedLease)
             {
-                image.Source = cachedBitmap;
+                pictureLease = cachedLease;
+                image.Source = cachedLease.Bitmap;
                 loading.IsVisible = false;
-            }
-            else
-            {
-                pictureImage = image;
-                pictureStatus = loading;
             }
         }
         else
@@ -357,6 +381,8 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
             Cursor = new Cursor(StandardCursorType.Hand)
         };
         result = new ReaderBlock(slip.Id, block, renderKey, renderedContent, pictureImage, pictureStatus);
+        result.PictureLease = pictureLease;
+        if (pictureImage is not null) result.PictureCancellation = new();
         block.PointerPressed += (_, args) =>
         {
             if (!args.Handled && active && IsLive(result)) selectSlip(slip.Id);
@@ -369,6 +395,7 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 
     private async Task LoadPictureAsync(string capturedProjectId, ZetlSlipSnapshot slip, ReaderBlock block)
     {
+        var cancellationToken = block.PictureCancellation!.Token;
         bool IsCurrent() => projectId == capturedProjectId && IsLive(block);
         try
         {
@@ -379,9 +406,10 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
                 block.PictureStatus!.Text = "Picture unavailable.";
                 return;
             }
-            var bitmap = pictures.Decode(content, 1100);
-            if (!IsCurrent()) return;
-            block.Image!.Source = bitmap;
+            var lease = await pictures.AcquireDecodedAsync(content, 1100, cancellationToken);
+            if (!IsCurrent()) { lease.Dispose(); return; }
+            block.PictureLease = lease;
+            block.Image!.Source = lease.Bitmap;
             block.PictureStatus!.IsVisible = false;
         }
         catch (Exception ex) when (KastnPictureCache.IsLoadFailure(ex))
