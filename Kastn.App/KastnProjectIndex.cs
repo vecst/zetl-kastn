@@ -3,31 +3,59 @@ using ZETL;
 
 namespace KASTN;
 
-// Read-only queries over one snapshot. Replace the index with the snapshot;
-// never update its dictionaries independently of the revisions they describe.
+// Read-only queries over one snapshot. Successors may share immutable link state;
+// captured indexes and their results continue to describe their original snapshot.
 internal sealed class KastnProjectIndex
 {
     private readonly Dictionary<string, ZetlBucketSnapshot> bucketsById;
     private readonly Dictionary<string, (ZetlSlipSnapshot Slip, int Position)> slipsById;
-    private readonly ILookup<string, ZetlBucketSnapshot> childrenByParent;
-    private readonly Dictionary<string, IReadOnlyList<ZetlSlipSnapshot>> slipsByBucket;
+    private readonly ILookup<string, string> childrenByParent;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<string>> slipIdsByBucket;
+    private readonly Dictionary<string, IReadOnlyList<ZetlSlipSnapshot>> slipsByBucket = new(StringComparer.Ordinal);
     private IReadOnlyDictionary<string, IReadOnlyList<ZetlSlipBacklink>>? backlinks;
+    private KastnBacklinkIndex? backlinkState;
 
-    public KastnProjectIndex(ZetlProjectSnapshot project)
+    public KastnProjectIndex(ZetlProjectSnapshot project, KastnProjectIndex? previous = null)
     {
         Project = project;
+        if (previous?.Project.Id != project.Id) previous = null;
+        backlinkState = previous?.backlinkState;
         bucketsById = project.Buckets.ToDictionary(bucket => bucket.Id, StringComparer.Ordinal);
-        slipsById = project.Slips.Select((slip, position) => (Slip: slip, Position: position))
-            .ToDictionary(entry => entry.Slip.Id, StringComparer.Ordinal);
-        childrenByParent = project.Buckets.ToLookup(bucket => bucket.ParentBucketId ?? "", StringComparer.Ordinal);
-        slipsByBucket = project.Slips.GroupBy(slip => slip.BucketId, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => (IReadOnlyList<ZetlSlipSnapshot>)group.ToList(), StringComparer.Ordinal);
+        slipsById = new(project.Slips.Count, StringComparer.Ordinal);
+        var sameMembership = previous is not null && previous.Project.Slips.Count == project.Slips.Count;
+        for (var i = 0; i < project.Slips.Count; i++)
+        {
+            var slip = project.Slips[i];
+            slipsById.Add(slip.Id, (slip, i));
+            sameMembership &= previous is not null && i < previous.Project.Slips.Count
+                && previous.Project.Slips[i].Id == slip.Id && previous.Project.Slips[i].BucketId == slip.BucketId;
+        }
+        slipIdsByBucket = sameMembership ? previous!.slipIdsByBucket : project.Slips.GroupBy(slip => slip.BucketId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(slip => slip.Id).ToArray(), StringComparer.Ordinal);
+        var sameParents = previous is not null && previous.Project.Buckets.Count == project.Buckets.Count;
+        for (var i = 0; sameParents && i < project.Buckets.Count; i++)
+            sameParents = previous!.Project.Buckets[i].Id == project.Buckets[i].Id
+                && previous.Project.Buckets[i].ParentBucketId == project.Buckets[i].ParentBucketId;
+        childrenByParent = sameParents ? previous!.childrenByParent
+            : project.Buckets.ToLookup(bucket => bucket.ParentBucketId ?? "", bucket => bucket.Id, StringComparer.Ordinal);
     }
 
     public ZetlProjectSnapshot Project { get; }
 
-    public IReadOnlyDictionary<string, IReadOnlyList<ZetlSlipBacklink>> Backlinks =>
-        backlinks ??= ZetlSlipLinks.BuildBacklinkIndex(Project);
+    public IReadOnlyDictionary<string, IReadOnlyList<ZetlSlipBacklink>> Backlinks
+    {
+        get
+        {
+            if (backlinks is null)
+            {
+                backlinkState = KastnBacklinkIndex.Update(Project, backlinkState, id => slipsById[id].Position);
+                backlinks = backlinkState.Backlinks;
+            }
+            return backlinks;
+        }
+    }
+
+    internal int ParsedBacklinkSourceCount => backlinks is null ? 0 : backlinkState!.ParsedSourceCount;
 
     public ZetlBucketSnapshot? Bucket(string? id) =>
         id is not null && bucketsById.TryGetValue(id, out var bucket) ? bucket : null;
@@ -50,10 +78,18 @@ internal sealed class KastnProjectIndex
     }
 
     // Lookups retain snapshot order, including manually reordered siblings.
-    public IEnumerable<ZetlBucketSnapshot> Children(string? parentId) => childrenByParent[parentId ?? ""];
+    public IEnumerable<ZetlBucketSnapshot> Children(string? parentId) =>
+        childrenByParent[parentId ?? ""].Select(id => bucketsById[id]);
 
-    public IReadOnlyList<ZetlSlipSnapshot> Slips(string bucketId) =>
-        slipsByBucket.TryGetValue(bucketId, out var slips) ? slips : [];
+    public IReadOnlyList<ZetlSlipSnapshot> Slips(string bucketId)
+    {
+        if (!slipsByBucket.TryGetValue(bucketId, out var slips))
+        {
+            if (!slipIdsByBucket.TryGetValue(bucketId, out var ids)) return [];
+            slipsByBucket[bucketId] = slips = ids.Select(id => slipsById[id].Slip).ToArray();
+        }
+        return slips;
+    }
 
     public bool IsDescendant(string candidateId, string ancestorId)
     {

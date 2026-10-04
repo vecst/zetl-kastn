@@ -220,6 +220,63 @@ Two existing test harness races were corrected: native drag waits for the
 composition frame used by hit testing, and lifecycle snapshot waits subscribe
 before checking current state so they cannot miss a transition.
 
+## Incremental snapshot and index updates
+
+Each `KastnProjectIndex` still describes one immutable snapshot. Successors reuse
+bucket-parent and slip-membership ID groups when their structure/order is unchanged,
+while queries resolve fresh objects from the current snapshot. Bucket slip lists
+are materialized only on demand. Project changes and server restarts reset reuse.
+Captured indexes and backlink results remain valid for their original snapshots.
+
+The lazy `KastnBacklinkIndex` shares immutable parsed-source and reverse-edge
+state. Text changes parse only those sources; title changes reuse their tokens.
+Only affected target lists rebuild, and unchanged lists retain identity. Cached
+unresolved edges resolve when a target appears, disappear when it is removed,
+and restore correctly if it returns. Canonical source order survives reorders.
+Hidden snapshots retain the last parsed state without retaining a chain of
+project indexes; reopening compares current content with that state.
+
+For unchanged tree structure, `KastnTreeProjection` adopts fresh snapshots in
+place and updates changed labels, icons and ancestor visibility counts. It
+preserves node children, expansion, selection and the viewport's flattened list
+and subscriptions. Label-length changes refresh labels in place. Adds/removals,
+moves, reorders, parent/deleted-mode changes and picture representation changes
+retain full hierarchy reconciliation. The structure comparison uses actual
+snapshot fields, rather than assuming matching revisions imply matching content.
+
+Compared with `f22d849`, fresh-process headless text probes report:
+
+| Slips / buckets | Identical-snapshot allocation before / after | Tree-refresh allocation before / after | Single-edit allocation before / after | Visible Details edit allocation before / after |
+| --- | ---: | ---: | ---: | ---: |
+| 1,000 / 10 | 1,169 / 169 KiB | 1,053 / 64 KiB | 3,155 / 2,055 KiB | 4,766 / 2,454 KiB |
+| 3,000 / 1 | 3,095 / 210 KiB | 2,906 / 26 KiB | 8,612 / 5,495 KiB | 13,325 / 6,640 KiB |
+
+Tree-refresh allocations fell 94–99%; identical-snapshot allocations fell 86–93%.
+Single-edit allocations fell about 35%, and visible Details edit allocations
+fell 49–50%. Tree-refresh medians were 4.4 → 1.1 ms and 6.4 → 1.4 ms; visible
+Details edits were 24.7 → 17.1 ms and 67.1 → 20.3 ms. Ordinary single edits were
+11.2 → 13.4 ms and 19.6 → 14.0 ms, so these observations do not establish a
+uniform timing improvement. JIT/GC variation and native-rendering limits still
+apply.
+
+Retaining source tokens and reverse edges adds initial work: first Details open
+allocated 3,777 → 4,071 KiB and 7,128 → 7,922 KiB, with observed times
+50.5 → 52.6 ms and 48.5 → 63.5 ms. Initial whole-window allocations stayed similar
+(about 20 / 25 MiB), and realized control counts remain bounded as before.
+First open parses 1,000 / 3,000 sources; each subsequent text edit parses one.
+
+The diagnostic also applies five fresh JSON-deserialized snapshots with Details
+visible. Serialization happens before timing. UI adoption measured 13.7 / 20.5 ms
+and 2,437 / 6,689 KiB, again parsing one source per edit. This phase has no old-build
+baseline; it checks that reuse survives IPC-like object replacement.
+
+Seventeen owner/UI cases cover fresh snapshot queries, captured result isolation,
+text/title changes, unresolved target addition/removal/return, source removal,
+reorders/moves, deferred parsing, project/server changes, label-length changes,
+ancestor counts, representation changes and unsaved draft/focus/viewport retention.
+A deterministic 120-step sequence compares incremental backlinks against the
+existing full builder after every mixed edit using JSON-deserialized snapshots.
+
 ## Reproduce
 
 The normal suite skips the diagnostic. Run it alone, with no concurrent build or
@@ -241,6 +298,8 @@ initial project application, identical snapshots, one-slip edits, individual
 refresh phases, reorders, half-project search/clear, text export, board rendering,
 reader/tree/board realization counts and distant selection jumps, visible Details,
 and backlink realization/jumps. Details is measured after leaving board mode.
+The final phase applies pre-deserialized wire snapshots, and the probe asserts
+that first-open parsing covers every source while later edits parse only one.
 Three-line text slips share a fixed capture time, link to the
 first slip and are distributed round-robin across buckets. All settings, drafts,
 catalogs and remembered-project
@@ -254,16 +313,19 @@ of the suite.
 
 ## Remaining costs
 
-Tree and board controls now follow the viewport. The full tree projection and
-expanded-node list still reconcile on snapshots; board row models still cover
-the full filtered result. Reader headings/group boxes and board column shells
+Tree and board controls now follow the viewport. Content-only snapshots preserve
+the tree hierarchy and expanded-node list; structural changes still reconcile
+them fully. Board row models still cover the full filtered result.
+Reader headings/group boxes and board column shells
 remain eager, so projects with very many buckets retain those costs.
-Large backlink lists now realize only nearby buttons, but the full backlink
-index is still parsed once per snapshot when Details needs it. Logical rows and
-source positions also reconcile across the entire result. Normal metadata fields
+Large backlink lists realize only nearby buttons and parse only changed sources
+after the first open. Snapshot adoption and change detection still scan complete
+snapshots; ID dictionaries still rebuild, and logical rows and source positions
+reconcile across the entire result. Normal metadata fields
 remain eager; project changes and cleared selections retire their controls.
 
-Next, measure limiting snapshot/index reconciliation to changed content.
+Further incremental work could target filtered/render row models, snapshot
+transport and ID dictionaries if measurements justify it.
 Preserve bitmap ownership while measuring
 picture-heavy projects separately; this text-only probe does not characterize
 image decoding or a suitable bitmap retention budget.

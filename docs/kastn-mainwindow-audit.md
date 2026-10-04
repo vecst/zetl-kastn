@@ -603,6 +603,24 @@ At 3,000 slips, visible edit allocation fell from 240,808 to 13,335 KiB and its
 observed median from 2,130 to 44 ms. Full snapshot/index reconciliation and
 picture-heavy rendering remain follow-up measurements.
 
+The first incremental snapshot/index pass is complete. Snapshot indexes share
+unchanged membership/parent IDs while returning fresh snapshot objects. A lazy
+immutable backlink owner reuses parsed sources and reverse edges, including
+unresolved links, and rebuilds affected target lists. Text edits parse one source;
+title-only changes reuse tokens. Captured indexes retain their original results,
+and project/server changes reset reuse.
+
+Content-only tree updates adopt revisions, labels and visibility counts without
+temporary full hierarchies or viewport reattachment. Structural changes keep the
+full reconciliation path. Seventeen owner/UI cases include wire snapshots, mixed
+edit comparison against the full backlink builder, cache isolation, hierarchy
+fallbacks, server restart, focus and dirty drafts. At 3,000 slips, tree-refresh
+allocation fell from 2,906 to 26 KiB and visible Details edits from 13,325 to
+6,640 KiB. First Details open retains extra parsed state and allocates about
+794 KiB more. Complete snapshot scans, filtered/render row models, many-bucket
+shells and picture-heavy memory/loading remain measurement targets; see the
+performance document for the timing limits and first-open tradeoff.
+
 1. Remove unused slip-list presentation work before adding more caches.
 2. Derive selection and availability once per UI update. Reuse project indexes
    for target resolution instead of repeatedly scanning all slips and buckets.

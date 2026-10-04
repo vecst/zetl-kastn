@@ -413,7 +413,7 @@ internal static class KastnWorkbench
         }
     }
 
-    private static KastnTreeNode SlipNode(ZetlSlipSnapshot slip, int maxSlipLabelLength) => new()
+    internal static KastnTreeNode SlipNode(ZetlSlipSnapshot slip, int maxSlipLabelLength) => new()
     {
         Kind = KastnTreeNodeKind.Slip,
         Id = slip.Id,

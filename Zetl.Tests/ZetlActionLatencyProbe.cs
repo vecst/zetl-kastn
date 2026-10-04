@@ -136,12 +136,18 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             var inspector = (KASTN.KastnInspectorPresenter)typeof(KASTN.MainWindow).GetField("inspectorPresenter", flags)!.GetValue(window)!;
             output.WriteLine($"Backlink buttons realized initially: {inspector.RealizedBacklinkCount} / {size}");
             Assert.InRange(inspector.RealizedBacklinkCount, 1, size);
+            var detailsIndex = (KASTN.KastnProjectIndex)typeof(KASTN.MainWindow).GetField("projectIndex", flags)!.GetValue(window)!;
+            output.WriteLine($"Backlink sources parsed on first open: {detailsIndex.ParsedBacklinkSourceCount} / {size}");
+            Assert.Equal(size, detailsIndex.ParsedBacklinkSourceCount);
             Time("Visible Details one slip edited", () =>
             {
                 current = current with { ChangeSequence = current.ChangeSequence + 1, Slips = current.Slips.Select(slip => slip.Id == "s-0"
                     ? slip with { Revision = slip.Revision + 1, Text = slip.Text + "!" } : slip).ToArray() };
                 Apply(current);
             }, 3);
+            detailsIndex = (KASTN.KastnProjectIndex)typeof(KASTN.MainWindow).GetField("projectIndex", flags)!.GetValue(window)!;
+            output.WriteLine($"Backlink sources parsed on last visible edit: {detailsIndex.ParsedBacklinkSourceCount} / {size}");
+            Assert.Equal(1, detailsIndex.ParsedBacklinkSourceCount);
             if (window.slipInspectorFieldsPanel.Children.OfType<KASTN.KastnViewportItems>().SingleOrDefault() is { } links)
             {
                 Time("Inspector jump to last / first backlink", () =>
@@ -153,6 +159,18 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
                 }, 3);
                 output.WriteLine($"Backlink buttons realized after jumps: {inspector.RealizedBacklinkCount} / {size}");
             }
+            // Deserialize before timing so this phase measures UI adoption of
+            // fresh IPC-like objects, excluding serialization/transport costs.
+            var wireEdits = new Queue<ZetlProjectSnapshot>(Enumerable.Range(1, 5).Select(round =>
+                JsonSerializer.Deserialize<ZetlProjectSnapshot>(JsonSerializer.Serialize(current with
+                {
+                    ChangeSequence = current.ChangeSequence + round,
+                    Slips = current.Slips.Select(slip => slip.Id == "s-0"
+                        ? slip with { Revision = slip.Revision + round, Text = slip.Text + new string('!', round) } : slip).ToArray()
+                }))!));
+            Time("Visible Details edit (wire snapshot)", () => { current = wireEdits.Dequeue(); Apply(current); }, 5);
+            detailsIndex = (KASTN.KastnProjectIndex)typeof(KASTN.MainWindow).GetField("projectIndex", flags)!.GetValue(window)!;
+            Assert.Equal(1, detailsIndex.ParsedBacklinkSourceCount);
         }
         finally
         {

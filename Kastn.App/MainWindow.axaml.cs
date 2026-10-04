@@ -123,7 +123,7 @@ internal partial class MainWindow : Window
             var project = currentProject ?? throw new InvalidOperationException("No project selected.");
             if (projectIndex is null || !ReferenceEquals(projectIndex.Project, project))
             {
-                projectIndex = new KastnProjectIndex(project);
+                projectIndex = new KastnProjectIndex(project, projectIndex);
             }
             return projectIndex;
         }
@@ -475,8 +475,10 @@ internal partial class MainWindow : Window
         // Rendered controls and decoded pictures belong to this project/server.
         if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal) || serverChanged)
         {
+            projectIndex = null;
             readerPresenter.Clear();
             boardPresenter.Clear();
+            inspectorPresenter.Clear();
             viewRenderCache.Clear();
             pictureCache.Reset();
         }
@@ -892,9 +894,11 @@ internal partial class MainWindow : Window
         // Realized rows keep model identity; expansion, selection and the
         // first visible row survive changes to the logical hierarchy.
         var treeAnchor = projectTree.CaptureAnchor();
-        treeProjection.Update(ProjectIndex, showingDeleted, this.settings.Current.MaxSlipLabelLength);
-        projectTree.SetHierarchy(treeProjection.Roots);
-        projectTree.RestoreAnchor(treeAnchor);
+        if (treeProjection.Update(ProjectIndex, showingDeleted, this.settings.Current.MaxSlipLabelLength))
+        {
+            projectTree.SetHierarchy(treeProjection.Roots);
+            projectTree.RestoreAnchor(treeAnchor);
+        }
 
         UpdateDeletedToggle(project);
 
