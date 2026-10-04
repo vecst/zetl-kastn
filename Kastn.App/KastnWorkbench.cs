@@ -24,6 +24,11 @@ internal enum KastnTreeNodeKind
     Slip
 }
 
+internal enum KastnTreeIconKind
+{
+    Bucket, Container, Text, Picture, Structural, OpenEye, ClosedEye
+}
+
 /// <summary>
 /// One node of the project tree: a bucket (with nested buckets and its slips as
 /// children) or a slip leaf. A view-agnostic projection of the snapshot so the
@@ -41,9 +46,20 @@ internal sealed class KastnTreeNode : INotifyPropertyChanged
     // an ordinary section. Both still count and toggle visibility as buckets.
     public string BucketRenderKind { get; init; } = "";
     public bool IsContainerBucket => IsBucket && CurrentBucketRenderKind.Length > 0;
-    public bool IsPlainBucket => IsBucket && CurrentBucketRenderKind.Length == 0;
-    public bool IsText => Kind == KastnTreeNodeKind.Slip && !IsPicture && !IsStructural;
     public bool IsPicture { get; init; }
+    public KastnTreeIconKind NodeIcon => IsBucket
+        ? IsContainerBucket ? KastnTreeIconKind.Container : KastnTreeIconKind.Bucket
+        : IsPicture ? KastnTreeIconKind.Picture
+        : IsStructural ? KastnTreeIconKind.Structural : KastnTreeIconKind.Text;
+    public bool IsAccentIcon => IsBucket || IsStructural;
+    public string NodeIconToolTip => NodeIcon switch
+    {
+        KastnTreeIconKind.Bucket => "Bucket",
+        KastnTreeIconKind.Container => "Container (drag slips or buckets in)",
+        KastnTreeIconKind.Picture => "Picture slip",
+        KastnTreeIconKind.Structural => "Structural element",
+        _ => "Text slip"
+    };
     // A Kastn-only structural element (a divider, later group/table/latex): no document
     // icon, a named label instead of derived text.
     public bool IsStructural { get; set; }
@@ -62,8 +78,7 @@ internal sealed class KastnTreeNode : INotifyPropertyChanged
         ? TotalSlipCount > 0 && IncludedCount == 0
         : IsExcluded;
     public bool IsVisibilityMixed => IsBucket && IncludedCount > 0 && HiddenCount > 0;
-    public bool ShowOpenEye => !IsVisibilityHidden;
-    public bool ShowClosedEye => IsVisibilityHidden;
+    public KastnTreeIconKind VisibilityIcon => IsVisibilityHidden ? KastnTreeIconKind.ClosedEye : KastnTreeIconKind.OpenEye;
     public string VisibilityToolTip => IsBucket
         ? IsVisibilityHidden ? "Show all slips in this bucket" : "Hide all slips in this bucket"
         : IsVisibilityHidden ? "Show in views and exports" : "Hide from views and exports";
@@ -117,15 +132,15 @@ internal sealed class KastnTreeNode : INotifyPropertyChanged
     [
         nameof(Label),
         nameof(IsContainerBucket),
-        nameof(IsPlainBucket),
-        nameof(IsText),
         nameof(IsStructural),
+        nameof(NodeIcon),
+        nameof(NodeIconToolTip),
+        nameof(IsAccentIcon),
         nameof(NodeOpacity),
         nameof(TotalSlipCount),
         nameof(CanToggleVisibility),
         nameof(IsVisibilityMixed),
-        nameof(ShowOpenEye),
-        nameof(ShowClosedEye),
+        nameof(VisibilityIcon),
         nameof(VisibilityToolTip),
         nameof(CountLabel)
     ];

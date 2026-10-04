@@ -2089,14 +2089,15 @@ internal partial class MainWindow
             return;
         }
 
+        // Accepted tree navigation opens the editor. Hide metadata before the
+        // viewer refresh so it does not construct fields for the destination.
+        SetDetailPaneMode(showDetails: false);
         if (CurrentSelection() is KastnSelection.Slips { SlipIds: [var onlySlipId] })
         {
             // Exactly one slip: bind the editor to it.
             pendingSlipSelectionId = onlySlipId;
             RefreshBucketEditor();
             RefreshSlipView(force: true);
-            InspectSlip(onlySlipId);
-            SetDetailPaneMode(showDetails: false);
         }
         else
         {
@@ -2108,7 +2109,6 @@ internal partial class MainWindow
             RenderSlipInspector(null);
             editorState.Select(null);
             UpdateEditorFromState();
-            SetDetailPaneMode(showDetails: false);
         }
     }
 
@@ -2116,6 +2116,7 @@ internal partial class MainWindow
     private void SetDetailPaneMode(bool showDetails)
     {
         detailShowingMetadata = showDetails;
+        if (showDetails) RefreshSlipInspector();
         editorPanel.IsVisible = !showDetails;
         inspectorPanel.IsVisible = showDetails;
         var hasProject = currentProject is not null;

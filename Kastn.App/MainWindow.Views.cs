@@ -130,25 +130,30 @@ internal partial class MainWindow
         // The inspector follows the tree selection, which can be any slip in the
         // project — including a deleted or filtered-out one the whole-project View
         // does not render. Keep it as long as the slip still exists in the project.
-        var selected = SelectedTreeNode?.Slip;
-        if (selected is not null
-            && currentProject?.Slips.All(slip => slip.Id != selected.Id) != false)
-        {
-            selected = null;
-        }
-
+        var selected = currentProject is not null
+            && CurrentSelection() is KastnSelection.Slips { SlipIds: [var id] }
+                ? ProjectIndex.Slip(id) : null;
         RenderSlipInspector(selected);
     }
 
-    private void InspectSlip(string slipId)
-    {
-        RenderSlipInspector(currentProject is null ? null : ProjectIndex.Slip(slipId));
-    }
-
     private string lastInspectorSignature = "";
+    private string? lastInspectorProjectId;
 
     private void RenderSlipInspector(ZetlSlipSnapshot? slip)
     {
+        // Metadata (especially a large backlink list) needs no controls while
+        // the editor is showing. Keep the last rendered signature unchanged so
+        // opening Details renders against the latest snapshot and selection.
+        if (!detailShowingMetadata)
+        {
+            if (currentProject?.Id != lastInspectorProjectId || currentProject is null || slip is null)
+            {
+                slipInspectorFieldsPanel.Children.Clear();
+                lastInspectorSignature = "";
+                lastInspectorProjectId = currentProject?.Id;
+            }
+            return;
+        }
         // Rebuild the detail fields only when their inputs changed (the slip, its
         // revision, or the project — the change sequence covers backlink edits);
         // the refreshes that follow one action otherwise re-cleared the pane
@@ -160,6 +165,7 @@ internal partial class MainWindow
         }
 
         lastInspectorSignature = signature;
+        lastInspectorProjectId = currentProject?.Id;
         slipInspectorFieldsPanel.Children.Clear();
         if (currentProject is null || slip is null)
         {
@@ -171,6 +177,9 @@ internal partial class MainWindow
             });
             return;
         }
+
+        bool IsCurrent() => !lifetime.IsRetired && detailShowingMetadata
+            && string.Equals(signature, lastInspectorSignature, StringComparison.Ordinal);
 
         foreach (var section in KastnSlipInspector.Build(ProjectIndex, slip))
         {
@@ -194,6 +203,7 @@ internal partial class MainWindow
                     };
                     navigateButton.Click += (_, _) =>
                     {
+                        if (!IsCurrent()) return;
                         var node = treeProjection.Find(targetSlipId);
                         if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
                         {
@@ -230,7 +240,7 @@ internal partial class MainWindow
                         Margin = new Avalonia.Thickness(0, 4, 0, 0),
                         HorizontalAlignment = HorizontalAlignment.Left
                     };
-                    openButton.Click += (_, _) => OpenInspectorUrl(uri);
+                    openButton.Click += (_, _) => { if (IsCurrent()) OpenInspectorUrl(uri); };
                     fieldPanel.Children.Add(openButton);
                 }
 

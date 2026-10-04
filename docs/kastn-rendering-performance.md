@@ -36,6 +36,39 @@ three complete snapshot applications; baseline predates those phase timings.
 At 1,000 slips, the isolated reversal spent 278 ms in tree refresh and 2 ms in
 reader refresh. At 3,000 slips those values were 810 ms and 86 ms.
 
+## Second pass: avoid hidden metadata work and unused icons
+
+Baseline for this pass is `2a1323d`, after the tree panel fix. The selected slip
+in this probe receives a backlink from every other slip. The hidden Details pane
+was building thousands of buttons on every snapshot even while the editor was
+showing. Deferring its controls and backlink index until Details opens removes
+that work from normal editing. Opening Details resolves the current selection and
+snapshot, including edits made while hidden; visible Details still refreshes.
+Navigating to another slip hides metadata before rendering the destination.
+Batch/bucket selections retain their empty metadata state. Retired inspector
+buttons cannot navigate or open URLs after their pane becomes inactive.
+
+Tree rows now construct two icon paths rather than seven. Geometry is shared,
+and the node/visibility bindings select the displayed icons. Tooltip text, dynamic
+theme brushes, structural/picture kinds and mixed bucket visibility are preserved.
+Snapshot reconciliation also skips resetting an unchanged tree selection.
+
+| Slips / buckets | Initial allocation before / after | One edit before / after | Edit allocation before / after |
+| --- | ---: | ---: | ---: |
+| 1,000 / 10 | 570,466 / 427,528 KiB | 188 / 50 ms | 20,684 / 2,807 KiB |
+| 3,000 / 1 | 1,821,464 / 1,411,540 KiB | 366 / 90 ms | 60,863 / 7,725 KiB |
+
+Initial allocations dropped 23–25%; edit allocations dropped 86–87% in this
+backlink-heavy case. Initial timing was variable: 5.7 → 4.4 seconds at 1,000 slips
+but 14.7 → 15.6 seconds at 3,000. This pass does **not** establish a consistent
+initial-load latency improvement. Full reversal was 187 ms / 4,009 KiB at 1,000
+slips and 450 ms / 11,409 KiB at 3,000, with every tree container retained.
+
+The final probe separately opens Details and applies three more edits while it
+is visible. It constructs 1,009 or 3,009 detail controls; visible-detail edits
+still averaged about 20,365 or 60,052 KiB and had medians of 142 or 515 ms.
+Projects with few backlinks will see a smaller editing benefit from deferral.
+
 ## Reproduce
 
 The normal suite skips the diagnostic. Run it alone, with no concurrent build or
@@ -54,9 +87,10 @@ try {
 
 Repeat with size/buckets `300`/`1` and `3000`/`1`. Each fresh process measures
 initial project application, identical snapshots, one-slip edits, individual
-refresh phases, reorders, half-project search/clear, text export and board
-rendering. Three-line text slips share a fixed capture time and are distributed
-round-robin across buckets. All settings, drafts, catalogs and remembered-project
+refresh phases, reorders, half-project search/clear, text export, board rendering,
+and visible Details. Three-line text slips share a fixed capture time, link to the
+first slip and are distributed round-robin across buckets. All settings, drafts,
+catalogs and remembered-project
 state live in a disposable directory. No connection or Zetl process is started.
 
 These are Avalonia **headless layout** timings including dispatcher jobs; they
@@ -67,12 +101,12 @@ of the suite.
 
 ## Remaining costs
 
-Initial realization remains expensive: roughly 5.7 seconds / 570,466 KiB at
-1,000 slips and 14.7 seconds / 1,821,464 KiB at 3,000 in the final probe. Initial
-timings varied between processes and were not materially improved by this pass.
-Single-slip edits remained around 188 ms and 366 ms, respectively. Board edits
-also still trigger project-scale work. Half-project filtering allocates roughly
-25,779 KiB and 114,139 KiB when averaged across hiding/restoring content.
+Initial realization remains expensive and every row/block is still realized.
+Half-project filtering allocates roughly 25,777 KiB and 114,135 KiB when averaged
+across hiding/restoring content. Large visible backlink lists still rebuild all
+their controls; after opening Details, its last controls are retained while
+hidden and reused if the inputs are unchanged. Rebuilds, project changes and
+cleared selections retire them.
 
 Next, evaluate rendering only visible rows/blocks and limiting layout to changed
 content. Tree hierarchy, variable-height reader blocks, scrolling, multi-selection,

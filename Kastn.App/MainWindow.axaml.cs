@@ -930,6 +930,12 @@ internal partial class MainWindow : Window
             .Select(id => treeProjection.Find(id))
             .OfType<KastnTreeNode>()
             .ToList();
+        // Resetting SelectedItems walks every realized row. Snapshot reconciliation
+        // already updated these live nodes; preserve an unchanged selection.
+        if (projectTree.SelectedItems is { } selected
+            && selected.Cast<object>().SequenceEqual(nodes)
+            && (nodes.Count != 0 || projectTree.SelectedItem is null))
+            return;
         if (nodes.Count <= 1)
         {
             projectTree.SelectedItems?.Clear();

@@ -721,6 +721,8 @@ public partial class ZetlUITests : IDisposable
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         // 4. Find the backlink button in the inspector fields panel
+        window.detailDetailsButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        window.UpdateLayout();
         var buttons = FindVisualChildren<Avalonia.Controls.Button>(window.slipInspectorFieldsPanel);
         var backlinkButton = buttons.FirstOrDefault(b => b.Content as string == "Source Note");
         Assert.NotNull(backlinkButton);

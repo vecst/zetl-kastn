@@ -565,6 +565,14 @@ Initial realization and edit-driven layout remain follow-up work; see
 [`kastn-rendering-performance.md`](kastn-rendering-performance.md) for the probe,
 allocation measurements, limits and proposed next targets.
 
+The next pass defers hidden Details rendering and backlink indexing, skips
+unchanged selection resets, and reduces each tree row from seven icon paths to
+two with shared geometry. Initial allocations fell 23–25% in the probe;
+single-edit allocations fell 86–87% in its backlink-heavy project. Initial
+loading, large visible backlink lists and document filtering still need viewport
+work. Metadata/selection freshness, theme-aware icons and drag feedback have UI
+regression coverage.
+
 1. Remove unused slip-list presentation work before adding more caches.
 2. Derive selection and availability once per UI update. Reuse project indexes
    for target resolution instead of repeatedly scanning all slips and buckets.

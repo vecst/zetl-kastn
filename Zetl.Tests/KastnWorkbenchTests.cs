@@ -195,13 +195,13 @@ public class KastnWorkbenchTests
             rootSlips.Single(node => node.Id == "s2").IsExcluded,
             "Excluded slips stay in the tree and are flagged.");
         AssertTrue(
-            rootSlips.Single(node => node.Id == "s2").ShowClosedEye,
+            rootSlips.Single(node => node.Id == "s2").VisibilityIcon == KastnTreeIconKind.ClosedEye,
             "Excluded slips should display the closed eye action.");
 
         var pictureLeaf = root.Children[0].Children.Single(node => node.Kind == KastnTreeNodeKind.Slip);
         AssertTrue(pictureLeaf.IsPicture, "Picture slips are flagged.");
-        AssertTrue(!pictureLeaf.IsText, "Picture slips should not use the text icon.");
-        AssertTrue(pictureLeaf.ShowOpenEye, "Included slips should display the open eye.");
+        AssertTrue(pictureLeaf.NodeIcon == KastnTreeIconKind.Picture, "Picture slips should use the picture icon.");
+        AssertTrue(pictureLeaf.VisibilityIcon == KastnTreeIconKind.OpenEye, "Included slips should display the open eye.");
         AssertEqual("Picture", pictureLeaf.Label, "A textless picture labels as Picture.");
     }
 

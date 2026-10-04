@@ -66,6 +66,7 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             output.WriteLine($"HEADLESS layout probe: {size} slips, {buckets} buckets; no pixel/GPU timing.");
             Time("Initial project", () => Apply(current));
+            Assert.Empty(window.slipInspectorFieldsPanel.Children);
             Time("Identical snapshot", () => Apply(current), 5);
             Time("One slip edited", () =>
             {
@@ -97,6 +98,14 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             Time("Export text", () => _ = ZetlViewRenderer.Render(current, current.Slips, view), 3);
             Time("Board first render", () => window.viewModeBoardButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)));
             Time("Board one slip edited", () =>
+            {
+                current = current with { ChangeSequence = current.ChangeSequence + 1, Slips = current.Slips.Select(slip => slip.Id == "s-0"
+                    ? slip with { Revision = slip.Revision + 1, Text = slip.Text + "!" } : slip).ToArray() };
+                Apply(current);
+            }, 3);
+            Time("Details first render", () => window.detailDetailsButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)));
+            output.WriteLine($"Visible Details controls: {window.slipInspectorFieldsPanel.Children.Count}");
+            Time("Visible Details one slip edited", () =>
             {
                 current = current with { ChangeSequence = current.ChangeSequence + 1, Slips = current.Slips.Select(slip => slip.Id == "s-0"
                     ? slip with { Revision = slip.Revision + 1, Text = slip.Text + "!" } : slip).ToArray() };
