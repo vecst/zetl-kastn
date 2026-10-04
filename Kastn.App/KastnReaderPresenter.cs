@@ -18,6 +18,8 @@ internal sealed record KastnReaderRenderInputs(KastnProjectIndex Index, IReadOnl
 // owns bitmaps; each load captures a project and may assign only to its live block.
 internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll, KastnPictureCache pictures) : IDisposable
 {
+    // Keep the simpler, identity-preserving reconciliation for small documents.
+    private const int ViewportThreshold = 128;
     private sealed record ReaderBlock(string Id, Border Block, string RenderKey, KastnRenderedSlipContent? Content,
         Image? Image, TextBlock? PictureStatus)
     {
@@ -27,6 +29,10 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
     private readonly Dictionary<string, (TextBlock Heading, string RenderKey)> headingCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (Border Box, StackPanel Content)> groupCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Border> blocks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, KastnReaderItems> viewportGroups = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, KastnReaderItems.Row> viewportRows = new(StringComparer.Ordinal);
+    private bool usesViewport;
+    private bool viewportStructureChanged;
     public IReadOnlyDictionary<string, Border> Blocks => blocks;
     private KastnViewRenderKey? renderKey;
     private string? projectId;
@@ -46,6 +52,7 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         active = true;
         appearance = inputs.Appearance;
         var savedOffset = scroll.Offset;
+        var anchor = sameProject && usesViewport ? CaptureViewportAnchor() : null;
         var rebuilt = force || renderKey != inputs.Key || deletedOnly != inputs.DeletedOnly;
         if (rebuilt)
         {
@@ -54,7 +61,12 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
             deletedOnly = inputs.DeletedOnly;
         }
         UpdateSelection(selectedSlipId, scrollIntoView: !rebuilt);
-        if (rebuilt && sameProject) RestoreScroll(savedOffset);
+        if (rebuilt && sameProject)
+        {
+            RestoreScroll(savedOffset);
+            if (usesViewport && viewportStructureChanged && anchor is { } savedAnchor)
+                RestoreViewportAnchor(savedAnchor);
+        }
     }
 
     public void Suspend()
@@ -69,6 +81,9 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         renderKey = null;
         projectId = null;
         highlightedSlipId = null;
+        ClearViewport();
+        usesViewport = false;
+        viewportStructureChanged = false;
         panel.Children.Clear();
         blocks.Clear();
         slipCache.Clear();
@@ -86,10 +101,18 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 
     private void BuildDocument(KastnReaderRenderInputs inputs)
     {
+        viewportStructureChanged = false;
         var project = inputs.Index.Project;
         var visible = inputs.Slips;
         blocks.Clear();
         var groups = ZetlViewRenderer.BuildGroups(project, visible, inputs.View);
+        var useViewport = groups.Sum(group => group.Slips.Count) >= ViewportThreshold;
+        if (useViewport != usesViewport)
+        {
+            ClearViewport();
+            slipCache.Clear();
+            usesViewport = useViewport;
+        }
         if (groups.Count == 0)
         {
             slipCache.Clear();
@@ -148,6 +171,7 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 
             var groupChildren = isGroup ? new List<Control>() : desiredChildren;
             groupChildren.Add(heading.Heading);
+            var rows = useViewport ? new List<KastnReaderItems.Row>() : null;
 
             // Each note carries its own list kind (authoritative, not a view-wide
             // style); ordered notes count up over their run and any non-ordered note
@@ -163,18 +187,39 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 
                 var depth = isGroup ? 0 : group.Depth;
                 var renderKey = $"{slip.Revision}|{depth}|{marker}|{checkable}";
-                if (!slipCache.TryGetValue(slip.Id, out var cached)
-                    || !string.Equals(cached.RenderKey, renderKey, StringComparison.Ordinal)
-                    || cached.Content?.MatchesLinks(inputs.Index) == false)
+                Border Realize()
                 {
-                    cached = BuildSlipBlock(slip, depth, marker, contentRenderer, renderKey, inputs.SelectSlip, checkable);
-                    slipCache[slip.Id] = cached;
-                    if (cached.Image is not null) cached.PictureLoad = LoadPictureAsync(project.Id, slip, cached);
+                    if (!slipCache.TryGetValue(slip.Id, out var cached)
+                        || !string.Equals(cached.RenderKey, renderKey, StringComparison.Ordinal)
+                        || cached.Content?.MatchesLinks(inputs.Index) == false)
+                    {
+                        cached = BuildSlipBlock(slip, depth, marker, contentRenderer, renderKey, inputs.SelectSlip, checkable);
+                        slipCache[slip.Id] = cached;
+                        if (cached.Image is not null) cached.PictureLoad = LoadPictureAsync(project.Id, slip, cached);
+                    }
+                    blocks[slip.Id] = cached.Block;
+                    ApplyHighlight(cached.Block, highlightedSlipId == slip.Id);
+                    return cached.Block;
                 }
-
-                blocks[slip.Id] = cached.Block;
                 renderedSlipIds.Add(slip.Id);
-                groupChildren.Add(cached.Block);
+                if (rows is not null)
+                {
+                    if (!viewportRows.TryGetValue(slip.Id, out var row))
+                        viewportRows[slip.Id] = row = new(slip.Id);
+                    row.Realize = Realize;
+                    row.Retire = block => RetireBlock(slip.Id, block);
+                    rows.Add(row);
+                }
+                else groupChildren.Add(Realize());
+            }
+
+            if (rows is not null)
+            {
+                if (!viewportGroups.TryGetValue(groupKey, out var items))
+                    viewportGroups[groupKey] = items = new();
+                items.Spacing = isGroup ? 2 : panel.Spacing;
+                viewportStructureChanged |= items.SetRows(rows);
+                groupChildren.Add(items);
             }
 
             if (isGroup)
@@ -201,6 +246,14 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 
         KastnPanelReconciler.SyncChildren(panel.Children, desiredChildren);
 
+        foreach (var staleKey in viewportGroups.Keys.Where(key => !renderedGroupKeys.Contains(key)).ToArray())
+        {
+            viewportGroups[staleKey].Release();
+            viewportGroups.Remove(staleKey);
+        }
+        foreach (var staleId in viewportRows.Keys.Where(id => !renderedSlipIds.Contains(id)).ToArray())
+            viewportRows.Remove(staleId);
+
         foreach (var staleId in slipCache.Keys.Where(id => !renderedSlipIds.Contains(id)).ToList())
         {
             slipCache.Remove(staleId);
@@ -215,6 +268,22 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         {
             groupCache.Remove(staleKey);
         }
+    }
+
+    private void RetireBlock(string id, Border block)
+    {
+        if (slipCache.TryGetValue(id, out var current) && ReferenceEquals(current.Block, block))
+        {
+            slipCache.Remove(id);
+            blocks.Remove(id);
+        }
+    }
+
+    private void ClearViewport()
+    {
+        foreach (var items in viewportGroups.Values) items.Release();
+        viewportGroups.Clear();
+        viewportRows.Clear();
     }
 
     private ReaderBlock BuildSlipBlock(
@@ -327,17 +396,55 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         var version = ++selectionVersion;
         if (highlightedSlipId is not null && blocks.TryGetValue(highlightedSlipId, out var previous))
             ApplyHighlight(previous, false);
-        highlightedSlipId = null;
-        if (selectedSlipId is null || !slipCache.TryGetValue(selectedSlipId, out var selected)) return;
+        highlightedSlipId = selectedSlipId;
+        if (selectedSlipId is null) return;
+        if (usesViewport && scrollIntoView)
+        {
+            scroll.UpdateLayout();
+            ShowViewportSlip(selectedSlipId);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (active && selectionVersion == version && highlightedSlipId == selectedSlipId)
+                    ShowViewportSlip(selectedSlipId);
+            }, DispatcherPriority.Background);
+        }
+        if (!slipCache.TryGetValue(selectedSlipId, out var selected)) return;
         ApplyHighlight(selected.Block, true);
         highlightedSlipId = selectedSlipId;
-        if (!scrollIntoView) return;
+        if (!scrollIntoView || usesViewport) return;
         selected.Block.BringIntoView();
         Dispatcher.UIThread.Post(() =>
         {
             if (active && selectionVersion == version && highlightedSlipId == selectedSlipId && IsLive(selected))
                 selected.Block.BringIntoView();
         }, DispatcherPriority.Background);
+    }
+
+    private void ShowViewportSlip(string id)
+    {
+        foreach (var items in viewportGroups.Values)
+            if (items.ShowSlip(id)) break;
+    }
+
+    private (string Id, double Y)? CaptureViewportAnchor()
+    {
+        (string Id, double Y)? result = null;
+        foreach (var (id, block) in blocks)
+        {
+            if (block.TranslatePoint(default, scroll) is not { } point
+                || point.Y + block.Bounds.Height <= 0 || point.Y >= scroll.Viewport.Height) continue;
+            if (result is null || point.Y < result.Value.Y) result = (id, point.Y);
+        }
+        return result;
+    }
+
+    private void RestoreViewportAnchor((string Id, double Y) anchor)
+    {
+        if (!viewportRows.ContainsKey(anchor.Id)) return;
+        ShowViewportSlip(anchor.Id);
+        scroll.UpdateLayout();
+        if (blocks.TryGetValue(anchor.Id, out var block) && block.TranslatePoint(default, scroll) is { } point)
+            scroll.Offset = new Vector(scroll.Offset.X, Math.Max(0, scroll.Offset.Y + point.Y - anchor.Y));
     }
 
     private void ApplyHighlight(Border block, bool on)

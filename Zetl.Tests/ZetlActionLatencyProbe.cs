@@ -66,6 +66,8 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             output.WriteLine($"HEADLESS layout probe: {size} slips, {buckets} buckets; no pixel/GPU timing.");
             Time("Initial project", () => Apply(current));
+            var reader = (KASTN.KastnReaderPresenter)typeof(KASTN.MainWindow).GetField("readerPresenter", flags)!.GetValue(window)!;
+            output.WriteLine($"Reader blocks realized initially: {reader.Blocks.Count} / {size}");
             Assert.Empty(window.slipInspectorFieldsPanel.Children);
             Time("Identical snapshot", () => Apply(current), 5);
             Time("One slip edited", () =>
@@ -96,6 +98,14 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             var view = ZetlViewDefaults.CreateAll()[0];
             Time("Export text", () => _ = ZetlViewRenderer.Render(current, current.Slips, view), 3);
+            Time("Reader jump to last / first", () =>
+            {
+                reader.UpdateSelection(current.Slips[^1].Id);
+                window.UpdateLayout();
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                reader.UpdateSelection(current.Slips[0].Id);
+            }, 3);
+            output.WriteLine($"Reader blocks realized after jumps: {reader.Blocks.Count} / {size}");
             Time("Board first render", () => window.viewModeBoardButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)));
             Time("Board one slip edited", () =>
             {

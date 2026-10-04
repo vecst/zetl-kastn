@@ -69,6 +69,50 @@ is visible. It constructs 1,009 or 3,009 detail controls; visible-detail edits
 still averaged about 20,365 or 60,052 KiB and had medians of 142 or 515 ms.
 Projects with few backlinks will see a smaller editing benefit from deferral.
 
+## Reader viewport rendering
+
+Documents with at least 128 visible slips now keep lightweight rows and use
+Avalonia's variable-height `VirtualizingStackPanel` inside each reader group.
+It realizes note controls near the viewport, with half a viewport of overscan.
+Small documents retain the existing reconciliation. Bucket headings and group
+boxes keep their appearance and remain eager; an offscreen group can realize a
+starter note to estimate its height, so this is not a strict global control cap
+for projects with very many buckets.
+
+Unchanged visible notes retain their controls. Edited notes refresh immediately;
+offscreen edits render when visited. Eviction retires selection/link/checkbox
+actions and pending picture assignments. Pictures are fetched only when their
+note is realized, while the shared cache retains bitmap ownership. Offscreen
+selection realizes and scrolls to its destination. Reorders preserve the first
+visible note's position when it survives, and shorter filters clamp scrolling.
+Exports still render the entire snapshot independently of the viewport.
+
+Compared with `a18c46d`, the headless text probe reports:
+
+| Slips / buckets | Reader blocks initially | Initial allocation before / after | Half-filter / clear before / after | Filter allocation before / after |
+| --- | ---: | ---: | ---: | ---: |
+| 1,000 / 10 | 24 / 1,000 | 427,528 / 334,469 KiB | 414 / 49 ms | 25,777 / 1,748 KiB |
+| 3,000 / 1 | 15 / 3,000 | 1,411,540 / 990,036 KiB | 2,168 / 57 ms | 114,135 / 6,715 KiB |
+
+Whole-window initial allocations fell 22–30%, and filter allocations fell
+93–94%. Initial timing remains variable: 4.4 → 4.9 seconds at 1,000 slips and
+15.6 → 9.4 seconds at 3,000. Single-edit medians were 46 / 126 ms versus the
+previous 50 / 90 ms; this pass does not establish an edit-latency improvement.
+The reader retained 25 / 16 blocks after jumping to the last note and back.
+
+Reorders rebuild the affected group's bounded set of controls and restore a
+logical anchor. This costs more allocation in the 1,000-note full reversal
+(7,828 versus 4,009 KiB), with a 212 ms median versus 187 ms. At 3,000 notes,
+full reversal was 420 ms / 12,009 KiB versus 450 ms / 11,409 KiB. Native layout
+estimates offscreen heights; scroll extent can adjust as notes are measured.
+
+Eight new UI cases cover bounded realization, ordinary scrolling, distant
+selection and return, visible/offscreen edits, variable-height plain/container
+groups, resize, filtering, project changes, reorders, latest-selection handling,
+inactive readers, global ordered runs, cross-bucket navigation, retired links
+and checkboxes, deferred pictures and completion after eviction. The existing
+reader/action/picture regressions continue to run unchanged.
+
 ## Reproduce
 
 The normal suite skips the diagnostic. Run it alone, with no concurrent build or
@@ -88,7 +132,8 @@ try {
 Repeat with size/buckets `300`/`1` and `3000`/`1`. Each fresh process measures
 initial project application, identical snapshots, one-slip edits, individual
 refresh phases, reorders, half-project search/clear, text export, board rendering,
-and visible Details. Three-line text slips share a fixed capture time, link to the
+reader realization counts and distant selection jumps, and visible Details.
+Three-line text slips share a fixed capture time, link to the
 first slip and are distributed round-robin across buckets. All settings, drafts,
 catalogs and remembered-project
 state live in a disposable directory. No connection or Zetl process is started.
@@ -101,15 +146,15 @@ of the suite.
 
 ## Remaining costs
 
-Initial realization remains expensive and every row/block is still realized.
-Half-project filtering allocates roughly 25,777 KiB and 114,135 KiB when averaged
-across hiding/restoring content. Large visible backlink lists still rebuild all
+Initial tree realization remains expensive, and the tree and board still
+realize all their rows/cards. Reader headings and group boxes remain eager.
+Large visible backlink lists still rebuild all
 their controls; after opening Details, its last controls are retained while
 hidden and reused if the inputs are unchanged. Rebuilds, project changes and
 cleared selections retire them.
 
-Next, evaluate rendering only visible rows/blocks and limiting layout to changed
-content. Tree hierarchy, variable-height reader blocks, scrolling, multi-selection,
+Next, evaluate tree/board viewport rendering and limiting layout to changed
+content. Tree hierarchy, scrolling, multi-selection,
 keyboard navigation, nested collapse and drag/drop boundaries need explicit
 coverage before viewport virtualization. Preserve bitmap ownership while measuring
 picture-heavy projects separately; this text-only probe does not characterize

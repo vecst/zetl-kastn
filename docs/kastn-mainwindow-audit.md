@@ -573,6 +573,15 @@ loading, large visible backlink lists and document filtering still need viewport
 work. Metadata/selection freshness, theme-aware icons and drag feedback have UI
 regression coverage.
 
+The reader viewport pass is complete. Large documents use lightweight note rows
+and realize controls near the viewport within each group. Selection, logical
+scroll anchors, ordered runs, picture ownership and retired actions have focused
+UI coverage. The probe realized 24 of 1,000 and 15 of 3,000 reader blocks;
+whole-window initial allocations fell 22–30% and filter allocations 93–94%.
+Tree/board realization, eager reader headings/groups and visible backlinks are
+remaining targets. See the performance document for timing variation and the
+allocation tradeoff when reconciling reorders.
+
 1. Remove unused slip-list presentation work before adding more caches.
 2. Derive selection and availability once per UI update. Reuse project indexes
    for target resolution instead of repeatedly scanning all slips and buckets.
