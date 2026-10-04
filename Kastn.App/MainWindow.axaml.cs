@@ -21,6 +21,7 @@ namespace KASTN;
 internal partial class MainWindow : Window
 {
     private readonly KastnSettings settings;
+    private readonly KastnProjectCreationWorkflow projectCreation;
     private string UntitledSlipTitle => settings.Current.UntitledSlipTitle;
     private const int RecentProjectLimit = 10;
 
@@ -224,6 +225,7 @@ internal partial class MainWindow : Window
     public MainWindow()
     {
         settings = new();
+        projectCreation = new(settings);
         InitializeComponent();
         viewCatalog = new(new ZetlViewStore(log: Console.Error.WriteLine));
         viewPersistence = new(viewCatalog.Store);
@@ -245,6 +247,7 @@ internal partial class MainWindow : Window
         KastnSettings? settings = null)
     {
         this.settings = settings ?? new();
+        projectCreation = new(this.settings);
         this.connection = connection;
         viewCatalog = new(viewStore ?? new ZetlViewStore(log: Console.Error.WriteLine));
         viewPersistence = new(viewCatalog.Store);
@@ -1322,13 +1325,14 @@ internal partial class MainWindow : Window
 
     private void SetConnectionState(KastnSessionSnapshot snapshot)
     {
+        var creationStatus = CreationStatus(snapshot);
         statusText.Text = recoveredDraftActive
             ? editorState.ConflictCurrent is not null
                 ? "Recovered local draft conflicts with the current Zetl slip."
                 : "Recovered unsaved local draft; not yet saved to Zetl."
             : editorState.IsDirty
                 ? "Unsaved changes."
-                : snapshot.Status;
+                : creationStatus ?? snapshot.Status;
         var online = snapshot.ConnectionState == KastnConnectionState.Online;
         offlineBanner.IsVisible = snapshot.ConnectionState == KastnConnectionState.Offline;
         connectionProgress.IsVisible =

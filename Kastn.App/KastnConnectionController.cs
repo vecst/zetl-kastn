@@ -21,6 +21,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     private bool projectSelectionRequested = true;
     private bool hasEverConnected;
     private bool launchAttemptedForOutage;
+    private long navigationVersion;
     private volatile bool suppressRelaunch;
 
     public KastnConnectionController(
@@ -49,6 +50,10 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     public event EventHandler<KastnSessionSnapshot>? SnapshotChanged;
 
     public KastnSessionSnapshot Current { get; private set; }
+
+    // Intent changes before the asynchronous project refresh completes. Workflows
+    // can reject an older completion even while Current still shows the old project.
+    public long NavigationVersion => Volatile.Read(ref navigationVersion);
 
     public bool HasLiveConnection
     {
@@ -86,6 +91,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         string? projectId,
         CancellationToken cancellationToken = default)
     {
+        Interlocked.Increment(ref navigationVersion);
         if (string.IsNullOrWhiteSpace(projectId))
         {
             desiredProjectId = null;

@@ -32,7 +32,7 @@ internal partial class MainWindow
         UpdateInlineFormatButtons();
         statusText.Text = editorState.IsDirty
             ? "Unsaved changes — saved when you leave the editor."
-            : connection.Current.Status;
+            : CreationStatus(connection.Current) ?? connection.Current.Status;
     }
 
     private async void OnTreeVisibilityClick(object? sender, RoutedEventArgs args)

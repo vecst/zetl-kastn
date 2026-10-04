@@ -316,6 +316,27 @@ extracting undo or the renderers.
   solution build; 944 tests passed, with the same two intentional latency-probe
   skips. Template/creation workflows are next, followed by measured performance.
 
+- Extracted `KastnProjectCreationWorkflow`, shared by template cards and creation
+  types. It captures the template and completion preference, owns temporary-lane
+  resolution/remembering, creates through Zetl, seeds in listed bucket/card order,
+  and validates the default-view assignment. A busy gate includes final navigation.
+- Creation, seed, and view outcomes remain separate. Failed independent fields
+  do not prevent later seeds; transport interruption stops unsent work. Missing or
+  mismatched confirmations produce partial results without recreating the project
+  or retrying fields. Setup warnings keep the window visible and survive unchanged
+  refreshes; mutations/navigation clear the scoped completion notice.
+- `MainWindow.ProjectCreation.cs` supplies dialogs, editor-save preparation,
+  session validity, navigation, and native minimize effects. Changed projects,
+  server sessions, editor selection/drafts, pending navigation intent, and retired
+  windows invalidate older answers/completions. Ordinary landing refreshes remain
+  valid; later writing during a prerequisite save is retained.
+- Added 53 owner, headless UI, and delayed real-IPC checks for ordered seeds,
+  capture/temporary modes, cancellation, concurrent starts, captured drafts,
+  remembered preferences, partial/uncertain replies, view conflicts, interrupted
+  saves, navigation, and retirement. Validation: solution build with zero warnings
+  or errors; 997 tests passed, with the same two intentional latency-probe skips.
+  Template/creation editor ownership remains next, before measured performance.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |
@@ -466,10 +487,11 @@ Share small clone/baseline/discard helpers where appropriate. Keep view scope
 changes explicit: project/global persistence has different failure ordering
 from local template and creation-type saves.
 
-A project-creation workflow should own template-to-project commands, seeding,
-temporary-lane configuration, and default-view assignment. Return separate
-outcomes for project creation, seed failures, and view assignment. The current
-default-view response is not checked before reporting project creation success.
+The project-creation workflow extraction is complete: `KastnProjectCreationWorkflow`
+owns template-to-project commands, ordered seeding, temporary-lane configuration,
+and default-view assignment. It returns separate creation/seed/view outcomes and
+validates confirmations before reporting complete setup. The unchecked default-view
+response at the audit baseline is now covered by owner and real-IPC UI regressions.
 
 Checks: built-in editing creates a copy, cancel leaves stored data intact,
 validation failures keep the draft open, view scope migration failures,
