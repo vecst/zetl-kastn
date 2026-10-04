@@ -29,8 +29,8 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
     private readonly Dictionary<string, (TextBlock Heading, string RenderKey)> headingCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (Border Box, StackPanel Content)> groupCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Border> blocks = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, KastnReaderItems> viewportGroups = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, KastnReaderItems.Row> viewportRows = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, KastnViewportItems> viewportGroups = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, KastnViewportItems.Row> viewportRows = new(StringComparer.Ordinal);
     private bool usesViewport;
     private bool viewportStructureChanged;
     public IReadOnlyDictionary<string, Border> Blocks => blocks;
@@ -171,7 +171,7 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 
             var groupChildren = isGroup ? new List<Control>() : desiredChildren;
             groupChildren.Add(heading.Heading);
-            var rows = useViewport ? new List<KastnReaderItems.Row>() : null;
+            var rows = useViewport ? new List<KastnViewportItems.Row>() : null;
 
             // Each note carries its own list kind (authoritative, not a view-wide
             // style); ordered notes count up over their run and any non-ordered note
@@ -207,7 +207,7 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
                     if (!viewportRows.TryGetValue(slip.Id, out var row))
                         viewportRows[slip.Id] = row = new(slip.Id);
                     row.Realize = Realize;
-                    row.Retire = block => RetireBlock(slip.Id, block);
+                    row.Retire = block => RetireBlock(slip.Id, (Border)block);
                     rows.Add(row);
                 }
                 else groupChildren.Add(Realize());

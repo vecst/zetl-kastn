@@ -113,6 +113,68 @@ inactive readers, global ordered runs, cross-bucket navigation, retired links
 and checkboxes, deferred pictures and completion after eviction. The existing
 reader/action/picture regressions continue to run unchanged.
 
+## Tree and board viewport rendering
+
+Trees with at least 128 nodes flatten their expanded hierarchy into one viewport.
+The full projection remains available for selection and commands; a dedicated
+panel realizes fixed 32-pixel headers with half a viewport of overscan. Keeping
+containers by model identity preserves visible rows and keyboard focus through
+nearby moves, while collapsed buckets keep their expansion state after eviction.
+Keyboard navigation, range selection and Select All operate on logical nodes,
+including nodes without controls. A selected hidden child remains selected when
+its bucket collapses, without disturbing the editor; navigating to a hidden
+child expands its ancestors. Smaller trees retain the native hierarchy.
+
+Boards with at least 128 visible slips share the reader's variable-height
+viewport primitive. Cards are realized near each column's vertical viewport,
+and distant horizontal columns release their card controls. One column of
+horizontal overscan supports scrolling and drag targets. Column shells, headers
+and composers remain eager, preserving drafts and their scroll positions.
+Returning to a column restores a logical note anchor. Picture peeks and picture
+completion preserve that anchor; evicted cards cannot act or receive a late
+picture assignment. Bitmap ownership remains in the shared picture cache.
+
+Drag planning uses realized card coordinates and the full project's logical
+successor, so a trailing gap in the middle of a virtualized column does not
+append the note at the bucket's end. Tree insertion feedback falls back to a
+visible edge when the canonical successor has no control.
+
+Fourteen new UI cases cover bounded tree/card realization, distant selection,
+latest-selection ordering, keyboard and pointer ranges across unrealized rows,
+Select All with collapsed children, nested collapse, reorders, focus, resize,
+column eviction and return, drafts, filtering, project changes, picture peeks,
+late picture completion, native tree drag hit testing and board drop boundaries.
+The native drag test renders a headless frame after scrolling so its hit-test
+scene reflects the new row positions.
+
+Compared with `0dd7a18`, the final headless text probe reports:
+
+| Slips / buckets | Tree rows initially | Board cards initially | Initial allocation before / after | Board first-render allocation before / after |
+| --- | ---: | ---: | ---: | ---: |
+| 1,000 / 10 | 20 / 1,010 | 96 / 1,000 | 334,469 / 20,726 KiB | 70,972 / 12,869 KiB |
+| 3,000 / 1 | 20 / 3,001 | 19 / 3,000 | 990,036 / 25,198 KiB | 382,958 / 3,712 KiB |
+
+Whole-window initial allocations fell 94–97%, and board first-render allocations
+fell 82–99%. The observed initial application was 4,942 → 599 ms and
+9,394 → 485 ms; board first render was 795 → 332 ms and 2,015 → 68 ms.
+These are individual startup samples, not frame-rate or native-rendering results.
+The narrower board interaction harness realizes fewer cards than this wide
+full-window probe; realization depends on both viewport dimensions and overscan.
+
+Single-edit medians were 11 / 22 ms versus the prior 46 / 126 ms, but allocations
+increased to 3,164 / 8,614 KiB from 2,937 / 7,905 KiB because logical viewport
+models and selection are reconciled. Full reversal recreates the bounded set
+whose old nodes moved out of view; only one old container survives this probe's
+complete reversal. At 1,000 notes, reversal was 233 ms / 14,964 KiB versus
+212 ms / 7,828 KiB; at 3,000 it was 205 ms / 19,075 KiB versus
+420 ms / 12,009 KiB. Nearby moves preserve visible control identity and focus.
+
+Filtering was 27 / 69 ms versus 49 / 57 ms, with similar allocations. Visible
+Details still builds 1,009 / 3,009 controls and is outside this virtualization
+pass: its edit medians were 199 / 715 ms versus 136 / 353 ms, with allocations
+about 20,874 / 61,433 KiB. These measurements do not establish a uniform latency
+improvement; visible backlink lists remain a follow-up target.
+
 ## Reproduce
 
 The normal suite skips the diagnostic. Run it alone, with no concurrent build or
@@ -132,7 +194,7 @@ try {
 Repeat with size/buckets `300`/`1` and `3000`/`1`. Each fresh process measures
 initial project application, identical snapshots, one-slip edits, individual
 refresh phases, reorders, half-project search/clear, text export, board rendering,
-reader realization counts and distant selection jumps, and visible Details.
+reader/tree/board realization counts and distant selection jumps, and visible Details.
 Three-line text slips share a fixed capture time, link to the
 first slip and are distributed round-robin across buckets. All settings, drafts,
 catalogs and remembered-project
@@ -146,16 +208,16 @@ of the suite.
 
 ## Remaining costs
 
-Initial tree realization remains expensive, and the tree and board still
-realize all their rows/cards. Reader headings and group boxes remain eager.
+Tree and board controls now follow the viewport. The full tree projection and
+expanded-node list still reconcile on snapshots; board row models still cover
+the full filtered result. Reader headings/group boxes and board column shells
+remain eager, so projects with very many buckets retain those costs.
 Large visible backlink lists still rebuild all
 their controls; after opening Details, its last controls are retained while
 hidden and reused if the inputs are unchanged. Rebuilds, project changes and
 cleared selections retire them.
 
-Next, evaluate tree/board viewport rendering and limiting layout to changed
-content. Tree hierarchy, scrolling, multi-selection,
-keyboard navigation, nested collapse and drag/drop boundaries need explicit
-coverage before viewport virtualization. Preserve bitmap ownership while measuring
+Next, measure large visible backlink lists and limiting reconciliation to changed
+content. Preserve bitmap ownership while measuring
 picture-heavy projects separately; this text-only probe does not characterize
 image decoding or a suitable bitmap retention budget.

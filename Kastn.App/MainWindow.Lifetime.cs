@@ -75,6 +75,7 @@ internal partial class MainWindow
         dragScrollTimer?.Stop();
         boardDragScrollTimer?.Stop();
         ApplyDropMarker(null);
+        projectTree.SetHierarchy([]);
         readerPresenter.Dispose();
         boardPresenter.Dispose();
         viewEditor.Close();

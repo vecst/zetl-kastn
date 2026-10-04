@@ -546,6 +546,7 @@ internal partial class MainWindow : Window
                 projectIndex = null;
                 RefreshViewCatalog(null, force: false);
                 treeProjection.Clear();
+                projectTree.SetHierarchy(treeProjection.Roots);
                 editorState.Select(null);
                 UpdateEditorFromState();
                 RefreshViewer();
@@ -884,15 +885,13 @@ internal partial class MainWindow : Window
             .Select(node => node.Id)
             .ToList() ?? [];
 
-        // Merge the fresh projection into the live tree instead of resetting
-        // ItemsSource: unchanged rows keep their realized containers (a full
-        // reset re-created every row — about a second per refresh on a
-        // few-hundred-slip project), and selection/expansion survive naturally.
+        // Reconcile the live projection, then update its expanded viewport.
+        // Realized rows keep model identity; expansion, selection and the
+        // first visible row survive changes to the logical hierarchy.
+        var treeAnchor = projectTree.CaptureAnchor();
         treeProjection.Update(ProjectIndex, showingDeleted, this.settings.Current.MaxSlipLabelLength);
-        if (!ReferenceEquals(projectTree.ItemsSource, treeProjection.Roots))
-        {
-            projectTree.ItemsSource = treeProjection.Roots;
-        }
+        projectTree.SetHierarchy(treeProjection.Roots);
+        projectTree.RestoreAnchor(treeAnchor);
 
         UpdateDeletedToggle(project);
 

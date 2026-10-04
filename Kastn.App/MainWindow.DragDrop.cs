@@ -325,6 +325,13 @@ internal partial class MainWindow
                     target.Id, source.Kind == KastnTreeNodeKind.Slip && target.Kind == KastnTreeNodeKind.Bucket
                         ? KastnDropEdge.None : EdgeFromFraction(fraction, target.Kind == KastnTreeNodeKind.Bucket),
                     MarkerId: boardDragInProgress ? target.Id : null);
+            if (!boardDragInProgress && position.Kind == KastnDropTargetKind.Slip && position.Edge == KastnDropEdge.After)
+            {
+                var next = ProjectIndex.Slips(target.Slip!.BucketId).SkipWhile(slip => slip.Id != target.Id)
+                    .Skip(1).FirstOrDefault(slip => !ids.Contains(slip.Id))?.Id;
+                if (next is not null && treeProjection.Find(next) is { } nextNode && projectTree.TreeContainerFromItem(nextNode) is null)
+                    position = position with { MarkerId = target.Id };
+            }
         }
         return KastnDropPlanner.Plan(ProjectIndex, source.Id, source.Kind == KastnTreeNodeKind.Slip, ids, position);
     }
@@ -335,15 +342,18 @@ internal partial class MainWindow
             return new(KastnDropTargetKind.Bucket, bucketId);
         var y = args.GetPosition(cardsPanel).Y;
         string? last = null;
-        foreach (var child in cardsPanel.Children)
+        foreach (var child in boardPresenter.RealizedColumnCards(bucketId)
+            .OrderBy(control => control.TranslatePoint(default, cardsPanel)?.Y ?? 0))
         {
             if (child is not Control { DataContext: KastnTreeNode node } control || draggedIds.Contains(node.Id)) continue;
             last = node.Id;
-            if (y < control.Bounds.Y + control.Bounds.Height / 2)
+            if (y < (control.TranslatePoint(default, cardsPanel)?.Y ?? 0) + control.Bounds.Height / 2)
                 return new(KastnDropTargetKind.BoardSlot, bucketId, KastnDropEdge.Before, node.Id, node.Id);
         }
+        var before = last is null ? null : ProjectIndex.Slips(bucketId).SkipWhile(slip => slip.Id != last)
+            .Skip(1).FirstOrDefault(slip => !draggedIds.Contains(slip.Id))?.Id;
         return last is null ? new(KastnDropTargetKind.Bucket, bucketId)
-            : new(KastnDropTargetKind.BoardSlot, bucketId, KastnDropEdge.After, MarkerId: last);
+            : new(KastnDropTargetKind.BoardSlot, bucketId, KastnDropEdge.After, before, last);
     }
 
     private static KastnDropEdge EdgeFromFraction(double fraction, bool allowInto) => !allowInto

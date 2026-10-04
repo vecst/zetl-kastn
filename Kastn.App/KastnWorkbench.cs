@@ -86,6 +86,45 @@ internal sealed class KastnTreeNode : INotifyPropertyChanged
         ? IncludedCount.ToString()
         : $"{IncludedCount} · {HiddenCount} hidden";
     public ObservableCollection<KastnTreeNode> Children { get; init; } = [];
+    public IEnumerable<KastnTreeNode> TreeItems => IsFlatTree ? [] : Children;
+    public bool IsFlatBucket => IsFlatTree && IsBucket;
+    public string ExpansionGlyph => IsExpanded ? "⌄" : "›";
+    private bool isFlatTree;
+    public bool IsFlatTree
+    {
+        get => isFlatTree;
+        set
+        {
+            if (isFlatTree == value) return;
+            isFlatTree = value;
+            foreach (var property in new[] { nameof(TreeItems), nameof(IsFlatBucket), nameof(TreeIndent) })
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
+        }
+    }
+    private int treeDepth;
+    public int TreeDepth
+    {
+        get => treeDepth;
+        set
+        {
+            if (treeDepth == value) return;
+            treeDepth = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TreeIndent)));
+        }
+    }
+    public Avalonia.Thickness TreeIndent => new(IsFlatTree ? TreeDepth * 16 : 0, 0, 0, 0);
+    private bool isExpanded = true;
+    public bool IsExpanded
+    {
+        get => isExpanded;
+        set
+        {
+            if (isExpanded == value) return;
+            isExpanded = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExpansionGlyph)));
+        }
+    }
 
     // BucketRenderKind stays init-only for construction ergonomics; UpdateFrom
     // tracks the live value here so a render-kind change updates in place.

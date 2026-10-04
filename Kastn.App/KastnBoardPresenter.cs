@@ -21,8 +21,23 @@ internal sealed record KastnBoardRenderInputs(KastnProjectIndex Index, IReadOnly
 
 // Owns board controls, composer drafts and picture assignment. Native drag
 // gestures and project mutations stay in the adapter; bitmaps stay cache-owned.
-internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll, KastnPictureCache pictures) : IDisposable
+internal sealed class KastnBoardPresenter : IDisposable
 {
+    private readonly StackPanel panel;
+    private readonly ScrollViewer scroll;
+    private readonly KastnPictureCache pictures;
+    private bool viewportUpdatePending;
+    private long viewportVersion;
+
+    public KastnBoardPresenter(StackPanel panel, ScrollViewer scroll, KastnPictureCache pictures)
+    {
+        this.panel = panel;
+        this.scroll = scroll;
+        this.pictures = pictures;
+        scroll.ScrollChanged += OnBoardScrollChanged;
+        scroll.SizeChanged += OnBoardSizeChanged;
+    }
+
     private KastnViewRenderKey? renderKey;
     private string? projectId;
     private string? highlightedBoardSlipId;
@@ -30,10 +45,14 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
     private bool active;
     private bool disposed;
     private long selectionVersion;
+    private bool usesViewport;
     private KastnBoardAppearance appearance = new(null, null, null, null);
     public bool IsDisposed => disposed;
     public Border? Card(string id) => boardCards.GetValueOrDefault(id)?.CardBorder;
     public StackPanel? ColumnCards(string id) => boardColumns.GetValueOrDefault(id)?.CardsPanel;
+    public int RealizedCardCount => boardCards.Count;
+    public IEnumerable<Control> RealizedColumnCards(string id) => boardCards.Values
+        .Where(card => card.BucketId == id).Select(card => (Control)card.Wrapper);
 
     public void Render(KastnBoardRenderInputs inputs, string? selectedSlipId)
     {
@@ -47,15 +66,29 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
         if (rebuilt)
         {
             var offset = scroll.Offset;
-            var columnOffsets = boardColumns.Values.Select(column => (column.Scroll, column.Scroll.Offset)).ToArray();
+            var columnOffsets = boardColumns.Select(pair =>
+                (Column: pair.Value, Offset: pair.Value.Scroll.Offset, Anchor: CaptureColumnAnchor(pair.Key, pair.Value))).ToArray();
+            var useViewport = inputs.Slips.Count >= 128;
+            if (usesViewport != useViewport)
+            {
+                foreach (var column in boardColumns.Values) column.Viewport.Release();
+                foreach (var id in boardCards.Keys.ToArray()) RemoveBoardCard(id);
+                usesViewport = useViewport;
+            }
             BuildBoardView(inputs);
             renderKey = inputs.Key;
             deletedOnly = inputs.DeletedOnly;
             scroll.UpdateLayout();
+            UpdateColumnViewports();
             if (sameProject)
             {
                 RestoreScroll(scroll, offset);
-                foreach (var (columnScroll, columnOffset) in columnOffsets) RestoreScroll(columnScroll, columnOffset);
+                foreach (var (column, columnOffset, anchor) in columnOffsets)
+                {
+                    RestoreScroll(column.Scroll, columnOffset);
+                    if (usesViewport && column.StructureChanged && anchor is { } savedAnchor)
+                        RestoreColumnAnchor(column, savedAnchor);
+                }
             }
         }
         UpdateSelection(selectedSlipId, scrollIntoView: !rebuilt);
@@ -65,12 +98,16 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
     {
         active = false;
         selectionVersion++;
+        viewportVersion++;
+        viewportUpdatePending = false;
     }
 
     public void Dispose()
     {
         if (disposed) return;
         disposed = true;
+        scroll.ScrollChanged -= OnBoardScrollChanged;
+        scroll.SizeChanged -= OnBoardSizeChanged;
         Clear();
     }
 
@@ -94,6 +131,15 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
         public required TextBlock CountText { get; init; }
         public required StackPanel CardsPanel { get; init; }
         public required ScrollViewer Scroll { get; init; }
+        public KastnViewportItems Viewport { get; } = new() { Spacing = 6 };
+        public Dictionary<string, KastnViewportItems.Row> Rows { get; } = new(StringComparer.Ordinal);
+        public bool StructureChanged { get; set; }
+        public IReadOnlyList<KastnViewportItems.Row> DesiredRows { get; set; } = [];
+        public Border Placeholder { get; } = new();
+        public bool ViewportActive { get; set; }
+        public (string Id, double Y)? SavedAnchor { get; set; }
+        public (string Id, double Y)? LastAnchor { get; set; }
+        public long AnchorVersion { get; set; }
         public long DraftVersion { get; set; }
 
         // The inline "type a card in place" composer under the cards; it lives
@@ -108,6 +154,7 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
         public required Grid Wrapper { get; init; }
         public required Border CardBorder { get; init; }
         public required string RenderKey { get; init; }
+        public string BucketId { get; set; } = "";
 
         // The thumbnail targets of a picture card, waiting for the async load
         // (the decoded bitmap lives in the shared picture cache). The
@@ -120,6 +167,7 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
 
     private readonly Dictionary<string, BoardColumnUi> boardColumns = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BoardCardUi> boardCards = new(StringComparer.Ordinal);
+    private IReadOnlyList<(string Id, BoardColumnUi Column)> orderedColumns = [];
 
     // Dual (text + picture) cards the user expanded to peek at the picture.
     // Keyed by slip id rather than stored on the card so a peek survives the
@@ -139,6 +187,7 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
             .ToDictionary(g => g.Key, g => (IReadOnlyList<ZetlSlipSnapshot>)g.ToList(), StringComparer.Ordinal);
 
         var desiredColumns = new List<Control>();
+        var ordered = new List<(string, BoardColumnUi)>();
         var liveBucketIds = new HashSet<string>(StringComparer.Ordinal);
         var liveSlipIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var bucket in buckets)
@@ -158,22 +207,25 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
             column.Wrapper.DataContext =
                 inputs.NodeContext(bucket.Id);
 
-            ReconcileColumnCards(column, bucket, slips, liveSlipIds, inputs);
+            ReconcileColumnCards(column, bucket, slips, liveSlipIds, inputs, desiredColumns.Count);
             desiredColumns.Add(column.Wrapper);
+            ordered.Add((bucket.Id, column));
         }
 
         foreach (var staleId in boardColumns.Keys.Where(id => !liveBucketIds.Contains(id)).ToList())
         {
+            boardColumns[staleId].Viewport.Release();
             boardColumns.Remove(staleId);
         }
 
         foreach (var staleId in boardCards.Keys.Where(id => !liveSlipIds.Contains(id)).ToList())
         {
             RemoveBoardCard(staleId);
-            expandedBoardPictures.Remove(staleId);
         }
+        expandedBoardPictures.RemoveWhere(id => !liveSlipIds.Contains(id));
 
         KastnPanelReconciler.SyncChildren(panel.Children, desiredColumns);
+        orderedColumns = ordered;
     }
 
     public void Clear()
@@ -181,8 +233,11 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
         Suspend();
         renderKey = null;
         projectId = null;
+        foreach (var column in boardColumns.Values) column.Viewport.Release();
+        usesViewport = false;
         boardCards.Clear();
         boardColumns.Clear();
+        orderedColumns = [];
         panel.Children.Clear();
         expandedBoardPictures.Clear();
         highlightedBoardSlipId = null;
@@ -193,35 +248,84 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
         BoardColumnUi column,
         ZetlBucketSnapshot bucket,
         IReadOnlyList<ZetlSlipSnapshot> slips,
-        HashSet<string> liveSlipIds, KastnBoardRenderInputs inputs)
+        HashSet<string> liveSlipIds, KastnBoardRenderInputs inputs, int columnIndex)
     {
         var desiredCards = new List<Control>();
+        column.StructureChanged = false;
+        var rows = usesViewport ? new List<KastnViewportItems.Row>() : null;
+        var columnIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var slip in slips)
         {
             liveSlipIds.Add(slip.Id);
+            columnIds.Add(slip.Id);
             var renderKey = BoardCardRenderKey(slip, bucket, inputs.Key);
-            if (boardCards.TryGetValue(slip.Id, out var card)
-                && !string.Equals(card.RenderKey, renderKey, StringComparison.Ordinal))
+            Control Realize()
             {
-                // Content changed: rebuild this one card.
-                RemoveBoardCard(slip.Id);
-                card = null;
-            }
-
-            if (card is null)
-            {
-                card = CreateBoardCard(slip, renderKey, inputs);
-                boardCards[slip.Id] = card;
-                if (card.PendingPictureLoad is { } load)
+                if (boardCards.TryGetValue(slip.Id, out var card)
+                    && !string.Equals(card.RenderKey, renderKey, StringComparison.Ordinal))
                 {
-                    card.PendingPictureLoad = null;
-                    card.PictureLoad = LoadBoardCardPictureAsync(inputs.Index.Project.Id, slip, card, load.Image, load.ExpandedImage, load.Status);
+                    // Content changed: rebuild this one card.
+                    RemoveBoardCard(slip.Id);
+                    card = null;
                 }
-            }
 
-            card.Wrapper.DataContext =
-                inputs.NodeContext(slip.Id);
-            desiredCards.Add(card.Wrapper);
+                if (card is null)
+                {
+                    card = CreateBoardCard(slip, renderKey, inputs);
+                    boardCards[slip.Id] = card;
+                    if (card.PendingPictureLoad is { } load)
+                    {
+                        card.PendingPictureLoad = null;
+                        card.PictureLoad = LoadBoardCardPictureAsync(inputs.Index.Project.Id, slip, card, load.Image, load.ExpandedImage, load.Status);
+                    }
+                }
+
+                card.Wrapper.DataContext =
+                    inputs.NodeContext(slip.Id);
+                card.BucketId = bucket.Id;
+                card.CardBorder.BorderBrush = highlightedBoardSlipId == slip.Id ? appearance.AccentBrush : appearance.BorderBrush;
+                return card.Wrapper;
+            }
+            if (rows is not null)
+            {
+                if (!column.Rows.TryGetValue(slip.Id, out var row)) column.Rows[slip.Id] = row = new(slip.Id);
+                row.Realize = Realize;
+                row.Retire = control =>
+                {
+                    if (boardCards.TryGetValue(slip.Id, out var current) && ReferenceEquals(current.Wrapper, control))
+                        boardCards.Remove(slip.Id);
+                };
+                rows.Add(row);
+            }
+            else desiredCards.Add(Realize());
+        }
+
+        foreach (var staleId in column.Rows.Keys.Where(id => !columnIds.Contains(id)).ToArray()) column.Rows.Remove(staleId);
+        if (rows is not null)
+        {
+            column.StructureChanged = !column.DesiredRows.SequenceEqual(rows);
+            if (!column.ViewportActive)
+                column.Placeholder.Height = column.DesiredRows.Count > 0
+                    ? column.Placeholder.Height * rows.Count / column.DesiredRows.Count
+                    : rows.Count * 64;
+            column.DesiredRows = rows;
+            if (ColumnNearViewport(columnIndex) || column.Viewport.IsKeyboardFocusWithin)
+            {
+                column.ViewportActive = true;
+                column.Viewport.SetRows(rows);
+                desiredCards.Add(column.Viewport);
+            }
+            else
+            {
+                RetireColumnViewport(bucket.Id, column);
+                desiredCards.Add(column.Placeholder);
+            }
+        }
+        else
+        {
+            column.DesiredRows = [];
+            column.ViewportActive = false;
+            column.SavedAnchor = null;
         }
 
         KastnPanelReconciler.SyncChildren(column.CardsPanel.Children, desiredCards);
@@ -244,6 +348,7 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
         {
             parent.Children.Remove(card.Wrapper);
         }
+        else if (card.Wrapper.Parent is Decorator decorator) decorator.Child = null;
     }
 
     // The reusable column shell: header, cards panel, drag wiring, and drop
@@ -389,6 +494,11 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
         };
 
         inputs.Actions.WireColumn(headerGrid, columnBorder, () => CanAct(bucketId, column));
+        scrollViewer.ScrollChanged += (_, _) =>
+        {
+            if (column.ViewportActive)
+                column.LastAnchor = CaptureColumnAnchor(bucketId, column) ?? column.LastAnchor;
+        };
         composerBox.PropertyChanged += (_, change) =>
         {
             if (change.Property == TextBox.TextProperty) column.DraftVersion++;
@@ -586,7 +696,7 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
                     expandedBoardPictures.Add(slip.Id);
                 }
 
-                expandedImage.IsVisible = expanded;
+                UpdateCardLayout(slip, () => expandedImage.IsVisible = expanded);
             };
 
             if (pictures.FindDecoded(slip.Picture.Sha256, 260) is { } cachedDual)
@@ -686,17 +796,163 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
         var version = ++selectionVersion;
         if (highlightedBoardSlipId is not null && boardCards.TryGetValue(highlightedBoardSlipId, out var previous))
             previous.CardBorder.BorderBrush = appearance.BorderBrush;
-        highlightedBoardSlipId = null;
-        if (selectedId is null || !boardCards.TryGetValue(selectedId, out var card)) return;
+        highlightedBoardSlipId = selectedId;
+        if (selectedId is null) return;
+        if (usesViewport && scrollIntoView)
+        {
+            ShowViewportCard(selectedId);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (active && selectionVersion == version && highlightedBoardSlipId == selectedId) ShowViewportCard(selectedId);
+            }, DispatcherPriority.Background);
+        }
+        if (!boardCards.TryGetValue(selectedId, out var card)) return;
         card.CardBorder.BorderBrush = appearance.AccentBrush;
         highlightedBoardSlipId = selectedId;
-        if (!scrollIntoView) return;
+        if (!scrollIntoView || usesViewport) return;
         card.CardBorder.BringIntoView();
         Dispatcher.UIThread.Post(() =>
         {
             if (active && selectionVersion == version && highlightedBoardSlipId == selectedId && IsLive(selectedId, card))
                 card.CardBorder.BringIntoView();
         }, DispatcherPriority.Background);
+    }
+
+    private void OnBoardScrollChanged(object? sender, ScrollChangedEventArgs e) => ScheduleColumnViewports();
+    private void OnBoardSizeChanged(object? sender, SizeChangedEventArgs e) => ScheduleColumnViewports();
+
+    private void ScheduleColumnViewports()
+    {
+        if (!active || disposed || !usesViewport || viewportUpdatePending) return;
+        viewportUpdatePending = true;
+        var version = viewportVersion;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (version != viewportVersion) return;
+            viewportUpdatePending = false;
+            if (active && !disposed) UpdateColumnViewports();
+        }, DispatcherPriority.Loaded);
+    }
+
+    private bool ColumnNearViewport(int index)
+    {
+        var left = index * (280 + panel.Spacing);
+        var width = scroll.Viewport.Width > 0 ? scroll.Viewport.Width : scroll.Bounds.Width;
+        // Keep one column of overscan on either side for smooth horizontal drags.
+        return left + 280 >= scroll.Offset.X - 280 && left <= scroll.Offset.X + width + 280;
+    }
+
+    private void RetireColumnViewport(string id, BoardColumnUi column)
+    {
+        if (!column.ViewportActive) return;
+        column.SavedAnchor = CaptureColumnAnchor(id, column) ?? column.LastAnchor;
+        column.Placeholder.Height = column.Viewport.Bounds.Height;
+        column.Viewport.Release();
+        column.ViewportActive = false;
+    }
+
+    private void UpdateColumnViewports()
+    {
+        if (!usesViewport) return;
+        for (var index = 0; index < orderedColumns.Count; index++)
+        {
+            var (id, column) = orderedColumns[index];
+            var wanted = ColumnNearViewport(index) || column.Viewport.IsKeyboardFocusWithin;
+            if (wanted != column.ViewportActive)
+            {
+                if (wanted)
+                {
+                    column.ViewportActive = true;
+                    column.Viewport.SetRows(column.DesiredRows);
+                    KastnPanelReconciler.SyncChildren(column.CardsPanel.Children, [column.Viewport]);
+                    column.Scroll.UpdateLayout();
+                }
+                else
+                {
+                    RetireColumnViewport(id, column);
+                    KastnPanelReconciler.SyncChildren(column.CardsPanel.Children, [column.Placeholder]);
+                }
+            }
+            if (wanted && column.SavedAnchor is { } anchor)
+            {
+                column.SavedAnchor = null;
+                RestoreColumnAnchor(column, anchor);
+            }
+        }
+    }
+
+    private void ShowViewportCard(string id)
+    {
+        foreach (var (bucketId, column) in boardColumns)
+        {
+            if (!column.Rows.ContainsKey(id)) continue;
+            column.Wrapper.BringIntoView();
+            scroll.UpdateLayout();
+            UpdateColumnViewports();
+            column.AnchorVersion++;
+            column.Viewport.ShowSlip(id);
+            column.Scroll.UpdateLayout();
+            column.LastAnchor = CaptureColumnAnchor(bucketId, column) ?? column.LastAnchor;
+            break;
+        }
+    }
+
+    private (string Id, double Y)? CaptureColumnAnchor(string bucketId, BoardColumnUi column)
+    {
+        if (!usesViewport) return null;
+        (string Id, double Y)? result = null;
+        foreach (var (id, card) in boardCards)
+        {
+            if (card.BucketId != bucketId || card.Wrapper.TranslatePoint(default, column.Scroll) is not { } point
+                || point.Y + card.Wrapper.Bounds.Height <= 0 || point.Y >= column.Scroll.Viewport.Height) continue;
+            if (result is null || point.Y < result.Value.Y) result = (id, point.Y);
+        }
+        return result;
+    }
+
+    private void RestoreColumnAnchor(BoardColumnUi column, (string Id, double Y) anchor)
+    {
+        if (!column.Rows.ContainsKey(anchor.Id)) return;
+        if (!column.ViewportActive)
+        {
+            column.SavedAnchor = anchor;
+            return;
+        }
+        var version = ++column.AnchorVersion;
+        RestoreColumnAnchorCore(column, anchor);
+        var lifecycle = viewportVersion;
+        // EffectiveViewport changes arrive after layout; repeat the logical
+        // anchor once they settle, before estimates can leave a distant gap.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (active && !disposed && lifecycle == viewportVersion && column.ViewportActive
+                && column.AnchorVersion == version && orderedColumns.Any(pair => ReferenceEquals(pair.Column, column)))
+                RestoreColumnAnchorCore(column, anchor);
+        }, DispatcherPriority.Background);
+    }
+
+    private void RestoreColumnAnchorCore(BoardColumnUi column, (string Id, double Y) anchor)
+    {
+        if (!column.Rows.ContainsKey(anchor.Id)) return;
+        var boardOffset = scroll.Offset;
+        column.Viewport.ShowSlip(anchor.Id);
+        column.Scroll.UpdateLayout();
+        if (boardCards.TryGetValue(anchor.Id, out var card) && card.Wrapper.TranslatePoint(default, column.Scroll) is { } point)
+            column.Scroll.Offset = new Vector(column.Scroll.Offset.X, Math.Max(0, column.Scroll.Offset.Y + point.Y - anchor.Y));
+        // Restoring an overscan column's vertical position must not reveal it
+        // horizontally. Explicit selection owns horizontal navigation.
+        RestoreScroll(scroll, boardOffset);
+    }
+
+    private void UpdateCardLayout(ZetlSlipSnapshot slip, Action change)
+    {
+        var column = boardColumns.GetValueOrDefault(slip.BucketId);
+        // A cache hit can finish during Realize, before the new wrapper is
+        // attached. It has no old height to preserve and must not reenter layout.
+        var anchor = column is not null && boardCards.TryGetValue(slip.Id, out var card) && card.Wrapper.Parent is not null
+            ? CaptureColumnAnchor(slip.BucketId, column) : null;
+        change();
+        if (column is not null && anchor is { } saved) RestoreColumnAnchor(column, saved);
     }
 
     // Load a board card's thumbnail into the shared decoded-picture cache. A load
@@ -716,8 +972,11 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
         // not the card content), so a failure must reveal it to be seen.
         void ReportUnavailable()
         {
-            status.Text = "Picture unavailable.";
-            status.IsVisible = true;
+            UpdateCardLayout(slip, () =>
+            {
+                status.Text = "Picture unavailable.";
+                status.IsVisible = true;
+            });
         }
 
         try
@@ -741,13 +1000,12 @@ internal sealed class KastnBoardPresenter(StackPanel panel, ScrollViewer scroll,
                 return;
             }
 
-            image.Source = bitmap;
-            if (expandedImage is not null)
+            UpdateCardLayout(slip, () =>
             {
-                expandedImage.Source = bitmap;
-            }
-
-            status.IsVisible = false;
+                image.Source = bitmap;
+                if (expandedImage is not null) expandedImage.Source = bitmap;
+                status.IsVisible = false;
+            });
         }
         catch (Exception ex) when (
             KastnPictureCache.IsLoadFailure(ex))

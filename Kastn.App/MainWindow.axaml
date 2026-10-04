@@ -785,7 +785,7 @@
                             Padding="10,3"
                             ToolTip.Tip="Insert a group container — drag slips or buckets into it" />
                   </StackPanel>
-                  <TreeView Grid.Row="2" x:Name="projectTree" SelectionMode="Multiple">
+                  <local:KastnTreeViewport Grid.Row="2" x:Name="projectTree" SelectionMode="Multiple">
                     <TreeView.ItemsPanel>
                       <ItemsPanelTemplate><local:KastnTreeItemsPanel /></ItemsPanelTemplate>
                     </TreeView.ItemsPanel>
@@ -800,7 +800,7 @@
                         <Setter Property="ItemsPanel">
                           <ItemsPanelTemplate><local:KastnTreeItemsPanel /></ItemsPanelTemplate>
                         </Setter>
-                        <Setter Property="IsExpanded" Value="True" />
+                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                       </Style>
                       <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
                         <Setter Property="Content" Value="›" />
@@ -812,48 +812,53 @@
                       </Style>
                     </TreeView.Styles>
                     <TreeView.ItemTemplate>
-                      <TreeDataTemplate ItemsSource="{Binding Children}">
-                        <Grid ColumnDefinitions="Auto,Auto,*,Auto"
-                              ColumnSpacing="6"
-                              MinWidth="225"
-                              Tag="dragRow"
-                              Background="Transparent"
-                              Opacity="{Binding NodeOpacity}">
-                          <Viewbox Grid.Column="0"
-                                   Width="15"
-                                   Height="15"
-                                   VerticalAlignment="Center"
-                                   ToolTip.Tip="{Binding NodeIconToolTip}">
-                            <Path Classes="tree-node-icon"
-                                  Classes.accent="{Binding IsAccentIcon}"
-                                  StrokeThickness="1.7"
-                                  Data="{Binding NodeIcon, Converter={StaticResource TreeIconGeometry}}" />
-                          </Viewbox>
-                          <Button Grid.Column="1"
-                                  Width="26"
-                                  Height="24"
-                                  Padding="4"
-                                  Background="Transparent"
-                                  BorderThickness="0"
-                                  IsEnabled="{Binding CanToggleVisibility}"
-                                  ToolTip.Tip="{Binding VisibilityToolTip}"
-                                  Click="OnTreeVisibilityClick">
-                            <Grid>
-                              <Viewbox Width="16"
-                                       Height="16">
-                                <Path Classes="tree-visibility-icon"
-                                      Stroke="{DynamicResource ZetlMutedTextBrush}"
-                                      StrokeThickness="1.8"
-                                      Data="{Binding VisibilityIcon, Converter={StaticResource TreeIconGeometry}}" />
-                              </Viewbox>
-                              <Ellipse Width="5"
-                                       Height="5"
-                                       Fill="{DynamicResource ZetlAccentBrush}"
-                                       HorizontalAlignment="Right"
-                                       VerticalAlignment="Bottom"
-                                       IsVisible="{Binding IsVisibilityMixed}"
-                                       ToolTip.Tip="Some slips are hidden" />
-                            </Grid>
+                      <TreeDataTemplate ItemsSource="{Binding TreeItems}">
+                        <Grid ColumnDefinitions="Auto,*" Margin="{Binding TreeIndent}" Tag="dragRow"
+                              Background="Transparent" Opacity="{Binding NodeOpacity}">
+                          <ToggleButton Width="18" Height="24" Padding="0"
+                                        Background="Transparent" BorderThickness="0"
+                                        IsVisible="{Binding IsFlatBucket}" Content="{Binding ExpansionGlyph}"
+                                        IsChecked="{Binding IsExpanded, Mode=TwoWay}" ToolTip.Tip="Expand or collapse bucket" />
+                          <Grid ColumnDefinitions="Auto,Auto,*,Auto"
+                                Grid.Column="1"
+                                ColumnSpacing="6"
+                                MinWidth="225"
+                                Background="Transparent">
+                            <Viewbox Grid.Column="0"
+                                     Width="15"
+                                     Height="15"
+                                     VerticalAlignment="Center"
+                                     ToolTip.Tip="{Binding NodeIconToolTip}">
+                              <Path Classes="tree-node-icon"
+                                    Classes.accent="{Binding IsAccentIcon}"
+                                    StrokeThickness="1.7"
+                                    Data="{Binding NodeIcon, Converter={StaticResource TreeIconGeometry}}" />
+                            </Viewbox>
+                            <Button Grid.Column="1"
+                                    Width="26"
+                                    Height="24"
+                                    Padding="4"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    IsEnabled="{Binding CanToggleVisibility}"
+                                    ToolTip.Tip="{Binding VisibilityToolTip}"
+                                    Click="OnTreeVisibilityClick">
+                              <Grid>
+                                <Viewbox Width="16"
+                                         Height="16">
+                                  <Path Classes="tree-visibility-icon"
+                                        Stroke="{DynamicResource ZetlMutedTextBrush}"
+                                        StrokeThickness="1.8"
+                                        Data="{Binding VisibilityIcon, Converter={StaticResource TreeIconGeometry}}" />
+                                </Viewbox>
+                                <Ellipse Width="5"
+                                         Height="5"
+                                         Fill="{DynamicResource ZetlAccentBrush}"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Bottom"
+                                         IsVisible="{Binding IsVisibilityMixed}"
+                                         ToolTip.Tip="Some slips are hidden" />
+                              </Grid>
                           </Button>
                           <TextBlock Grid.Column="2"
                                      Text="{Binding Label}"
@@ -897,9 +902,10 @@
                                   Background="{DynamicResource ZetlAccentBrush}"
                                   IsVisible="{Binding ShowDropAfter}" />
                         </Grid>
+                        </Grid>
                       </TreeDataTemplate>
                     </TreeView.ItemTemplate>
-                  </TreeView>
+                  </local:KastnTreeViewport>
                   <TextBox Grid.Row="3"
                            x:Name="bucketNameBox"
                            Watermark="Bucket name"

@@ -2022,6 +2022,7 @@ internal partial class MainWindow
 
     private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (projectTree.IsReconciling) return;
         if (refreshing)
         {
             return;

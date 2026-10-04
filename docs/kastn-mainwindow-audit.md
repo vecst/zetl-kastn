@@ -578,9 +578,20 @@ and realize controls near the viewport within each group. Selection, logical
 scroll anchors, ordered runs, picture ownership and retired actions have focused
 UI coverage. The probe realized 24 of 1,000 and 15 of 3,000 reader blocks;
 whole-window initial allocations fell 22–30% and filter allocations 93–94%.
-Tree/board realization, eager reader headings/groups and visible backlinks are
+Eager reader headings/groups and visible backlinks are
 remaining targets. See the performance document for timing variation and the
 allocation tradeoff when reconciling reorders.
+
+The tree and board viewport pass is complete. Large trees flatten the expanded
+hierarchy into a bounded fixed-height panel while keeping logical selection,
+keyboard navigation, collapse state and visible control identity. Large boards
+realize variable-height cards near vertical viewports and release cards in
+distant horizontal columns. Column shells/composers retain drafts; logical
+anchors retain scroll positions. Native drag hit testing, offscreen drop
+successors, unsaved edits, range selection and late pictures have UI coverage.
+Full projection/row-model reconciliation, eager bucket shells and visible
+backlink lists remain measurable costs. See the performance document for the
+before/after probe and its limits.
 
 1. Remove unused slip-list presentation work before adding more caches.
 2. Derive selection and availability once per UI update. Reuse project indexes

@@ -4,21 +4,21 @@ using Avalonia.Controls.Templates;
 
 namespace KASTN;
 
-// Lightweight rows remain in the document; Avalonia realizes their variable-height
+// Lightweight rows remain in the view; Avalonia realizes their variable-height
 // controls only near the viewport and supplies scrolling and scroll anchoring.
-internal sealed class KastnReaderItems : ItemsControl
+internal sealed class KastnViewportItems : ItemsControl
 {
     internal sealed class Row(string id)
     {
         public string Id { get; } = id;
-        public Func<Border> Realize { get; set; } = null!;
-        public Action<Border> Retire { get; set; } = null!;
+        public Func<Control> Realize { get; set; } = null!;
+        public Action<Control> Retire { get; set; } = null!;
     }
 
     private IReadOnlyList<Row> rows = [];
     public double Spacing { get; set; }
 
-    public KastnReaderItems()
+    public KastnViewportItems()
     {
         ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel { CacheLength = 0.5 });
     }
@@ -90,7 +90,7 @@ internal sealed class KastnReaderItems : ItemsControl
     protected override void ClearContainerForItemOverride(Control container)
     {
         var border = (Border)container;
-        if (border.Tag is Row row && border.Child is Border block) row.Retire(block);
+        if (border.Tag is Row row && border.Child is { } block) row.Retire(block);
         border.Child = null;
         border.Tag = null;
     }

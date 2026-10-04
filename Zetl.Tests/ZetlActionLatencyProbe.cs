@@ -68,6 +68,7 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             Time("Initial project", () => Apply(current));
             var reader = (KASTN.KastnReaderPresenter)typeof(KASTN.MainWindow).GetField("readerPresenter", flags)!.GetValue(window)!;
             output.WriteLine($"Reader blocks realized initially: {reader.Blocks.Count} / {size}");
+            output.WriteLine($"Tree rows realized initially: {window.projectTree.GetVisualDescendants().OfType<TreeViewItem>().Count()} / {size + buckets}");
             Assert.Empty(window.slipInspectorFieldsPanel.Children);
             Time("Identical snapshot", () => Apply(current), 5);
             Time("One slip edited", () =>
@@ -91,8 +92,13 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             Time("Reverse slip order", () => { current = current with { ChangeSequence = current.ChangeSequence + 1, Slips = current.Slips.Reverse().ToArray() }; Apply(current); }, 3);
             var rowsAfter = window.projectTree.GetVisualDescendants().OfType<TreeViewItem>()
                 .Where(row => row.DataContext is KASTN.KastnTreeNode).ToDictionary(row => ((KASTN.KastnTreeNode)row.DataContext!).Id);
-            Assert.Equal(size + buckets, rowsAfter.Count);
+            Assert.InRange(rowsAfter.Count, 1, size + buckets);
             output.WriteLine($"Tree containers reused after reorder: {rowsAfter.Count(pair => rowsBefore.GetValueOrDefault(pair.Key) == pair.Value)} / {rowsAfter.Count}");
+            Time("Tree jump to last / first", () =>
+            {
+                window.projectTree.ShowNode(window.treeProjection.Find(current.Slips[^1].Id)!);
+                window.projectTree.ShowNode(window.treeProjection.Find(current.Slips[0].Id)!);
+            }, 3);
             Time("Filter half / clear", () => window.searchBox.Text = window.searchBox.Text == "" ? "even" : "", 4);
             window.searchBox.Text = "";
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -107,6 +113,15 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             }, 3);
             output.WriteLine($"Reader blocks realized after jumps: {reader.Blocks.Count} / {size}");
             Time("Board first render", () => window.viewModeBoardButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)));
+            var board = (KASTN.KastnBoardPresenter)typeof(KASTN.MainWindow).GetField("boardPresenter", flags)!.GetValue(window)!;
+            output.WriteLine($"Board cards realized initially: {board.RealizedCardCount} / {size}");
+            Time("Board jump to last / first", () =>
+            {
+                board.UpdateSelection(current.Slips[^1].Id);
+                window.UpdateLayout();
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                board.UpdateSelection(current.Slips[0].Id);
+            }, 3);
             Time("Board one slip edited", () =>
             {
                 current = current with { ChangeSequence = current.ChangeSequence + 1, Slips = current.Slips.Select(slip => slip.Id == "s-0"
