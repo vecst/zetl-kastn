@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:KASTN"
         x:Class="KASTN.MainWindow"
         Width="1380" Height="820"
         MinWidth="1180" MinHeight="620"
@@ -782,8 +783,14 @@
                             ToolTip.Tip="Insert a group container — drag slips or buckets into it" />
                   </StackPanel>
                   <TreeView Grid.Row="2" x:Name="projectTree" SelectionMode="Multiple">
+                    <TreeView.ItemsPanel>
+                      <ItemsPanelTemplate><local:KastnTreeItemsPanel /></ItemsPanelTemplate>
+                    </TreeView.ItemsPanel>
                     <TreeView.Styles>
                       <Style Selector="TreeViewItem">
+                        <Setter Property="ItemsPanel">
+                          <ItemsPanelTemplate><local:KastnTreeItemsPanel /></ItemsPanelTemplate>
+                        </Setter>
                         <Setter Property="IsExpanded" Value="True" />
                       </Style>
                       <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">

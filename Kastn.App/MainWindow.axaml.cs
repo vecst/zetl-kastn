@@ -37,7 +37,7 @@ internal partial class MainWindow : Window
     private string lastRenderedViewText = "";
     private bool viewWriteInProgress;
     // Kastn-owned runtime state (last project opened) for the startup preference.
-    private readonly KastnStateStore stateStore = new(log: Console.Error.WriteLine);
+    private readonly KastnStateStore stateStore;
     // One local editor draft, separate from authoritative Zetl project state.
     private readonly KastnDraftStore draftStore;
     // Creation types: bundle a template with a default view.
@@ -212,6 +212,7 @@ internal partial class MainWindow : Window
 
     public MainWindow()
     {
+        stateStore = new(log: Console.Error.WriteLine);
         settings = new();
         projectCreation = new(settings);
         InitializeComponent();
@@ -238,8 +239,10 @@ internal partial class MainWindow : Window
         ZetlViewStore? viewStore = null,
         KastnSettings? settings = null,
         ZetlTemplateStore? templateStore = null,
-        ZetlCreationTypeStore? creationStore = null)
+        ZetlCreationTypeStore? creationStore = null,
+        KastnStateStore? stateStore = null)
     {
+        this.stateStore = stateStore ?? new(log: Console.Error.WriteLine);
         this.settings = settings ?? new();
         projectCreation = new(this.settings);
         this.connection = connection;

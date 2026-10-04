@@ -40,6 +40,8 @@ These are the authoritative places to answer “what remains?”
 - [`kastn-ipc.md`](kastn-ipc.md) — named-pipe framing and lifecycle
 - [`kastn-storage-baseline.md`](kastn-storage-baseline.md) — repeatable JSON
   storage measurements
+- [`kastn-rendering-performance.md`](kastn-rendering-performance.md) — large-project
+  layout measurements, tree row reuse and the remaining rendering costs
 
 ## Focused Design Records
 

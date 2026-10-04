@@ -557,6 +557,14 @@ offline close/recovery; activation and coordinated Zetl shutdown.
 
 ## Optimization Candidates
 
+The first large-project rendering pass is complete. A dedicated tree items panel
+preserves actual row containers during collection moves, avoiding template
+recreation and logical detachment. Headless full-reversal measurements improved
+from 5.2 seconds to 330 ms at 1,000 slips and 18.8 seconds to 754 ms at 3,000.
+Initial realization and edit-driven layout remain follow-up work; see
+[`kastn-rendering-performance.md`](kastn-rendering-performance.md) for the probe,
+allocation measurements, limits and proposed next targets.
+
 1. Remove unused slip-list presentation work before adding more caches.
 2. Derive selection and availability once per UI update. Reuse project indexes
    for target resolution instead of repeatedly scanning all slips and buckets.
