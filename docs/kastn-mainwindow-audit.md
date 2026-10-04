@@ -300,6 +300,22 @@ extracting undo or the renderers.
   the same two intentional latency-probe skips. Settings ownership is next, followed
   by template/creation workflows and measured performance work.
 
+- Extracted `KastnSettings`, shared by startup, MainWindow, and the theme watcher.
+  It owns the resolved settings path and cached snapshots, invalidates immediately
+  on local saves, and refreshes external changes through file events or a monotonic
+  one-second fallback. Window/test contexts no longer share a static cache.
+- Untitled-slip detection, lane/default-view preferences, autosave/close policy,
+  preview, and captured exports use that owner. Standalone tree/PDF helpers use
+  deterministic defaults; application calls supply their captured preferences.
+- Remembering a temporary template lane merges into the latest settings file at
+  save time. Failed reads/writes preserve the existing file and cached snapshot;
+  corrupt settings cannot be replaced with defaults by this selective write.
+- Added 19 owner and headless UI regressions for cache reuse/expiry, immediate
+  invalidation, path isolation, external refresh, close policy, relevant theme
+  events, delayed preference changes, and failed/corrupt writes. Validation: clean
+  solution build; 944 tests passed, with the same two intentional latency-probe
+  skips. Template/creation workflows are next, followed by measured performance.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |
@@ -486,9 +502,9 @@ offline close/recovery; activation and coordinated Zetl shutdown.
 1. Remove unused slip-list presentation work before adding more caches.
 2. Derive selection and availability once per UI update. Reuse project indexes
    for target resolution instead of repeatedly scanning all slips and buckets.
-3. Use one settings provider. `IsUntitledKastnSlip` still constructs a settings
-   store directly, bypassing `CurrentAppSettings`' hot-path cache. Preserve
-   external-change detection and test path overrides when consolidating it.
+3. Settings-provider consolidation is complete. `KastnSettings` owns cached
+   reads, including untitled-slip checks, external-change detection, and resolved
+   paths for isolated test/window contexts.
 4. Replace the repeated linear parent lookups in `IsDescendant` with indexed,
    cycle-safe traversal. Keep drop validation at command execution as well as
    pointer planning because the project can change between them.

@@ -20,7 +20,8 @@ namespace KASTN;
 
 internal partial class MainWindow : Window
 {
-    private string UntitledSlipTitle => CurrentAppSettings().UntitledSlipTitle;
+    private readonly KastnSettings settings;
+    private string UntitledSlipTitle => settings.Current.UntitledSlipTitle;
     private const int RecentProjectLimit = 10;
 
     private readonly KastnConnectionController connection;
@@ -222,6 +223,7 @@ internal partial class MainWindow : Window
 
     public MainWindow()
     {
+        settings = new();
         InitializeComponent();
         viewCatalog = new(new ZetlViewStore(log: Console.Error.WriteLine));
         viewPersistence = new(viewCatalog.Store);
@@ -239,8 +241,10 @@ internal partial class MainWindow : Window
     public MainWindow(
         KastnConnectionController connection,
         KastnDraftStore? draftStore = null,
-        ZetlViewStore? viewStore = null)
+        ZetlViewStore? viewStore = null,
+        KastnSettings? settings = null)
     {
+        this.settings = settings ?? new();
         this.connection = connection;
         viewCatalog = new(viewStore ?? new ZetlViewStore(log: Console.Error.WriteLine));
         viewPersistence = new(viewCatalog.Store);
@@ -306,7 +310,7 @@ internal partial class MainWindow : Window
         // this off in Settings; switching slips and explicit Save still commit edits.
         slipEditor.LostFocus += async (_, _) =>
         {
-            if (CurrentAppSettings().KastnAutosave)
+            if (this.settings.Current.KastnAutosave)
             {
                 await SaveEditorAsync();
             }
@@ -811,7 +815,7 @@ internal partial class MainWindow : Window
     }
 
     private string LaneLabel(string lane) =>
-        CurrentAppSettings().LaneLabel(string.Equals(lane, ZetlStateRules.ShiftLane, StringComparison.Ordinal));
+        this.settings.Current.LaneLabel(string.Equals(lane, ZetlStateRules.ShiftLane, StringComparison.Ordinal));
 
     private void RefreshFilterChoices(ZetlProjectSnapshot project)
     {
@@ -880,7 +884,7 @@ internal partial class MainWindow : Window
         // ItemsSource: unchanged rows keep their realized containers (a full
         // reset re-created every row — about a second per refresh on a
         // few-hundred-slip project), and selection/expansion survive naturally.
-        treeProjection.Update(ProjectIndex, showingDeleted, CurrentAppSettings().MaxSlipLabelLength);
+        treeProjection.Update(ProjectIndex, showingDeleted, this.settings.Current.MaxSlipLabelLength);
         if (!ReferenceEquals(projectTree.ItemsSource, treeProjection.Roots))
         {
             projectTree.ItemsSource = treeProjection.Roots;

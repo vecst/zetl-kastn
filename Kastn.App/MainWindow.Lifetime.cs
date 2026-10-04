@@ -6,7 +6,7 @@ namespace KASTN;
 internal partial class MainWindow
 {
     private KastnWindowLifetime CreateWindowLifetime() => new(
-        () => CurrentAppSettings().KastnCloseToTray,
+        () => this.settings.Current.KastnCloseToTray,
         ShowForActivation,
         HideToTray,
         () => PrepareEditorForExitAsync(),

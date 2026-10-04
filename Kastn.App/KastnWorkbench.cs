@@ -298,12 +298,14 @@ internal static class KastnWorkbench
     // protected Deleted bucket, which Kastn surfaces behind a dedicated toggle
     // instead of letting it sort in among real buckets. deletedOnly=true builds the
     // Deleted-bucket-only tree for browsing and restoring soft-deleted slips.
+    // Standalone projections use defaults; the window supplies its cached preference
+    // through the indexed overload below.
     public static IReadOnlyList<KastnTreeNode> BuildProjectTree(
         ZetlProjectSnapshot project,
         IReadOnlyList<ZetlSlipSnapshot> slips,
         bool deletedOnly = false)
         => BuildProjectTree(new KastnProjectIndex(project), slips, deletedOnly,
-            new ZetlAppSettingsStore().Settings.MaxSlipLabelLength);
+            new ZetlAppSettings().MaxSlipLabelLength);
 
     public static IReadOnlyList<KastnTreeNode> BuildProjectTree(
         KastnProjectIndex index,

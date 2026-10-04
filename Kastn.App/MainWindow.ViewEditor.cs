@@ -34,7 +34,7 @@ internal partial class MainWindow
             viewTsvPanel,
             viewTsvRowBox,
             addViewSectionButton), ViewEditorContext, CreateSlipContentRenderer,
-        () => CurrentAppSettings().KastnPreferSlipKindOverBucketKind);
+        () => this.settings.Current.KastnPreferSlipKindOverBucketKind);
 
     private void EditSelectedView()
     {

@@ -12,17 +12,16 @@ namespace KASTN;
 internal sealed class KastnThemeWatcher : IDisposable
 {
     private readonly ZetlThemeManager themeManager;
-    private readonly string settingsFileName;
+    private readonly KastnSettings settings;
     private readonly FileSystemWatcher? watcher;
     private readonly DispatcherTimer debounce;
     private volatile bool disposed;
 
-    public KastnThemeWatcher(ZetlThemeManager themeManager)
+    public KastnThemeWatcher(ZetlThemeManager themeManager, KastnSettings settings)
     {
         this.themeManager = themeManager;
-        var settingsStore = new ZetlAppSettingsStore();
-        settingsFileName = Path.GetFileName(settingsStore.SettingsPath);
-        var dataDir = Path.GetDirectoryName(settingsStore.SettingsPath);
+        this.settings = settings;
+        var dataDir = Path.GetDirectoryName(settings.SettingsPath);
 
         // Coalesce the burst of file events from an atomic write into one reload.
         debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
@@ -47,6 +46,7 @@ internal sealed class KastnThemeWatcher : IDisposable
             };
             watcher.Changed += OnChanged;
             watcher.Created += OnChanged;
+            watcher.Deleted += OnChanged;
             watcher.Renamed += OnChanged;
             watcher.EnableRaisingEvents = true;
         }
@@ -61,7 +61,9 @@ internal sealed class KastnThemeWatcher : IDisposable
     private void OnChanged(object sender, FileSystemEventArgs e)
     {
         var isSettings = string.Equals(
-            Path.GetFileName(e.FullPath), settingsFileName, StringComparison.OrdinalIgnoreCase);
+            e.FullPath, settings.SettingsPath, StringComparison.OrdinalIgnoreCase)
+            || e is RenamedEventArgs renamed && string.Equals(
+                renamed.OldFullPath, settings.SettingsPath, StringComparison.OrdinalIgnoreCase);
         var relative = (e.Name ?? "").Replace('\\', '/');
         var isTheme = relative.StartsWith("themes/", StringComparison.OrdinalIgnoreCase)
             && e.FullPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
@@ -83,9 +85,9 @@ internal sealed class KastnThemeWatcher : IDisposable
         if (disposed) return;
         try
         {
-            var settings = new ZetlAppSettingsStore().Settings;
-            var theme = new ZetlThemeStore().Resolve(settings.ThemeId);
-            themeManager.ApplyIfChanged(theme, settings.ThemeVariant);
+            var current = settings.Refresh();
+            var theme = new ZetlThemeStore().Resolve(current.ThemeId);
+            themeManager.ApplyIfChanged(theme, current.ThemeVariant);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

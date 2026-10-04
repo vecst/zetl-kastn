@@ -217,7 +217,7 @@ public partial class ZetlUITests
         try
         {
             ZetlAppSettingsStore.DefaultSettingsPathOverride = Path.Combine(defaultDraftDirectory, "settings.json");
-            watcher = new(new ZetlThemeManager(Avalonia.Application.Current!));
+            watcher = new(new ZetlThemeManager(Avalonia.Application.Current!), new KastnSettings());
             typeof(KastnThemeWatcher).GetMethod("OnChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(watcher, [this, new FileSystemEventArgs(WatcherChangeTypes.Changed, defaultDraftDirectory, "settings.json")]);
             watcher.Dispose();

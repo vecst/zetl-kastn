@@ -589,7 +589,7 @@ internal partial class MainWindow
                 // Templates kick off a capture session: step Kastn aside (if the user
                 // opted in) so Zetl's capture is unobstructed. The project stays loaded
                 // and ready for when they return to the workbench.
-                if (CurrentAppSettings().KastnMinimizeAfterTemplate)
+                if (this.settings.Current.KastnMinimizeAfterTemplate)
                 {
                     WindowState = WindowState.Minimized;
                 }
@@ -610,9 +610,8 @@ internal partial class MainWindow
             return null;
         }
 
-        var settingsStore = new ZetlAppSettingsStore();
         var configured = ZetlKastnTemplateLaneDefault.Normalize(
-            settingsStore.Settings.KastnTemporaryTemplateLaneDefault);
+            settings.Current.KastnTemporaryTemplateLaneDefault);
         if (configured.Length > 0)
         {
             return configured;
@@ -632,8 +631,7 @@ internal partial class MainWindow
             ?? ZetlStateRules.NormalLane;
         if (choice.Remember)
         {
-            settingsStore.Settings.KastnTemporaryTemplateLaneDefault = lane;
-            settingsStore.Save();
+            settings.RememberTemporaryTemplateLane(lane);
         }
 
         return lane;

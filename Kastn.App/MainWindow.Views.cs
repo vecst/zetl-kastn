@@ -41,7 +41,7 @@ internal partial class MainWindow
         // could have changed (a project mutation, the filters, or the chosen view) — a
         // pure selection change just re-highlights, so picture blocks never reload.
         var view = SelectedView;
-        var settings = CurrentAppSettings();
+        var settings = this.settings.Current;
         var inputs = KastnViewRenderKey.Create(currentProject, visible, view, settings);
         var selectedId = SelectedTreeNode?.Slip?.Id ?? editorState.SlipId;
         if (boardModeActive)
@@ -302,29 +302,7 @@ internal partial class MainWindow
         viewPickerBox.SelectedItem as ZetlViewDocument ?? viewCatalog.Select(null);
 
     private void SelectViewForProject(ZetlProjectSnapshot project) =>
-        viewPickerBox.SelectedItem = viewCatalog.SelectDefault(project, CurrentAppSettings().KastnDefaultViewId);
-
-    // The Kastn workbench preferences live in the shared Zetl settings file.
-    // Cache reads for hot render paths; local saves invalidate immediately via
-    // the save stamp, while external changes are picked up within a second.
-    private static ZetlAppSettings? cachedAppSettings;
-    private static DateTime cachedAppSettingsAt;
-    private static int cachedAppSettingsStamp;
-
-    private static ZetlAppSettings CurrentAppSettings()
-    {
-        var now = DateTime.UtcNow;
-        if (cachedAppSettings is null
-            || cachedAppSettingsStamp != ZetlAppSettingsStore.SaveStamp
-            || now - cachedAppSettingsAt > TimeSpan.FromSeconds(1))
-        {
-            cachedAppSettings = new ZetlAppSettingsStore().Settings;
-            cachedAppSettingsAt = now;
-            cachedAppSettingsStamp = ZetlAppSettingsStore.SaveStamp;
-        }
-
-        return cachedAppSettings;
-    }
+        viewPickerBox.SelectedItem = viewCatalog.SelectDefault(project, this.settings.Current.KastnDefaultViewId);
 
     private void RefreshViewCatalog(ZetlProjectSnapshot? project, string? selectId = null, bool force = true)
     {
@@ -340,7 +318,7 @@ internal partial class MainWindow
     }
 
     private KastnViewExportOperation? CaptureViewExportOperation() =>
-        currentProject is null ? null : new(currentProject, CurrentViewSlips(), SelectedView, CurrentAppSettings());
+        currentProject is null ? null : new(currentProject, CurrentViewSlips(), SelectedView, this.settings.Current);
 
     private Task CopyRenderedViewAsync() => TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard
         ? CopyRenderedViewAsync(clipboard.SetTextAsync, pictureCache.GetCapturedContentAsync)

@@ -29,11 +29,11 @@ public partial class App : Application
             var projectId = Program.Value(Program.StartupArgs, "--project=");
             var hasDirectProjectHandoff = !string.IsNullOrEmpty(projectId);
             var draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
-            var settingsStore = new ZetlAppSettingsStore();
+            var settings = new KastnSettings();
             // With no direct handoff, honor the "reopen last project" startup preference.
             // A since-deleted id falls through to the landing page in the connection.
             if (string.IsNullOrEmpty(projectId)
-                && ZetlKastnStartup.Normalize(settingsStore.Settings.KastnStartup)
+                && ZetlKastnStartup.Normalize(settings.Current.KastnStartup)
                     == ZetlKastnStartup.LastProject)
             {
                 projectId = new KastnStateStore().State.LastProjectId;
@@ -47,14 +47,14 @@ public partial class App : Application
             var themeStore = new ZetlThemeStore();
             var themeManager = new ZetlThemeManager(this);
             themeManager.Apply(
-                themeStore.Resolve(settingsStore.Settings.ThemeId),
-                settingsStore.Settings.ThemeVariant);
+                themeStore.Resolve(settings.Current.ThemeId),
+                settings.Current.ThemeVariant);
             // Re-apply live when Zetl's theme editor changes the shared settings/theme.
-            var themeWatcher = new KastnThemeWatcher(themeManager);
+            var themeWatcher = new KastnThemeWatcher(themeManager, settings);
             var connection = new KastnConnectionController(
                 token => KastnZetlLauncher.LaunchAsync(zetlPath, pipeName, token),
                 pipeName);
-            var mainWindow = new MainWindow(connection, draftStore);
+            var mainWindow = new MainWindow(connection, draftStore, settings: settings);
             desktop.MainWindow = mainWindow;
             session = new KastnApplicationLifetime(
                 Program.ActivationServer,

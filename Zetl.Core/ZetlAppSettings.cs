@@ -222,10 +222,10 @@ internal sealed class ZetlAppSettingsStore
 
     public ZetlAppSettingsStore(string? settingsPath = null, Action<string>? log = null)
     {
-        this.settingsPath = settingsPath ?? DefaultSettingsPathOverride ?? Path.Combine(
+        this.settingsPath = Path.GetFullPath(settingsPath ?? DefaultSettingsPathOverride ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Zetl",
-            "settings.json");
+            "settings.json"));
         this.log = log;
         Settings = Load();
     }
@@ -242,12 +242,25 @@ internal sealed class ZetlAppSettingsStore
 
     // Bumped on every in-process save so read-side caches can invalidate
     // immediately instead of waiting out their staleness window.
-    public static int SaveStamp => saveStamp;
+    public static int SaveStamp => Volatile.Read(ref saveStamp);
     private static int saveStamp;
 
     public void Save()
     {
         JsonFile.WriteAtomic(settingsPath, Settings);
+        Interlocked.Increment(ref saveStamp);
+    }
+
+    // A selective update must merge into the latest file. Unlike startup reads,
+    // an unreadable or corrupt file must fail instead of overwriting it with
+    // defaults. Only publish the new in-memory snapshot after persistence succeeds.
+    public void Update(Action<ZetlAppSettings> update)
+    {
+        var latest = JsonFile.Read<ZetlAppSettings>(settingsPath) ?? new ZetlAppSettings();
+        latest.MigrateLegacyDefaults();
+        update(latest);
+        JsonFile.WriteAtomic(settingsPath, latest);
+        Settings = latest;
         Interlocked.Increment(ref saveStamp);
     }
 

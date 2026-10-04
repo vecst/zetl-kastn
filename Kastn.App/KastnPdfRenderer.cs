@@ -26,7 +26,9 @@ internal static class KastnPdfRenderer
     {
         if (options is null)
         {
-            var settings = new ZetlAppSettingsStore().Settings;
+            // Application exports supply captured preferences. Standalone
+            // renders use defaults and never read the application's settings file.
+            var settings = new ZetlAppSettings();
             options = new(settings.PdfPageFormat, settings.PdfFontSize);
         }
         EnsureFonts();
