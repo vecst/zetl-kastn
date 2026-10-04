@@ -358,6 +358,15 @@ extracting undo or the renderers.
   errors; 1,035 tests passed, with the same two intentional latency-probe skips.
   Representative performance measurement is next.
 
+- Investigated the first Zetl tray right-click delay independently of Kastn.
+  A fresh Windows probe reproduced 1.2–1.7 seconds of cold menu initialization.
+  An unshown startup layout warm-up reduced the representative first-render
+  measurement to 304 ms, with no menu actions or focus changes. Remaining frame
+  initialization still has a first-use cost. See `tray-menu-latency.md` and the
+  isolated `tools/TrayMenuProbe` harness for measurements and reproduction.
+  Validation: solution and probe builds with zero warnings/errors; 1,038 tests
+  passed, with the same two intentional latency-probe skips.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

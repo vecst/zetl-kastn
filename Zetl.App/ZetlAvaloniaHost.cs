@@ -245,6 +245,22 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         }
 
         Dispatcher.UIThread.Post(ShowFirstRunIfNeeded);
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (disposed || !OperatingSystem.IsWindows() || trayIcon.Menu is not { } menu) return;
+            var started = Stopwatch.GetTimestamp();
+            try
+            {
+                ZetlTrayMenuWarmup.Prepare(menu);
+                Log($"Tray menu layout prepared in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:0} ms.");
+            }
+            catch (Exception ex)
+            {
+                // This is an optional optimization. Leave the normal tray menu
+                // available if platform/theme initialization cannot be prepared.
+                Log($"Could not prepare tray menu layout: {ex.Message}");
+            }
+        }, DispatcherPriority.Background);
     }
 
     public void Post(Action action)
