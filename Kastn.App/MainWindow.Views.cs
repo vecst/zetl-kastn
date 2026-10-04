@@ -1,7 +1,4 @@
-using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -301,27 +298,10 @@ internal partial class MainWindow
     }
 
     private ZetlViewDocument SelectedView =>
-        viewPickerBox.SelectedItem as ZetlViewDocument
-        ?? (loadedViews.Count > 0 ? loadedViews[0] : ZetlViewDefaults.CreateAll()[0]);
+        viewPickerBox.SelectedItem as ZetlViewDocument ?? viewCatalog.Select(null);
 
-    private void SelectViewForProject(ZetlProjectSnapshot project)
-    {
-        var target = string.IsNullOrEmpty(project.DefaultViewId)
-            ? null
-            : loadedViews.FirstOrDefault(view => view.Id == project.DefaultViewId);
-        if (target is null)
-        {
-            // No project-pinned view: fall back to the user's global default reading
-            // view from Zetl Settings, then to the first available view.
-            var globalId = CurrentAppSettings().KastnDefaultViewId;
-            if (!string.IsNullOrEmpty(globalId))
-            {
-                target = loadedViews.FirstOrDefault(view => view.Id == globalId);
-            }
-        }
-
-        viewPickerBox.SelectedItem = target ?? loadedViews.FirstOrDefault();
-    }
+    private void SelectViewForProject(ZetlProjectSnapshot project) =>
+        viewPickerBox.SelectedItem = viewCatalog.SelectDefault(project, CurrentAppSettings().KastnDefaultViewId);
 
     // The Kastn workbench preferences live in the shared Zetl settings file.
     // Cache reads for hot render paths; local saves invalidate immediately via
@@ -345,23 +325,18 @@ internal partial class MainWindow
         return cachedAppSettings;
     }
 
-    private void RefreshViewCatalog(ZetlProjectSnapshot? project, string? selectId = null)
+    private void RefreshViewCatalog(ZetlProjectSnapshot? project, string? selectId = null, bool force = true)
     {
-        globalViews = viewStore.LoadAll();
-        var projectViews = project?.Views
-            .Select(ZetlProjectSnapshotMapper.ToDocument)
-            .ToList() ?? [];
-        loadedViews = globalViews
-            .Where(view => projectViews.All(projectView => projectView.Id != view.Id))
-            .Concat(projectViews)
-            .ToList();
-        viewPickerBox.ItemsSource = loadedViews;
-        viewPickerBox.SelectedItem = loadedViews.FirstOrDefault(view => view.Id == selectId)
-            ?? loadedViews.FirstOrDefault();
+        if (!viewCatalog.Refresh(project, force)) return;
+        var wasRefreshing = refreshing;
+        refreshing = true;
+        try
+        {
+            viewPickerBox.ItemsSource = viewCatalog.Views;
+            viewPickerBox.SelectedItem = viewCatalog.Select(selectId);
+        }
+        finally { refreshing = wasRefreshing; }
     }
-
-    private bool IsProjectScopedView(string viewId) =>
-        currentProject?.Views.Any(view => view.Id == viewId) == true;
 
     private KastnViewExportOperation? CaptureViewExportOperation() =>
         currentProject is null ? null : new(currentProject, CurrentViewSlips(), SelectedView, CurrentAppSettings());
@@ -428,302 +403,6 @@ internal partial class MainWindow
         {
             statusText.Text = $"Could not export the view: {ex.Message}";
         }
-    }
-
-    // ---- In-window view editor (mirrors the template editor) ----
-
-    private void EditSelectedView()
-    {
-        var view = SelectedView;
-        if (ZetlViewDefaults.IsBuiltIn(view.Id))
-        {
-            // Built-ins stay immutable: edit a fresh user copy instead.
-            OpenViewEditor(ZetlViewDefaults.Duplicate(view), isNew: true);
-        }
-        else
-        {
-            OpenViewEditor(ZetlViewDefaults.Clone(view), isNew: false);
-        }
-    }
-
-    private void OpenViewEditor(ZetlViewDocument working, bool isNew)
-    {
-        editingView = working;
-        editingProjectScopedView = !isNew && IsProjectScopedView(working.Id);
-        viewErrorText.IsVisible = false;
-
-        viewEditorUpdating = true;
-        viewEditorTitle.Text = isNew ? "New View" : $"Edit View — {working.Name}";
-        viewNameBox.Text = working.Name;
-        viewDescriptionBox.Text = working.Description;
-        viewKindBox.SelectedItem = ViewKindChoices.Contains(working.Kind)
-            ? working.Kind
-            : ZetlViewKinds.Formatted;
-        viewTsvRowBox.Value = Math.Clamp(working.TsvRowLength, 1, 100);
-        viewListStyleBox.SelectedItem = ZetlViewListStyles.Normalize(working.ListStyle);
-        viewNumberHeadingsCheck.IsChecked = working.NumberHeadings;
-        viewShowTitleCheck.IsChecked = working.ShowTitle;
-        viewTitleBox.Text = working.Title;
-        LoadViewStructureEditor(working.Sections);
-        viewEditorUpdating = false;
-
-        ApplyViewKindSettingsVisibility();
-        viewBaselineJson = CurrentViewJson();
-
-        emptyState.IsVisible = false;
-        projectView.IsVisible = false;
-        templateEditorView.IsVisible = false;
-        viewEditorView.IsVisible = true;
-        RefreshViewLivePreview();
-    }
-
-    private void SetViewEditorKind(string kind)
-    {
-        viewKindBox.SelectedItem = kind;
-        ApplyViewKindSettingsVisibility();
-        RefreshViewLivePreview();
-    }
-
-    private void ApplyViewKindSettingsVisibility()
-    {
-        var kind = viewKindBox.SelectedItem as string ?? ZetlViewKinds.Formatted;
-        viewTsvPanel.IsVisible = kind == ZetlViewKinds.Tsv;
-        viewDocumentSettingsPanel.IsVisible = kind is ZetlViewKinds.Markdown
-            or ZetlViewKinds.Html
-            or ZetlViewKinds.Pdf;
-
-        SetViewKindButtonState(viewFormattedKindButton, kind == ZetlViewKinds.Formatted);
-        SetViewKindButtonState(viewPlainKindButton, kind == ZetlViewKinds.Plain);
-        SetViewKindButtonState(viewTsvKindButton, kind == ZetlViewKinds.Tsv);
-        SetViewKindButtonState(viewMarkdownKindButton, kind == ZetlViewKinds.Markdown);
-        SetViewKindButtonState(viewHtmlKindButton, kind == ZetlViewKinds.Html);
-        SetViewKindButtonState(viewPdfKindButton, kind == ZetlViewKinds.Pdf);
-    }
-
-    private static void SetViewKindButtonState(Button button, bool isActive)
-    {
-        button.Classes.Set("view-format-active", isActive);
-    }
-
-    private string CurrentViewJson()
-    {
-        var doc = CurrentViewDocument();
-        return doc is null ? "" : JsonSerializer.Serialize(doc, JsonFile.Options);
-    }
-
-    private ZetlViewDocument? CurrentViewDocument()
-    {
-        if (editingView is null)
-        {
-            return null;
-        }
-
-        var doc = ZetlViewDefaults.Clone(editingView);
-        doc.Name = viewNameBox.Text?.Trim() ?? "";
-        doc.Description = viewDescriptionBox.Text?.Trim() ?? "";
-        doc.Kind = viewKindBox.SelectedItem as string ?? ZetlViewKinds.Formatted;
-        doc.TsvRowLength = (int)(viewTsvRowBox.Value ?? 5);
-        doc.ListStyle = viewListStyleBox.SelectedItem as string ?? ZetlViewListStyles.Bullet;
-        doc.NumberHeadings = viewNumberHeadingsCheck.IsChecked == true;
-        doc.ShowTitle = viewShowTitleCheck.IsChecked == true;
-        doc.Title = viewTitleBox.Text?.Trim() ?? "";
-        doc.Sections = CurrentViewSections();
-        return doc;
-    }
-
-    private bool IsViewDirty() =>
-        editingView is not null && CurrentViewJson() != viewBaselineJson;
-
-    private async Task CancelViewEditAsync()
-    {
-        if (IsViewDirty())
-        {
-            var discard = await KastnDialogs.ConfirmAsync(
-                this,
-                "Discard unsaved changes to this view?",
-                "Discard");
-            if (!discard)
-            {
-                return;
-            }
-        }
-
-        CloseViewEditor();
-    }
-
-    private async Task SaveViewAsync()
-    {
-        if (editingView is not { } view)
-        {
-            return;
-        }
-
-        view.Name = viewNameBox.Text?.Trim() ?? "";
-        view.Description = viewDescriptionBox.Text?.Trim() ?? "";
-        view.Kind = viewKindBox.SelectedItem as string ?? ZetlViewKinds.Formatted;
-        view.TsvRowLength = (int)(viewTsvRowBox.Value ?? 5);
-        view.ListStyle = viewListStyleBox.SelectedItem as string ?? ZetlViewListStyles.Bullet;
-        view.NumberHeadings = viewNumberHeadingsCheck.IsChecked == true;
-        view.ShowTitle = viewShowTitleCheck.IsChecked == true;
-        view.Title = viewTitleBox.Text?.Trim() ?? "";
-        view.Sections = CurrentViewSections();
-        if (string.IsNullOrEmpty(view.Id))
-        {
-            view.Id = ZetlViewDefaults.CreateId(view.Name);
-        }
-
-        var errors = ZetlViewValidator.Validate(view);
-        if (errors.Count > 0)
-        {
-            viewErrorText.Text = string.Join("\n", errors);
-            viewErrorText.IsVisible = true;
-            return;
-        }
-
-        var saveProjectScoped = view.Sections.Count > 0;
-        if (saveProjectScoped)
-        {
-            if (currentProject is null)
-            {
-                viewErrorText.Text = "Open a project before saving a structured view.";
-                viewErrorText.IsVisible = true;
-                return;
-            }
-
-            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.SaveProjectView,
-                new SaveProjectViewCommand { View = ZetlProjectSnapshotMapper.ToSnapshot(view) },
-                currentProject.Id,
-                expectedTargetRevision: currentProject.MetadataRevision));
-            if (response.Status != ZetlResponseStatus.Success)
-            {
-                viewErrorText.Text = response.Error?.Message ?? $"Save failed: {response.Status}.";
-                viewErrorText.IsVisible = true;
-                return;
-            }
-
-            // A formerly global structured view becomes project-owned after the
-            // authoritative project write succeeds.
-            if (!editingProjectScopedView && !ZetlViewDefaults.IsBuiltIn(view.Id))
-            {
-                try
-                {
-                    viewStore.Delete(view.Id);
-                }
-                catch (IOException)
-                {
-                    // The project copy is durable; a stale global copy is hidden by id.
-                }
-            }
-        }
-        else
-        {
-            try
-            {
-                viewStore.Save(view);
-            }
-            catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException or IOException)
-            {
-                viewErrorText.Text = ex.Message;
-                viewErrorText.IsVisible = true;
-                return;
-            }
-
-            if (editingProjectScopedView && currentProject is not null)
-            {
-                var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                    Guid.NewGuid().ToString("N"),
-                    ZetlCommandKind.DeleteProjectView,
-                    new DeleteProjectViewCommand { ViewId = view.Id },
-                    currentProject.Id,
-                    expectedTargetRevision: currentProject.MetadataRevision));
-                if (response.Status != ZetlResponseStatus.Success)
-                {
-                    viewErrorText.Text = response.Error?.Message ?? $"Scope change failed: {response.Status}.";
-                    viewErrorText.IsVisible = true;
-                    return;
-                }
-            }
-        }
-
-        var savedId = view.Id;
-        var savedName = view.Name;
-        CloseViewEditor();
-        await connection.SynchronizeAsync();
-        currentProject = connection.Current.Project;
-        RefreshViewCatalog(currentProject, savedId);
-        RefreshViewer();
-        statusText.Text = $"Saved view '{savedName}'.";
-    }
-
-    private void CloseViewEditor()
-    {
-        editingView = null;
-        editingProjectScopedView = false;
-        viewErrorText.IsVisible = false;
-        viewEditorView.IsVisible = false;
-        if (currentProject is not null)
-        {
-            projectView.IsVisible = true;
-            emptyState.IsVisible = false;
-        }
-        else
-        {
-            emptyState.IsVisible = true;
-        }
-    }
-
-    private async Task DeleteSelectedViewAsync()
-    {
-        var view = SelectedView;
-        if (ZetlViewDefaults.IsBuiltIn(view.Id))
-        {
-            statusText.Text = "Built-in views can't be deleted.";
-            return;
-        }
-
-        var confirmed = await KastnDialogs.ConfirmAsync(
-            this,
-            $"Delete the view '{view.Name}'? This cannot be undone.",
-            "Delete");
-        if (!confirmed)
-        {
-            return;
-        }
-
-        if (IsProjectScopedView(view.Id) && currentProject is not null)
-        {
-            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.DeleteProjectView,
-                new DeleteProjectViewCommand { ViewId = view.Id },
-                currentProject.Id,
-                expectedTargetRevision: currentProject.MetadataRevision));
-            if (response.Status != ZetlResponseStatus.Success)
-            {
-                statusText.Text = response.Error?.Message ?? $"Delete failed: {response.Status}.";
-                return;
-            }
-        }
-        else
-        {
-            try
-            {
-                viewStore.Delete(view.Id);
-            }
-            catch (Exception ex) when (ex is IOException or InvalidOperationException)
-            {
-                statusText.Text = $"Could not delete view: {ex.Message}";
-                return;
-            }
-        }
-
-        await connection.SynchronizeAsync();
-        currentProject = connection.Current.Project;
-        RefreshViewCatalog(currentProject);
-        RefreshViewer();
-        statusText.Text = $"Deleted view '{view.Name}'.";
     }
 
 }

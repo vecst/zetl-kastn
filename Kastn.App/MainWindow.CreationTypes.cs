@@ -36,7 +36,7 @@ internal partial class MainWindow
                 ? t.Name
                 : creation.TemplateId;
             var viewName = creation.PrimaryViewId is { } viewId
-                ? globalViews.FirstOrDefault(v => v.Id == viewId)?.Name ?? viewId
+                ? viewCatalog.Global.FirstOrDefault(v => v.Id == viewId)?.Name ?? viewId
                 : "no view";
             creations.Add(new CreationListItem(
                 creation.Category,
@@ -144,7 +144,7 @@ internal partial class MainWindow
 
         var templates = templateCatalog.LoadAll();
         var viewChoices = new List<ZetlViewDocument> { NoView };
-        viewChoices.AddRange(viewStore.LoadAll());
+        viewChoices.AddRange(viewCatalog.Store.LoadAll());
 
         creationEditorTitle.Text = isNew ? "New Creation Type" : $"Edit Creation Type — {working.Name}";
         creationNameBox.Text = working.Name;

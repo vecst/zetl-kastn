@@ -27,24 +27,11 @@ internal partial class MainWindow : Window
     // Built-ins plus user templates; corrupt/invalid user files are skipped with a
     // diagnostic written to Console.Error (Kastn's existing diagnostic channel).
     private readonly KastnTemplateCatalog templateCatalog = new(Console.Error.WriteLine);
-    // Built-in plus user views for the read-view renderer.
-    private readonly ZetlViewStore viewStore = new(log: Console.Error.WriteLine);
-    private IReadOnlyList<ZetlViewDocument> globalViews = ZetlViewDefaults.CreateAll();
-    private IReadOnlyList<ZetlViewDocument> loadedViews = ZetlViewDefaults.CreateAll();
+    private readonly KastnViewCatalog viewCatalog;
+    private readonly KastnViewPersistence viewPersistence;
+    private readonly KastnViewEditorPresenter viewEditor;
     private string lastRenderedViewText = "";
-    private static readonly string[] ViewKindChoices =
-    [
-        ZetlViewKinds.Formatted,
-        ZetlViewKinds.Plain,
-        ZetlViewKinds.Tsv,
-        ZetlViewKinds.Markdown,
-        ZetlViewKinds.Html,
-        ZetlViewKinds.Pdf
-    ];
-    private ZetlViewDocument? editingView;
-    private bool editingProjectScopedView;
-    private bool viewEditorUpdating;
-    private string viewBaselineJson = "";
+    private bool viewWriteInProgress;
     // Kastn-owned runtime state (last project opened) for the startup preference.
     private readonly KastnStateStore stateStore = new(log: Console.Error.WriteLine);
     // One local editor draft, separate from authoritative Zetl project state.
@@ -199,7 +186,6 @@ internal partial class MainWindow : Window
     // Set while a batch loops many UpdateSlip commands; OnSnapshotChanged (off-thread)
     // reads it to drop the per-mutation snapshot pushes until the batch's final refresh.
     private volatile bool batching;
-    private string lastViewCatalogSignature = "";
     // The single in-flight editor save, so a focus-loss save and a navigation
     // save (e.g. clicking another slip) coalesce instead of racing the `saving`
     // guard.
@@ -238,25 +224,32 @@ internal partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        viewCatalog = new(new ZetlViewStore(log: Console.Error.WriteLine));
+        viewPersistence = new(viewCatalog.Store);
         connection = null!;
         editHistory = CreateEditHistory();
         pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
         readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
         boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
+        viewEditor = CreateViewEditorPresenter();
     }
 
     public MainWindow(
         KastnConnectionController connection,
-        KastnDraftStore? draftStore = null)
+        KastnDraftStore? draftStore = null,
+        ZetlViewStore? viewStore = null)
     {
         this.connection = connection;
+        viewCatalog = new(viewStore ?? new ZetlViewStore(log: Console.Error.WriteLine));
+        viewPersistence = new(viewCatalog.Store);
         editHistory = CreateEditHistory();
         pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         this.draftStore = draftStore ?? new KastnDraftStore(log: Console.Error.WriteLine);
         InitializeComponent();
         readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
         boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
+        viewEditor = CreateViewEditorPresenter();
         Icon = KastnIcon.Create();
         landingLaneItems.ItemsSource = laneCards;
         landingProjectList.ItemsSource = recentProjects;
@@ -380,10 +373,7 @@ internal partial class MainWindow : Window
         codeBlockButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Code);
         insertDividerButton.Click += async (_, _) => await InsertDividerSlipAsync();
         insertGroupButton.Click += async (_, _) => await InsertGroupBucketAsync();
-        globalViews = viewStore.LoadAll();
-        loadedViews = globalViews;
-        viewPickerBox.ItemsSource = loadedViews;
-        viewPickerBox.SelectedIndex = 0;
+        RefreshViewCatalog(null);
         viewPickerBox.SelectionChanged += (_, _) =>
         {
             if (!refreshing)
@@ -393,33 +383,8 @@ internal partial class MainWindow : Window
         };
         copyViewButton.Click += async (_, _) => await CopyRenderedViewAsync();
         exportViewButton.Click += async (_, _) => await ExportRenderedViewAsync();
-        viewKindBox.ItemsSource = ViewKindChoices;
-        viewListStyleBox.ItemsSource = ZetlViewListStyles.All;
-        viewFormattedKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Formatted);
-        viewPlainKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Plain);
-        viewTsvKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Tsv);
-        viewMarkdownKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Markdown);
-        viewHtmlKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Html);
-        viewPdfKindButton.Click += (_, _) => SetViewEditorKind(ZetlViewKinds.Pdf);
-        viewAllBucketsButton.Click += (_, _) => SetViewStructureMode(custom: false);
-        viewCustomSectionsButton.Click += (_, _) => SetViewStructureMode(custom: true);
-        addViewSectionButton.Click += (_, _) => AddViewSection();
-        viewNameBox.TextChanged += (_, _) => RefreshViewLivePreview();
-        viewDescriptionBox.TextChanged += (_, _) => RefreshViewLivePreview();
-        viewListStyleBox.SelectionChanged += (_, _) => RefreshViewLivePreview();
-        viewNumberHeadingsCheck.IsCheckedChanged += (_, _) => RefreshViewLivePreview();
-        viewTitleBox.TextChanged += (_, _) => RefreshViewLivePreview();
-        viewShowTitleCheck.IsCheckedChanged += (_, _) => RefreshViewLivePreview();
-        viewTsvRowBox.ValueChanged += (_, _) => RefreshViewLivePreview();
         saveViewSettingsButton.Click += async (_, _) => await SaveViewAsync();
         cancelViewSettingsButton.Click += async (_, _) => await CancelViewEditAsync();
-        viewKindBox.SelectionChanged += (_, _) =>
-        {
-            if (!viewEditorUpdating)
-            {
-                ApplyViewKindSettingsVisibility();
-            }
-        };
         newViewMenuItem.Click += (_, _) => OpenViewEditor(
             new ZetlViewDocument { Name = "", Category = "Custom", Kind = ZetlViewKinds.Markdown },
             isNew: true);
@@ -449,6 +414,7 @@ internal partial class MainWindow : Window
             connection.SnapshotChanged -= OnSnapshotChanged;
             readerPresenter.Dispose();
             boardPresenter.Dispose();
+            viewEditor.Close();
             pictureCache.Dispose();
         };
         ApplySnapshot(connection.Current);
@@ -617,16 +583,7 @@ internal partial class MainWindow : Window
                 var selectedViewId = string.Equals(priorProjectId, projectSnapshot.Id, StringComparison.Ordinal)
                     ? (viewPickerBox.SelectedItem as ZetlViewDocument)?.Id
                     : projectSnapshot.DefaultViewId;
-                // The catalog only changes with the project's metadata revision
-                // (view saves/deletes bump it; slip captures do not), so skip the
-                // disk reload and picker reset on ordinary mutations. The view
-                // editors refresh the catalog explicitly when they save.
-                var viewCatalogSignature = $"{projectSnapshot.Id}|{projectSnapshot.MetadataRevision}";
-                if (!string.Equals(viewCatalogSignature, lastViewCatalogSignature, StringComparison.Ordinal))
-                {
-                    lastViewCatalogSignature = viewCatalogSignature;
-                    RefreshViewCatalog(projectSnapshot, selectedViewId);
-                }
+                RefreshViewCatalog(projectSnapshot, selectedViewId, force: serverChanged);
                 if (!string.Equals(priorProjectId, projectSnapshot.Id, StringComparison.Ordinal))
                 {
                     // Remember the opened project for the "reopen last project" startup
@@ -676,6 +633,7 @@ internal partial class MainWindow : Window
             {
                 currentProject = null;
                 projectIndex = null;
+                RefreshViewCatalog(null, force: false);
                 treeProjection.Clear();
                 editorState.Select(null);
                 UpdateEditorFromState();
@@ -691,9 +649,8 @@ internal partial class MainWindow : Window
                 RefreshLandingMode();
             }
 
-            // The in-window template/view editors are modal-in-spirit: once open they
-            // stay up across live snapshots (they edit local files, not the project),
-            // so keep them on top of whatever the project/landing logic just decided.
+            // Local authoring sessions stay open across snapshots. Structured
+            // view writes remain scoped to the project where that session opened.
             if (editingTemplate is not null)
             {
                 projectView.IsVisible = false;
@@ -701,7 +658,7 @@ internal partial class MainWindow : Window
                 viewEditorView.IsVisible = false;
                 templateEditorView.IsVisible = true;
             }
-            else if (editingView is not null)
+            else if (viewEditor.State is not null)
             {
                 projectView.IsVisible = false;
                 emptyState.IsVisible = false;
@@ -717,6 +674,7 @@ internal partial class MainWindow : Window
                 creationEditorView.IsVisible = true;
             }
 
+            viewEditor.RefreshPreview();
             SetConnectionState(snapshot);
         }
         finally

@@ -248,6 +248,29 @@ extracting undo or the renderers.
   zero warnings/errors; 846 tests passed, with two intentional latency-probe
   skips. View catalog/editor ownership remains the next extraction target.
 
+- Extracted `KastnViewCatalog`, `KastnViewEditorDraft`,
+  `KastnViewEditorPresenter`, and `KastnViewPersistence`. The catalog owns indexed
+  global/project merging, scope lookup, defaults, and metadata-based reloads;
+  leaving a project removes its private views from the picker. The draft owns
+  independent fields/sections, saved baselines, and captured project identity.
+  The presenter owns controls, section styling/reordering, and bounded previews.
+- View writes capture documents and project revisions before awaiting, validate
+  response identity and authoritative contents, and preserve durable copies on
+  failed scope migration. Saves retain later writing/sections and newer editors;
+  navigation or a retired project session prevents stale completion UI. Changed
+  or removed remote views cannot silently overwrite their replacement. Delete
+  and discard confirmations retain their original targets and protect later
+  drafts, selections, reused IDs, and newer global files.
+- Section callbacks and preview links retire with their controls/session.
+  Unchanged previews reuse their controls; section drops that preserve ordering
+  avoid rebuilding. Global draft captures retain unknown document/section fields.
+  Copy/export continue to capture the picker's actual selected document. Removed
+  about 750 net lines from MainWindow; its Views partial is now about 410 lines.
+- Added pure/service-backed scope, catalog, draft, failure, and response tests,
+  plus headless and delayed real-IPC authoring regressions. Validation: solution
+  build with zero warnings/errors; 883 tests passed, with the same two intentional
+  latency-probe skips. Broader window lifetime and shutdown ownership is next.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |
