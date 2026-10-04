@@ -33,6 +33,7 @@ internal static class KastnPdfRenderer
         var imageDirectory = Path.Combine(Path.GetTempPath(), $"kastn-pdf-{Guid.NewGuid():N}");
         try
         {
+            var checkboxes = new KastnPdfCheckboxes(imageDirectory, options.FontSize);
             var document = BuildDocument(
                 project,
                 slips,
@@ -40,13 +41,14 @@ internal static class KastnPdfRenderer
                 pictures,
                 imageDirectory,
                 preferSlipKindOverBucketKind,
-                options);
+                options,
+                checkboxes);
             var renderer = new PdfDocumentRenderer { Document = document };
             renderer.RenderDocument();
 
             using var stream = new MemoryStream();
             renderer.PdfDocument.Save(stream, closeStream: false);
-            return stream.ToArray();
+            return checkboxes.Apply(stream.ToArray());
         }
         finally
         {
@@ -77,7 +79,8 @@ internal static class KastnPdfRenderer
         IReadOnlyDictionary<string, ZetlPictureContent>? pictures,
         string imageDirectory,
         bool preferSlipKindOverBucketKind,
-        KastnPdfRenderOptions options)
+        KastnPdfRenderOptions options,
+        KastnPdfCheckboxes checkboxes)
     {
         var document = new Document();
         var normal = document.Styles["Normal"]!;
@@ -184,7 +187,7 @@ internal static class KastnPdfRenderer
                 var slipMarker = PdfOuterListMarker(listKinds.Outer, slip.Checked, ref orderedRun)
                     + PdfInnerListMarker(listKinds.Inner, slip.Checked);
 
-                AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker, slipIds.Contains);
+                AppendSlipBlocks(section, slip, displayText, group.Depth, slipMarker, slipIds.Contains, checkboxes);
             }
         }
 
@@ -250,7 +253,8 @@ internal static class KastnPdfRenderer
         string text,
         int depth,
         string slipMarker,
-        Func<string, bool> isResolved)
+        Func<string, bool> isResolved,
+        KastnPdfCheckboxes checkboxes)
     {
         var alignment = ZetlViewRenderer.SlipAlignment(slip) switch
         {
@@ -293,7 +297,7 @@ internal static class KastnPdfRenderer
                     {
                         if (slipMarker.Length > 0)
                         {
-                            paragraph.AddText(slipMarker);
+                            checkboxes.AppendMarker(paragraph, slipMarker);
                         }
 
                         placedSlipMarker = true;
@@ -319,7 +323,7 @@ internal static class KastnPdfRenderer
                         "task" => item.Checked ? "☑ " : "☐ ",
                         _ => "• "
                     };
-                    paragraph.AddText(marker);
+                    checkboxes.AppendMarker(paragraph, marker);
                     AppendInlines(paragraph.AddFormattedText(), item.Inlines, isResolved);
                 }
 
@@ -339,7 +343,7 @@ internal static class KastnPdfRenderer
                 {
                     if (slipMarker.Length > 0)
                     {
-                        paragraph.AddText(slipMarker);
+                        checkboxes.AppendMarker(paragraph, slipMarker);
                     }
 
                     placedSlipMarker = true;

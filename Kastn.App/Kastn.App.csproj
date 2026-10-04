@@ -10,6 +10,7 @@
     <Description>Kastn project workbench for Zetl</Description>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\kastn.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.17" />
@@ -25,5 +26,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Zetl.Tests" />
+    <EmbeddedResource Include="Assets\kastn.ico" LogicalName="KASTN.kastn.ico" />
   </ItemGroup>
 </Project>

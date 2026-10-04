@@ -2,7 +2,7 @@ using Avalonia.Controls;
 
 namespace ZETL;
 
-// Builds the procedural app icons (Zetl's tray "Z", Kastn's window "K"): a white
+// Builds Zetl's procedural tray "Z" icon: a white
 // glyph over a left-to-right gradient, written as a single-image 32-bit ICO so
 // no binary asset ships.
 internal static class ZetlGlyphIcon
