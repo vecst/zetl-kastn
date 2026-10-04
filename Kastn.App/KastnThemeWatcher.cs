@@ -15,6 +15,7 @@ internal sealed class KastnThemeWatcher : IDisposable
     private readonly string settingsFileName;
     private readonly FileSystemWatcher? watcher;
     private readonly DispatcherTimer debounce;
+    private volatile bool disposed;
 
     public KastnThemeWatcher(ZetlThemeManager themeManager)
     {
@@ -71,6 +72,7 @@ internal sealed class KastnThemeWatcher : IDisposable
 
         Dispatcher.UIThread.Post(() =>
         {
+            if (disposed) return;
             debounce.Stop();
             debounce.Start();
         });
@@ -78,6 +80,7 @@ internal sealed class KastnThemeWatcher : IDisposable
 
     private void Reload()
     {
+        if (disposed) return;
         try
         {
             var settings = new ZetlAppSettingsStore().Settings;
@@ -92,6 +95,8 @@ internal sealed class KastnThemeWatcher : IDisposable
 
     public void Dispose()
     {
+        if (disposed) return;
+        disposed = true;
         debounce.Stop();
         if (watcher is not null)
         {

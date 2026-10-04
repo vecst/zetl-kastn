@@ -271,6 +271,35 @@ extracting undo or the renderers.
   build with zero warnings/errors; 883 tests passed, with the same two intentional
   latency-probe skips. Broader window lifetime and shutdown ownership is next.
 
+- Fixed Kastn's missing executable icon and PDF task exports. The executable and
+  window now share a multi-resolution K icon. Exported task checkboxes preserve
+  their checked state and have editable, printable AcroForm widgets with explicit
+  on/off appearances. Save/reopen, layout, and authored-task regressions passed;
+  rendered samples were inspected before and after toggling. Validation: clean
+  solution build; 888 tests passed, with two intentional latency-probe skips.
+
+- Extracted `KastnWindowLifetime` and `KastnApplicationLifetime`. Window close,
+  tray hiding, coalesced preparation, coordinated-shutdown approval, and retirement
+  now have explicit owners. App composition supplies native/UI actions, connection
+  teardown, and theme-watcher cleanup; Program retains the control server and mutex.
+- Shutdown approval holds the close gate until the pipe reply is flushed. A lost
+  requester releases that approval; disposing the server cancels a pending UI
+  decision instead of waiting forever. App retirement detaches all control handlers
+  and prevents queued activation/confirmation callbacks from touching old resources.
+- Window retirement stops draft/save/drag timers, unsubscribes snapshots, retires
+  edit-history generations, and releases presenters and pictures once. Queued
+  snapshots, focus restoration, theme changes, and save completions check lifetime.
+- Unsaved-close decisions capture their editor session, draft, revision, conflict,
+  and project/server generation. Stale answers cannot discard a different draft;
+  keeping recovery requires a successful write of the latest draft. Native-close
+  focus loss cannot start a new autosave after an explicit discard.
+- Added owner, named-pipe, headless UI, and delayed real-IPC regressions for repeated
+  requests, retry/cancel/error paths, reply ordering and requester loss, recovery
+  choices and failed journal writes, interrupted drafts/saves, resource cleanup,
+  and retired callbacks. Validation: clean solution build; 925 tests passed, with
+  the same two intentional latency-probe skips. Settings ownership is next, followed
+  by template/creation workflows and measured performance work.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

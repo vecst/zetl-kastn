@@ -15,6 +15,7 @@ internal partial class MainWindow
 
     private void RefreshViewer()
     {
+        if (lifetime.IsRetired) return;
         if (currentProject is null)
         {
             viewerSummaryText.Text = "No project selected.";

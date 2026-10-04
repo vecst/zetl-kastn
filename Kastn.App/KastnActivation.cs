@@ -39,6 +39,10 @@ internal sealed class KastnControlServer : IAsyncDisposable
     /// Invoked after a "close" reply has been flushed, so Kastn can actually exit.
     public Action? ShutdownConfirmed { get; set; }
 
+    /// Invoked when an approved reply cannot reach the requester. Release the
+    /// pending approval so Kastn can resume activation or retry closing.
+    public Action? ShutdownAbandoned { get; set; }
+
     public KastnControlRequest? PendingRequest { get; private set; }
 
     public void Start()
@@ -125,24 +129,31 @@ internal sealed class KastnControlServer : IAsyncDisposable
         // No handler means Kastn can't make the decision; treat as a cancel so the
         // requester stays running rather than killing an app that didn't consent.
         var close = ShutdownRequested is { } handler
-            && await handler().ConfigureAwait(false);
-        await using (var writer = new StreamWriter(
-            pipe,
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-            bufferSize: 256,
-            leaveOpen: true)
+            && await handler().WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            AutoFlush = true
-        })
-        {
-            await writer.WriteLineAsync(
-                KastnControlChannel.ReplyFor(close).AsMemory(),
-                cancellationToken).ConfigureAwait(false);
-        }
+            await using (var writer = new StreamWriter(
+                pipe,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                bufferSize: 256,
+                leaveOpen: true)
+            {
+                AutoFlush = true
+            })
+            {
+                await writer.WriteLineAsync(
+                    KastnControlChannel.ReplyFor(close).AsMemory(),
+                    cancellationToken).ConfigureAwait(false);
+            }
 
-        // Give the reply a moment to drain to the requester before we begin tearing
-        // the process down.
-        await pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
+            // Flush the reply before tearing down the process and its pipe.
+            await pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (close) ShutdownAbandoned?.Invoke();
+            throw;
+        }
         if (close)
         {
             ShutdownConfirmed?.Invoke();

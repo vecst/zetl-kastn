@@ -29,8 +29,10 @@ internal sealed class KastnEditorWorkflowContext
         projectId == ProjectId && editor.SelectionVersion == selectionVersion && editor.SlipId == slipId;
 
     public bool IsSameDraft(string? projectId, KastnEditorState editor) =>
-        IsSameSession(projectId, editor) && editor.ConflictCurrent is null
-        && editor.DraftText == text
+        editor.ConflictCurrent is null && IsSameDraftContent(projectId, editor);
+
+    public bool IsSameDraftContent(string? projectId, KastnEditorState editor) =>
+        IsSameSession(projectId, editor) && editor.DraftText == text
         && KastnInlineStyleEditing.StyleListsEqual(editor.DraftInlineStyles, styles)
         && editor.PendingInlineStyleKinds.SetEquals(pendingStyles);
 }

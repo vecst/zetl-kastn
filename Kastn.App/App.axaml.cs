@@ -9,10 +9,7 @@ namespace KASTN;
 
 public partial class App : Application
 {
-    private KastnConnectionController? connection;
-    private ZetlThemeManager? themeManager;
-    private KastnThemeWatcher? themeWatcher;
-    private MainWindow? mainWindow;
+    private KastnApplicationLifetime? session;
 
     public override void Initialize()
     {
@@ -48,87 +45,43 @@ public partial class App : Application
                 projectId = recoveryDraft.ProjectId;
             }
             var themeStore = new ZetlThemeStore();
-            themeManager = new ZetlThemeManager(this);
+            var themeManager = new ZetlThemeManager(this);
             themeManager.Apply(
                 themeStore.Resolve(settingsStore.Settings.ThemeId),
                 settingsStore.Settings.ThemeVariant);
             // Re-apply live when Zetl's theme editor changes the shared settings/theme.
-            themeWatcher = new KastnThemeWatcher(themeManager);
-            connection = new KastnConnectionController(
+            var themeWatcher = new KastnThemeWatcher(themeManager);
+            var connection = new KastnConnectionController(
                 token => KastnZetlLauncher.LaunchAsync(zetlPath, pipeName, token),
                 pipeName);
-            mainWindow = new MainWindow(connection, draftStore);
+            var mainWindow = new MainWindow(connection, draftStore);
             desktop.MainWindow = mainWindow;
-
-            if (Program.ActivationServer is { } activation)
-            {
-                activation.ActivationRequested += OnActivationRequested;
-                // Zetl is quitting and asked whether Kastn may close too. Kastn owns
-                // the decision; on a "close" reply, suppress the auto-relaunch and
-                // exit instead of hiding back to the tray.
-                var window = mainWindow!;
-                var session = connection!;
-                activation.ShutdownRequested = () => window.RequestShutdownDecisionAsync();
-                activation.ShutdownConfirmed = () => Dispatcher.UIThread.Post(() =>
+            session = new KastnApplicationLifetime(
+                Program.ActivationServer,
+                mainWindow.ActivateRequestAsync,
+                mainWindow.RequestShutdownDecisionAsync,
+                connection.BeginShutdown,
+                mainWindow.CloseForShutdown,
+                mainWindow.RetireLifetime,
+                themeWatcher.Dispose,
+                connection.DisposeAsync,
+                action => Dispatcher.UIThread.Post(action),
+                ex =>
                 {
-                    session.BeginShutdown();
-                    window.CloseForShutdown();
-                });
-                if (activation.PendingRequest is { } pending)
-                {
-                    RequestActivation(pending.ProjectId);
-                }
-            }
+                    Console.Error.WriteLine($"Kastn activation failed ({ex.GetType().Name}): {ex.Message}");
+                    mainWindow.ReportActivationFailure(ex);
+                },
+                mainWindow.AbandonShutdown);
 
             desktop.Exit += (_, _) =>
             {
-                if (Program.ActivationServer is { } server)
-                {
-                    server.ActivationRequested -= OnActivationRequested;
-                }
-
-                connection.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                connection = null;
-                themeWatcher?.Dispose();
-                themeWatcher = null;
-                themeManager = null;
-                mainWindow = null;
+                session?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                session = null;
             };
             connection.Start(projectId);
         }
 
         base.OnFrameworkInitializationCompleted();
-    }
-
-    private void OnActivationRequested(object? sender, KastnControlRequest request)
-    {
-        Dispatcher.UIThread.Post(() => RequestActivation(request.ProjectId));
-    }
-
-    private void RequestActivation(string? projectId)
-    {
-        _ = ActivateMainWindowAsync(projectId);
-    }
-
-    // Fire-and-forget boundary for control-pipe and pending startup activation.
-    // The Task-returning window operation remains awaitable and testable; every
-    // exception is observed here before it can reach Avalonia's UI context.
-    private async Task ActivateMainWindowAsync(string? projectId)
-    {
-        var window = mainWindow;
-        if (window is null)
-        {
-            return;
-        }
-
-        await ObserveActivationAsync(
-            () => window.ActivateRequestAsync(projectId),
-            ex =>
-            {
-                Console.Error.WriteLine(
-                    $"Kastn activation failed ({ex.GetType().Name}): {ex.Message}");
-                window.ReportActivationFailure(ex);
-            });
     }
 
     internal static async Task ObserveActivationAsync(

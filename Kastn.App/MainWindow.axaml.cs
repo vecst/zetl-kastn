@@ -162,7 +162,7 @@ internal partial class MainWindow : Window
                     savingVisualTimer.Tick += (_, _) =>
                     {
                         savingVisualTimer!.Stop();
-                        if (savingCore && !savingVisual)
+                        if (!lifetime.IsRetired && savingCore && !savingVisual)
                         {
                             savingVisual = true;
                             SetEditingEnabled();
@@ -170,7 +170,7 @@ internal partial class MainWindow : Window
                     };
                 }
 
-                savingVisualTimer.Start();
+                if (!lifetime.IsRetired) savingVisualTimer.Start();
             }
             else
             {
@@ -178,7 +178,7 @@ internal partial class MainWindow : Window
                 if (savingVisual)
                 {
                     savingVisual = false;
-                    SetEditingEnabled();
+                    if (!lifetime.IsRetired) SetEditingEnabled();
                 }
             }
         }
@@ -218,8 +218,7 @@ internal partial class MainWindow : Window
     private IReadOnlyList<ZetlProjectSummary> lastProjectSummaries = [];
     private bool suppressLandingProjectSelection;
     private readonly KastnViewRenderCache viewRenderCache = new();
-    private bool allowWindowClose;
-    private bool closeRequestInProgress;
+    private readonly KastnWindowLifetime lifetime;
 
     public MainWindow()
     {
@@ -233,6 +232,8 @@ internal partial class MainWindow : Window
         readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
         boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
         viewEditor = CreateViewEditorPresenter();
+        lifetime = CreateWindowLifetime();
+        WireWindowLifetime();
     }
 
     public MainWindow(
@@ -250,6 +251,7 @@ internal partial class MainWindow : Window
         readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
         boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
         viewEditor = CreateViewEditorPresenter();
+        lifetime = CreateWindowLifetime();
         Icon = KastnIcon.Create();
         landingLaneItems.ItemsSource = laneCards;
         landingProjectList.ItemsSource = recentProjects;
@@ -408,29 +410,14 @@ internal partial class MainWindow : Window
         WireCreationEditor();
         SizeChanged += (_, _) => RefreshLandingGridLayout();
         KeyDown += OnKeyDown;
-        Closing += OnWindowClosing;
-        Closed += (_, _) =>
-        {
-            connection.SnapshotChanged -= OnSnapshotChanged;
-            readerPresenter.Dispose();
-            boardPresenter.Dispose();
-            viewEditor.Close();
-            pictureCache.Dispose();
-        };
+        WireWindowLifetime();
         ApplySnapshot(connection.Current);
     }
 
     public async Task ActivateRequestAsync(string? projectId)
     {
-        if (WindowState == WindowState.Minimized)
-        {
-            WindowState = WindowState.Normal;
-        }
-
-        ShowInTaskbar = true;
-        Show();
-        Activate();
-        BringToForeground();
+        if (!lifetime.CanActivate) return;
+        lifetime.Activate();
         if (!string.IsNullOrWhiteSpace(projectId))
         {
             await connection.NavigateToProjectAsync(projectId);
@@ -439,93 +426,8 @@ internal partial class MainWindow : Window
 
     internal void ReportActivationFailure(Exception exception)
     {
+        if (lifetime.IsRetired) return;
         statusText.Text = $"Kastn could not open the requested project. {exception.Message}";
-    }
-
-    // Minimize remains normal window-manager behavior. Closing either hides
-    // Kastn behind Zetl's tray icon or exits the Kastn process, depending on the
-    // shared Kastn close preference.
-    private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
-    {
-        if (allowWindowClose)
-        {
-            return;
-        }
-
-        e.Cancel = true;
-        if (CurrentAppSettings().KastnCloseToTray)
-        {
-            HideToTray();
-            return;
-        }
-
-        _ = CompleteWindowCloseAsync();
-    }
-
-    private void HideToTray()
-    {
-        if (WindowState == WindowState.Minimized)
-        {
-            WindowState = WindowState.Normal;
-        }
-
-        ShowInTaskbar = false;
-        Hide();
-    }
-
-    // Called from the control pipe (off the UI thread) when Zetl is quitting and
-    // wants Kastn to close too. Kastn raises itself from hidden or minimized state
-    // and confirms. Returns true to close, false to keep both apps running.
-    public Task<bool> RequestShutdownDecisionAsync()
-    {
-        var decided = new TaskCompletionSource<bool>();
-        Dispatcher.UIThread.Post(async () =>
-        {
-            try
-            {
-                decided.SetResult(await DecideShutdownAsync());
-            }
-            catch (Exception ex)
-            {
-                decided.SetException(ex);
-            }
-        });
-        return decided.Task;
-    }
-
-    private async Task<bool> DecideShutdownAsync()
-    {
-        if (WindowState == WindowState.Minimized)
-        {
-            WindowState = WindowState.Normal;
-        }
-
-        if (!IsVisible)
-        {
-            Show();
-        }
-
-        ShowInTaskbar = true;
-        Activate();
-        BringToForeground();
-        if (!await KastnDialogs.ConfirmAsync(
-            this,
-            "Closing Zetl will also close Kastn. Close both apps?",
-            "Close both"))
-        {
-            return false;
-        }
-
-        return await PrepareEditorForExitAsync();
-    }
-
-    public void CloseForShutdown()
-    {
-        Dispatcher.UIThread.Post(() =>
-        {
-            allowWindowClose = true;
-            Close();
-        });
     }
 
     private void OnSnapshotChanged(object? sender, KastnSessionSnapshot snapshot)
@@ -534,7 +436,7 @@ internal partial class MainWindow : Window
         // a snapshot per mutation; applying each would rebuild the tree and View N
         // times in sequence. Drop the intermediate pushes — the batch does one
         // RefreshAsync at the end.
-        if (batching)
+        if (batching || lifetime.IsRetired)
         {
             return;
         }
@@ -544,6 +446,7 @@ internal partial class MainWindow : Window
 
     private void ApplySnapshot(KastnSessionSnapshot snapshot)
     {
+        if (lifetime.IsRetired) return;
         var priorProjectId = currentProject?.Id;
         var selectedProjectId = snapshot.Project?.Id;
         var selectedBucketId = SelectedBucketId;
@@ -1190,7 +1093,7 @@ internal partial class MainWindow : Window
 
     private void RefreshSlipView(bool force = false)
     {
-        if ((!force && refreshing) || currentProject is null)
+        if (lifetime.IsRetired || (!force && refreshing) || currentProject is null)
         {
             return;
         }
@@ -1558,7 +1461,7 @@ internal partial class MainWindow : Window
         Dispatcher.UIThread.Post(
             () =>
             {
-                if (editorState.SlipId is null)
+                if (lifetime.IsRetired || editorState.SlipId is null)
                 {
                     return;
                 }
@@ -1653,7 +1556,7 @@ internal partial class MainWindow : Window
     }
 
     private bool IsOnline =>
-        connection.Current.ConnectionState == KastnConnectionState.Online;
+        !lifetime.IsRetired && connection.Current.ConnectionState == KastnConnectionState.Online;
 
     private KastnTreeNode? SelectedTreeNode => projectTree.SelectedItem as KastnTreeNode;
 

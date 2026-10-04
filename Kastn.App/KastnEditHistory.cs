@@ -30,6 +30,13 @@ internal sealed class KastnEditHistory(
     public KastnUndoEntry? Peek(bool redo = false) =>
         (redo ? redoStack : undoStack).TryPeek(out var entry) ? entry : null;
 
+    public void Retire()
+    {
+        generation++;
+        projectId = null;
+        ClearUndoHistory();
+    }
+
     // A transient outage can retain revision-checked entries. Changing project
     // or server retires both stacks and every still-running gesture/command.
     public void ObserveSession(KastnSessionSnapshot session)

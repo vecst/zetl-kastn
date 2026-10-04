@@ -7,7 +7,7 @@ internal partial class MainWindow
 {
     private void ScheduleDraftJournal()
     {
-        if (!editorState.IsDirty)
+        if (lifetime.IsRetired || !editorState.IsDirty)
         {
             return;
         }
@@ -32,7 +32,7 @@ internal partial class MainWindow
     private bool FlushDraftJournal()
     {
         draftJournalTimer?.Stop();
-        if (!editorState.IsDirty
+        if (lifetime.IsRetired || !editorState.IsDirty
             || currentProject is null
             || editorState.SlipId is null)
         {
@@ -134,8 +134,10 @@ internal partial class MainWindow
     private static string DraftRecoveryKey(KastnDraftDocument draft) =>
         $"{draft.ProjectId}|{draft.SlipId}|{draft.UpdatedAtUtc.UtcTicks}";
 
-    private async Task<bool> PrepareEditorForExitAsync()
+    private async Task<bool> PrepareEditorForExitAsync(
+        Func<bool, string, Task<KastnDialogs.UnsavedCloseAction>>? decide = null)
     {
+        if (lifetime.IsRetired) return false;
         if (!editorState.IsDirty && editorState.ConflictCurrent is null)
         {
             return true;
@@ -143,27 +145,47 @@ internal partial class MainWindow
 
         // Make the local copy durable before attempting IPC. A crash or forced
         // updater stop during the save round-trip must still leave recovery data.
-        var recoveryStored = FlushDraftJournal();
-        if (await SaveEditorAsync())
+        var projectId = currentProject?.Id;
+        var session = editorState.SelectionVersion;
+        var generation = editHistory.Generation;
+        bool SameSession() => !lifetime.IsRetired && currentProject?.Id == projectId
+            && editorState.SelectionVersion == session && editHistory.Generation == generation;
+        FlushDraftJournal();
+        var saved = await SaveEditorAsync();
+        if (!SameSession()) return false;
+        if (saved && !editorState.IsDirty && editorState.ConflictCurrent is null)
         {
             return true;
         }
 
-        recoveryStored = FlushDraftJournal() || recoveryStored;
-        var action = await KastnDialogs.DecideUnsavedCloseAsync(
-            this,
-            recoveryStored,
-            editorState.ConflictCurrent is not null
+        // The prompt refers to this exact draft, not whichever slip happens to be
+        // active when its asynchronous answer arrives. Re-journal the latest state
+        // after the save; an older successful write cannot protect newer typing.
+        var recoveryStored = FlushDraftJournal();
+        var context = new KastnEditorWorkflowContext(projectId ?? "", editorState);
+        var revision = editorState.Revision;
+        var conflict = editorState.ConflictCurrent;
+        var message = editorState.ConflictCurrent is not null
                 ? "This slip has an unresolved conflict and could not be saved."
                 : IsOnline
                     ? "This slip could not be saved to Zetl."
-                    : "Kastn is offline, so this slip could not be saved to Zetl.");
+                    : "Kastn is offline, so this slip could not be saved to Zetl.";
+        var action = await (decide ?? ((stored, reason) =>
+            KastnDialogs.DecideUnsavedCloseAsync(this, stored, reason)))(recoveryStored, message);
+        if (!SameSession()) return false;
+        if (!context.IsSameDraftContent(projectId, editorState)
+            || revision != editorState.Revision || conflict != editorState.ConflictCurrent)
+        {
+            FlushDraftJournal();
+            statusText.Text = "The editor changed while closing; closing was cancelled.";
+            return false;
+        }
         switch (action)
         {
             case KastnDialogs.UnsavedCloseAction.KeepRecovery when recoveryStored:
                 return true;
             case KastnDialogs.UnsavedCloseAction.Discard:
-                if (ClearDraftJournal(currentProject?.Id, editorState.SlipId))
+                if (ClearDraftJournal(projectId, editorState.SlipId))
                 {
                     return true;
                 }
@@ -174,30 +196,4 @@ internal partial class MainWindow
         }
     }
 
-    private async Task CompleteWindowCloseAsync()
-    {
-        if (closeRequestInProgress)
-        {
-            return;
-        }
-
-        closeRequestInProgress = true;
-        try
-        {
-            if (!await PrepareEditorForExitAsync())
-            {
-                return;
-            }
-
-            allowWindowClose = true;
-            Close();
-        }
-        finally
-        {
-            if (!allowWindowClose)
-            {
-                closeRequestInProgress = false;
-            }
-        }
-    }
 }

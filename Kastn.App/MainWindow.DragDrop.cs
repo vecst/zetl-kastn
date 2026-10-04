@@ -121,7 +121,7 @@ internal partial class MainWindow
 
     private async void OnTreePointerMoved(object? sender, PointerEventArgs args)
     {
-        if (dragCandidate is null || dragInProgress)
+        if (lifetime.IsRetired || dragCandidate is null || dragInProgress)
         {
             return;
         }
@@ -218,7 +218,7 @@ internal partial class MainWindow
         var version = dropFeedbackVersion;
         Dispatcher.UIThread.Post(() =>
         {
-            if (version == dropFeedbackVersion && !dragPointerInsideTree)
+            if (!lifetime.IsRetired && version == dropFeedbackVersion && !dragPointerInsideTree)
                 ApplyDropMarker(null);
         });
     }
@@ -617,7 +617,7 @@ internal partial class MainWindow
 
     private async void OnBoardColumnHeaderPointerMoved(object? sender, PointerEventArgs args)
     {
-        if (boardColumnDragCandidate is null || boardDragInProgress || dragInProgress)
+        if (lifetime.IsRetired || boardColumnDragCandidate is null || boardDragInProgress || dragInProgress)
         {
             return;
         }

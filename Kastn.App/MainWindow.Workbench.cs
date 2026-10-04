@@ -22,7 +22,7 @@ internal partial class MainWindow
 {
     private void OnEditorTextChanged()
     {
-        if (editorUpdating || editorState.SlipId is null)
+        if (lifetime.IsRetired || editorUpdating || editorState.SlipId is null)
         {
             return;
         }
@@ -194,6 +194,9 @@ internal partial class MainWindow
 
     private async Task<bool> SaveEditorCoreAsync()
     {
+        // Native close can lose editor focus before Closed retires the window.
+        // That focus-loss autosave must not undo an explicit discard decision.
+        if (lifetime.AllowClose) return false;
         if (!editorState.IsDirty)
         {
             return editorState.ConflictCurrent is null;
@@ -218,6 +221,7 @@ internal partial class MainWindow
         try
         {
             var result = await operation.ExecuteAsync(ExecuteMutationAsync);
+            if (lifetime.IsRetired) return false;
             if (result.Saved && operation.IsCurrentEditor)
             {
                 PersistEditorAfterSave(operation.ProjectId);
@@ -238,7 +242,7 @@ internal partial class MainWindow
         {
             pendingEditorSave = null;
             saving = false;
-            SetEditingEnabled();
+            if (!lifetime.IsRetired) SetEditingEnabled();
         }
     }
 
