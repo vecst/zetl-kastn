@@ -51,7 +51,7 @@ public partial class ZetlUITests
     }
 
     [AvaloniaFact]
-    public void TreeViewportNativeDragKeepsCanonicalGapAfterDistantNavigation()
+    public async Task TreeViewportNativeDragKeepsCanonicalGapAfterDistantNavigation()
     {
         using var h = new ViewportWindowHarness();
         var (window, controller) = (h.Window, h.Controller);
@@ -66,14 +66,23 @@ public partial class ZetlUITests
             window.UpdateLayout();
             Dispatcher.UIThread.RunJobs();
             window.UpdateLayout();
-            Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
             SetTreeDrag(window, "note-999");
             var row = TreeRow(window, "note-500");
             var device = (IInputDevice)Activator.CreateInstance(typeof(DragDrop).Assembly
                 .GetType("Avalonia.Input.DragDropDevice")!, nonPublic: true)!;
             var point = row.TranslatePoint(new Point(row.Bounds.Width / 2, row.Bounds.Height * .8), window)!.Value;
-            Assert.Equal("note-500", (window.InputHitTest(point) as Visual)?.GetSelfAndVisualAncestors()
-                .OfType<TreeViewItem>().Select(item => (item.DataContext as KastnTreeNode)?.Id).FirstOrDefault());
+            string? HitNodeId() => (window.InputHitTest(point) as Visual)?.GetSelfAndVisualAncestors()
+                .OfType<TreeViewItem>().Select(item => (item.DataContext as KastnTreeNode)?.Id).FirstOrDefault();
+            // Native hit testing uses the committed composition frame, which can lag layout.
+            var frames = System.Diagnostics.Stopwatch.StartNew();
+            while (HitNodeId() != "note-500" && frames.Elapsed < TimeSpan.FromSeconds(2))
+            {
+                Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                await Task.Delay(10);
+                window.UpdateLayout();
+                Dispatcher.UIThread.RunJobs();
+            }
+            Assert.Equal("note-500", HitNodeId());
             NativeTreeDrag(device, window, point, TreeDragData(window), RawDragEventType.DragEnter);
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(KastnDropEdge.Before, window.treeProjection.Find("note-501")!.DropEdge);

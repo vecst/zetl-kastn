@@ -78,6 +78,7 @@ internal partial class MainWindow
         projectTree.SetHierarchy([]);
         readerPresenter.Dispose();
         boardPresenter.Dispose();
+        inspectorPresenter.Dispose();
         viewEditor.Close();
         templateEditor.Close();
         creationEditor.Close();

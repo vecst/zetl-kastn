@@ -590,8 +590,18 @@ distant horizontal columns. Column shells/composers retain drafts; logical
 anchors retain scroll positions. Native drag hit testing, offscreen drop
 successors, unsaved edits, range selection and late pictures have UI coverage.
 Full projection/row-model reconciliation, eager bucket shells and visible
-backlink lists remain measurable costs. See the performance document for the
+backlink lists were the remaining costs. See the performance document for the
 before/after probe and its limits.
+
+The inspector viewport pass is complete. `KastnInspectorPresenter` owns metadata
+controls and guarded actions, reconciles unchanged fields/buttons, and bounds
+long backlink lists to the viewport. Logical Tab navigation and scroll anchors
+cover unrealized sources. Rendering/index queries defer while Editor or Board
+hides Details. A corrected probe measures an actually visible right pane;
+earlier Details timings measured eager construction while board mode hid it.
+At 3,000 slips, visible edit allocation fell from 240,808 to 13,335 KiB and its
+observed median from 2,130 to 44 ms. Full snapshot/index reconciliation and
+picture-heavy rendering remain follow-up measurements.
 
 1. Remove unused slip-list presentation work before adding more caches.
 2. Derive selection and availability once per UI update. Reuse project indexes

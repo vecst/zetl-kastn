@@ -2117,7 +2117,7 @@ internal partial class MainWindow
     private void SetDetailPaneMode(bool showDetails)
     {
         detailShowingMetadata = showDetails;
-        if (showDetails) RefreshSlipInspector();
+        RefreshSlipInspector();
         editorPanel.IsVisible = !showDetails;
         inspectorPanel.IsVisible = showDetails;
         var hasProject = currentProject is not null;

@@ -136,117 +136,15 @@ internal partial class MainWindow
         RenderSlipInspector(selected);
     }
 
-    private string lastInspectorSignature = "";
-    private string? lastInspectorProjectId;
-
     private void RenderSlipInspector(ZetlSlipSnapshot? slip)
     {
-        // Metadata (especially a large backlink list) needs no controls while
-        // the editor is showing. Keep the last rendered signature unchanged so
-        // opening Details renders against the latest snapshot and selection.
-        if (!detailShowingMetadata)
+        if (!detailShowingMetadata || boardModeActive)
         {
-            if (currentProject?.Id != lastInspectorProjectId || currentProject is null || slip is null)
-            {
-                slipInspectorFieldsPanel.Children.Clear();
-                lastInspectorSignature = "";
-                lastInspectorProjectId = currentProject?.Id;
-            }
+            inspectorPresenter.Suspend(currentProject?.Id, slip is not null);
             return;
         }
-        // Rebuild the detail fields only when their inputs changed (the slip, its
-        // revision, or the project — the change sequence covers backlink edits);
-        // the refreshes that follow one action otherwise re-cleared the pane
-        // several times, which read as a flash.
-        var signature = $"{currentProject?.Id}|{currentProject?.ChangeSequence}|{slip?.Id}|{slip?.Revision}";
-        if (string.Equals(signature, lastInspectorSignature, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        lastInspectorSignature = signature;
-        lastInspectorProjectId = currentProject?.Id;
-        slipInspectorFieldsPanel.Children.Clear();
-        if (currentProject is null || slip is null)
-        {
-            slipInspectorFieldsPanel.Children.Add(new TextBlock
-            {
-                Text = "No slip is available in the current view.",
-                Classes = { "muted" },
-                TextWrapping = TextWrapping.Wrap
-            });
-            return;
-        }
-
-        bool IsCurrent() => !lifetime.IsRetired && detailShowingMetadata
-            && string.Equals(signature, lastInspectorSignature, StringComparison.Ordinal);
-
-        foreach (var section in KastnSlipInspector.Build(ProjectIndex, slip))
-        {
-            slipInspectorFieldsPanel.Children.Add(new TextBlock
-            {
-                Text = section.Heading,
-                FontWeight = FontWeight.SemiBold,
-                Margin = new Avalonia.Thickness(0, 8, 0, 0)
-            });
-            if (string.Equals(section.Heading, "Linked from", StringComparison.Ordinal))
-            {
-                foreach (var field in section.Fields)
-                {
-                    var targetSlipId = field.Value;
-                    var navigateButton = new Button
-                    {
-                        Content = field.Label,
-                        Padding = new Avalonia.Thickness(9, 3),
-                        Margin = new Avalonia.Thickness(0, 2, 0, 2),
-                        HorizontalAlignment = HorizontalAlignment.Left
-                    };
-                    navigateButton.Click += (_, _) =>
-                    {
-                        if (!IsCurrent()) return;
-                        var node = treeProjection.Find(targetSlipId);
-                        if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
-                        {
-                            projectTree.SelectedItem = node;
-                        }
-                    };
-                    slipInspectorFieldsPanel.Children.Add(navigateButton);
-                }
-                continue;
-            }
-            foreach (var field in section.Fields)
-            {
-                var fieldPanel = new StackPanel { Spacing = 1 };
-                fieldPanel.Children.Add(new TextBlock
-                {
-                    Text = field.Label,
-                    Classes = { "muted" },
-                    FontSize = 11
-                });
-                fieldPanel.Children.Add(new TextBlock
-                {
-                    Text = field.Value,
-                    TextWrapping = TextWrapping.Wrap,
-                    [ToolTip.TipProperty] = field.Value
-                });
-                if (string.Equals(field.Label, "Original URL", StringComparison.Ordinal)
-                    && Uri.TryCreate(field.Value, UriKind.Absolute, out var uri)
-                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-                {
-                    var openButton = new Button
-                    {
-                        Content = "Open URL",
-                        Padding = new Avalonia.Thickness(9, 3),
-                        Margin = new Avalonia.Thickness(0, 4, 0, 0),
-                        HorizontalAlignment = HorizontalAlignment.Left
-                    };
-                    openButton.Click += (_, _) => { if (IsCurrent()) OpenInspectorUrl(uri); };
-                    fieldPanel.Children.Add(openButton);
-                }
-
-                slipInspectorFieldsPanel.Children.Add(fieldPanel);
-            }
-        }
+        inspectorPresenter.Render(currentProject is null ? null : ProjectIndex, slip,
+            CaptureSlipSelectionAction(), OpenInspectorUrl);
     }
 
     private void OpenInspectorUrl(Uri uri)

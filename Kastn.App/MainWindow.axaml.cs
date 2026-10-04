@@ -113,6 +113,7 @@ internal partial class MainWindow : Window
     private readonly KastnPictureCache pictureCache;
     private readonly KastnReaderPresenter readerPresenter;
     private readonly KastnBoardPresenter boardPresenter;
+    private readonly KastnInspectorPresenter inspectorPresenter;
     private ZetlProjectSnapshot? currentProject;
     private KastnProjectIndex? projectIndex;
     private KastnProjectIndex ProjectIndex
@@ -228,6 +229,7 @@ internal partial class MainWindow : Window
         draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
         readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
         boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
+        inspectorPresenter = new(slipInspectorFieldsPanel, inspectorPanel);
         viewEditor = CreateViewEditorPresenter();
         lifetime = CreateWindowLifetime();
         WireWindowLifetime();
@@ -258,6 +260,7 @@ internal partial class MainWindow : Window
         creationEditor = CreateCreationEditorPresenter();
         readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
         boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
+        inspectorPresenter = new(slipInspectorFieldsPanel, inspectorPanel);
         viewEditor = CreateViewEditorPresenter();
         lifetime = CreateWindowLifetime();
         Icon = KastnIcon.Create();

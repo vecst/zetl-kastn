@@ -633,11 +633,6 @@ public class KastnLifecycleTests
         KastnConnectionController controller,
         Func<KastnSessionSnapshot, bool> predicate)
     {
-        if (predicate(controller.Current))
-        {
-            return controller.Current;
-        }
-
         var completion = new TaskCompletionSource<KastnSessionSnapshot>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         EventHandler<KastnSessionSnapshot>? handler = null;
@@ -651,6 +646,12 @@ public class KastnLifecycleTests
         controller.SnapshotChanged += handler;
         try
         {
+            // Subscribe before checking so a transition cannot fall between the two.
+            var current = controller.Current;
+            if (predicate(current))
+            {
+                completion.TrySetResult(current);
+            }
             return await completion.Task.WaitAsync(TimeSpan.FromSeconds(8));
         }
         finally

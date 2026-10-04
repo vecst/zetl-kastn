@@ -64,9 +64,11 @@ but 14.7 → 15.6 seconds at 3,000. This pass does **not** establish a consisten
 initial-load latency improvement. Full reversal was 187 ms / 4,009 KiB at 1,000
 slips and 450 ms / 11,409 KiB at 3,000, with every tree container retained.
 
-The final probe separately opens Details and applies three more edits while it
-is visible. It constructs 1,009 or 3,009 detail controls; visible-detail edits
-still averaged about 20,365 or 60,052 KiB and had medians of 142 or 515 ms.
+The historical probe separately opened the Details flag and applied three more
+edits while board mode still hid the right column. It constructed 1,009 or 3,009
+detail controls; these measurements cover hidden control construction, not
+visible Details layout. That phase averaged about 20,365 or 60,052 KiB and had
+medians of 142 or 515 ms. The inspector pass below corrects this setup.
 Projects with few backlinks will see a smaller editing benefit from deferral.
 
 ## Reader viewport rendering
@@ -144,8 +146,8 @@ latest-selection ordering, keyboard and pointer ranges across unrealized rows,
 Select All with collapsed children, nested collapse, reorders, focus, resize,
 column eviction and return, drafts, filtering, project changes, picture peeks,
 late picture completion, native tree drag hit testing and board drop boundaries.
-The native drag test renders a headless frame after scrolling so its hit-test
-scene reflects the new row positions.
+The native drag test waits for the committed headless hit-test frame after
+scrolling so its scene reflects the new row positions.
 
 Compared with `0dd7a18`, the final headless text probe reports:
 
@@ -169,11 +171,54 @@ complete reversal. At 1,000 notes, reversal was 233 ms / 14,964 KiB versus
 212 ms / 7,828 KiB; at 3,000 it was 205 ms / 19,075 KiB versus
 420 ms / 12,009 KiB. Nearby moves preserve visible control identity and focus.
 
-Filtering was 27 / 69 ms versus 49 / 57 ms, with similar allocations. Visible
-Details still builds 1,009 / 3,009 controls and is outside this virtualization
-pass: its edit medians were 199 / 715 ms versus 136 / 353 ms, with allocations
+Filtering was 27 / 69 ms versus 49 / 57 ms, with similar allocations. The
+Details phase still built 1,009 / 3,009 controls and was outside this virtualization
+pass: its construction/edit medians were 199 / 715 ms versus 136 / 353 ms, with allocations
 about 20,874 / 61,433 KiB. These measurements do not establish a uniform latency
-improvement; visible backlink lists remain a follow-up target.
+improvement. The Details phase still ran with the right column hidden by board
+mode; see the corrected visible-pane comparison below.
+
+## Inspector viewport rendering
+
+`KastnInspectorPresenter` now owns metadata controls and backlink actions.
+Unchanged section headings, fields and visible backlink buttons retain identity;
+only changed text is assigned. Backlink lists with at least 128 sources use the
+shared variable-height viewport with half a viewport of overscan. Smaller lists
+retain their eager appearance. Source order and titles still come from the full
+snapshot, including sources outside the reader's filters.
+
+Reorders restore the first visible backlink by source ID; shrinking lists clamp
+their offset. Tab and Shift+Tab navigate the complete logical source list and
+realize their destination, avoiding native Tab traversal skipping offscreen
+buttons. Visible edits retain button focus. Retired, hidden and disposed buttons
+cannot navigate or open URLs; reused URL actions resolve the latest HTTP(S) URL.
+Metadata rendering and backlink-index construction are deferred while either
+the editor or board mode hides Details. Returning resolves the current snapshot.
+
+The probe now returns to document mode before opening Details and asserts that
+the inspector is effectively visible with a nonzero height. Earlier documents
+called the board-hidden construction phase "visible Details"; those timings are
+not a visible-pane baseline. For this comparison, `e0d2e70` was rebuilt with the
+same probe visibility correction, then measured in separate fresh processes:
+
+| Slips / buckets | Backlink buttons initially | Details open before / after | Open allocation before / after | Visible edit before / after | Edit allocation before / after |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1,000 / 10 | 24 / 1,000 | 1,185 / 39 ms | 54,872 / 3,792 KiB | 826 / 13 ms | 67,417 / 4,749 KiB |
+| 3,000 / 1 | 24 / 3,000 | 2,341 / 41 ms | 166,073 / 7,139 KiB | 2,130 / 44 ms | 240,808 / 13,335 KiB |
+
+Open allocations fell 93–96%, and visible-edit allocations fell 93–95%. These
+remain headless layout observations with JIT/GC variation, not native frame-rate
+measurements. Round trips to the last and first backlinks measured 73 / 93 ms
+and about 4,560 KiB, with 36 buttons realized afterward.
+
+Seven new UI cases cover distant scrolling, eviction, current source titles,
+stable fields/focus, logical scroll anchors, shrinking/growing lists, resize,
+keyboard traversal beyond realized rows, current/invalid URLs, project changes,
+hidden/disposed actions, full-window navigation and board-hidden deferral. The
+existing inspector, metadata and lifetime cases continue to run unchanged.
+Two existing test harness races were corrected: native drag waits for the
+composition frame used by hit testing, and lifecycle snapshot waits subscribe
+before checking current state so they cannot miss a transition.
 
 ## Reproduce
 
@@ -194,7 +239,8 @@ try {
 Repeat with size/buckets `300`/`1` and `3000`/`1`. Each fresh process measures
 initial project application, identical snapshots, one-slip edits, individual
 refresh phases, reorders, half-project search/clear, text export, board rendering,
-reader/tree/board realization counts and distant selection jumps, and visible Details.
+reader/tree/board realization counts and distant selection jumps, visible Details,
+and backlink realization/jumps. Details is measured after leaving board mode.
 Three-line text slips share a fixed capture time, link to the
 first slip and are distributed round-robin across buckets. All settings, drafts,
 catalogs and remembered-project
@@ -212,12 +258,12 @@ Tree and board controls now follow the viewport. The full tree projection and
 expanded-node list still reconcile on snapshots; board row models still cover
 the full filtered result. Reader headings/group boxes and board column shells
 remain eager, so projects with very many buckets retain those costs.
-Large visible backlink lists still rebuild all
-their controls; after opening Details, its last controls are retained while
-hidden and reused if the inputs are unchanged. Rebuilds, project changes and
-cleared selections retire them.
+Large backlink lists now realize only nearby buttons, but the full backlink
+index is still parsed once per snapshot when Details needs it. Logical rows and
+source positions also reconcile across the entire result. Normal metadata fields
+remain eager; project changes and cleared selections retire their controls.
 
-Next, measure large visible backlink lists and limiting reconciliation to changed
-content. Preserve bitmap ownership while measuring
+Next, measure limiting snapshot/index reconciliation to changed content.
+Preserve bitmap ownership while measuring
 picture-heavy projects separately; this text-only probe does not characterize
 image decoding or a suitable bitmap retention budget.

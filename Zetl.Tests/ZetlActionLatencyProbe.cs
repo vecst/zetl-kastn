@@ -128,14 +128,31 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
                     ? slip with { Revision = slip.Revision + 1, Text = slip.Text + "!" } : slip).ToArray() };
                 Apply(current);
             }, 3);
+            Time("Return to document", () => window.viewModeListButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)));
             Time("Details first render", () => window.detailDetailsButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)));
+            Assert.True(window.inspectorPanel.IsEffectivelyVisible);
+            Assert.True(window.inspectorPanel.Bounds.Height > 0);
             output.WriteLine($"Visible Details controls: {window.slipInspectorFieldsPanel.Children.Count}");
+            var inspector = (KASTN.KastnInspectorPresenter)typeof(KASTN.MainWindow).GetField("inspectorPresenter", flags)!.GetValue(window)!;
+            output.WriteLine($"Backlink buttons realized initially: {inspector.RealizedBacklinkCount} / {size}");
+            Assert.InRange(inspector.RealizedBacklinkCount, 1, size);
             Time("Visible Details one slip edited", () =>
             {
                 current = current with { ChangeSequence = current.ChangeSequence + 1, Slips = current.Slips.Select(slip => slip.Id == "s-0"
                     ? slip with { Revision = slip.Revision + 1, Text = slip.Text + "!" } : slip).ToArray() };
                 Apply(current);
             }, 3);
+            if (window.slipInspectorFieldsPanel.Children.OfType<KASTN.KastnViewportItems>().SingleOrDefault() is { } links)
+            {
+                Time("Inspector jump to last / first backlink", () =>
+                {
+                    links.ShowSlip(current.Slips[^1].Id);
+                    window.UpdateLayout();
+                    Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                    links.ShowSlip(current.Slips[0].Id);
+                }, 3);
+                output.WriteLine($"Backlink buttons realized after jumps: {inspector.RealizedBacklinkCount} / {size}");
+            }
         }
         finally
         {
