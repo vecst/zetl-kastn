@@ -337,6 +337,27 @@ extracting undo or the renderers.
   or errors; 997 tests passed, with the same two intentional latency-probe skips.
   Template/creation editor ownership remains next, before measured performance.
 
+- Extracted `KastnTemplateEditorPresenter`, `KastnCreationEditorPresenter`, and
+  `KastnCatalogEditorSession`. Presenters own isolated drafts, field capture,
+  bucket selection/order, and editor controls. The shared session owns dirty
+  baselines, validation, stable IDs across retries, and successful-write acceptance.
+  MainWindow supplies stores, dialogs, catalog refresh, and visibility effects.
+- Save, cancel, and bucket selection capture current controls before buffered
+  text events dispatch. Discard answers check both session identity and captured
+  content; later writing, replacement editors, and retired windows remain intact.
+  Switching editors closes the previous owner, preventing snapshots from restoring
+  an inactive authoring session.
+- Metadata edits preserve legacy seeds, multiline cards, independent bucket
+  defaults/review routing, missing catalog references, additional view priorities,
+  and unknown document fields. Explicit card/view changes still replace those
+  fields. Built-in editing creates independent copies; failed saves retain drafts.
+- Removed nearly 400 lines from MainWindow and redundant edit-time cloning.
+  Added 38 session and headless UI regressions for preservation, buffered edits,
+  stale confirmations, editor switching, built-in copies, validation/write retries,
+  and bucket structure changes. Validation: solution build with zero warnings or
+  errors; 1,035 tests passed, with the same two intentional latency-probe skips.
+  Representative performance measurement is next.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |
@@ -482,6 +503,12 @@ Template, view, and creation-type editors should each own their working draft,
 baseline/dirty detection, validation, and editor UI state. Extract the view
 editor's persistence code from `Views.cs` together with its section editor.
 Reuse the existing document stores, defaults/cloners, and validators.
+
+Editor ownership is complete: view authoring uses its dedicated draft, presenter,
+and persistence owner; template and creation authoring use dedicated presenters
+and a shared local-document session. Their window adapters retain catalog actions,
+dialogs, and visibility. Headless tests protect preserved fields, save retries,
+buffered text capture, and delayed discard answers across editor changes.
 
 Share small clone/baseline/discard helpers where appropriate. Keep view scope
 changes explicit: project/global persistence has different failure ordering

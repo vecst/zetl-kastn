@@ -1,25 +1,12 @@
-using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Text.Json;
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Layout;
-using Avalonia.Media;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform;
-using Avalonia.Platform.Storage;
-using Avalonia.Threading;
 using ZETL;
-using ZETL.Contracts;
 
 namespace KASTN;
 
 internal partial class MainWindow
-{    private void WireCreationEditor()
+{
+    private void WireCreationEditor()
     {
         saveCreationButton.Click += (_, _) => SaveCreation();
         cancelCreationButton.Click += async (_, _) => await CancelCreationEditAsync();
@@ -91,7 +78,7 @@ internal partial class MainWindow
             }
             else
             {
-                OpenCreationEditor(ZetlCreationTypeDefaults.Clone(creation.Source), isNew: false);
+                OpenCreationEditor(creation.Source, isNew: false);
             }
         }
     }
@@ -137,113 +124,48 @@ internal partial class MainWindow
         statusText.Text = $"Deleted creation type '{creation.Name}'.";
     }
 
+    private KastnCreationEditorPresenter CreateCreationEditorPresenter() => new(new(
+        creationEditorTitle, creationNameBox, creationCategoryBox, creationDescriptionBox,
+        creationTemplateBox, creationViewBox));
+
     private void OpenCreationEditor(ZetlCreationTypeDocument working, bool isNew)
     {
-        editingCreation = working;
+        if (lifetime.IsRetired) return;
+        viewEditor.Close();
+        templateEditor.Close();
+        viewEditorView.IsVisible = false;
+        templateEditorView.IsVisible = false;
+        creationEditor.Open(working, isNew, templateCatalog.LoadAll(), viewCatalog.Store.LoadAll(), NoView);
         creationErrorText.IsVisible = false;
-
-        var templates = templateCatalog.LoadAll();
-        var viewChoices = new List<ZetlViewDocument> { NoView };
-        viewChoices.AddRange(viewCatalog.Store.LoadAll());
-
-        creationEditorTitle.Text = isNew ? "New Creation Type" : $"Edit Creation Type — {working.Name}";
-        creationNameBox.Text = working.Name;
-        creationCategoryBox.Text = working.Category;
-        creationDescriptionBox.Text = working.Description;
-        creationTemplateBox.ItemsSource = templates;
-        creationTemplateBox.SelectedItem =
-            templates.FirstOrDefault(t => t.Id == working.TemplateId) ?? templates.FirstOrDefault();
-        creationViewBox.ItemsSource = viewChoices;
-        creationViewBox.SelectedItem = working.PrimaryViewId is { } viewId
-            ? viewChoices.FirstOrDefault(v => v.Id == viewId) ?? NoView
-            : NoView;
-
-        creationBaselineJson = CurrentCreationJson();
-
         emptyState.IsVisible = false;
         projectView.IsVisible = false;
         creationEditorView.IsVisible = true;
     }
 
-    private string CurrentCreationJson()
+    private Task CancelCreationEditAsync() => CancelCreationEditAsync(() =>
+        KastnDialogs.ConfirmAsync(this, "Discard unsaved changes to this creation type?", "Discard"));
+
+    private async Task CancelCreationEditAsync(Func<Task<bool>> confirm)
     {
-        if (editingCreation is null)
-        {
-            return "";
-        }
-
-        var doc = ZetlCreationTypeDefaults.Clone(editingCreation);
-        doc.Name = creationNameBox.Text?.Trim() ?? "";
-        doc.Category = string.IsNullOrWhiteSpace(creationCategoryBox.Text)
-            ? "Custom"
-            : creationCategoryBox.Text.Trim();
-        doc.Description = creationDescriptionBox.Text?.Trim() ?? "";
-        doc.TemplateId = (creationTemplateBox.SelectedItem as ZetlTemplateDocument)?.Id ?? "";
-        var view = creationViewBox.SelectedItem as ZetlViewDocument;
-        doc.ViewIds = view is null || string.IsNullOrEmpty(view.Id) ? [] : [view.Id];
-        return JsonSerializer.Serialize(doc, JsonFile.Options);
-    }
-
-    private bool IsCreationDirty() =>
-        editingCreation is not null && CurrentCreationJson() != creationBaselineJson;
-
-    private async Task CancelCreationEditAsync()
-    {
-        if (IsCreationDirty())
-        {
-            var discard = await KastnDialogs.ConfirmAsync(
-                this,
-                "Discard unsaved changes to this creation type?",
-                "Discard");
-            if (!discard)
-            {
-                return;
-            }
-        }
-
-        CloseCreationEditor();
+        if (creationEditor.State is not { } session || creationEditor.Capture() is not { } captured) return;
+        var fingerprint = KastnCatalogEditorSession<ZetlCreationTypeDocument>.Fingerprint(captured);
+        if (session.IsDirty(captured) && !await confirm()) return;
+        if (!lifetime.IsRetired && ReferenceEquals(creationEditor.State, session)
+            && creationEditor.Capture() is { } current
+            && KastnCatalogEditorSession<ZetlCreationTypeDocument>.Fingerprint(current) == fingerprint)
+            CloseCreationEditor();
     }
 
     private void SaveCreation()
     {
-        if (editingCreation is not { } creation)
+        if (lifetime.IsRetired || creationEditor.State is not { } session || creationEditor.Capture() is not { } captured) return;
+        var result = session.Save(captured, creationStore.Save);
+        if (result.Saved is not { } saved)
         {
-            return;
-        }
-
-        creation.Name = creationNameBox.Text?.Trim() ?? "";
-        creation.Category = string.IsNullOrWhiteSpace(creationCategoryBox.Text)
-            ? "Custom"
-            : creationCategoryBox.Text.Trim();
-        creation.Description = creationDescriptionBox.Text?.Trim() ?? "";
-        creation.TemplateId = (creationTemplateBox.SelectedItem as ZetlTemplateDocument)?.Id ?? "";
-        var view = creationViewBox.SelectedItem as ZetlViewDocument;
-        creation.ViewIds = view is null || string.IsNullOrEmpty(view.Id) ? [] : [view.Id];
-        if (string.IsNullOrEmpty(creation.Id))
-        {
-            creation.Id = ZetlCreationTypeDefaults.CreateId(creation.Name);
-        }
-
-        var errors = ZetlCreationTypeValidator.Validate(creation);
-        if (errors.Count > 0)
-        {
-            creationErrorText.Text = string.Join("\n", errors);
+            creationErrorText.Text = result.Error;
             creationErrorText.IsVisible = true;
             return;
         }
-
-        try
-        {
-            creationStore.Save(creation);
-        }
-        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException or IOException)
-        {
-            creationErrorText.Text = ex.Message;
-            creationErrorText.IsVisible = true;
-            return;
-        }
-
-        var savedName = creation.Name;
         CloseCreationEditor();
         if (currentProject is null)
         {
@@ -251,24 +173,15 @@ internal partial class MainWindow
             RebuildCreationCards();
             RefreshLandingMode();
         }
-
-        statusText.Text = $"Saved creation type '{savedName}'.";
+        statusText.Text = $"Saved creation type '{saved.Name}'.";
     }
 
     private void CloseCreationEditor()
     {
-        editingCreation = null;
+        creationEditor.Close();
         creationErrorText.IsVisible = false;
         creationEditorView.IsVisible = false;
-        if (currentProject is not null)
-        {
-            projectView.IsVisible = true;
-            emptyState.IsVisible = false;
-        }
-        else
-        {
-            emptyState.IsVisible = true;
-        }
+        projectView.IsVisible = currentProject is not null;
+        emptyState.IsVisible = currentProject is null;
     }
-
 }

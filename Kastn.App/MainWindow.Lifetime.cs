@@ -78,6 +78,8 @@ internal partial class MainWindow
         readerPresenter.Dispose();
         boardPresenter.Dispose();
         viewEditor.Close();
+        templateEditor.Close();
+        creationEditor.Close();
         pictureCache.Dispose();
     }
 }

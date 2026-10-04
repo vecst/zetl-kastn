@@ -28,7 +28,9 @@ internal partial class MainWindow : Window
     private readonly KastnConnectionController connection;
     // Built-ins plus user templates; corrupt/invalid user files are skipped with a
     // diagnostic written to Console.Error (Kastn's existing diagnostic channel).
-    private readonly KastnTemplateCatalog templateCatalog = new(Console.Error.WriteLine);
+    private readonly KastnTemplateCatalog templateCatalog;
+    private readonly KastnTemplateEditorPresenter templateEditor;
+    private readonly KastnCreationEditorPresenter creationEditor;
     private readonly KastnViewCatalog viewCatalog;
     private readonly KastnViewPersistence viewPersistence;
     private readonly KastnViewEditorPresenter viewEditor;
@@ -39,25 +41,11 @@ internal partial class MainWindow : Window
     // One local editor draft, separate from authoritative Zetl project state.
     private readonly KastnDraftStore draftStore;
     // Creation types: bundle a template with a default view.
-    private readonly ZetlCreationTypeStore creationStore = new(log: Console.Error.WriteLine);
+    private readonly ZetlCreationTypeStore creationStore;
     private readonly ObservableCollection<CreationListItem> creations = [];
     private LandingSection landingSection;
-    private ZetlCreationTypeDocument? editingCreation;
-    private string creationBaselineJson = "";
     // Sentinel for the creation editor's "no view" choice.
     private static readonly ZetlViewDocument NoView = new() { Id = "", Name = "(no view)" };
-    // The in-window template editor's working state. Non-null while the editor view
-    // is active; the document is a clone/draft, so cancelling discards changes.
-    private readonly ObservableCollection<TemplateBucketItem> templateBuckets = [];
-    private static readonly string[] TemplateTypeChoices =
-        [ZetlTemplateTypes.Capture, ZetlTemplateTypes.Consumable];
-    private static readonly string[] TemplateKindChoices = ["Standard", "Replay"];
-    private static readonly string[] TemplateCompileChoices = ["Formatted", "Plain", "TSV"];
-    private ZetlTemplateDocument? editingTemplate;
-    private ZetlTemplateBucketDocument? selectedTemplateBucket;
-    private bool templateEditorUpdating;
-    // Serialized working document at open, to detect unsaved edits on cancel.
-    private string templateBaselineJson = "";
     private readonly ObservableCollection<LaneCardItem> laneCards = [];
     private readonly ObservableCollection<ProjectListItem> recentProjects = [];
     private readonly ObservableCollection<ProjectListItem> projects = [];
@@ -227,6 +215,10 @@ internal partial class MainWindow : Window
         settings = new();
         projectCreation = new(settings);
         InitializeComponent();
+        templateCatalog = new(Console.Error.WriteLine);
+        creationStore = new(log: Console.Error.WriteLine);
+        templateEditor = CreateTemplateEditorPresenter();
+        creationEditor = CreateCreationEditorPresenter();
         viewCatalog = new(new ZetlViewStore(log: Console.Error.WriteLine));
         viewPersistence = new(viewCatalog.Store);
         connection = null!;
@@ -244,17 +236,23 @@ internal partial class MainWindow : Window
         KastnConnectionController connection,
         KastnDraftStore? draftStore = null,
         ZetlViewStore? viewStore = null,
-        KastnSettings? settings = null)
+        KastnSettings? settings = null,
+        ZetlTemplateStore? templateStore = null,
+        ZetlCreationTypeStore? creationStore = null)
     {
         this.settings = settings ?? new();
         projectCreation = new(this.settings);
         this.connection = connection;
+        templateCatalog = new(templateStore ?? new ZetlTemplateStore(log: Console.Error.WriteLine));
+        this.creationStore = creationStore ?? new(log: Console.Error.WriteLine);
         viewCatalog = new(viewStore ?? new ZetlViewStore(log: Console.Error.WriteLine));
         viewPersistence = new(viewCatalog.Store);
         editHistory = CreateEditHistory();
         pictureCache = new KastnPictureCache(FetchPictureContentAsync);
         this.draftStore = draftStore ?? new KastnDraftStore(log: Console.Error.WriteLine);
         InitializeComponent();
+        templateEditor = CreateTemplateEditorPresenter();
+        creationEditor = CreateCreationEditorPresenter();
         readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
         boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
         viewEditor = CreateViewEditorPresenter();
@@ -561,7 +559,7 @@ internal partial class MainWindow : Window
 
             // Local authoring sessions stay open across snapshots. Structured
             // view writes remain scoped to the project where that session opened.
-            if (editingTemplate is not null)
+            if (templateEditor.State is not null)
             {
                 projectView.IsVisible = false;
                 emptyState.IsVisible = false;
@@ -575,7 +573,7 @@ internal partial class MainWindow : Window
                 templateEditorView.IsVisible = false;
                 viewEditorView.IsVisible = true;
             }
-            else if (editingCreation is not null)
+            else if (creationEditor.State is not null)
             {
                 projectView.IsVisible = false;
                 emptyState.IsVisible = false;
@@ -1682,36 +1680,6 @@ internal partial class MainWindow : Window
         ZetlCreationTypeDocument Source,
         bool IsUser);
 
-    // A row in the template editor's bucket list. Label is mutable + observable so
-    // renaming a bucket updates the list without rebuilding it (which would steal
-    // focus from the name box mid-edit).
-    private sealed class TemplateBucketItem : INotifyPropertyChanged
-    {
-        private string label;
-
-        public TemplateBucketItem(ZetlTemplateBucketDocument bucket, string label)
-        {
-            Bucket = bucket;
-            this.label = label;
-        }
-
-        public ZetlTemplateBucketDocument Bucket { get; }
-
-        public string Label
-        {
-            get => label;
-            set
-            {
-                if (label != value)
-                {
-                    label = value;
-                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
-                }
-            }
-        }
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-    }
     private sealed record FilterItem(string? Value, string Label);
     private sealed record TypeFilterItem(ZetlSlipType? Value, string Label);
     private sealed record DateFilterItem(KastnDateFilter Value, string Label);

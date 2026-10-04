@@ -45,6 +45,10 @@ internal partial class MainWindow
 
     private void OpenViewEditor(ZetlViewDocument working, bool isNew)
     {
+        if (lifetime.IsRetired) return;
+        templateEditor.Close();
+        creationEditor.Close();
+        creationEditorView.IsVisible = false;
         viewEditor.Open(working, isNew, !isNew && viewCatalog.IsProjectScoped(working.Id));
         viewErrorText.IsVisible = false;
         emptyState.IsVisible = false;
