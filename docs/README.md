@@ -42,6 +42,8 @@ These are the authoritative places to answer “what remains?”
   storage measurements
 - [`kastn-rendering-performance.md`](kastn-rendering-performance.md) — large-project
   layout measurements, tree row reuse and the remaining rendering costs
+- [`zetl-popup-memory.md`](zetl-popup-memory.md) — native quick-note/hold-indicator
+  lifetime checks and Windows renderer memory measurements
 
 ## Focused Design Records
 

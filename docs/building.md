@@ -100,6 +100,16 @@ shortcuts can't trigger themselves.
 
 ## Diagnostics
 
+Run the isolated native popup memory/lifetime probe:
+
+```powershell
+dotnet run --project tools/PopupMemoryProbe -- 100 both --detailed --opacity=90
+```
+
+It opens and closes real note windows without installing hooks, using the
+clipboard, or accessing your profile. Renderer comparisons and measurement
+limits are documented in [`zetl-popup-memory.md`](zetl-popup-memory.md).
+
 Zetl writes a diagnostics log to `%AppData%\Zetl\diagnostics.log`: shortcut,
 hold, and popup events, plus `Latency` summaries every ten minutes for the key
 path and the hold path, and a line for any unusually slow key event.

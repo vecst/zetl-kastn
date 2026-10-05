@@ -105,11 +105,21 @@ internal static class Program
             // that contest and is orphaned on screen when its owner dismisses
             // on click-away. An overlay popup is part of the owning window's
             // surface, so it can never outlive it.
-            .With(new Win32PlatformOptions { OverlayPopups = true })
+            .With(CreateWindowsOptions())
             .With(new X11PlatformOptions { OverlayPopups = true })
             .WithInterFont()
             .LogToTrace();
     }
+
+    internal static Win32PlatformOptions CreateWindowsOptions() => new()
+    {
+        OverlayPopups = true,
+        // Zetl draws small, short-lived dialogs and an animated hold ring. A
+        // dedicated ANGLE/D3D device and its caches cost much more memory than
+        // those surfaces need, even after the dialogs close. Software Skia keeps
+        // this tray process small; Kastn retains its separate GPU renderer.
+        RenderingMode = [Win32RenderingMode.Software]
+    };
 
     private static void ShowStartupMessage(string message, string title)
     {
