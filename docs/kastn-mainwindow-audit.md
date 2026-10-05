@@ -2,14 +2,15 @@
 
 Source baseline: `codex/cleanup`, commit `d94d845`, reviewed October 3, 2026.
 This is a source-level audit of all ten MainWindow partials, their XAML wiring,
-existing collaborators, and relevant tests. It records cleanup candidates and
-verification work; proposed behavior problems below have not been reproduced
-with new tests during this audit. No application code changes accompany it.
+existing collaborators, and relevant tests. The original findings below are
+historical cleanup candidates; the progress entries record subsequent code
+changes and regression verification. The final ownership map records the
+remaining window responsibilities after the cleanup sequence.
 
-MainWindow contains **10,609 lines of C#**, plus its XAML. The partial files split
-the text, but they still share one object's state and transaction boundaries.
-The next pass should establish ownership of selection and command context before
-extracting undo or the renderers.
+The original MainWindow contained **10,609 lines of C#**, plus its XAML. Its
+partials shared one object's state and transaction boundaries. The cleanup
+sequence established selection and command ownership before extracting history,
+renderers, authoring, lifetime and orchestration.
 
 ## Cleanup Progress
 
@@ -481,6 +482,62 @@ extracting undo or the renderers.
   1,260 tests passed, with the same two intentional latency-probe skips. The next
   orchestration step is a final construction/event-wiring and dead-code audit;
   remaining performance experiments should be driven by fresh measurements.
+
+- Completed the final construction/wiring and dead-code audit. Both constructors
+  share one owner composition path; the parameterless Avalonia tooling path keeps
+  its transport-free behavior. Runtime choices/bindings initialize before native
+  change subscriptions, with explicit wiring in `MainWindow.Wiring.cs` and one
+  matching connection unsubscription in lifetime retirement.
+- Removed the unused `SelectedTreeSlipIds` helper and 16 obsolete imports left
+  by earlier extractions. The source/XAML/test reference sweep found no further
+  confirmed dead private methods. Retained the tooling constructor, the Manage
+  button's native flyout, and the toolbar name used by its style selector.
+- Fixed the displayed but unhandled Ctrl+N/Ctrl+B shortcuts. New Slip shares its
+  existing save/create workflow; Board toggles through the same native adapter.
+  Find now selects the current search text from both menu and keyboard. Retired
+  windows reject keyboard, board and refresh actions, and a delayed refresh
+  cannot replace newer draft status.
+- Repeated Board/List requests are now idempotent: they preserve the user's pane
+  widths, controls and unfinished composer text. The type filter participates in
+  the active-filter count and reset, so creating a text slip while Pictures is
+  selected clears the filter and displays the new slip.
+- Added 11 headless/real-IPC cases for construction, retirement, routed shortcuts,
+  exactly-once save/create, repeated layout transitions, composer preservation,
+  Find parity and filtered creation. Validation: solution build with zero warnings
+  or errors; 1,271 tests passed with the same two intentional latency-probe skips.
+  The orchestration cleanup sequence is
+  complete; future performance work should follow representative measurements.
+
+## Final Ownership Map
+
+Reviewed October 5, 2026, after the construction/wiring cleanup. MainWindow now
+has 24 partials totaling **6,045 C# lines**, about 43% fewer than the historical
+baseline. This is a source-size comparison, not a runtime-performance measure.
+The window retains native event, control, picker, focus and clipboard adapters.
+
+| Window responsibility | Established owner / boundary |
+| --- | --- |
+| Construction and static control wiring | One constructor composition path; `InitializeControlChoices`, `WireControlEvents`, and tooling/runtime admission |
+| Selection and navigation | `KastnSelectionContext`, `KastnCommandAvailability`, `KastnNavigationCoordinator` |
+| Snapshot delivery and project indexes | `KastnSnapshotCoordinator`, `KastnProjectIndex`, immutable backlink indexing |
+| Mutation admission, shared saving and history | `KastnMutationCoordinator`, `KastnEditHistory`, editor save/acceptance operations |
+| Project/bucket dialogs and commands | Captured native context/revision checks; existing mutation lease and sole-writer transport |
+| Slip formatting/move/delete/restore | Captured editor contexts, `KastnSlipMutationBatch`, mutation acceptance and history gestures |
+| Landing cards and catalogs | `KastnLandingPage`, independent cards, catalog stores and identity/generation admission |
+| Template/creation authoring and project setup | Catalog editor sessions/presenters, `KastnProjectCreationWorkflow` |
+| View authoring and scope migration | `KastnViewEditorDraft`, `KastnViewEditorPresenter`, `KastnViewPersistence`, `KastnViewCatalog` |
+| Reader, board, inspector and pictures | Dedicated presenters, `KastnSlipContentRenderer`, leased/capped `KastnPictureCache` |
+| Drag gestures | Native pointer/scroll adapters with `KastnDropPlanner` and `KastnMoveOperation` |
+| Lifetime, settings and recovery | `KastnWindowLifetime`, `KastnSettings`, `KastnDraftStore` and draft-journal adapters |
+| Copy/export | Captured `KastnViewExportOperation`; native clipboard/file-picker effects |
+
+The largest remaining partial is `MainWindow.Workbench.cs` at 1,571 lines. It
+contains native editor/formatting adapters and workflow effects backed by the
+owners above. Its size alone is not evidence that another extraction will help.
+No additional correctness blocker or confirmed dead private method was found in
+this pass. Structured view-preview coalescing, changed-panel reconciliation,
+seed throughput and real project/image/IPC measurements remain separate,
+measurement-led performance experiments from the original audit.
 
 ## Responsibility Map
 

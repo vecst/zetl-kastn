@@ -14,9 +14,6 @@ internal partial class MainWindow
         return KastnSelection.Compute(nodes, SelectedTreeNode);
     }
 
-    private IReadOnlyList<string> SelectedTreeSlipIds() =>
-        CurrentSelection() is KastnSelection.Slips slips ? slips.SlipIds : [];
-
     private KastnSelectionContext CaptureSelectionContext() => new(
         currentProject is null ? null : ProjectIndex,
         CurrentSelection(),

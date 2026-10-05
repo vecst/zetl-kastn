@@ -1,16 +1,8 @@
-using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.Json;
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ZETL;
@@ -1457,7 +1449,7 @@ internal partial class MainWindow
 
     // The center View is the constant whole-project document: it never scopes to the
     // tree's selected bucket (selecting a bucket only moves the highlight). Source /
-    // session / date / search still narrow the rendered set, and the protected Deleted
+    // session / date / type / search still narrow the rendered set, and the protected Deleted
     // bucket is kept out of the document. Excluded-from-views slips are dropped later,
     // by the renderer's BuildGroups, so they still resolve in the slip inspector.
     private IReadOnlyList<ZetlSlipSnapshot> CurrentViewSlips()

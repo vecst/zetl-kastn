@@ -1,17 +1,10 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform;
-using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ZETL;
 using ZETL.Contracts;
@@ -145,33 +138,8 @@ internal partial class MainWindow : Window
     private readonly KastnViewRenderCache viewRenderCache = new();
     private readonly KastnWindowLifetime lifetime;
 
-    public MainWindow()
-    {
-        stateStore = new(log: Console.Error.WriteLine);
-        settings = new();
-        projectCreation = new(settings);
-        InitializeComponent();
-        templateCatalog = new(Console.Error.WriteLine);
-        creationStore = new(log: Console.Error.WriteLine);
-        templateEditor = CreateTemplateEditorPresenter();
-        creationEditor = CreateCreationEditorPresenter();
-        viewCatalog = new(new ZetlViewStore(log: Console.Error.WriteLine));
-        viewPersistence = new(viewCatalog.Store);
-        connection = null!;
-        editHistory = CreateEditHistory();
-        pictureCache = new KastnPictureCache(FetchPictureContentAsync);
-        draftStore = new KastnDraftStore(log: Console.Error.WriteLine);
-        readerPresenter = new(viewerDocumentPanel, viewerDocumentScroll, pictureCache);
-        boardPresenter = new(boardColumnsPanel, boardScrollViewer, pictureCache);
-        inspectorPresenter = new(slipInspectorFieldsPanel, inspectorPanel);
-        viewEditor = CreateViewEditorPresenter();
-        lifetime = CreateWindowLifetime();
-        mutations = new(OnMutationStateChanged);
-        navigation = CreateNavigationCoordinator();
-        snapshots = CreateSnapshotCoordinator();
-        landing = CreateLandingPage();
-        WireWindowLifetime();
-    }
+    // Avalonia tooling needs a parameterless window without a live transport.
+    public MainWindow() : this(null, null, null, null, null, null, null, initializeRuntime: false) { }
 
     public MainWindow(
         KastnConnectionController connection,
@@ -181,11 +149,23 @@ internal partial class MainWindow : Window
         ZetlTemplateStore? templateStore = null,
         ZetlCreationTypeStore? creationStore = null,
         KastnStateStore? stateStore = null)
+        : this(connection, draftStore, viewStore, settings, templateStore, creationStore, stateStore, initializeRuntime: true) { }
+
+    private MainWindow(
+        KastnConnectionController? connection,
+        KastnDraftStore? draftStore,
+        ZetlViewStore? viewStore,
+        KastnSettings? settings,
+        ZetlTemplateStore? templateStore,
+        ZetlCreationTypeStore? creationStore,
+        KastnStateStore? stateStore,
+        bool initializeRuntime)
     {
+        if (initializeRuntime) ArgumentNullException.ThrowIfNull(connection);
         this.stateStore = stateStore ?? new(log: Console.Error.WriteLine);
         this.settings = settings ?? new();
         projectCreation = new(this.settings);
-        this.connection = connection;
+        this.connection = connection!;
         templateCatalog = new(templateStore ?? new ZetlTemplateStore(log: Console.Error.WriteLine));
         this.creationStore = creationStore ?? new(log: Console.Error.WriteLine);
         viewCatalog = new(viewStore ?? new ZetlViewStore(log: Console.Error.WriteLine));
@@ -205,166 +185,13 @@ internal partial class MainWindow : Window
         navigation = CreateNavigationCoordinator();
         snapshots = CreateSnapshotCoordinator();
         landing = CreateLandingPage();
-        Icon = KastnIcon.Create();
-        landingLaneItems.ItemsSource = landing.Lanes;
-        landingProjectList.ItemsSource = landing.RecentProjects;
-        landingProjectWorkspaceList.ItemsSource = landing.Projects;
-        landingTemplateItems.ItemsSource = landing.Templates;
-        sourceFilterBox.ItemsSource = sources;
-        sessionFilterBox.ItemsSource = sessions;
-        dateFilterBox.ItemsSource = dates;
-        parentBucketBox.ItemsSource = parentBuckets;
-        moveBucketBox.ItemsSource = moveBuckets;
-        bucketRenderKindBox.ItemsSource = bucketRenderKinds;
-        fontFamilyBox.ItemsSource = FontFamilyChoices;
-        fontSizeBox.ItemsSource = FontSizeChoices;
-        textColorBox.ItemsSource = TextColorChoices;
-
-        dates.Add(new DateFilterItem(KastnDateFilter.All, "All time"));
-        dates.Add(new DateFilterItem(KastnDateFilter.Today, "Today"));
-        dates.Add(new DateFilterItem(KastnDateFilter.Last7Days, "Last 7 days"));
-        dates.Add(new DateFilterItem(KastnDateFilter.Last30Days, "Last 30 days"));
-        dateFilterBox.SelectedIndex = 0;
-        typeFilterBox.ItemsSource = new[]
-        {
-            new TypeFilterItem(null, "All types"),
-            new TypeFilterItem(ZetlSlipType.Text, "Text"),
-            new TypeFilterItem(ZetlSlipType.Url, "Links"),
-            new TypeFilterItem(ZetlSlipType.Picture, "Pictures")
-        };
-        typeFilterBox.SelectedIndex = 0;
-        RebuildTemplateCards();
-
-        connection.SnapshotChanged += OnSnapshotChanged;
-        landingProjectList.SelectionChanged += OnProjectSelectionChanged;
-        landingProjectWorkspaceList.SelectionChanged += OnProjectSelectionChanged;
-        projectTree.SelectionChanged += OnTreeSelectionChanged;
-        SetupTreeDragDrop();
-        detailEditorButton.Click += (_, _) => SetDetailPaneMode(showDetails: false);
-        detailDetailsButton.Click += (_, _) => SetDetailPaneMode(showDetails: true);
-        viewDeletedButton.IsCheckedChanged += (_, _) => OnViewDeletedToggled();
-        bucketHeadingSizeBox.ItemsSource = new[] { "Normal size", "Large", "Small" };
-        bucketHeadingAlignBox.ItemsSource = new[] { "Left", "Center", "Right" };
-        bucketHeadingSizeBox.SelectionChanged += async (_, _) => await OnBucketHeadingChangedAsync();
-        bucketHeadingAlignBox.SelectionChanged += async (_, _) => await OnBucketHeadingChangedAsync();
-        bucketHeadingBoldCheck.IsCheckedChanged += async (_, _) => await OnBucketHeadingChangedAsync();
-        searchBox.TextChanged += (_, _) => RefreshSlipView();
-        sourceFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
-        sessionFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
-        dateFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
-        typeFilterBox.SelectionChanged += (_, _) => RefreshSlipView();
-        slipEditor.TextChanged += (_, _) => OnEditorTextChanged();
-        // Save when the editor loses focus rather than on a keystroke timer, so
-        // typing is never interrupted by a mid-edit save + refresh. The user can turn
-        // this off in Settings; switching slips and explicit Save still commit edits.
-        slipEditor.LostFocus += async (_, _) =>
-        {
-            if (this.settings.Current.KastnAutosave)
-            {
-                await SaveEditorAsync();
-            }
-        };
-        // Tunnel so Ctrl+Enter saves before the editor's AcceptsReturn turns it into a
-        // newline; the explicit save keeps the caret so typing can continue.
-        slipEditor.AddHandler(
-            InputElement.KeyDownEvent,
-            OnSlipEditorPreviewKeyDown,
-            RoutingStrategies.Tunnel);
-        slipEditor.KeyUp += OnSlipEditorKeyUp;
-        slipEditor.PointerReleased += OnSlipEditorPointerReleased;
-        // The editor has no undo stack of its own: every action — typing included —
-        // undoes through Kastn's single ordered history, so Ctrl+Z walks all
-        // interactions in the order they happened. Pending typing enters that
-        // history via the save flush at the start of each undo/redo.
-        slipEditor.IsUndoEnabled = false;
-
-        refreshMenuItem.Click += async (_, _) => await RefreshAsync();
-        journalModeMenuItem.Click += async (_, _) => await ToggleJournalModeAsync();
-        closeProjectMenuItem.Click += async (_, _) => await CloseProjectAsync();
-        deleteProjectMenuItem.Click += async (_, _) => await DeleteProjectAsync();
-        exitMenuItem.Click += (_, _) => Close();
-        newSlipMenuItem.Click += async (_, _) => await AddSlipAsync();
-        saveSlipMenuItem.Click += async (_, _) => await SaveEditorAsync();
-        deleteSlipMenuItem.Click += async (_, _) => await DeleteSlipAsync();
-        focusSearchMenuItem.Click += (_, _) => searchBox.Focus();
-        focusProjectsMenuItem.Click += (_, _) => landingProjectsPanel.Focus();
-        focusBucketsMenuItem.Click += (_, _) => projectTree.Focus();
-        focusSlipsMenuItem.Click += (_, _) => FocusMainView();
-        aboutMenuItem.Click += ShowAbout;
-        addBucketButton.Click += async (_, _) => await AddBucketAsync();
-        saveBucketButton.Click += async (_, _) => await SaveBucketAsync();
-        deleteBucketButton.Click += async (_, _) => await DeleteBucketAsync();
-        closeProjectButton.Click += async (_, _) => await CloseProjectAsync();
-        newSlipButton.Click += async (_, _) => await AddSlipAsync();
-        viewModeListButton.Click += (_, _) => SetBoardMode(false);
-        viewModeBoardButton.Click += (_, _) => SetBoardMode(true);
-        boardModeMenuItem.Click += (_, _) => SetBoardMode(boardModeMenuItem.IsChecked);
-        // Alignment, bold/italic/strike, and the list markers are whole-slip render
-        // properties: a single selected slip toggles its own, a multi-slip / bucket
-        // selection applies the change to every selected slip at once (batch).
-        // Inline emphasis within the text is typed Markdown; only the code and link
-        // buttons still set style ranges over the editor selection.
-        alignLeftButton.Click += async (_, _) => await AlignSlipsAsync("left");
-        alignCenterButton.Click += async (_, _) => await AlignSlipsAsync("center");
-        alignRightButton.Click += async (_, _) => await AlignSlipsAsync("right");
-        fontFamilyBox.SelectionChanged += async (_, _) => await OnFontFamilyChangedAsync();
-        fontSizeBox.SelectionChanged += async (_, _) => await OnFontSizeChangedAsync();
-        textColorBox.SelectionChanged += async (_, _) => await OnTextColorChangedAsync();
-        boldButton.Click += async (_, _) => await ToggleSlipStyleAsync(ZetlInlineStyleKinds.Bold);
-        italicButton.Click += async (_, _) => await ToggleSlipStyleAsync(ZetlInlineStyleKinds.Italic);
-        strikeButton.Click += async (_, _) => await ToggleSlipStyleAsync(ZetlInlineStyleKinds.Strike);
-        codeButton.Click += async (_, _) => await ToggleInlineStyleAsync(ZetlInlineStyleKinds.Code);
-        linkButton.Click += async (_, _) => await SetEditorWebLinkAsync();
-        wikiLinkButton.Click += async (_, _) => await InsertSlipLinkAsync();
-        ignoreBucketRenderKindCheck.IsCheckedChanged += async (_, _) => await OnIgnoreBucketRenderKindChangedAsync();
-        representationToggleButton.Click += async (_, _) => await ToggleSlipRepresentationAsync();
-        attachPictureButton.Click += async (_, _) => await AttachSlipPictureAsync();
-        removePictureButton.Click += async (_, _) => await RemoveSlipPictureAsync();
-        bulletListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Bullet);
-        numberListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Ordered);
-        taskListButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Task);
-        headingButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Heading);
-        quoteButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Quote);
-        codeBlockButton.Click += async (_, _) => await ListSlipsAsync(ZetlBlockKinds.Code);
-        insertDividerButton.Click += async (_, _) => await InsertDividerSlipAsync();
-        insertGroupButton.Click += async (_, _) => await InsertGroupBucketAsync();
-        RefreshViewCatalog(null);
-        viewPickerBox.SelectionChanged += (_, _) =>
-        {
-            if (!refreshing)
-            {
-                RefreshViewer();
-            }
-        };
-        copyViewButton.Click += async (_, _) => await CopyRenderedViewAsync();
-        exportViewButton.Click += async (_, _) => await ExportRenderedViewAsync();
-        saveViewSettingsButton.Click += async (_, _) => await SaveViewAsync();
-        cancelViewSettingsButton.Click += async (_, _) => await CancelViewEditAsync();
-        newViewMenuItem.Click += (_, _) => OpenViewEditor(
-            new ZetlViewDocument { Name = "", Category = "Custom", Kind = ZetlViewKinds.Markdown },
-            isNew: true);
-        editViewSettingsMenuItem.Click += (_, _) => EditSelectedView();
-        deleteViewMenuItem.Click += async (_, _) => await DeleteSelectedViewAsync();
-        saveSlipButton.Click += async (_, _) => await SaveEditorAsync();
-        deleteSlipButton.Click += async (_, _) => await DeleteSlipAsync();
-        moveSlipButton.Click += async (_, _) => await MoveSlipAsync();
-        restoreSlipButton.Click += async (_, _) => await RestoreSlipAsync();
-        useZetlButton.Click += (_, _) => UseZetlVersion();
-        keepMineButton.Click += async (_, _) => await KeepMineAsync();
-        landingProjectsButton.Click += (_, _) => ShowLandingSection(KastnLandingSection.Projects);
-        landingTemplatesButton.Click += (_, _) => ShowLandingSection(KastnLandingSection.Templates);
-        landingCreateButton.Click += (_, _) => ShowLandingSection(KastnLandingSection.Creations);
-        landingCurrentProjectsButton.Click += (_, _) => SetArchivedProjectMode(showArchived: false);
-        landingArchivedProjectsButton.Click += (_, _) => SetArchivedProjectMode(showArchived: true);
-        landingCaptureButton.Click += (_, _) => SetTemplateType(consumable: false);
-        landingConsumableButton.Click += (_, _) => SetTemplateType(consumable: true);
-        landingCreationItems.ItemsSource = landing.Creations;
-        WireTemplateEditor();
-        WireCreationEditor();
-        SizeChanged += (_, _) => RefreshLandingGridLayout();
-        KeyDown += OnKeyDown;
         WireWindowLifetime();
-        ApplySnapshot(connection.Current);
+        if (!initializeRuntime) return;
+
+        Icon = KastnIcon.Create();
+        InitializeControlChoices();
+        WireControlEvents();
+        ApplySnapshot(this.connection.Current);
     }
 
     public async Task ActivateRequestAsync(string? projectId)
@@ -697,6 +524,11 @@ internal partial class MainWindow : Window
             activeCount++;
         }
 
+        if ((typeFilterBox.SelectedItem as TypeFilterItem)?.Value is not null)
+        {
+            activeCount++;
+        }
+
         filtersButton.Content = activeCount == 0 ? "Filters ▾" : $"Filters ({activeCount}) ▾";
     }
 
@@ -744,15 +576,18 @@ internal partial class MainWindow : Window
 
     private async Task RefreshAsync()
     {
+        if (lifetime.IsRetired || lifetime.AllowClose) return;
+        var current = CaptureNativeAction(trackEditor: false);
         try
         {
             await SaveEditorAsync();
+            if (!current()) return;
             await connection.RefreshAsync();
         }
         catch (Exception ex) when (
             ex is IOException or InvalidOperationException or OperationCanceledException)
         {
-            statusText.Text = ex.Message;
+            if (current() && !editorState.IsDirty) statusText.Text = ex.Message;
         }
     }
 
@@ -790,10 +625,12 @@ internal partial class MainWindow : Window
         sourceFilterBox.SelectedItem = sources.FirstOrDefault();
         sessionFilterBox.SelectedItem = sessions.FirstOrDefault();
         dateFilterBox.SelectedItem = dates.FirstOrDefault();
+        typeFilterBox.SelectedIndex = 0;
     }
 
     private async void OnSlipEditorPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Handled || lifetime.IsRetired || lifetime.AllowClose) return;
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key is Key.Enter or Key.S)
         {
             e.Handled = true;
@@ -844,6 +681,7 @@ internal partial class MainWindow : Window
 
     private async void OnKeyDown(object? sender, KeyEventArgs args)
     {
+        if (args.Handled || lifetime.IsRetired || lifetime.AllowClose) return;
         if (args.Key == Key.F5)
         {
             args.Handled = true;
@@ -852,8 +690,18 @@ internal partial class MainWindow : Window
         else if (args.KeyModifiers.HasFlag(KeyModifiers.Control) && args.Key == Key.F)
         {
             args.Handled = true;
-            searchBox.Focus();
-            searchBox.SelectAll();
+            FocusSearch();
+        }
+        else if (args.KeyModifiers == KeyModifiers.Control && args.Key == Key.N)
+        {
+            if (!newSlipMenuItem.IsEnabled) return;
+            args.Handled = true;
+            await AddSlipAsync();
+        }
+        else if (args.KeyModifiers == KeyModifiers.Control && args.Key == Key.B)
+        {
+            args.Handled = true;
+            SetBoardMode(!boardModeActive);
         }
         else if (args.KeyModifiers.HasFlag(KeyModifiers.Control)
             && args.Key is Key.S or Key.Enter)
@@ -960,6 +808,7 @@ internal partial class MainWindow : Window
 
     private void SetBoardMode(bool active)
     {
+        if (lifetime.IsRetired || lifetime.AllowClose || boardModeActive == active) return;
         boardModeActive = active;
         boardModeMenuItem.IsChecked = active;
 
