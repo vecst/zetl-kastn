@@ -131,61 +131,9 @@ internal partial class MainWindow : Window
     internal readonly KastnTreeProjection treeProjection = new();
     private bool refreshing;
     private bool editorUpdating;
-    // The logical in-flight-mutation flag every handler consults. The greyed-out
-    // look it used to drive immediately is deferred (savingVisual, ~150ms): a
-    // fast action never visibly disables the editor and toolbar — the per-action
-    // blink — while anything genuinely slow still locks the controls on screen.
-    private bool savingCore;
-    private bool savingVisual;
-    private DispatcherTimer? savingVisualTimer;
-
-    private bool saving
-    {
-        get => savingCore;
-        set
-        {
-            savingCore = value;
-            if (value)
-            {
-                if (savingVisualTimer is null)
-                {
-                    savingVisualTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
-                    savingVisualTimer.Tick += (_, _) =>
-                    {
-                        savingVisualTimer!.Stop();
-                        if (!lifetime.IsRetired && savingCore && !savingVisual)
-                        {
-                            savingVisual = true;
-                            SetEditingEnabled();
-                        }
-                    };
-                }
-
-                if (!lifetime.IsRetired) savingVisualTimer.Start();
-            }
-            else
-            {
-                savingVisualTimer?.Stop();
-                if (savingVisual)
-                {
-                    savingVisual = false;
-                    if (!lifetime.IsRetired) SetEditingEnabled();
-                }
-            }
-        }
-    }
-    // Set while a batch loops many UpdateSlip commands; OnSnapshotChanged (off-thread)
-    // reads it to drop the per-mutation snapshot pushes until the batch's final refresh.
-    private volatile bool batching;
-    // The single in-flight editor save, so a focus-loss save and a navigation
-    // save (e.g. clicking another slip) coalesce instead of racing the `saving`
-    // guard.
-    private Task<bool>? inflightSave;
     private DispatcherTimer? draftJournalTimer;
     private string? restoredDraftKey;
     private bool recoveredDraftActive;
-    private bool addingSlip;
-    private bool visibilityUpdating;
     private string? renderServerInstanceId;
     private KastnEditorSaveOperation? pendingEditorSave;
     private KastnEditorMutationAcceptance? pendingEditorMutation;
@@ -230,6 +178,7 @@ internal partial class MainWindow : Window
         inspectorPresenter = new(slipInspectorFieldsPanel, inspectorPanel);
         viewEditor = CreateViewEditorPresenter();
         lifetime = CreateWindowLifetime();
+        mutations = new(OnMutationStateChanged);
         navigation = CreateNavigationCoordinator();
         WireWindowLifetime();
     }
@@ -262,6 +211,7 @@ internal partial class MainWindow : Window
         inspectorPresenter = new(slipInspectorFieldsPanel, inspectorPanel);
         viewEditor = CreateViewEditorPresenter();
         lifetime = CreateWindowLifetime();
+        mutations = new(OnMutationStateChanged);
         navigation = CreateNavigationCoordinator();
         Icon = KastnIcon.Create();
         landingLaneItems.ItemsSource = laneCards;
@@ -445,14 +395,7 @@ internal partial class MainWindow : Window
 
     private void OnSnapshotChanged(object? sender, KastnSessionSnapshot snapshot)
     {
-        // During a batch (e.g. aligning or numbering many slips) the service publishes
-        // a snapshot per mutation; applying each would rebuild the tree and View N
-        // times in sequence. Drop the intermediate pushes — the batch does one
-        // RefreshAsync at the end.
-        if (batching || lifetime.IsRetired)
-        {
-            return;
-        }
+        if (lifetime.IsRetired) return;
 
         Dispatcher.UIThread.Post(() => ApplySnapshot(snapshot));
     }
@@ -1284,7 +1227,7 @@ internal partial class MainWindow : Window
 
     private void SetConnectionState(KastnSessionSnapshot snapshot)
     {
-        var creationStatus = CreationStatus(snapshot);
+        var creationStatus = MutationStatus(snapshot) ?? CreationStatus(snapshot);
         statusText.Text = recoveredDraftActive
             ? editorState.ConflictCurrent is not null
                 ? "Recovered local draft conflicts with the current Zetl slip."

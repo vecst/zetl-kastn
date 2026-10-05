@@ -4,10 +4,11 @@ namespace KASTN;
 
 internal partial class MainWindow
 {
+    private KastnNavigationSession CurrentNavigationSession() => new(currentProject?.Id,
+        editHistory.Generation, connection?.NavigationVersion ?? 0,
+        connection?.Current.ServerInstanceId, lifetime.IsRetired || lifetime.AllowClose);
     private KastnNavigationCoordinator CreateNavigationCoordinator() => new(editorState,
-        () => new(currentProject?.Id, editHistory.Generation, connection?.NavigationVersion ?? 0,
-            connection?.Current.ServerInstanceId, lifetime.IsRetired || lifetime.AllowClose),
-        SaveEditorAsync, id => connection.NavigateToProjectAsync(id));
+        CurrentNavigationSession, SaveEditorAsync, id => connection.NavigateToProjectAsync(id));
 
     private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {

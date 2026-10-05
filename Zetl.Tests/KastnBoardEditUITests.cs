@@ -40,7 +40,7 @@ public partial class ZetlUITests
             Assert.Equal(styles, window.editorState.DraftInlineStyles);
             Assert.Equal(version, window.editorState.SelectionVersion);
             Assert.Equal(status, window.statusText.Text); // Unexpected IPC would report offline.
-            Assert.False(WindowField<bool>(window, "savingCore"));
+            Assert.False(WindowField<bool>(window, "saving"));
             Assert.False(WindowField<bool>(window, "boardEditing"));
         }
         finally { CloseWindow(window); }
@@ -259,7 +259,7 @@ public partial class ZetlUITests
             Assert.Equal(kind == "update" ? interruption == "conflict" ? "remote writing" : "dialog text"
                 : completesMove ? "dialog text" : interruption == "during-save" ? "initial draft" : "baseline", first.Text);
             Assert.Equal("replacement baseline", replacementSlip.Text);
-            Assert.False(WindowField<bool>(window, "savingCore"));
+            Assert.False(WindowField<bool>(window, "saving"));
             Assert.False(WindowField<bool>(window, "boardEditing"));
             var history = WindowField<KastnEditHistory>(window, "editHistory");
             Assert.Equal(interruption == "project" ? 0 : interruption == "focus-save" ? 2 : 1, history.UndoCount);

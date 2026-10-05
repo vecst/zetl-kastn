@@ -1378,9 +1378,12 @@ public partial class ZetlUITests : IDisposable
         }
     }
 
-    private static T WindowField<T>(MainWindow window, string name) =>
-        (T)typeof(MainWindow).GetField(name,
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(window)!;
+    private static T WindowField<T>(MainWindow window, string name)
+    {
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        return (T)(typeof(MainWindow).GetField(name, flags)?.GetValue(window)
+            ?? typeof(MainWindow).GetProperty(name, flags)?.GetValue(window))!;
+    }
 
     private static ZETL.Contracts.ZetlProjectSnapshot RenderProject(string id, string text) => new()
     {

@@ -64,7 +64,7 @@ internal partial class MainWindow
         if (!await SaveEditorAsync() || !SameSession()) return;
         bool IsCurrent() => SameSession() && !editorState.IsDirty && editorState.ConflictCurrent is null;
         await projectCreation.RunAsync(captured, defaultViewId, prompt, pickLane,
-            command => connection.ExecuteAsync(command), IsCurrent,
+            ExecuteMutationAsync, IsCurrent,
             async result =>
             {
                 if (!IsCurrent() || result.Cancelled) return;

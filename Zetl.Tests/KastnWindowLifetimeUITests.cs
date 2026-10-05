@@ -109,8 +109,8 @@ public partial class ZetlUITests
         var (window, controller, project) = WorkflowWindow();
         window.slipEditor.Text = "draft";
         Dispatcher.UIThread.RunJobs();
-        typeof(MainWindow).GetProperty("saving", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .SetValue(window, true);
+        using var busy = WindowField<KastnMutationCoordinator>(window, "mutations").TryBeginWrite();
+        Assert.NotNull(busy);
         var timers = new[] { "draftJournalTimer", "savingVisualTimer", "dragScrollTimer", "boardDragScrollTimer" }
             .Select(name => WindowField<DispatcherTimer>(window, name)).ToArray();
         foreach (var timer in timers) timer.Start();

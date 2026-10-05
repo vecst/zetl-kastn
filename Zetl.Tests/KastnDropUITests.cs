@@ -135,7 +135,7 @@ public partial class ZetlUITests
             var completed = scenario is "unchanged" or "typing-move" or "typing-reorder" or "capture-save";
             Assert.All(commands, command => Assert.Equal(project.Id, command.ProjectId));
             Assert.Equal(completed ? savingFirst ? 5 : 4 : 1, commands.Count);
-            Assert.False(WindowField<bool>(window, "savingCore"));
+            Assert.False(WindowField<bool>(window, "saving"));
             Assert.False(WindowField<bool>(window, "applyingDrop"));
             Assert.Equal(scenario is "project-save" or "draft-save" or "bucket", inbox.Slips.Contains(first));
             Assert.Equal(!completed, inbox.Slips.Contains(second));

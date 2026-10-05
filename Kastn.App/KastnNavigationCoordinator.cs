@@ -20,6 +20,7 @@ internal sealed class KastnNavigationCoordinator(
     private sealed record LeaveRequest(long Intent, KastnNavigationSession Session, long EditorVersion);
     private LeaveRequest? pendingLeave;
     private long intent;
+    public long IntentVersion => intent;
     private bool retired;
     private (string? ProjectId, long Generation)? observedScope;
     public string? PendingBucketId { get; private set; }

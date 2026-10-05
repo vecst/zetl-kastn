@@ -19,7 +19,7 @@ internal partial class MainWindow
 
     private IDisposable BeginGesture(string description) => editHistory.BeginGesture(description);
     private Task<ZetlResponseEnvelope> ExecuteMutationAsync(ZetlCommandEnvelope command) =>
-        editHistory.ExecuteMutationAsync(command);
+        mutations.ExecuteAsync(command, editHistory.ExecuteMutationAsync);
     private Task UndoLastAsync() => StepHistoryAsync(redo: false);
     private Task RedoLastAsync() => StepHistoryAsync(redo: true);
 
@@ -36,9 +36,12 @@ internal partial class MainWindow
             return;
         }
 
+        using var preparation = mutations.TryPrepare(KastnMutationPreparation.History);
+        if (preparation is null) return;
+        var mutationScope = CaptureMutationContext();
         var context = new KastnEditorWorkflowContext(currentProject.Id, editorState);
         if (!await SaveEditorAsync() || !IsOnline
-            || !context.IsSameSession(currentProject?.Id, editorState)) return;
+            || !IsCurrentMutation(mutationScope) || !context.IsSameSession(currentProject?.Id, editorState)) return;
         if (editHistory.IsStepping)
         {
             statusText.Text = "Wait for the current undo or redo to finish.";
@@ -47,17 +50,20 @@ internal partial class MainWindow
 
         // UI selection stays at the boundary; the owner receives snapshots and
         // an async conflict decision, and returns a typed completion outcome.
+        using var busy = mutations.TryBeginWrite();
+        if (busy is null) return;
         var entry = editHistory.Peek(redo);
         var targetSlipId = entry?.Operations.FirstOrDefault()?.SlipId;
         if (targetSlipId is not null) ReselectSlipNode(targetSlipId);
         else if (entry?.BucketOperations.FirstOrDefault() is { } bucket)
             navigation.RequestBucket(bucket.BucketId);
         context = new KastnEditorWorkflowContext(context.ProjectId, editorState);
+        mutationScope = CaptureMutationContext();
         var generation = editHistory.Generation;
         var result = await editHistory.StepAsync(redo, conflict =>
             KastnDialogs.UndoConflictAsync(this, conflict.Verb, conflict.Description,
                 conflict.CurrentText, conflict.TargetText));
-        if (!context.IsSameSession(currentProject?.Id, editorState)
+        if (!IsCurrentMutation(mutationScope) || !context.IsSameSession(currentProject?.Id, editorState)
             || editHistory.Generation != generation) return;
         if (result.Status == KastnHistoryStepStatus.Completed && targetSlipId is not null
             && !editorState.IsDirty)

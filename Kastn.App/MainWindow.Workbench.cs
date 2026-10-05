@@ -32,7 +32,7 @@ internal partial class MainWindow
         UpdateInlineFormatButtons();
         statusText.Text = editorState.IsDirty
             ? "Unsaved changes — saved when you leave the editor."
-            : CreationStatus(connection.Current) ?? connection.Current.Status;
+            : MutationStatus(connection.Current) ?? CreationStatus(connection.Current) ?? connection.Current.Status;
     }
 
     private async void OnTreeVisibilityClick(object? sender, RoutedEventArgs args)
@@ -52,7 +52,7 @@ internal partial class MainWindow
             return;
         }
 
-        var context = new KastnEditorWorkflowContext(currentProject.Id, editorState);
+        var context = CaptureMutationContext();
         var clickedSlips = node.TreeSlips().ToArray();
         var targetIds = clickedSlips.Select(slip => slip.Id).Distinct(StringComparer.Ordinal).ToArray();
         if (targetIds.Length == 0)
@@ -61,12 +61,13 @@ internal partial class MainWindow
         }
         // Preserve the clicked intent even if a refresh arrives during the save.
         var exclude = clickedSlips.Any(slip => !slip.ExcludedFromViews);
-        var ownsBusy = false;
-        visibilityUpdating = true;
+        using var preparation = mutations.TryPrepare(KastnMutationPreparation.Visibility);
+        if (preparation is null) return;
+        IDisposable? busy = null;
         try
         {
             var savedEditor = await SaveEditorAsync();
-            if (!context.IsSameSession(currentProject?.Id, editorState))
+            if (!IsCurrentMutation(context))
             {
                 return;
             }
@@ -84,15 +85,14 @@ internal partial class MainWindow
                 .OfType<ZetlSlipSnapshot>().ToArray();
             var changed = 0;
             var failed = 0;
-            ownsBusy = true;
-            saving = true;
-            SetEditingEnabled();
+            busy = mutations.TryBeginWrite();
+            if (busy is null) return;
             await using var refreshBatch = connection.DeferRefresh();
             foreach (var slip in targets.Where(slip => slip.ExcludedFromViews != exclude))
             {
                 // Already-sent commands finish in their original project. Stop
                 // issuing further commands after navigation or editor reselection.
-                if (!IsOnline || !context.IsSameSession(currentProject?.Id, editorState))
+                if (!IsOnline || !IsCurrentMutation(context))
                 {
                     break;
                 }
@@ -132,12 +132,12 @@ internal partial class MainWindow
                 }
             }
 
-            if (!context.IsSameSession(currentProject?.Id, editorState))
+            if (!IsCurrentMutation(context))
             {
                 return;
             }
             await connection.SynchronizeAsync();
-            if (context.IsSameSession(currentProject?.Id, editorState))
+            if (IsCurrentMutation(context))
             {
                 var action = exclude ? "hidden" : "shown";
                 statusText.Text = editorState.ConflictCurrent is not null
@@ -149,19 +149,14 @@ internal partial class MainWindow
         catch (Exception ex) when (
             ex is IOException or InvalidOperationException or OperationCanceledException)
         {
-            if (context.IsSameSession(currentProject?.Id, editorState))
+            if (IsCurrentMutation(context))
             {
                 statusText.Text = ex.Message;
             }
         }
         finally
         {
-            if (ownsBusy)
-            {
-                saving = false;
-            }
-            visibilityUpdating = false;
-            SetEditingEnabled();
+            busy?.Dispose();
         }
     }
 
@@ -178,19 +173,7 @@ internal partial class MainWindow
         return currentProject?.Id == projectId;
     }
 
-    private Task<bool> SaveEditorAsync()
-    {
-        // Coalesce concurrent callers (editor focus-loss racing a slip selection)
-        // onto one in-flight save, so the second caller awaits the same result
-        // instead of seeing a false "save failed" from the `saving` guard.
-        if (inflightSave is { } pending && !pending.IsCompleted)
-        {
-            return pending;
-        }
-
-        inflightSave = SaveEditorCoreAsync();
-        return inflightSave;
-    }
+    private Task<bool> SaveEditorAsync() => mutations.SaveAsync(SaveEditorCoreAsync);
 
     private async Task<bool> SaveEditorCoreAsync()
     {
@@ -215,9 +198,9 @@ internal partial class MainWindow
             return false;
         }
 
-        saving = true;
+        using var busy = mutations.TryBeginWrite();
+        if (busy is null) return false;
         pendingEditorSave = operation;
-        SetEditingEnabled();
         try
         {
             var result = await operation.ExecuteAsync(ExecuteMutationAsync);
@@ -241,8 +224,6 @@ internal partial class MainWindow
         finally
         {
             pendingEditorSave = null;
-            saving = false;
-            if (!lifetime.IsRetired) SetEditingEnabled();
         }
     }
 
@@ -652,9 +633,9 @@ internal partial class MainWindow
             editorState, currentProject.Id, slip, kind, buildWithText);
         var command = acceptance.Command;
 
-        saving = true;
+        using var busy = mutations.TryBeginWrite();
+        if (busy is null) return;
         pendingEditorMutation = acceptance;
-        SetEditingEnabled();
         try
         {
             var response = await ExecuteMutationAsync(command);
@@ -706,8 +687,7 @@ internal partial class MainWindow
         finally
         {
             pendingEditorMutation = null;
-            saving = false;
-            SetEditingEnabled();
+
         }
     }
 
@@ -1075,97 +1055,62 @@ internal partial class MainWindow
 
     private async Task AddSlipAsync(string? targetBucketId = null)
     {
-        if (!IsOnline || currentProject is null || addingSlip)
-        {
-            return;
-        }
-
-        var existingDraft = currentProject.Slips.LastOrDefault(slip =>
-            slip.Source == "kastn"
+        if (!IsOnline || currentProject is null) return;
+        var context = CaptureMutationContext();
+        var destinationId = targetBucketId
+            ?? (SelectedBucketId is { } id && !KastnWorkbench.IsDeletedBucket(SelectedBucket) ? id : null)
+            ?? currentProject.ActiveBucketId
+            ?? currentProject.Buckets.FirstOrDefault(bucket => !KastnWorkbench.IsDeletedBucket(bucket))?.Id;
+        using var preparation = mutations.TryPrepare(KastnMutationPreparation.AddSlip);
+        if (preparation is null) return;
+        if (!await SaveEditorAsync() || !IsCurrentMutation(context) || editorState.IsDirty
+            || !TrySettleSavedEditorSnapshot(context.ProjectId) || !IsCurrentMutation(context)) return;
+        var existingDraft = currentProject!.Slips.LastOrDefault(slip => slip.Source == "kastn"
             && string.Equals(slip.Title, UntitledSlipTitle, StringComparison.Ordinal)
-            && string.IsNullOrWhiteSpace(slip.Text)
-            && (targetBucketId is null || slip.BucketId == targetBucketId)
-            && !KastnWorkbench.IsDeletedBucket(currentProject.Buckets.FirstOrDefault(
-                bucket => bucket.Id == slip.BucketId)));
+            && string.IsNullOrWhiteSpace(slip.Text) && (targetBucketId is null || slip.BucketId == targetBucketId)
+            && !IsSlipInDeleted(slip));
         if (existingDraft is not null)
         {
-            // Reuse the existing untitled draft rather than stacking another:
-            // select it in the tree and open it in the slip editor.
             ResetSlipFilters();
             navigation.RequestBucket(existingDraft.BucketId);
             navigation.RequestSlip(existingDraft.Id, focus: true);
             await connection.SynchronizeAsync();
+            if (lifetime.IsRetired || currentProject?.Id != context.ProjectId) return;
             SetDetailPaneMode(showDetails: false);
             statusText.Text = "Finish the current untitled slip before creating another.";
-
-            if (boardModeActive)
-            {
-                await EditBoardSlipAsync(existingDraft);
-            }
+            if (boardModeActive) await EditBoardSlipAsync(existingDraft);
             return;
         }
-
-        addingSlip = true;
-        SetEditingEnabled();
+        if (destinationId is null || ProjectIndex.Bucket(destinationId) is not { } bucket || KastnWorkbench.IsDeletedBucket(bucket))
+        { statusText.Text = "Create a bucket before adding a slip."; return; }
+        using var busy = mutations.TryBeginWrite();
+        if (busy is null) return;
         try
         {
-            if (!await SaveEditorAsync())
+            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(Guid.NewGuid().ToString("N"), ZetlCommandKind.AddSlip,
+                new AddSlipCommand { BucketId = destinationId, Title = UntitledSlipTitle, Text = "", Source = "kastn" }, context.ProjectId));
+            if (!IsCurrentMutation(context)) return;
+            if (response.Status == ZetlResponseStatus.Success
+                && response.Payload?.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options) is { } created)
             {
-                statusText.Text = "Save or resolve the current slip before creating a new one.";
+                // Typing during creation stays in the current editor; the created
+                // slip is retained in the project for later selection.
+                if (editorState.IsDirty) { statusText.Text = "Slip created; newer edits remain unsaved."; return; }
+                navigation.RequestBucket(created.BucketId);
+                navigation.RequestSlip(created.Id, focus: true);
+                ResetSlipFilters();
+                await connection.SynchronizeAsync();
+                if (lifetime.IsRetired || currentProject?.Id != context.ProjectId) return;
+                SetDetailPaneMode(showDetails: false);
+                statusText.Text = "Slip created.";
+                busy.Dispose();
+                if (boardModeActive) await EditBoardSlipAsync(created);
                 return;
             }
-
-            var destinationBucketId = targetBucketId
-                ?? (SelectedBucketId is { } selectedBucketId && !KastnWorkbench.IsDeletedBucket(SelectedBucket)
-                    ? selectedBucketId
-                    : null);
-            destinationBucketId ??= currentProject.ActiveBucketId
-                ?? currentProject.Buckets.FirstOrDefault(
-                    bucket => !KastnWorkbench.IsDeletedBucket(bucket))?.Id;
-            if (destinationBucketId is null)
-            {
-                statusText.Text = "Create a bucket before adding a slip.";
-                return;
-            }
-
-            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.AddSlip,
-                new AddSlipCommand
-                {
-                    BucketId = destinationBucketId,
-                    Title = UntitledSlipTitle,
-                    Text = "",
-                    Source = "kastn"
-                },
-                currentProject.Id));
-            if (response.Status == ZetlResponseStatus.Success)
-            {
-                var created = response.Payload?.Deserialize<ZetlSlipSnapshot>(
-                    ZetlProtocolJson.Options);
-                if (created is not null)
-                {
-                    navigation.RequestBucket(created.BucketId);
-                    navigation.RequestSlip(created.Id, focus: true);
-                    ResetSlipFilters();
-                    await connection.SynchronizeAsync();
-                    SetDetailPaneMode(showDetails: false);
-                    statusText.Text = "Slip created.";
-                    if (boardModeActive)
-                    {
-                        await EditBoardSlipAsync(created);
-                    }
-                    return;
-                }
-            }
-
             HandleSimpleResponse(response, "Slip created.");
         }
-        finally
-        {
-            addingSlip = false;
-            SetEditingEnabled();
-        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException)
+        { if (IsCurrentMutation(context)) statusText.Text = ex.Message; }
     }
 
     // Insert a Group container — a bucket Kastn renders as a boxed group. Slips and whole
@@ -1230,15 +1175,16 @@ internal partial class MainWindow
             return;
         }
 
-        addingSlip = true;
-        SetEditingEnabled();
+        var context = CaptureMutationContext();
+        using var preparation = mutations.TryPrepare(KastnMutationPreparation.AddSlip);
+        if (preparation is null) return;
         try
         {
-            if (!await SaveEditorAsync())
-            {
-                statusText.Text = "Save or resolve the current slip before adding a divider.";
-                return;
-            }
+            if (!await SaveEditorAsync() || !IsCurrentMutation(context) || editorState.IsDirty
+                || !TrySettleSavedEditorSnapshot(context.ProjectId) || !IsCurrentMutation(context)
+                || ProjectIndex.Bucket(bucketId) is not { } bucket || KastnWorkbench.IsDeletedBucket(bucket)) return;
+            using var busy = mutations.TryBeginWrite();
+            if (busy is null) return;
 
             // The add and its follow-up reorder are one undo step.
             using var undoGesture = BeginGesture("Insert divider");
@@ -1258,7 +1204,8 @@ internal partial class MainWindow
                     Source = "kastn",
                     BlockKind = ZetlBlockKinds.Divider
                 },
-                currentProject.Id));
+                context.ProjectId));
+            if (!IsCurrentMutation(context)) return;
             if (response.Status != ZetlResponseStatus.Success)
             {
                 statusText.Text = response.Error?.Message ?? $"Divider failed: {response.Status}.";
@@ -1274,11 +1221,12 @@ internal partial class MainWindow
                     Guid.NewGuid().ToString("N"),
                     ZetlCommandKind.ReorderSlip,
                     new ReorderSlipCommand { BeforeSlipId = nextSlipId },
-                    currentProject.Id,
+                    context.ProjectId,
                     created.Id,
                     created.Revision));
             }
 
+            if (!IsCurrentMutation(context) || editorState.IsDirty) return;
             if (created is not null)
             {
                 navigation.RequestBucket(created.BucketId);
@@ -1286,13 +1234,10 @@ internal partial class MainWindow
             }
 
             await connection.SynchronizeAsync();
-            statusText.Text = "Divider added.";
+            if (!lifetime.IsRetired && currentProject?.Id == context.ProjectId) statusText.Text = "Divider added.";
         }
-        finally
-        {
-            addingSlip = false;
-            SetEditingEnabled();
-        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException)
+        { if (IsCurrentMutation(context)) statusText.Text = ex.Message; }
     }
 
     // The id of the note immediately after anchorId within the bucket (document order),
@@ -1325,8 +1270,8 @@ internal partial class MainWindow
 
         var current = ZetlViewRenderer.BucketRenderKind(bucket);
         var target = current == normalized ? ZetlBucketRenderKinds.None : normalized;
-        saving = true;
-        SetEditingEnabled();
+        using var busy = mutations.TryBeginWrite();
+        if (busy is null) return;
         try
         {
             navigation.RequestBucket(bucket.Id);
@@ -1350,11 +1295,8 @@ internal partial class MainWindow
 
             HandleSimpleResponse(response, BucketRenderKindStatus(target));
         }
-        finally
-        {
-            saving = false;
-            SetEditingEnabled();
-        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException)
+        { if (!lifetime.IsRetired) statusText.Text = ex.Message; }
     }
 
     private static string BucketRenderKindStatus(string kind) => kind switch
@@ -1687,172 +1629,6 @@ internal partial class MainWindow
         }
 
         HandleSimpleResponse(response, "Project deleted.");
-    }
-
-    private async Task MoveSlipAsync()
-    {
-        if (!await SaveEditorAsync()
-            || !IsOnline
-            || currentProject is null
-            || moveBucketBox.SelectedItem is not KastnBucketItem destination
-            || destination.Id is null)
-        {
-            return;
-        }
-
-        var selected = SelectedSlips()
-            .Where(slip => !IsSlipInDeleted(slip))
-            .ToList();
-        if (selected.Count == 0)
-        {
-            return;
-        }
-
-        var moved = 0;
-        var skipped = 0;
-        var failed = 0;
-        var projectId = currentProject.Id;
-        // A single moved slip stays selected (re-driven through the tree so the
-        // editor/inspector/View re-sync), matching drag-drop. Batch moves clear.
-        var reselectSlipId = selected.Count == 1 ? selected[0].Id : null;
-        navigation.RequestBucket(destination.Id);
-        using var undoGesture = BeginGesture(selected.Count == 1 ? "Move slip" : "Move slips");
-        await using var refreshBatch = connection.DeferRefresh();
-        foreach (var slip in selected)
-        {
-            if (slip.BucketId == destination.Id)
-            {
-                skipped++;
-                continue;
-            }
-
-            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.MoveSlip,
-                new MoveSlipCommand { DestinationBucketId = destination.Id },
-                projectId,
-                slip.Id,
-                slip.Revision));
-            if (response.Status == ZetlResponseStatus.Success)
-            {
-                moved++;
-            }
-            else
-            {
-                failed++;
-            }
-        }
-
-        await connection.SynchronizeAsync();
-        if (reselectSlipId is not null)
-        {
-            ReselectSlipNode(reselectSlipId);
-        }
-        else
-        {
-            editorState.Select(null);
-            UpdateEditorFromState();
-        }
-
-        statusText.Text = BatchStatus(
-            moved > 0 ? $"{moved} slip{Plural(moved)} moved to {destination.Bucket?.Name}" : null,
-            skipped > 0 ? $"{skipped} already there" : null,
-            failed > 0 ? $"{failed} failed" : null);
-    }
-
-    private async Task RestoreSlipAsync()
-    {
-        if (!await SaveEditorAsync()
-            || !IsOnline
-            || currentProject is null
-            || SelectedSlip is not { } slip
-            || !IsSlipInDeleted(slip))
-        {
-            return;
-        }
-
-        var destination = moveBucketBox.SelectedItem as KastnBucketItem
-            ?? moveBuckets.FirstOrDefault();
-        if (destination?.Id is null)
-        {
-            statusText.Text = "Create a regular bucket before restoring this slip.";
-            return;
-        }
-
-        navigation.RequestBucket(destination.Id);
-        navigation.RequestSlip(slip.Id);
-        var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-            Guid.NewGuid().ToString("N"),
-            ZetlCommandKind.MoveSlip,
-            new MoveSlipCommand { DestinationBucketId = destination.Id },
-            currentProject.Id,
-            slip.Id,
-            editorState.Revision));
-        HandleSimpleResponse(response, $"Slip restored to {destination.Bucket?.Name}.");
-    }
-
-    private async Task DeleteSlipAsync()
-    {
-        if (!await SaveEditorAsync()
-            || !IsOnline
-            || currentProject is null
-            || SelectedSlips().Count == 0)
-        {
-            return;
-        }
-
-        var selected = SelectedSlips()
-            .Where(slip => !IsSlipInDeleted(slip))
-            .ToList();
-        if (selected.Count == 0)
-        {
-            return;
-        }
-
-        if (!await KastnDialogs.ConfirmAsync(
-                this,
-                selected.Count == 1
-                    ? "Move the selected slip to Deleted?"
-                    : $"Move {selected.Count} selected slips to Deleted?",
-                "Delete Slip"))
-        {
-            return;
-        }
-
-        var moved = 0;
-        var failed = 0;
-        var projectId = currentProject.Id;
-        using var undoGesture = BeginGesture(selected.Count == 1 ? "Delete slip" : "Delete slips");
-        await using var refreshBatch = connection.DeferRefresh();
-        foreach (var slip in selected)
-        {
-            var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                Guid.NewGuid().ToString("N"),
-                ZetlCommandKind.DeleteSlip,
-                new DeleteSlipCommand(),
-                projectId,
-                slip.Id,
-                slip.Revision));
-            if (response.Status == ZetlResponseStatus.Success)
-            {
-                moved++;
-                var deleted = response.Payload?.Deserialize<ZetlSlipSnapshot>(
-                    ZetlProtocolJson.Options);
-                if (navigation.PendingBucketId is null) navigation.RequestBucket(deleted?.BucketId);
-            }
-            else
-            {
-                failed++;
-            }
-        }
-
-        editorState.Select(null);
-        ResetSlipFilters();
-        UpdateEditorFromState();
-        await connection.SynchronizeAsync();
-        statusText.Text = failed == 0
-            ? $"{moved} slip{Plural(moved)} moved to Deleted."
-            : $"{moved} slip{Plural(moved)} moved to Deleted; {failed} failed.";
     }
 
     private void UseZetlVersion()

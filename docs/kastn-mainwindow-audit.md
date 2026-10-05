@@ -386,6 +386,30 @@ extracting undo or the renderers.
   work: shared mutation/busy coordination, snapshot application ordering, then
   landing-page ownership and the stale-menu sweep.
 
+- Extracted `KastnMutationCoordinator`: exclusive write leases, workflow
+  reservations, coalesced editor saves, command admission, retirement, and scoped
+  completion notices now have one owner. MainWindow retains the native 150 ms
+  visual delay. A completion only releases its own lease; synchronous save
+  reentry joins the already-published task. Undo/redo participates in write
+  ownership, and template creation uses the shared command boundary.
+- Extracted `KastnSlipMutationBatch` for formatting, move, and delete. Targets,
+  revisions, source project and document order remain captured across awaits;
+  navigation/selection/session changes stop unsent commands. Partial conflicts
+  are counted, completed commands remain undoable, and later move/delete typing
+  retains its draft and updated baseline. Restore, new-slip, and divider
+  prerequisites also validate their source session before sending commands.
+- Removed the window's volatile snapshot-dropping flag. Connection-owned refresh
+  deferral coalesces ordinary mutation events while explicit/navigation snapshots
+  still apply. Scoped completion notices keep partial failures visible through
+  queued snapshots for the same unchanged project.
+- Added 36 owner and headless UI cases for save reentry/retry, exclusive writes,
+  retirement, captured batch order, delayed real-IPC commands, early snapshots,
+  partial failure, competing selection/navigation, later drafts, and stale save/
+  confirmation prerequisites. Validation: solution build with zero warnings/errors;
+  1,192 tests passed, with the same two intentional latency-probe skips.
+  Snapshot application ordering is next, followed by
+  landing-page ownership and the stale-menu sweep.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

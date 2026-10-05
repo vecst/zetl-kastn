@@ -221,55 +221,24 @@ internal partial class MainWindow
             return;
         }
 
-        saving = true;
-        SetEditingEnabled();
-        var changed = 0;
-        var failed = 0;
-        // One undo step for the whole batch; disposes at method end after the final
-        // refresh.
-        using var undoGesture = BeginGesture(ordered.Count == 1 ? $"{Capitalize(actionLabel)} slip" : $"{Capitalize(actionLabel)} slips");
-        await using var refreshBatch = connection.DeferRefresh();
-        // Drop the per-mutation snapshot pushes during the loop so the tree/View
-        // rebuild once at the end instead of flashing once per slip.
-        batching = true;
+        var context = CaptureMutationContext();
+        using var busy = mutations.TryBeginWrite();
+        if (busy is null) return;
+        using var gesture = BeginGesture(ordered.Count == 1 ? $"{Capitalize(actionLabel)} slip" : $"{Capitalize(actionLabel)} slips");
+        await using var refresh = connection.DeferRefresh();
         try
         {
-            for (var index = 0; index < ordered.Count; index++)
-            {
-                var slip = ordered[index];
-                var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
-                    Guid.NewGuid().ToString("N"),
-                    ZetlCommandKind.UpdateSlip,
-                    build(slip, index),
-                    currentProject.Id,
-                    slip.Id,
-                    slip.Revision));
-                if (response.Status == ZetlResponseStatus.Success)
-                {
-                    changed++;
-                }
-                else
-                {
-                    failed++;
-                }
-            }
-
-            batching = false;
+            var result = await new KastnSlipMutationBatch(context.ProjectId, ordered).ExecuteAsync(
+                (slip, index) => ZetlCommandEnvelope.Create(Guid.NewGuid().ToString("N"), ZetlCommandKind.UpdateSlip,
+                    build(slip, index), context.ProjectId, slip.Id, slip.Revision),
+                command => ExecuteSlipBatchCommandAsync(command, context), () => IsCurrentMutation(context));
+            if (result.Interrupted || !IsCurrentMutation(context)) return;
             await connection.SynchronizeAsync();
-            statusText.Text = failed == 0
-                ? $"{changed} slip{Plural(changed)} {actionLabel}."
-                : $"{changed} {actionLabel}; {failed} failed.";
+            if (IsCurrentMutationScope(context)) ShowMutationCompletion(context, result.Failed == 0
+                ? $"{result.Changed} slip{Plural(result.Changed)} {actionLabel}."
+                : $"{result.Changed} {actionLabel}; {result.Failed} failed.");
         }
-        catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or OperationCanceledException)
-        {
-            statusText.Text = ex.Message;
-        }
-        finally
-        {
-            batching = false;
-            saving = false;
-            SetEditingEnabled();
-        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException)
+        { if (IsCurrentMutation(context)) statusText.Text = ex.Message; }
     }
 }

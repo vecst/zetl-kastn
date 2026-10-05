@@ -49,7 +49,6 @@ internal partial class MainWindow
     // when the pointer moves far enough to resolve a new slot.
     private KastnDropPlan? stickyDropPlan;
     private string? draggingProjectId;
-    private bool applyingDrop;
     // When a press lands on an item that is part of a multi-selection, the collapse to
     // that single item is deferred to pointer-release — so a drag in between keeps the
     // whole selection (and a plain click still narrows to the one item).
@@ -391,21 +390,23 @@ internal partial class MainWindow
         if (applyingDrop || !IsOnline || currentProject?.Id != plan.ProjectId
             || saving && inflightSave is not { IsCompleted: false }) return;
         plan = plan with { SlipIds = plan.SlipIds.ToArray() };
+        var mutationScope = CaptureMutationContext();
         var context = new KastnEditorWorkflowContext(plan.ProjectId, editorState);
         var generation = editHistory.Generation;
-        var ownsBusy = false;
-        applyingDrop = true;
+        using var preparation = mutations.TryPrepare(KastnMutationPreparation.Drop);
+        if (preparation is null) return;
+        IDisposable? busy = null;
         try
         {
             var saved = await SaveEditorAsync();
-            if (!context.IsSameSession(currentProject?.Id, editorState) || generation != editHistory.Generation) return;
+            if (!(IsCurrentMutation(mutationScope) && context.IsSameSession(currentProject?.Id, editorState)) || generation != editHistory.Generation) return;
             if (!saved)
             {
                 statusText.Text = "Save or resolve the current slip before moving things.";
                 return;
             }
             if (!IsOnline || saving || !TrySettleSavedEditorSnapshot(plan.ProjectId)
-                || !context.IsSameSession(currentProject?.Id, editorState) || editorState.IsDirty) return;
+                || !(IsCurrentMutation(mutationScope) && context.IsSameSession(currentProject?.Id, editorState)) || editorState.IsDirty) return;
             if (!KastnDropPlanner.IsValid(ProjectIndex, plan))
             {
                 statusText.Text = "The drop target changed. Try the move again.";
@@ -413,9 +414,8 @@ internal partial class MainWindow
             }
             if (plan.Action == KastnDropAction.SlipMove && KastnDropPlanner.IsSlipNoOp(ProjectIndex, plan)) return;
             var operation = new KastnMoveOperation(ProjectIndex, plan);
-            ownsBusy = true;
-            saving = true;
-            SetEditingEnabled();
+            busy = mutations.TryBeginWrite();
+            if (busy is null) return;
             // Deferring refresh coalesces ordinary mutation events without
             // suppressing project navigation or explicit snapshots.
             using var gesture = BeginGesture(plan.Action == KastnDropAction.SlipMove ? "Move slips" : "Move bucket");
@@ -428,7 +428,7 @@ internal partial class MainWindow
                 try
                 {
                     var response = await ExecuteMutationAsync(command);
-                    if (context.IsSameSession(currentProject?.Id, editorState) && mutation is not null)
+                    if ((IsCurrentMutation(mutationScope) && context.IsSameSession(currentProject?.Id, editorState)) && mutation is not null)
                     {
                         if (KastnMoveOperation.IsConfirmedResponse(plan, command, response) && mutation.TryAcceptResponse(response)
                             && mutation.IsCurrentEditor)
@@ -441,16 +441,16 @@ internal partial class MainWindow
                     return response;
                 }
                 finally { pendingEditorMutation = null; }
-            }, () => IsOnline && context.IsSameSession(currentProject?.Id, editorState)
+            }, () => IsOnline && (IsCurrentMutation(mutationScope) && context.IsSameSession(currentProject?.Id, editorState))
                 && generation == editHistory.Generation && editorState.ConflictCurrent is null
                 && KastnDropPlanner.IsValid(ProjectIndex, plan));
-            if (!context.IsSameSession(currentProject?.Id, editorState) || generation != editHistory.Generation) return;
+            if (!(IsCurrentMutation(mutationScope) && context.IsSameSession(currentProject?.Id, editorState)) || generation != editHistory.Generation) return;
             await connection.SynchronizeAsync();
-            if (!context.IsSameSession(currentProject?.Id, editorState) || generation != editHistory.Generation) return;
+            if (!(IsCurrentMutation(mutationScope) && context.IsSameSession(currentProject?.Id, editorState)) || generation != editHistory.Generation) return;
             // SnapshotChanged is posted to the dispatcher. Settle the synchronized
             // snapshot before selection and gesture disposal record final neighbours.
             ApplySnapshot(connection.Current);
-            if (!context.IsSameSession(currentProject?.Id, editorState) || generation != editHistory.Generation) return;
+            if (!(IsCurrentMutation(mutationScope) && context.IsSameSession(currentProject?.Id, editorState)) || generation != editHistory.Generation) return;
             if (result.Status == KastnMoveStatus.Completed && !editorState.IsDirty)
             {
                 if (plan.Action == KastnDropAction.SlipMove) ReselectSlipNode(plan.SourceId);
@@ -465,13 +465,11 @@ internal partial class MainWindow
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException)
         {
-            if (context.IsSameSession(currentProject?.Id, editorState)) statusText.Text = ex.Message;
+            if (IsCurrentMutation(mutationScope) && context.IsSameSession(currentProject?.Id, editorState)) statusText.Text = ex.Message;
         }
         finally
         {
-            if (ownsBusy) saving = false;
-            applyingDrop = false;
-            SetEditingEnabled();
+            busy?.Dispose();
         }
     }
 
