@@ -13,6 +13,7 @@ internal static class Entry
     internal static string Mode = "both";
     internal static bool Detailed;
     internal static double Opacity = 1;
+    internal static bool TrayWarmup;
 
     [STAThread]
     public static int Main(string[] args)
@@ -22,6 +23,7 @@ internal static class Entry
         Mode = args.Length > 1 ? args[1] : "both";
         if (Mode is not ("popup" or "indicator" or "both")) throw new ArgumentException("Mode: popup, indicator or both.");
         Detailed = args.Contains("--detailed");
+        TrayWarmup = args.Contains("--tray-warmup");
         if (args.Contains("--opacity=90")) Opacity = .9;
         var factory = typeof(ZETL.App).Assembly.GetType("ZETL.Program")!
             .GetMethod("CreateWindowsOptions", BindingFlags.Static | BindingFlags.NonPublic);
@@ -85,6 +87,27 @@ public sealed class ProbeApp : ZETL.App
         Console.WriteLine($"Native popup probe: {Entry.Cycles} empty open/close cycles, {Entry.Mode}; rendering enabled, no notes saved.");
         await Task.Delay(500);
         Sample("Before opening");
+        TrayIcon? tray = null;
+        if (Entry.TrayWarmup)
+        {
+            var uiAssembly = Assembly.Load("Zetl.UI");
+            var themeManager = Activator.CreateInstance(uiAssembly.GetType("ZETL.ZetlThemeManager")!, [Current])!;
+            var theme = coreAssembly.GetType("ZETL.ZetlThemeDefaults")!.GetMethod("CreateDusk")!.Invoke(null, null);
+            themeManager.GetType().GetMethod("Apply")!.Invoke(themeManager, [theme, "System"]);
+            Sample("After theme");
+            var menu = new NativeMenu();
+            foreach (var label in new[] { "Open Board", "Open Shift Board", "New Project", "Take the Tour",
+                "Measure My Taps and Holds", "Notification History", "Clear Notification History",
+                "Pass-through On/Off for Now", "Settings", "-", "Open Kastn", "-", "Quit" })
+                menu.Items.Add(label == "-" ? new NativeMenuItemSeparator() : new NativeMenuItem(label));
+            var icon = (WindowIcon)appAssembly.GetType("ZETL.ZetlAvaloniaHost")!
+                .GetMethod("CreateTrayWindowIcon", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, [0x808080u, 0x808080u])!;
+            tray = new TrayIcon { Icon = icon, Menu = menu, IsVisible = false };
+            Sample("After tray icon");
+            uiAssembly.GetType("ZETL.ZetlTrayMenuWarmup")!.GetMethod("Prepare")!.Invoke(null, [menu]);
+            Sample("After tray layout warmup");
+        }
         for (var cycle = 1; cycle <= Entry.Cycles; cycle++)
         {
             if (Entry.Mode != "popup")
@@ -116,6 +139,7 @@ public sealed class ProbeApp : ZETL.App
         // not used as a brittle cross-machine pass/fail threshold.
         if (weakWindows.Any(w => w.IsAlive)) throw new InvalidOperationException("Closed note windows remain rooted.");
         ((Window?)indicatorType.GetField("window", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(indicator))?.Close();
+        tray?.Dispose();
     }
 
     private static async Task<double> OpenAndClose(ConstructorInfo constructor, object store, object project, object bucket, List<WeakReference> weakWindows)

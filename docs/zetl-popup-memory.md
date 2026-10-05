@@ -1,12 +1,38 @@
 # Zetl popup memory
 
+## Machine-level debugging overhead
+
+The reported real-profile session had **full page heap enabled for Zetl.exe**:
+the image-specific registry values were `GlobalFlag = 0x02000000` and
+`PageHeapFlags = 3`, and the process loaded `verifier.dll`. After switching the
+renderer, that host still used roughly 209 MiB of private memory with only
+19 MiB of live managed objects after a diagnostic collection. Its committed
+private allocations occupied almost 40,000 memory regions.
+
+Full page heap adds guarded memory around native allocations and can consume
+substantially more memory than normal operation. Its image-specific settings
+persist across builds and take effect at process start. See Microsoft's
+[GFlags and PageHeap](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/gflags-and-pageheap)
+and [Enable page heap](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/enable-page-heap).
+This explains why the production executable's footprint differed so sharply
+from the native probe, whose executable name had no page-heap flag.
+
+The two Zetl-specific values were backed up to
+`artifacts/zetl-popup-memory/pageheap-settings-backup.json`. Removing only the
+page-heap bit and its `PageHeapFlags` value requires administrator access, then
+a Zetl restart. Other image flags and other applications' settings must be
+preserved. Check for page heap before interpreting process-memory comparisons;
+removing it is a debugging-configuration repair, separate from a code leak fix.
+
+## Renderer and popup lifetime
+
 The Ctrl+X quick-note path creates a fresh note window for each hold. Its
 click-away registration is removed on close, placement uses weak keys, and the
 activation/arming timers stop when the window closes. Native repeated-open
 measurements found every closed note window collectable. They did not reproduce
 an indefinitely growing managed-window leak in isolation.
 
-The substantial first-use and retained cost came from Windows rendering: the
+An additional first-use and retained cost came from Windows rendering: the
 default ANGLE/D3D renderer initializes a device and keeps native graphics
 resources even after the small note window closes. Zetl now uses software Skia
 on Windows. This avoids that renderer's device/cache footprint without forcing
@@ -27,7 +53,9 @@ dotnet run --project tools/PopupMemoryProbe -- 100 both --detailed --opacity=90
 Modes `popup`, `indicator`, and `both` separate the two rendering paths. The probe
 uses Zetl's production Windows options when available; `--default-renderer`
 restores Avalonia's default renderer for comparison. `--software` and
-`--default-renderer --gpu-cache=16` support focused experiments. It measures working set, private
+`--default-renderer --gpu-cache=16` support focused experiments. `--tray-warmup`
+also applies the built-in Dusk theme and prepares a native tray/menu against
+the same COM support as Zetl, without showing a tray icon. It measures working set, private
 bytes, managed bytes, process handles, collections, CPU time, and popup frame
 delivery. At the end it performs diagnostic-only collections and fails if any
 closed note window remains rooted. Memory sizes are observations, not portable
