@@ -635,6 +635,17 @@ per miss but runs off the UI thread; evicted distant previews decode again.
 See [`kastn-picture-performance.md`](kastn-picture-performance.md) for the fixture
 limits and remaining real disk/IPC/JPEG/native-frame measurements.
 
+The many-bucket container pass is complete. At 64 sections/buckets, the reader
+realizes headings/group boxes near the viewport and the board creates nearby
+column shells. Small reader sections form one viewport unit; large sections keep
+their note viewport. Board spacers preserve empty columns and horizontal extent,
+and focused/open/busy composers retain their shells. Distant navigation, fresh
+drag contexts, nested heading-only parents, both scroll anchors, latest selection,
+drafts, retired actions and picture completion/moves have sixteen focused UI
+cases. Full result models, project grouping, filters and snapshot/index scans
+remain measurement targets. See the performance document for measurements and
+the distant-revisit allocation tradeoff.
+
 1. Remove unused slip-list presentation work before adding more caches.
 2. Derive selection and availability once per UI update. Reuse project indexes
    for target resolution instead of repeatedly scanning all slips and buckets.

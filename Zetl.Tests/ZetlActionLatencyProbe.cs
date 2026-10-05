@@ -68,6 +68,7 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             Time("Initial project", () => Apply(current));
             var reader = (KASTN.KastnReaderPresenter)typeof(KASTN.MainWindow).GetField("readerPresenter", flags)!.GetValue(window)!;
             output.WriteLine($"Reader blocks realized initially: {reader.Blocks.Count} / {size}");
+            output.WriteLine($"Reader headings realized initially: {reader.RealizedHeadingCount} / {buckets}");
             output.WriteLine($"Tree rows realized initially: {window.projectTree.GetVisualDescendants().OfType<TreeViewItem>().Count()} / {size + buckets}");
             Assert.Empty(window.slipInspectorFieldsPanel.Children);
             Time("Identical snapshot", () => Apply(current), 5);
@@ -115,6 +116,7 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             Time("Board first render", () => window.viewModeBoardButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)));
             var board = (KASTN.KastnBoardPresenter)typeof(KASTN.MainWindow).GetField("boardPresenter", flags)!.GetValue(window)!;
             output.WriteLine($"Board cards realized initially: {board.RealizedCardCount} / {size}");
+            output.WriteLine($"Board column shells realized initially: {board.RealizedColumnCount} / {buckets}");
             Time("Board jump to last / first", () =>
             {
                 board.UpdateSelection(current.Slips[^1].Id);

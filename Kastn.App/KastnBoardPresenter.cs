@@ -46,11 +46,13 @@ internal sealed class KastnBoardPresenter : IDisposable
     private bool disposed;
     private long selectionVersion;
     private bool usesViewport;
+    private bool usesColumnViewport;
     private KastnBoardAppearance appearance = new(null, null, null, null);
     public bool IsDisposed => disposed;
     public Border? Card(string id) => boardCards.GetValueOrDefault(id)?.CardBorder;
     public StackPanel? ColumnCards(string id) => boardColumns.GetValueOrDefault(id)?.CardsPanel;
     public int RealizedCardCount => boardCards.Count;
+    public int RealizedColumnCount => boardColumns.Count;
     public IEnumerable<Control> RealizedColumnCards(string id) => boardCards.Values
         .Where(card => card.BucketId == id).Select(card => (Control)card.Wrapper);
 
@@ -66,9 +68,11 @@ internal sealed class KastnBoardPresenter : IDisposable
         if (rebuilt)
         {
             var offset = scroll.Offset;
+            var columnAnchor = usesColumnViewport ? CaptureBoardAnchor() : null;
             var columnOffsets = boardColumns.Select(pair =>
-                (Column: pair.Value, Offset: pair.Value.Scroll.Offset, Anchor: CaptureColumnAnchor(pair.Key, pair.Value))).ToArray();
-            var useViewport = inputs.Slips.Count >= 128 || inputs.Slips.Count(slip => slip.Picture is not null) >= 16;
+                (Id: pair.Key, Column: pair.Value, Offset: pair.Value.Scroll.Offset, Anchor: CaptureColumnAnchor(pair.Key, pair.Value))).ToArray();
+            usesColumnViewport = inputs.Index.OrderedBuckets().Take(64).Count() >= 64;
+            var useViewport = usesColumnViewport || inputs.Slips.Count >= 128 || inputs.Slips.Count(slip => slip.Picture is not null) >= 16;
             if (usesViewport != useViewport)
             {
                 foreach (var column in boardColumns.Values) column.Viewport.Release();
@@ -83,8 +87,15 @@ internal sealed class KastnBoardPresenter : IDisposable
             if (sameProject)
             {
                 RestoreScroll(scroll, offset);
-                foreach (var (column, columnOffset, anchor) in columnOffsets)
+                if (columnAnchor is { } savedColumn && columnSlots.TryGetValue(savedColumn.Id, out var slot))
                 {
+                    var origin = (panel.TranslatePoint(default, scroll)?.X ?? -scroll.Offset.X) + scroll.Offset.X;
+                    RestoreScroll(scroll, new Vector(slot.Index * (280 + panel.Spacing) + origin - savedColumn.X, offset.Y));
+                    UpdateColumnViewports();
+                }
+                foreach (var (id, column, columnOffset, anchor) in columnOffsets)
+                {
+                    if (!IsLive(id, column)) continue;
                     RestoreScroll(column.Scroll, columnOffset);
                     if (usesViewport && column.StructureChanged && anchor is { } savedAnchor)
                         RestoreColumnAnchor(column, savedAnchor);
@@ -170,7 +181,20 @@ internal sealed class KastnBoardPresenter : IDisposable
 
     private readonly Dictionary<string, BoardColumnUi> boardColumns = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BoardCardUi> boardCards = new(StringComparer.Ordinal);
-    private IReadOnlyList<(string Id, BoardColumnUi Column)> orderedColumns = [];
+    // Distant columns keep snapshot data and their scroll position, without a
+    // TextBox, bindings, scroll viewer or card rows. Open composers stay live.
+    private sealed class BoardColumnSlot
+    {
+        public required ZetlBucketSnapshot Bucket { get; set; }
+        public required KastnBoardRenderInputs Inputs { get; set; }
+        public IReadOnlyList<ZetlSlipSnapshot> Slips { get; set; } = [];
+        public int Index { get; set; }
+        public Vector Offset { get; set; }
+        public (string Id, double Y)? Anchor { get; set; }
+    }
+    private readonly Dictionary<string, BoardColumnSlot> columnSlots = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BoardColumnSlot> slipColumns = new(StringComparer.Ordinal);
+    private IReadOnlyList<BoardColumnSlot> orderedColumns = [];
 
     // Dual (text + picture) cards the user expanded to peek at the picture.
     // Keyed by slip id rather than stored on the card so a peek survives the
@@ -189,36 +213,27 @@ internal sealed class KastnBoardPresenter : IDisposable
             .GroupBy(slip => slip.BucketId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<ZetlSlipSnapshot>)g.ToList(), StringComparer.Ordinal);
 
-        var desiredColumns = new List<Control>();
-        var ordered = new List<(string, BoardColumnUi)>();
+        var ordered = new List<BoardColumnSlot>();
         var liveBucketIds = new HashSet<string>(StringComparer.Ordinal);
         var liveSlipIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var bucket in buckets)
         {
             liveBucketIds.Add(bucket.Id);
             var slips = visibleSlipsByBucket.TryGetValue(bucket.Id, out var found) ? found : [];
-            if (!boardColumns.TryGetValue(bucket.Id, out var column))
-            {
-                column = CreateBoardColumn(bucket, inputs);
-                boardColumns[bucket.Id] = column;
-            }
-
-            // Drag markers bind live node flags, so reused columns must adopt the
-            // current projection's context (including changes to Deleted mode).
-            column.TitleText.Text = bucket.Name;
-            column.CountText.Text = $"({slips.Count})";
-            column.Wrapper.DataContext =
-                inputs.NodeContext(bucket.Id);
-
-            ReconcileColumnCards(column, bucket, slips, liveSlipIds, inputs, desiredColumns.Count);
-            desiredColumns.Add(column.Wrapper);
-            ordered.Add((bucket.Id, column));
+            if (!columnSlots.TryGetValue(bucket.Id, out var slot))
+                columnSlots[bucket.Id] = slot = new() { Bucket = bucket, Inputs = inputs };
+            slot.Bucket = bucket;
+            slot.Inputs = inputs;
+            slot.Slips = slips;
+            slot.Index = ordered.Count;
+            ordered.Add(slot);
+            foreach (var slip in slips) liveSlipIds.Add(slip.Id);
         }
 
-        foreach (var staleId in boardColumns.Keys.Where(id => !liveBucketIds.Contains(id)).ToList())
+        foreach (var staleId in columnSlots.Keys.Where(id => !liveBucketIds.Contains(id)).ToArray())
         {
-            boardColumns[staleId].Viewport.Release();
-            boardColumns.Remove(staleId);
+            RetireColumnShell(columnSlots[staleId]);
+            columnSlots.Remove(staleId);
         }
 
         foreach (var staleId in boardCards.Keys.Where(id => !liveSlipIds.Contains(id)).ToList())
@@ -227,8 +242,11 @@ internal sealed class KastnBoardPresenter : IDisposable
         }
         expandedBoardPictures.RemoveWhere(id => !liveSlipIds.Contains(id));
 
-        KastnPanelReconciler.SyncChildren(panel.Children, desiredColumns);
         orderedColumns = ordered;
+        slipColumns.Clear();
+        foreach (var slot in ordered)
+            foreach (var slip in slot.Slips) slipColumns[slip.Id] = slot;
+        UpdateColumnViewports(reconcile: true);
     }
 
     public void Clear()
@@ -241,6 +259,9 @@ internal sealed class KastnBoardPresenter : IDisposable
         foreach (var card in boardCards.Values) ReleasePicture(card);
         boardCards.Clear();
         boardColumns.Clear();
+        columnSlots.Clear();
+        slipColumns.Clear();
+        usesColumnViewport = false;
         orderedColumns = [];
         panel.Children.Clear();
         expandedBoardPictures.Clear();
@@ -252,7 +273,7 @@ internal sealed class KastnBoardPresenter : IDisposable
         BoardColumnUi column,
         ZetlBucketSnapshot bucket,
         IReadOnlyList<ZetlSlipSnapshot> slips,
-        HashSet<string> liveSlipIds, KastnBoardRenderInputs inputs, int columnIndex)
+        KastnBoardRenderInputs inputs, int columnIndex)
     {
         var desiredCards = new List<Control>();
         column.StructureChanged = false;
@@ -260,7 +281,6 @@ internal sealed class KastnBoardPresenter : IDisposable
         var columnIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var slip in slips)
         {
-            liveSlipIds.Add(slip.Id);
             columnIds.Add(slip.Id);
             var renderKey = BoardCardRenderKey(slip, bucket, inputs.Key);
             Control Realize()
@@ -870,6 +890,18 @@ internal sealed class KastnBoardPresenter : IDisposable
         return left + 280 >= scroll.Offset.X - 280 && left <= scroll.Offset.X + width + 280;
     }
 
+    private (string Id, double X)? CaptureBoardAnchor()
+    {
+        (string Id, double X)? result = null;
+        foreach (var (id, column) in boardColumns)
+        {
+            if (column.Wrapper.TranslatePoint(default, scroll) is not { } point
+                || point.X + 280 <= 0 || point.X >= scroll.Viewport.Width) continue;
+            if (result is null || point.X < result.Value.X) result = (id, point.X);
+        }
+        return result;
+    }
+
     private void RetireColumnViewport(string id, BoardColumnUi column)
     {
         if (!column.ViewportActive) return;
@@ -879,13 +911,47 @@ internal sealed class KastnBoardPresenter : IDisposable
         column.ViewportActive = false;
     }
 
-    private void UpdateColumnViewports()
+    private void RetireColumnShell(BoardColumnSlot slot)
     {
-        if (!usesViewport) return;
-        for (var index = 0; index < orderedColumns.Count; index++)
+        var id = slot.Bucket.Id;
+        if (!boardColumns.Remove(id, out var column)) return;
+        slot.Offset = column.Scroll.Offset;
+        slot.Anchor = CaptureColumnAnchor(id, column) ?? column.SavedAnchor ?? column.LastAnchor;
+        column.Viewport.Release();
+        foreach (var cardId in boardCards.Where(pair => pair.Value.BucketId == id).Select(pair => pair.Key).ToArray())
+            RemoveBoardCard(cardId);
+    }
+
+    private void UpdateColumnViewports(bool reconcile = false)
+    {
+        foreach (var slot in orderedColumns)
         {
-            var (id, column) = orderedColumns[index];
-            var wanted = ColumnNearViewport(index) || column.Viewport.IsKeyboardFocusWithin;
+            var id = slot.Bucket.Id;
+            boardColumns.TryGetValue(id, out var column);
+            var near = ColumnNearViewport(slot.Index);
+            if (usesColumnViewport && !near && column?.Wrapper.IsKeyboardFocusWithin != true
+                && column?.Composer.IsVisible != true && column?.ComposerBusy != true)
+            {
+                RetireColumnShell(slot);
+                continue;
+            }
+            var created = column is null;
+            if (column is null)
+                boardColumns[id] = column = CreateBoardColumn(slot.Bucket, slot.Inputs);
+            if (created || reconcile)
+            {
+                column!.TitleText.Text = slot.Bucket.Name;
+                column.CountText.Text = $"({slot.Slips.Count})";
+                column.Wrapper.DataContext = slot.Inputs.NodeContext(id);
+                ReconcileColumnCards(column, slot.Bucket, slot.Slips, slot.Inputs, slot.Index);
+                if (created)
+                {
+                    column.Scroll.Offset = slot.Offset;
+                    column.SavedAnchor = slot.Anchor;
+                }
+            }
+            if (!usesViewport) continue;
+            var wanted = near || column!.Viewport.IsKeyboardFocusWithin;
             if (wanted != column.ViewportActive)
             {
                 if (wanted)
@@ -907,22 +973,46 @@ internal sealed class KastnBoardPresenter : IDisposable
                 RestoreColumnAnchor(column, anchor);
             }
         }
+        SyncColumnShells();
+    }
+
+    private void SyncColumnShells()
+    {
+        var desired = new List<Control>();
+        var gap = 0;
+        void AddGap()
+        {
+            if (gap == 0) return;
+            desired.Add(new Border { Width = gap * (280 + panel.Spacing) - panel.Spacing });
+            gap = 0;
+        }
+        foreach (var slot in orderedColumns)
+        {
+            if (boardColumns.TryGetValue(slot.Bucket.Id, out var column))
+            {
+                AddGap();
+                desired.Add(column.Wrapper);
+            }
+            else gap++;
+        }
+        AddGap();
+        KastnPanelReconciler.SyncChildren(panel.Children, desired);
     }
 
     private void ShowViewportCard(string id)
     {
-        foreach (var (bucketId, column) in boardColumns)
-        {
-            if (!column.Rows.ContainsKey(id)) continue;
-            column.Wrapper.BringIntoView();
-            scroll.UpdateLayout();
-            UpdateColumnViewports();
-            column.AnchorVersion++;
-            column.Viewport.ShowSlip(id);
-            column.Scroll.UpdateLayout();
-            column.LastAnchor = CaptureColumnAnchor(bucketId, column) ?? column.LastAnchor;
-            break;
-        }
+        if (!slipColumns.TryGetValue(id, out var slot)) return;
+        var left = slot.Index * (280 + panel.Spacing);
+        if (left < scroll.Offset.X) scroll.Offset = new Vector(left, scroll.Offset.Y);
+        else if (left + 280 > scroll.Offset.X + scroll.Viewport.Width)
+            scroll.Offset = new Vector(left + 280 - scroll.Viewport.Width, scroll.Offset.Y);
+        UpdateColumnViewports();
+        scroll.UpdateLayout();
+        var column = boardColumns[slot.Bucket.Id];
+        column.AnchorVersion++;
+        column.Viewport.ShowSlip(id);
+        column.Scroll.UpdateLayout();
+        column.LastAnchor = CaptureColumnAnchor(slot.Bucket.Id, column) ?? column.LastAnchor;
     }
 
     private (string Id, double Y)? CaptureColumnAnchor(string bucketId, BoardColumnUi column)
@@ -954,7 +1044,7 @@ internal sealed class KastnBoardPresenter : IDisposable
         Dispatcher.UIThread.Post(() =>
         {
             if (active && !disposed && lifecycle == viewportVersion && column.ViewportActive
-                && column.AnchorVersion == version && orderedColumns.Any(pair => ReferenceEquals(pair.Column, column)))
+                && column.AnchorVersion == version && boardColumns.Values.Contains(column))
                 RestoreColumnAnchorCore(column, anchor);
         }, DispatcherPriority.Background);
     }

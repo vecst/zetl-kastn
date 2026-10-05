@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Threading;
 using ZETL;
@@ -21,6 +22,8 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
     // Keep the simpler, identity-preserving reconciliation for small documents.
     private const int ViewportThreshold = 128;
     private const int PictureViewportThreshold = 16;
+    private const int SectionViewportThreshold = 64;
+    private const int SmallSectionLimit = 8;
     private sealed record ReaderBlock(string Id, Border Block, string RenderKey, KastnRenderedSlipContent? Content,
         Image? Image, TextBlock? PictureStatus)
     {
@@ -34,6 +37,14 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
     private readonly Dictionary<string, Border> blocks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, KastnViewportItems> viewportGroups = new(StringComparer.Ordinal);
     private readonly Dictionary<string, KastnViewportItems.Row> viewportRows = new(StringComparer.Ordinal);
+    // A second viewport bounds headings and boxed groups in many-bucket views.
+    // Each live section keeps the existing note viewport and rendering rules.
+    private readonly KastnViewportItems sectionsViewport = new();
+    private readonly Dictionary<string, KastnViewportItems.Row> sectionRows = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> slipSections = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, StackPanel> sectionCache = new(StringComparer.Ordinal);
+    private bool usesSectionViewport;
+    public int RealizedHeadingCount => headingCache.Count;
     private bool usesViewport;
     private bool viewportStructureChanged;
     public IReadOnlyDictionary<string, Border> Blocks => blocks;
@@ -109,13 +120,17 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         var visible = inputs.Slips;
         blocks.Clear();
         var groups = ZetlViewRenderer.BuildGroups(project, visible, inputs.View);
-        var useViewport = groups.Sum(group => group.Slips.Count) >= ViewportThreshold
+        var useSections = groups.Count >= SectionViewportThreshold;
+        var useViewport = useSections || groups.Sum(group => group.Slips.Count) >= ViewportThreshold
             || groups.Sum(group => group.Slips.Count(slip => slip.Type == ZetlSlipType.Picture)) >= PictureViewportThreshold;
-        if (useViewport != usesViewport)
+        if (useViewport != usesViewport || useSections != usesSectionViewport)
         {
             ClearViewport();
             ReleaseCachedBlocks();
+            headingCache.Clear();
+            groupCache.Clear();
             usesViewport = useViewport;
+            usesSectionViewport = useSections;
         }
         if (groups.Count == 0)
         {
@@ -142,6 +157,8 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         var renderedSlipIds = new HashSet<string>(StringComparer.Ordinal);
         var renderedGroupKeys = new HashSet<string>(StringComparer.Ordinal);
         var desiredChildren = new List<Control>();
+        var desiredSections = new List<KastnViewportItems.Row>();
+        slipSections.Clear();
         foreach (var group in groups)
         {
             // A container bucket ("group") wraps its heading and slips in a bordered box;
@@ -150,33 +167,11 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
             var groupKey = group.HeaderBucket?.Id ?? $"heading:{group.Heading}";
             renderedGroupKeys.Add(groupKey);
 
-            var headingText = ZetlViewRenderer.HeadingText(group, inputs.View);
-            var headingKey =
-                $"{headingText}|{group.EffectiveLevel}|{group.HeadingBold}|{group.HeadingAlign}|{group.Depth}|{isGroup}";
-            if (!headingCache.TryGetValue(groupKey, out var heading)
-                || !string.Equals(heading.RenderKey, headingKey, StringComparison.Ordinal))
-            {
-                heading = (new TextBlock
-                {
-                    Text = headingText,
-                    FontSize = Math.Max(14, 27 - (3 * group.EffectiveLevel)),
-                    FontWeight = group.HeadingBold ? FontWeight.Bold : FontWeight.SemiBold,
-                    TextAlignment = ZetlViewRenderer.NormalizeHeadingAlign(group.HeadingAlign) switch
-                    {
-                        "center" => TextAlignment.Center,
-                        "right" => TextAlignment.Right,
-                        _ => TextAlignment.Left,
-                    },
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Avalonia.Thickness(isGroup ? 0 : group.Depth * 14, isGroup ? 0 : 8, 0, 2)
-                }, headingKey);
-                headingCache[groupKey] = heading;
-            }
-
-            var groupChildren = isGroup ? new List<Control>() : desiredChildren;
-            groupChildren.Add(heading.Heading);
-            var rows = useViewport ? new List<KastnViewportItems.Row>() : null;
-
+            // A few notes fit in one section unit. Avoid nested height estimates
+            // for these; large sections still need their own note viewport.
+            var rows = useViewport && (!useSections || group.Slips.Count > SmallSectionLimit)
+                ? new List<KastnViewportItems.Row>() : null;
+            var eagerBlocks = new List<Func<Control>>();
             // Each note carries its own list kind (authoritative, not a view-wide
             // style); ordered notes count up over their run and any non-ordered note
             // or picture restarts it.
@@ -217,39 +212,100 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
                     row.Retire = block => RetireBlock(slip.Id, (Border)block);
                     rows.Add(row);
                 }
-                else groupChildren.Add(Realize());
+                else eagerBlocks.Add(Realize);
+                slipSections[slip.Id] = groupKey;
             }
 
-            if (rows is not null)
+            IReadOnlyList<Control> ReconcileSection()
             {
-                if (!viewportGroups.TryGetValue(groupKey, out var items))
-                    viewportGroups[groupKey] = items = new();
-                items.Spacing = isGroup ? 2 : panel.Spacing;
-                viewportStructureChanged |= items.SetRows(rows);
-                groupChildren.Add(items);
-            }
-
-            if (isGroup)
-            {
-                if (!groupCache.TryGetValue(groupKey, out var box))
+                var headingText = ZetlViewRenderer.HeadingText(group, inputs.View);
+                var headingKey =
+                    $"{headingText}|{group.EffectiveLevel}|{group.HeadingBold}|{group.HeadingAlign}|{group.Depth}|{isGroup}";
+                if (!headingCache.TryGetValue(groupKey, out var heading)
+                    || !string.Equals(heading.RenderKey, headingKey, StringComparison.Ordinal))
                 {
-                    var content = new StackPanel { Spacing = 2 };
-                    box = (new Border
+                    heading = (new TextBlock
                     {
-                        BorderThickness = new Avalonia.Thickness(1),
-                        BorderBrush = inputs.Appearance.BorderBrush ?? Brushes.Gray,
-                        CornerRadius = new Avalonia.CornerRadius(6),
-                        Padding = new Avalonia.Thickness(12, 8),
-                        Child = content
-                    }, content);
-                    groupCache[groupKey] = box;
+                        Text = headingText,
+                        FontSize = Math.Max(14, 27 - (3 * group.EffectiveLevel)),
+                        FontWeight = group.HeadingBold ? FontWeight.Bold : FontWeight.SemiBold,
+                        TextAlignment = ZetlViewRenderer.NormalizeHeadingAlign(group.HeadingAlign) switch
+                        {
+                            "center" => TextAlignment.Center,
+                            "right" => TextAlignment.Right,
+                            _ => TextAlignment.Left,
+                        },
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Avalonia.Thickness(isGroup ? 0 : group.Depth * 14, isGroup ? 0 : 8, 0, 2)
+                    }, headingKey);
+                    headingCache[groupKey] = heading;
                 }
 
-                box.Box.Margin = new Avalonia.Thickness(group.Depth * 14, 10, 0, 4);
-                KastnPanelReconciler.SyncChildren(box.Content.Children, groupChildren);
-                desiredChildren.Add(box.Box);
+                var groupChildren = new List<Control>();
+                groupChildren.Add(heading.Heading);
+
+                groupChildren.AddRange(eagerBlocks.Select(realize => realize()));
+                if (rows is not null)
+                {
+                    if (!viewportGroups.TryGetValue(groupKey, out var items))
+                        viewportGroups[groupKey] = items = new();
+                    items.Spacing = isGroup ? 2 : panel.Spacing;
+                    viewportStructureChanged |= items.SetRows(rows);
+                    groupChildren.Add(items);
+                }
+
+                if (isGroup)
+                {
+                    if (!groupCache.TryGetValue(groupKey, out var box))
+                    {
+                        var content = new StackPanel { Spacing = 2 };
+                        box = (new Border
+                        {
+                            BorderThickness = new Avalonia.Thickness(1),
+                            BorderBrush = inputs.Appearance.BorderBrush ?? Brushes.Gray,
+                            CornerRadius = new Avalonia.CornerRadius(6),
+                            Padding = new Avalonia.Thickness(12, 8),
+                            Child = content
+                        }, content);
+                        groupCache[groupKey] = box;
+                    }
+
+                    box.Box.Margin = new Avalonia.Thickness(group.Depth * 14, 10, 0, 4);
+                    KastnPanelReconciler.SyncChildren(box.Content.Children, groupChildren);
+                    return [box.Box];
+                }
+                return groupChildren;
             }
+
+            Control RealizeSection()
+            {
+                var children = ReconcileSection();
+                if (isGroup) return children[0];
+                if (!sectionCache.TryGetValue(groupKey, out var section))
+                    sectionCache[groupKey] = section = new StackPanel { Spacing = panel.Spacing };
+                KastnPanelReconciler.SyncChildren(section.Children, children);
+                return section;
+            }
+
+            if (usesSectionViewport)
+            {
+                if (!sectionRows.TryGetValue(groupKey, out var row))
+                    sectionRows[groupKey] = row = new(groupKey);
+                row.Realize = RealizeSection;
+                row.Retire = section => RetireSection(groupKey, section);
+                desiredSections.Add(row);
+            }
+            else desiredChildren.AddRange(ReconcileSection());
         }
+
+        if (usesSectionViewport)
+        {
+            sectionsViewport.Spacing = panel.Spacing;
+            viewportStructureChanged |= sectionsViewport.SetRows(desiredSections);
+            desiredChildren.Add(sectionsViewport);
+        }
+        foreach (var key in sectionRows.Keys.Where(key => !renderedGroupKeys.Contains(key)).ToArray())
+            sectionRows.Remove(key);
 
         KastnPanelReconciler.SyncChildren(panel.Children, desiredChildren);
 
@@ -265,6 +321,10 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         {
             if (slipCache.Remove(staleId, out var retired)) ReleasePicture(retired);
         }
+        // Small sections reconcile ordinary children. A note moved to a distant
+        // section has no new control yet and must release its old actions/lease.
+        foreach (var block in slipCache.Values.Where(block => block.Block.Parent is null).ToArray())
+            RetireBlock(block.Id, block.Block);
 
         foreach (var staleKey in headingCache.Keys.Where(key => !renderedGroupKeys.Contains(key)).ToList())
         {
@@ -304,8 +364,23 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
         slipCache.Clear();
     }
 
+    private void RetireSection(string key, Control section)
+    {
+        if (viewportGroups.Remove(key, out var items)) items.Release();
+        foreach (var block in section.GetLogicalDescendants().OfType<Border>())
+            if (block.Tag is string id) RetireBlock(id, block);
+        headingCache.Remove(key);
+        groupCache.Remove(key);
+        sectionCache.Remove(key);
+    }
+
     private void ClearViewport()
     {
+        sectionsViewport.Release();
+        sectionRows.Clear();
+        slipSections.Clear();
+        sectionCache.Clear();
+        usesSectionViewport = false;
         foreach (var items in viewportGroups.Values) items.Release();
         viewportGroups.Clear();
         viewportRows.Clear();
@@ -409,8 +484,10 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
             var lease = await pictures.AcquireDecodedAsync(content, 1100, cancellationToken);
             if (!IsCurrent()) { lease.Dispose(); return; }
             block.PictureLease = lease;
+            var anchor = usesSectionViewport ? CaptureViewportAnchor() : null;
             block.Image!.Source = lease.Bitmap;
             block.PictureStatus!.IsVisible = false;
+            if (anchor is { } savedAnchor) RestoreViewportAnchor(savedAnchor);
         }
         catch (Exception ex) when (KastnPictureCache.IsLoadFailure(ex))
         {
@@ -450,6 +527,14 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 
     private void ShowViewportSlip(string id)
     {
+        if (usesSectionViewport && slipSections.TryGetValue(id, out var key))
+        {
+            sectionsViewport.ShowSlip(key);
+            scroll.UpdateLayout();
+            if (viewportGroups.TryGetValue(key, out var group)) group.ShowSlip(id);
+            else if (blocks.TryGetValue(id, out var block)) block.BringIntoView();
+            return;
+        }
         foreach (var items in viewportGroups.Values)
             if (items.ShowSlip(id)) break;
     }
@@ -468,7 +553,21 @@ internal sealed class KastnReaderPresenter(StackPanel panel, ScrollViewer scroll
 
     private void RestoreViewportAnchor((string Id, double Y) anchor)
     {
-        if (!viewportRows.ContainsKey(anchor.Id)) return;
+        RestoreViewportAnchorCore(anchor);
+        if (!usesSectionViewport) return;
+        var version = selectionVersion;
+        // Nested section estimates settle with EffectiveViewport after layout.
+        // Repeat the logical anchor unless a newer navigation took ownership.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (active && !disposed && selectionVersion == version)
+                RestoreViewportAnchorCore(anchor);
+        }, DispatcherPriority.Background);
+    }
+
+    private void RestoreViewportAnchorCore((string Id, double Y) anchor)
+    {
+        if (!slipSections.ContainsKey(anchor.Id)) return;
         ShowViewportSlip(anchor.Id);
         scroll.UpdateLayout();
         if (blocks.TryGetValue(anchor.Id, out var block) && block.TranslatePoint(default, scroll) is { } point)

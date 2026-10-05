@@ -277,6 +277,60 @@ ancestor counts, representation changes and unsaved draft/focus/viewport retenti
 A deterministic 120-step sequence compares incremental backlinks against the
 existing full builder after every mixed edit using JSON-deserialized snapshots.
 
+## Many-bucket containers
+
+At 64 rendered reader sections, a section viewport now realizes headings and
+boxed groups only near the scroll position. Sections with up to eight slips
+realize those slips together; larger sections retain an inner note viewport.
+This avoids nested height-estimate work for the common case of many small buckets
+while still bounding controls inside large buckets. Heading styles, nesting,
+list numbering and group borders use the existing renderer. Distant selection
+resolves the section before the slip, and image completion restores a logical
+visible-slip anchor as section heights settle.
+
+At 64 board buckets, distant columns retain snapshot data and scroll anchors
+without creating headers, bindings, composers, scroll viewers or card rows.
+Nearby shells cover the horizontal viewport plus one column of overscan on each
+side. Consecutive absent shells become a single spacer with the same total width,
+including empty buckets. Open/busy composers and focused columns stay live.
+Retired shells disable their actions and release pictures; returning restores
+vertical position. Snapshot edits adopt fresh drag contexts and keep the first
+visible column in place through bucket reorders.
+
+Sixteen new UI cases cover plain/boxed sections, large inner lists, heading-only
+parents, indentation, edits/removal/filter thresholds, fresh headings and drop
+contexts, empty columns, distant/latest navigation, both scroll anchors, draft
+retention, retired actions, late image loads and moved-picture lease retirement.
+The solution builds with no warnings/errors; 1,131 tests pass with two intentional
+diagnostic skips. Compared with `bda464c`, separate fresh-process headless probes
+report these UI-thread allocations:
+
+| Slips / buckets | Initial project before / after (KiB) | First board before / after (KiB) | Filter half / clear before / after (KiB) |
+| --- | ---: | ---: | ---: |
+| 1,000 / 1,000 | 189,832 / 28,502 | 297,716 / 3,707 | 47,163 / 4,855 |
+| 3,000 / 1,000 | 199,687 / 33,550 | 300,142 / 4,769 | 52,252 / 7,567 |
+
+Initial allocations fell 83–85%, first-board allocations 98–99%, and filtering
+allocations 86–90%. Initial reader blocks fell from 1,000 / 1,005 to 11 / 15;
+the new reader retains 11 / 5 headings and the board retains six of 1,000 column
+shells in these fixtures. At 3,000 slips, reverse-reader allocation fell from
+136,991 to 7,839 KiB; full reverse-order allocation fell from 141,659 to 16,383 KiB.
+
+Observed first-board layout times were 1,902 → 93 ms and 1,938 → 116 ms;
+initial application was 1,907 → 571 ms and 1,660 → 570 ms. These are headless
+layout/dispatcher observations, with no native pixels, GPU or frame delivery.
+JIT, GC and machine-load variation apply; the runs do not establish a uniform
+timing improvement across all phases.
+
+Distant revisits recreate released controls. Reader jump allocations rose from
+116 → 2,409 KiB and 2,147 → 2,755 KiB; board jumps rose from 2,153 → 5,126 KiB
+and 4,490 → 6,918 KiB. Observed reader jumps were 50 → 73 ms and 35 → 82 ms;
+board jumps were 121 → 115 ms and 158 → 166 ms. The gain is bounded retained UI
+and much cheaper initial/filter/reorder work, with extra revisit allocation.
+The 1,000-slip / 10-bucket control case still realizes 24 reader blocks and
+keeps the existing small-bucket reconciliation. Raw logs live under the ignored
+`artifacts/bucket-viewport` output directory.
+
 ## Reproduce
 
 The normal suite skips the diagnostic. Run it alone, with no concurrent build or
@@ -293,10 +347,10 @@ try {
 }
 ```
 
-Repeat with size/buckets `300`/`1` and `3000`/`1`. Each fresh process measures
+Repeat with size/buckets `300`/`1`, `3000`/`1`, `1000`/`1000` and `3000`/`1000`. Each fresh process measures
 initial project application, identical snapshots, one-slip edits, individual
 refresh phases, reorders, half-project search/clear, text export, board rendering,
-reader/tree/board realization counts and distant selection jumps, visible Details,
+reader/tree/board realization counts (including headings and column shells) and distant selection jumps, visible Details,
 and backlink realization/jumps. Details is measured after leaving board mode.
 The final phase applies pre-deserialized wire snapshots, and the probe asserts
 that first-open parsing covers every source while later edits parse only one.
@@ -315,9 +369,10 @@ of the suite.
 
 Tree and board controls now follow the viewport. Content-only snapshots preserve
 the tree hierarchy and expanded-node list; structural changes still reconcile
-them fully. Board row models still cover the full filtered result.
-Reader headings/group boxes and board column shells
-remain eager, so projects with very many buckets retain those costs.
+them fully. Reader sections and board column shells now follow their viewports in
+many-bucket projects. Open composers intentionally keep their own shells alive.
+Reader logical rows/sections and board bucket/slip membership still cover the
+full filtered result, and hierarchical grouping still traverses the project.
 Large backlink lists realize only nearby buttons and parse only changed sources
 after the first open. Snapshot adoption and change detection still scan complete
 snapshots; ID dictionaries still rebuild, and logical rows and source positions
