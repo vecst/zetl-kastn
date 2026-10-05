@@ -249,11 +249,10 @@ footer a { color: var(--muted); }
       <a href="#try">Try it</a>
       <a href="#shortcuts">Shortcuts</a>
       <a href="#privacy">Privacy</a>
-      <a href="#install">Install</a>
       <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/guide.md">Guide</a>
       <a href="https://github.com/vecst/zetl-kastn">GitHub</a>
     </nav>
-    <a class="btn primary small" href="https://github.com/vecst/zetl-kastn/releases/latest">Download</a>
+    <a class="btn primary small" href="#download">Download</a>
   </div>
 </header>
 
@@ -263,7 +262,7 @@ footer a { color: var(--muted); }
       <h1>Tap your shortcuts like always. <em>Hold them</em>, and Zetl keeps it.</h1>
       <p class="lede">Zetl lives inside the shortcuts your hands already know. Tap <kbd>Ctrl+C</kbd> and you copy, the way you always have. Hold it a moment longer and what you copied is saved: a quote, a number, a picture, a passing thought, without leaving the window you're in.</p>
       <div class="actions">
-        <a class="btn primary" href="https://github.com/vecst/zetl-kastn/releases/latest">Download for Windows</a>
+        <a class="btn primary" href="#download">Download for Windows</a>
         <a class="btn ghost" href="#try">Feel the hold</a>
       </div>
       <p class="meta">Free and open source · 64-bit Windows · No account, no cloud</p>
@@ -327,8 +326,8 @@ footer a { color: var(--muted); }
         <h2>Why holding</h2>
       </div>
       <div>
-        <p>There's nothing new to learn and nothing new to remember. Every shortcut still does exactly what it did. Zetl only answers when you hold one, so it works the same in every app you use.</p>
-        <p>Zetl isn't a notes app, and it isn't a clipboard manager. It's a way of keeping what passes through your hands, without stopping to decide where it goes.</p>
+        <p>Your familiar shortcuts stay within reach. Hold one to capture a copy, write a quick note, or gather saved notes into something you can paste. You can adjust the hold timing and actions in Settings.</p>
+        <p>Zetl catches what passes through your hands while you work. Kastn gives those notes a place to be organized, edited, linked, and exported when you're ready.</p>
         <p>The first time you run it, a short tour measures how long your own taps and holds take, then has you try each hold for real. A ring in the corner fills while you hold, so you can feel exactly where a tap ends and a hold begins.</p>
       </div>
     </div>
@@ -337,30 +336,30 @@ footer a { color: var(--muted); }
   <section class="block" id="shortcuts">
     <div class="wrap">
       <h2>The shortcuts</h2>
-      <p class="intro">Tap any of these and you get the ordinary shortcut. Hold it, and:</p>
+      <p class="intro">These are the default hold actions. Taps keep their ordinary behavior, except that Replay supplies the next saved item when you paste.</p>
       <table class="keys-table">
         <thead><tr><th>Hold</th><th>What happens</th></tr></thead>
         <tbody>
           <tr><td><kbd>Ctrl+C</kbd></td><td>Save what you copied, with a chance to edit it first</td></tr>
           <tr><td><kbd>Ctrl+X</kbd></td><td>Write a quick note. Anything selected comes along; press Esc and it goes back</td></tr>
           <tr><td><kbd>Ctrl+A</kbd></td><td>Select everything and save it</td></tr>
-          <tr><td><kbd>Ctrl+V</kbd></td><td>Compose: gather your notes into text, a list, or table rows, and paste</td></tr>
+          <tr><td><kbd>Ctrl+V</kbd></td><td>Open Compose to gather saved notes as Formatted text, Plain text, or TSV table rows</td></tr>
           <tr><td><kbd>Ctrl+B</kbd></td><td>Open the Board, where your projects live</td></tr>
           <tr><td><kbd>Ctrl+T</kbd></td><td>Start a new project from a template</td></tr>
           <tr><td><kbd>Ctrl+J</kbd></td><td>Switch between your Journal and your last project</td></tr>
-          <tr><td><kbd>Ctrl+R</kbd></td><td>Replay: paste a saved list back one item at a time</td></tr>
-          <tr><td><kbd>Ctrl+P</kbd></td><td>Pop: remove each saved item as you paste it</td></tr>
+          <tr><td><kbd>Ctrl+R</kbd></td><td>Toggle Replay; then tap Ctrl+V to paste saved items one at a time</td></tr>
+          <tr><td><kbd>Ctrl+P</kbd></td><td>Toggle pass-through for now: automatically captured copies you immediately paste move to Passed Through</td></tr>
           <tr><td><kbd>Ctrl+Z</kbd></td><td>Undo Zetl's last action</td></tr>
         </tbody>
       </table>
-      <p class="note">Add <kbd>Shift</kbd> for a second, separate workspace, so a work project and a personal one can run side by side. You can change what any hold does in Settings.</p>
+      <p class="note">Add <kbd>Shift</kbd> to use the second lane, with its own active project, so work and personal notes can run side by side. You can change what any hold does in Settings.</p>
     </div>
   </section>
 
   <section class="block">
     <div class="wrap">
       <h2>Where your notes go</h2>
-      <p class="intro">Anything you save without picking a project lands in your Journal, sorted by day. Start a project when you're working on something specific, and Zetl files your notes there instead. While a project is active, every ordinary copy is saved into it too, so a research session collects itself. The tray icon turns green whenever that's happening.</p>
+      <p class="intro">Anything you save without picking a project lands in your Journal, sorted by day. Start a project when you're working on something specific, and Zetl files your notes there instead. With auto-capture enabled, ordinary copies are saved into the active project too. The tray icon turns green while auto-capture is active; copies marked private are skipped.</p>
       <div class="grid two-wide">
         <div class="card"><div class="when">Always running</div><h3>Zetl</h3><p>Sits quietly by the clock and does the catching: quick, out of the way, gone as soon as you're done.</p></div>
         <div class="card"><div class="when">When you sit down</div><h3>Kastn</h3><p>The workbench for what you collected. Browse it, organize it, edit it, link notes together, and export to Markdown, HTML, or PDF.</p></div>
@@ -381,17 +380,18 @@ footer a { color: var(--muted); }
     </div>
   </section>
 
-  <section class="block" id="install">
+  <section class="block" id="download">
+    <span id="install" aria-hidden="true"></span>
     <div class="wrap split">
       <div>
-        <h2>Install</h2>
-        <p class="intro">Nothing else to install, nothing to sign up for.</p>
+        <h2>Download for Windows</h2>
+        <p class="intro">Download, extract, and run. No installer or account needed.</p>
       </div>
       <div>
         <ol class="steps">
-          <li>Download the latest <code>Zetl-…-win-x64.zip</code> from the <a href="https://github.com/vecst/zetl-kastn/releases/latest">Releases page</a>.</li>
+          <li><a href="https://github.com/vecst/zetl-kastn/releases/latest">Get the latest Windows release</a> and download <code>Zetl-…-win-x64.zip</code>.</li>
           <li>Extract the whole zip into a folder and keep its files together.</li>
-          <li>Run <code>Zetl.exe</code>. Its icon appears by the clock, and the tour opens.</li>
+          <li>Run <code>Zetl.exe</code>. Its icon appears by the clock, and the first-run tour opens. Open <code>Kastn.exe</code> when you want to organize or edit your notes.</li>
         </ol>
         <p>Zetl isn't code-signed yet, so Windows may show a SmartScreen warning the first time: choose <b>More info → Run anyway</b>. It runs on 64-bit Windows, and can't reach apps running as administrator unless it's run as administrator too.</p>
         <div class="callout"><p>Zetl is in release-candidate testing. Expect some rough edges, and please <a href="https://github.com/vecst/zetl-kastn/issues">report what you find</a>.</p></div>
@@ -406,7 +406,6 @@ footer a { color: var(--muted); }
     <nav aria-label="Project links">
       <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/guide.md">User guide</a>
       <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/building.md">Build from source</a>
-      <a href="https://github.com/vecst/zetl-kastn/releases">Releases</a>
       <a href="https://github.com/vecst/zetl-kastn">Source</a>
     </nav>
   </div>
@@ -440,7 +439,7 @@ footer a { color: var(--muted); }
       held: "Held: Compose gathered your notes, ready to paste as one piece.",
       popup: () => `<div class="ptitle">Compose <small>Journal · Today</small></div>
         <ul><li>Some books are to be tasted…</li><li>Ask Sam about the Thursday draft</li><li>12.40 · 18.75 · 9.10</li></ul>
-        <div class="row"><span class="chips"><span class="chip on">Text</span><span class="chip">List</span><span class="chip">TSV</span></span><span><kbd>Ctrl+Enter</kbd> to paste</span></div>`
+        <div class="row"><span class="chips"><span class="chip on">Formatted</span><span class="chip">Plain</span><span class="chip">TSV</span></span><span><kbd>Ctrl+Enter</kbd> to paste</span></div>`
     }
   };
 
