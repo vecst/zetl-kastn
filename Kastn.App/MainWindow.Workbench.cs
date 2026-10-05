@@ -1062,8 +1062,8 @@ internal partial class MainWindow
             currentProject.Id));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            pendingBucketSelectionId = response.Payload?.Deserialize<ZetlBucketSnapshot>(
-                ZetlProtocolJson.Options)?.Id;
+            navigation.RequestBucket(response.Payload?.Deserialize<ZetlBucketSnapshot>(
+                ZetlProtocolJson.Options)?.Id);
             await connection.SynchronizeAsync();
             statusText.Text = $"Bucket '{name}' created.";
         }
@@ -1092,9 +1092,8 @@ internal partial class MainWindow
             // Reuse the existing untitled draft rather than stacking another:
             // select it in the tree and open it in the slip editor.
             ResetSlipFilters();
-            pendingBucketSelectionId = existingDraft.BucketId;
-            pendingSlipSelectionId = existingDraft.Id;
-            pendingSlipFocus = true;
+            navigation.RequestBucket(existingDraft.BucketId);
+            navigation.RequestSlip(existingDraft.Id, focus: true);
             await connection.SynchronizeAsync();
             SetDetailPaneMode(showDetails: false);
             statusText.Text = "Finish the current untitled slip before creating another.";
@@ -1146,9 +1145,8 @@ internal partial class MainWindow
                     ZetlProtocolJson.Options);
                 if (created is not null)
                 {
-                    pendingBucketSelectionId = created.BucketId;
-                    pendingSlipSelectionId = created.Id;
-                    pendingSlipFocus = true;
+                    navigation.RequestBucket(created.BucketId);
+                    navigation.RequestSlip(created.Id, focus: true);
                     ResetSlipFilters();
                     await connection.SynchronizeAsync();
                     SetDetailPaneMode(showDetails: false);
@@ -1198,8 +1196,8 @@ internal partial class MainWindow
             currentProject.Id));
         if (response.Status == ZetlResponseStatus.Success)
         {
-            pendingBucketSelectionId = response.Payload?.Deserialize<ZetlBucketSnapshot>(
-                ZetlProtocolJson.Options)?.Id;
+            navigation.RequestBucket(response.Payload?.Deserialize<ZetlBucketSnapshot>(
+                ZetlProtocolJson.Options)?.Id);
             await connection.SynchronizeAsync();
             statusText.Text = $"Group '{name}' added — drag slips or buckets into it.";
         }
@@ -1283,8 +1281,8 @@ internal partial class MainWindow
 
             if (created is not null)
             {
-                pendingBucketSelectionId = created.BucketId;
-                pendingSlipSelectionId = created.Id;
+                navigation.RequestBucket(created.BucketId);
+                navigation.RequestSlip(created.Id);
             }
 
             await connection.SynchronizeAsync();
@@ -1331,7 +1329,7 @@ internal partial class MainWindow
         SetEditingEnabled();
         try
         {
-            pendingBucketSelectionId = bucket.Id;
+            navigation.RequestBucket(bucket.Id);
             var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.UpdateBucket,
@@ -1383,7 +1381,7 @@ internal partial class MainWindow
 
         var parentId = (parentBucketBox.SelectedItem as KastnBucketItem)?.Id;
         var renderKind = (bucketRenderKindBox.SelectedItem as KastnRenderKindItem)?.Value ?? "";
-        pendingBucketSelectionId = bucket.Id;
+        navigation.RequestBucket(bucket.Id);
         var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.UpdateBucket,
@@ -1420,7 +1418,7 @@ internal partial class MainWindow
             return;
         }
 
-        pendingBucketSelectionId = bucket.ParentBucketId;
+        navigation.RequestBucket(bucket.ParentBucketId);
         var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.DeleteBucket,
@@ -1636,8 +1634,11 @@ internal partial class MainWindow
             await connection.SynchronizeAsync();
             if (created is not null)
             {
-                await connection.NavigateToProjectAsync(created.Id);
-                statusText.Text = $"Created temporary project '{created.Name}'.";
+                var navigationResult = await navigation.NavigateProjectAsync(created.Id);
+                if (navigationResult == KastnProjectNavigationStatus.SaveBlocked)
+                    statusText.Text = $"Created temporary project '{created.Name}'. Save or resolve the current slip before opening it.";
+                else if (navigationResult == KastnProjectNavigationStatus.Completed)
+                    statusText.Text = $"Created temporary project '{created.Name}'.";
                 return;
             }
         }
@@ -1679,7 +1680,7 @@ internal partial class MainWindow
             {
                 editorState.Select(null);
                 UpdateEditorFromState();
-                await connection.NavigateToProjectAsync(null);
+                await navigation.NavigateProjectAsync(null, alreadySaved: true);
             }
 
             await connection.SynchronizeAsync();
@@ -1714,7 +1715,7 @@ internal partial class MainWindow
         // A single moved slip stays selected (re-driven through the tree so the
         // editor/inspector/View re-sync), matching drag-drop. Batch moves clear.
         var reselectSlipId = selected.Count == 1 ? selected[0].Id : null;
-        pendingBucketSelectionId = destination.Id;
+        navigation.RequestBucket(destination.Id);
         using var undoGesture = BeginGesture(selected.Count == 1 ? "Move slip" : "Move slips");
         await using var refreshBatch = connection.DeferRefresh();
         foreach (var slip in selected)
@@ -1778,9 +1779,8 @@ internal partial class MainWindow
             return;
         }
 
-        pendingBucketSelectionId = destination.Id;
-        pendingSlipSelectionId = slip.Id;
-        pendingSlipFocus = false;
+        navigation.RequestBucket(destination.Id);
+        navigation.RequestSlip(slip.Id);
         var response = await ExecuteMutationAsync(ZetlCommandEnvelope.Create(
             Guid.NewGuid().ToString("N"),
             ZetlCommandKind.MoveSlip,
@@ -1838,7 +1838,7 @@ internal partial class MainWindow
                 moved++;
                 var deleted = response.Payload?.Deserialize<ZetlSlipSnapshot>(
                     ZetlProtocolJson.Options);
-                pendingBucketSelectionId ??= deleted?.BucketId;
+                if (navigation.PendingBucketId is null) navigation.RequestBucket(deleted?.BucketId);
             }
             else
             {
@@ -2015,71 +2015,6 @@ internal partial class MainWindow
         UpdateInlineFormatButtons(context);
     }
 
-    // A clicked destination is provisional until autosave settles. Snapshots may
-    // acknowledge the old draft, but must not bind the editor from the new bucket.
-    private sealed record TreeSelectionSaveRequest(string? ProjectId, long Generation, long EditorVersion);
-    private TreeSelectionSaveRequest? pendingTreeSelectionSave;
-
-    private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (projectTree.IsReconciling) return;
-        if (refreshing)
-        {
-            return;
-        }
-
-        var node = SelectedTreeNode;
-        if (node is null)
-        {
-            return;
-        }
-
-        var slipIds = SelectedTreeSlipIds();
-        var singleSlipId = slipIds.Count == 1 ? slipIds[0] : null;
-        pendingTreeSelectionSave = null; // A later user selection supersedes an earlier wait.
-
-        // Save the current edit before switching away from the edited slip. On a
-        // failed save (conflict or offline) revert the selection so it stays put.
-        if (editorState.SlipId is { } editingId
-            && !string.Equals(editingId, singleSlipId, StringComparison.Ordinal)
-            && editorState.IsDirty)
-        {
-            var request = new TreeSelectionSaveRequest(currentProject?.Id, editHistory.Generation, editorState.SelectionVersion);
-            pendingTreeSelectionSave = request;
-            var requestedIds = projectTree.SelectedItems?.OfType<KastnTreeNode>().Select(item => item.Id).ToArray()
-                ?? [node.Id];
-            try
-            {
-                var saved = await SaveEditorAsync();
-                if (!ReferenceEquals(pendingTreeSelectionSave, request) || currentProject?.Id != request.ProjectId
-                    || request.Generation != editHistory.Generation || request.EditorVersion != editorState.SelectionVersion)
-                    return;
-                pendingTreeSelectionSave = null;
-                var wasRefreshing = refreshing;
-                refreshing = true;
-                try
-                {
-                    ApplyTreeNodeSelection(saved ? requestedIds : [editingId]);
-                }
-                finally { refreshing = wasRefreshing; }
-                if (saved) UpdateTreeSelectionUi();
-                else
-                {
-                    RefreshBucketEditor();
-                    RefreshViewer();
-                    RefreshDestinationBuckets();
-                }
-            }
-            finally
-            {
-                if (ReferenceEquals(pendingTreeSelectionSave, request)) pendingTreeSelectionSave = null;
-            }
-            return;
-        }
-
-        UpdateTreeSelectionUi();
-    }
-
     // The selection -> editor/batch logic, shared by fresh selections and refreshes.
     // Branches on the one explicit selection value.
     private void UpdateTreeSelectionUi()
@@ -2096,7 +2031,7 @@ internal partial class MainWindow
         if (CurrentSelection() is KastnSelection.Slips { SlipIds: [var onlySlipId] })
         {
             // Exactly one slip: bind the editor to it.
-            pendingSlipSelectionId = onlySlipId;
+            navigation.RequestSlip(onlySlipId);
             RefreshBucketEditor();
             RefreshSlipView(force: true);
         }
@@ -2104,7 +2039,7 @@ internal partial class MainWindow
         {
             // A batch of slips, a bucket title, or nothing: the batch count comes from
             // SelectedSlips; clear the single-slip editor either way.
-            pendingSlipSelectionId = null;
+            navigation.ClearSlipRequest();
             RefreshBucketEditor();
             RefreshSlipView(force: true);
             RenderSlipInspector(null);

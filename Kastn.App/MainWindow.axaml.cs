@@ -189,9 +189,7 @@ internal partial class MainWindow : Window
     private string? renderServerInstanceId;
     private KastnEditorSaveOperation? pendingEditorSave;
     private KastnEditorMutationAcceptance? pendingEditorMutation;
-    private string? pendingBucketSelectionId;
-    private string? pendingSlipSelectionId;
-    private bool pendingSlipFocus;
+    private readonly KastnNavigationCoordinator navigation;
     private bool detailShowingMetadata;
     private bool slipRenderOptionUpdating;
     private bool slipTypographyUpdating;
@@ -232,6 +230,7 @@ internal partial class MainWindow : Window
         inspectorPresenter = new(slipInspectorFieldsPanel, inspectorPanel);
         viewEditor = CreateViewEditorPresenter();
         lifetime = CreateWindowLifetime();
+        navigation = CreateNavigationCoordinator();
         WireWindowLifetime();
     }
 
@@ -263,6 +262,7 @@ internal partial class MainWindow : Window
         inspectorPresenter = new(slipInspectorFieldsPanel, inspectorPanel);
         viewEditor = CreateViewEditorPresenter();
         lifetime = CreateWindowLifetime();
+        navigation = CreateNavigationCoordinator();
         Icon = KastnIcon.Create();
         landingLaneItems.ItemsSource = laneCards;
         landingProjectList.ItemsSource = recentProjects;
@@ -431,7 +431,9 @@ internal partial class MainWindow : Window
         lifetime.Activate();
         if (!string.IsNullOrWhiteSpace(projectId))
         {
-            await connection.NavigateToProjectAsync(projectId);
+            var result = await navigation.NavigateProjectAsync(projectId);
+            if (result == KastnProjectNavigationStatus.SaveBlocked)
+                statusText.Text = "Save or resolve the current slip before opening the requested project.";
         }
     }
 
@@ -461,7 +463,7 @@ internal partial class MainWindow : Window
         var priorProjectId = currentProject?.Id;
         var selectedProjectId = snapshot.Project?.Id;
         var selectedBucketId = SelectedBucketId;
-        var selectedSlipId = pendingSlipSelectionId ?? editorState.SlipId;
+        var selectedSlipId = editorState.SlipId;
 
         // Rendering has its own server lifetime: history reconciliation can
         // observe a restart before its queued UI snapshot is applied.
@@ -469,6 +471,8 @@ internal partial class MainWindow : Window
             && renderServerInstanceId is not null && snapshot.ServerInstanceId is not null
             && renderServerInstanceId != snapshot.ServerInstanceId;
         editHistory.ObserveSession(snapshot);
+        navigation.ObserveSession(selectedProjectId, editHistory.Generation);
+        selectedSlipId = navigation.PendingSlipId ?? selectedSlipId;
         if (snapshot.ConnectionState == KastnConnectionState.Online && snapshot.ServerInstanceId is not null)
             renderServerInstanceId = snapshot.ServerInstanceId;
 
@@ -511,7 +515,7 @@ internal partial class MainWindow : Window
                     if (RecoverySlipId(projectSnapshot) is { } recoverySlipId)
                     {
                         selectedSlipId = recoverySlipId;
-                        pendingSlipSelectionId = recoverySlipId;
+                        navigation.RequestSlip(recoverySlipId);
                     }
                     searchBox.Text = "";
                     // On opening a project, render with its default view (set by a
@@ -525,8 +529,7 @@ internal partial class MainWindow : Window
                     + $"{projectSnapshot.Slips.Count} slips, "
                     + $"change {projectSnapshot.ChangeSequence}";
                 RefreshFilterChoices(projectSnapshot);
-                RefreshBuckets(projectSnapshot, pendingBucketSelectionId ?? selectedBucketId);
-                pendingBucketSelectionId = null;
+                RefreshBuckets(projectSnapshot, selectedBucketId);
 
                 var currentSlip = selectedSlipId is null
                     ? null
@@ -905,22 +908,9 @@ internal partial class MainWindow : Window
         // A pending override (after creating/moving a slip) wins; else restore the
         // remembered group; else fall back to the requested bucket / first slip /
         // first bucket so the editor and tree agree on open.
-        IReadOnlyList<string> restoreIds;
-        if (pendingSlipSelectionId is { } pending && treeProjection.Find(pending) is not null)
-        {
-            restoreIds = [pending];
-        }
-        else
-        {
-            var present = rememberedIds.Where(id => treeProjection.Find(id) is not null).ToList();
-            restoreIds = present.Count > 0
-                ? present
-                : (selectedBucketId
-                    ?? treeProjection.FirstSlip?.Id
-                    ?? project.Buckets.FirstOrDefault()?.Id) is { } fallback
-                        ? [fallback]
-                        : [];
-        }
+        var restoreIds = navigation.RestoreTreeSelection(rememberedIds, selectedBucketId,
+            id => treeProjection.Find(id) is not null, treeProjection.FirstSlip?.Id,
+            project.Buckets.FirstOrDefault()?.Id);
 
         ApplyTreeNodeSelection(restoreIds);
         RefreshBucketEditor();
@@ -1119,58 +1109,23 @@ internal partial class MainWindow : Window
         }
 
         UpdateFilterButton();
-        var selectedId = pendingSlipSelectionId ?? editorState.SlipId;
         var filtered = CurrentFilteredSlips();
 
         var wasRefreshing = refreshing;
         refreshing = true;
         try
         {
-            if (pendingTreeSelectionSave is { } selectionSave && selectionSave.ProjectId == currentProject.Id
-                && selectionSave.Generation == editHistory.Generation && selectionSave.EditorVersion == editorState.SelectionVersion)
+            var binding = navigation.ResolveEditor(filtered, CurrentSelection());
+            if (binding.Bind)
             {
-                // Keep the saved editor session until the selection handler can
-                // accept its clicked destination or restore it on save failure.
-                RefreshViewer();
-                RefreshDestinationBuckets();
-                return;
-            }
-            // Bind the editor from the explicit selection: a batch clears it; a
-            // pending/just-created or surviving single slip loads it; otherwise (and
-            // not in title mode) default to the first slip.
-            var selected = filtered.FirstOrDefault(slip => slip.Id == selectedId);
-            if (pendingSlipSelectionId is null
-                && CurrentSelection() is KastnSelection.Slips { SlipIds.Count: > 1 })
-            {
-                editorState.Select(null);
+                editorState.Select(binding.Slip);
                 UpdateEditorFromState();
-            }
-            else if (selected is not null)
-            {
-                if (pendingSlipSelectionId == selected.Id)
+                if (binding.Focus && binding.Slip is { } selected)
                 {
-                    pendingSlipSelectionId = null;
-                    editorState.Select(selected);
-                    UpdateEditorFromState();
-                    if (pendingSlipFocus)
-                    {
-                        pendingSlipFocus = false;
-                        slipEditor.Focus();
-                        if (IsUntitledKastnSlip(selected))
-                        {
-                            slipEditor.SelectAll();
-                        }
-                        else
-                        {
-                            slipEditor.CaretIndex = slipEditor.Text?.Length ?? 0;
-                        }
-                    }
+                    slipEditor.Focus();
+                    if (IsUntitledKastnSlip(selected)) slipEditor.SelectAll();
+                    else slipEditor.CaretIndex = slipEditor.Text?.Length ?? 0;
                 }
-            }
-            else if (!editorState.IsDirty && editorState.ConflictCurrent is null && TitleModeBucket() is null)
-            {
-                editorState.Select(filtered.FirstOrDefault());
-                UpdateEditorFromState();
             }
 
             RefreshViewer();
@@ -1304,36 +1259,27 @@ internal partial class MainWindow : Window
 
     private async Task OpenProjectCardAsync(ProjectListItem project)
     {
-        if (!await SaveEditorAsync())
+        if (await navigation.NavigateProjectAsync(project.Id) != KastnProjectNavigationStatus.SaveBlocked) return;
+        var wasRefreshing = refreshing;
+        refreshing = true;
+        try
         {
-            refreshing = true;
             landingProjectList.SelectedItem = null;
             landingProjectWorkspaceList.SelectedItem = null;
-            refreshing = false;
-            return;
         }
-
-        await connection.NavigateToProjectAsync(project.Id);
+        finally { refreshing = wasRefreshing; }
     }
 
     private async Task CloseProjectAsync()
     {
-        if (currentProject is null)
+        if (currentProject is null) return;
+        var result = await navigation.NavigateProjectAsync(null, beforeNavigate: () =>
         {
-            return;
-        }
-
-        if (!await SaveEditorAsync())
-        {
+            editorState.Select(null);
+            UpdateEditorFromState();
+        });
+        if (result == KastnProjectNavigationStatus.SaveBlocked)
             statusText.Text = "Save or resolve the current slip before closing the project.";
-            return;
-        }
-
-        editorState.Select(null);
-        UpdateEditorFromState();
-        pendingBucketSelectionId = null;
-        pendingSlipSelectionId = null;
-        await connection.NavigateToProjectAsync(null);
     }
 
     private void SetConnectionState(KastnSessionSnapshot snapshot)

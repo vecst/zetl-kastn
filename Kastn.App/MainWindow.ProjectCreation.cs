@@ -55,12 +55,12 @@ internal partial class MainWindow
         var context = new KastnEditorWorkflowContext(projectId ?? "", editorState);
         var hadEditor = editorState.SlipId is not null;
         var server = connection.Current.ServerInstanceId;
-        var navigation = connection.NavigationVersion;
+        var navigationVersion = connection.NavigationVersion;
         bool SameSession() => !lifetime.AllowClose && IsOnline && editHistory.Generation == generation
             && (hadEditor ? context.IsSameSession(currentProject?.Id ?? "", editorState)
                 : currentProject?.Id == projectId && editorState.SlipId is null)
             && connection.Current.Project?.Id == projectId && connection.Current.ServerInstanceId == server
-            && connection.NavigationVersion == navigation;
+            && connection.NavigationVersion == navigationVersion;
         if (!await SaveEditorAsync() || !SameSession()) return;
         bool IsCurrent() => SameSession() && !editorState.IsDirty && editorState.ConflictCurrent is null;
         await projectCreation.RunAsync(captured, defaultViewId, prompt, pickLane,
@@ -75,9 +75,9 @@ internal partial class MainWindow
                 }
                 try
                 {
-                    await connection.NavigateToProjectAsync(result.Project.Id);
+                    await navigation.NavigateProjectAsync(result.Project.Id, alreadySaved: true);
                     if (lifetime.AllowClose || connection.Current.ServerInstanceId != server
-                        || connection.NavigationVersion != navigation + 1 || editorState.IsDirty) return;
+                        || connection.NavigationVersion != navigationVersion + 1 || editorState.IsDirty) return;
                     if (connection.Current.Project?.Id != result.Project.Id)
                     {
                         statusText.Text = $"{result.Message} Could not open the created project.";
@@ -93,7 +93,7 @@ internal partial class MainWindow
                 catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException)
                 {
                     if (!lifetime.AllowClose && connection.Current.ServerInstanceId == server
-                        && connection.NavigationVersion == navigation + 1 && !editorState.IsDirty)
+                        && connection.NavigationVersion == navigationVersion + 1 && !editorState.IsDirty)
                         statusText.Text = $"{result.Message} Could not open the created project: {ex.Message}";
                 }
             });

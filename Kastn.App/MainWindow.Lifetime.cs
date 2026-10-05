@@ -69,6 +69,7 @@ internal partial class MainWindow
     private void ReleaseWindowResources()
     {
         if (connection is not null) connection.SnapshotChanged -= OnSnapshotChanged;
+        navigation.Retire();
         editHistory.Retire();
         draftJournalTimer?.Stop();
         savingVisualTimer?.Stop();

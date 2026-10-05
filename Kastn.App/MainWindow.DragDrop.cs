@@ -475,20 +475,6 @@ internal partial class MainWindow
         }
     }
 
-    private void ReselectSlipNode(string slipId)
-    {
-        var node = treeProjection.Find(slipId);
-        if (node is null)
-        {
-            return;
-        }
-
-        // Clearing first guarantees the assignment is a change even when the refresh
-        // already restored this node, so OnTreeSelectionChanged fires and re-syncs.
-        projectTree.SelectedItem = null;
-        projectTree.SelectedItem = node;
-    }
-
     private bool CanDragNode(KastnTreeNode node)
     {
         return node.Kind == KastnTreeNodeKind.Slip

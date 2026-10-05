@@ -367,6 +367,25 @@ extracting undo or the renderers.
   Validation: solution and probe builds with zero warnings/errors; 1,038 tests
   passed, with the same two intentional latency-probe skips.
 
+- Extracted `KastnNavigationCoordinator` after the viewport/performance passes.
+  It owns pending bucket/slip requests, one-shot editor focus, tree restoration,
+  editor-binding decisions, and save-before-leave intent. MainWindow applies
+  selection, panes, and native focus; shared saves and project transport retain
+  their existing owners. Reader, inspector, board, undo, and drop selection use
+  the same window adapter.
+- Project cards, close, tray activation, and prepared creation/deletion handoffs
+  use the navigation owner. Activation now saves before changing projects.
+  Older save completions cannot override a later project/tree choice, later
+  typing, replaced editor/project/server sessions, or a retired window. Failed
+  saves preserve the editor; pending focus resets across project/server scopes.
+- Added 25 coordinator and UI cases, including delayed real-IPC saves, early
+  snapshots, competing project/tree requests, failed offline/conflict saves,
+  retirement, focus consumption, and selection fallback. Validation: solution
+  build with zero warnings/errors; 1,156 tests passed, with the same two intentional
+  latency-probe skips. Remaining orchestration
+  work: shared mutation/busy coordination, snapshot application ordering, then
+  landing-page ownership and the stale-menu sweep.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

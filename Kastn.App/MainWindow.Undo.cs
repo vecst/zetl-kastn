@@ -51,7 +51,7 @@ internal partial class MainWindow
         var targetSlipId = entry?.Operations.FirstOrDefault()?.SlipId;
         if (targetSlipId is not null) ReselectSlipNode(targetSlipId);
         else if (entry?.BucketOperations.FirstOrDefault() is { } bucket)
-            pendingBucketSelectionId = bucket.BucketId;
+            navigation.RequestBucket(bucket.BucketId);
         context = new KastnEditorWorkflowContext(context.ProjectId, editorState);
         var generation = editHistory.Generation;
         var result = await editHistory.StepAsync(redo, conflict =>

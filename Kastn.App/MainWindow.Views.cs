@@ -167,19 +167,6 @@ internal partial class MainWindow
             CreateSlipContentRenderer(), new(ThemeBrush("ZetlBorderBrush"), ThemeBrush("ZetlAccentBrush"),
                 ThemeBrush("ZetlSurfaceBrush")), CaptureSlipSelectionAction());
 
-    private Action<string> CaptureSlipSelectionAction()
-    {
-        var projectId = currentProject?.Id;
-        var generation = editHistory.Generation;
-        return slipId =>
-        {
-            if (projectId is null || currentProject?.Id != projectId || generation != editHistory.Generation) return;
-            var node = treeProjection.Find(slipId);
-            if (node is not null && !ReferenceEquals(projectTree.SelectedItem, node))
-                projectTree.SelectedItem = node;
-        };
-    }
-
     private KastnSlipContentRenderer CreateSlipContentRenderer()
     {
         var project = currentProject is null ? null : ProjectIndex;
