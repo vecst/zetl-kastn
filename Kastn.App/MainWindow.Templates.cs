@@ -56,34 +56,16 @@ internal partial class MainWindow
     private async void OnDeleteTemplateClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is not KastnTemplateCard template)
-        {
-            return;
-        }
-
-        var confirmed = await KastnDialogs.ConfirmAsync(
-            this,
-            $"Delete the template '{template.Name}'? This cannot be undone.",
-            "Delete");
-        if (!confirmed)
-        {
-            return;
-        }
-
-        try
-        {
-            templateCatalog.Store.Delete(template.Source.Id);
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
-        {
-            statusText.Text = $"Could not delete template: {ex.Message}";
-            return;
-        }
-
-        RebuildTemplateCards();
-        RefreshLandingMode();
-        statusText.Text = $"Deleted template '{template.Name}'.";
+        if ((sender as Control)?.DataContext is KastnTemplateCard card)
+            await DeleteTemplateAsync(card, () => KastnDialogs.ConfirmAsync(this,
+                $"Delete the template '{card.Name}'? This cannot be undone.", "Delete"));
     }
+
+    private Task DeleteTemplateAsync(KastnTemplateCard card, Func<Task<bool>> confirm) =>
+        ZetlTemplateDefaults.IsBuiltIn(card.Source.Id) ? Task.CompletedTask
+            : DeleteNativeCatalogAsync(card.Source, confirm,
+                () => templateCatalog.LoadAll().FirstOrDefault(document => document.Id == card.Source.Id),
+                () => templateCatalog.Store.Delete(card.Source.Id), RebuildTemplateCards, "template", card.Name);
 
     private KastnTemplateEditorPresenter CreateTemplateEditorPresenter() => new(new(
         templateEditorTitle, templateNameBox, templateCategoryBox, templateDescriptionBox,

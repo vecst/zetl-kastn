@@ -40,6 +40,7 @@ internal partial class MainWindow
 
     private void ResetSnapshotRendering()
     {
+        landing.ResetProjectActions();
         projectIndex = null;
         readerPresenter.Clear();
         boardPresenter.Clear();

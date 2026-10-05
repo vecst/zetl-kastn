@@ -610,26 +610,12 @@ internal partial class MainWindow : Window
 
     private async Task SendBucketHeadingAsync(ZetlBucketSnapshot bucket, string align, bool bold, int level)
     {
-        if (!IsOnline || saving || currentProject is null)
-        {
-            return;
-        }
-
-        var response = await connection.ExecuteAsync(ZetlCommandEnvelope.Create(
-            Guid.NewGuid().ToString("N"),
-            ZetlCommandKind.SetBucketHeading,
-            new SetBucketHeadingCommand { Align = align, Bold = bold, Level = level },
-            currentProject.Id,
-            bucket.Id,
-            bucket.Revision));
-        if (response.Status == ZetlResponseStatus.Success)
-        {
-            await connection.SynchronizeAsync();
-        }
-        else if (response.Status != ZetlResponseStatus.Conflict)
-        {
-            statusText.Text = response.Error?.Message ?? "Heading update failed.";
-        }
+        if (!IsOnline || saving || currentProject is null) return;
+        var current = CaptureNativeAction();
+        await RunNativeCommandAsync(ZetlCommandEnvelope.Create(Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.SetBucketHeading, new SetBucketHeadingCommand { Align = align, Bold = bold, Level = level },
+            currentProject.Id, bucket.Id, bucket.Revision), "Bucket heading saved.",
+            () => current() && CurrentBucketTarget(bucket));
     }
 
     private void RefreshDestinationBuckets()
@@ -811,7 +797,7 @@ internal partial class MainWindow : Window
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key is Key.Enter or Key.S)
         {
             e.Handled = true;
-            await SaveEditorKeepingFocusAsync();
+            await SaveEditorAsync();
         }
         else if (e.KeyModifiers == KeyModifiers.Control && e.Key is Key.Z or Key.Y)
         {
@@ -856,33 +842,6 @@ internal partial class MainWindow : Window
         UpdateInlineFormatButtons();
     }
 
-    // Save the current slip without losing the editor: a save can trigger a snapshot
-    // refresh that re-selects the tree and steals focus, so restore focus and the
-    // caret afterward so the user can keep typing.
-    private async Task SaveEditorKeepingFocusAsync()
-    {
-        var hadFocus = slipEditor.IsFocused;
-        var caret = slipEditor.CaretIndex;
-        await SaveEditorAsync();
-        if (!hadFocus)
-        {
-            return;
-        }
-
-        Dispatcher.UIThread.Post(
-            () =>
-            {
-                if (lifetime.IsRetired || editorState.SlipId is null)
-                {
-                    return;
-                }
-
-                slipEditor.Focus();
-                slipEditor.CaretIndex = Math.Min(caret, slipEditor.Text?.Length ?? 0);
-            },
-            DispatcherPriority.Background);
-    }
-
     private async void OnKeyDown(object? sender, KeyEventArgs args)
     {
         if (args.Key == Key.F5)
@@ -903,7 +862,7 @@ internal partial class MainWindow : Window
             // newline in the editor). The editor's own preview handler catches these
             // when it is focused; this covers a save from elsewhere.
             args.Handled = true;
-            await SaveEditorKeepingFocusAsync();
+            await SaveEditorAsync();
         }
         else if (args.KeyModifiers.HasFlag(KeyModifiers.Control) && args.Key == Key.W)
         {

@@ -187,6 +187,25 @@ public class KastnLandingPageTests
         Assert.False(h.Page.Presentation(true, true).Choices);
     }
 
+    [Fact]
+    public void NativeCardsRejectOldScopesEvenWhenProjectIdsAndRevisionsAreReused()
+    {
+        var h = new Harness();
+        h.Page.UpdateProjects([Project("same")]);
+        var old = Assert.Single(h.Page.Projects);
+        Assert.True(h.Page.OwnsProjectCard(old));
+        h.Page.ResetProjectActions();
+        Assert.False(h.Page.OwnsProjectCard(old));
+        h.Page.UpdateProjects([Project("same")]);
+        var current = Assert.Single(h.Page.Projects);
+        Assert.NotSame(old, current);
+        Assert.True(h.Page.OwnsProjectCard(current));
+        h.Page.UpdateProjects([Project("same")]);
+        Assert.Same(current, Assert.Single(h.Page.Projects));
+        h.Page.Retire();
+        Assert.False(h.Page.OwnsProjectCard(current));
+    }
+
     internal static ZetlProjectSummary Project(string id) => new()
     { Id = id, Name = id, MetadataRevision = 1, ChangeSequence = 1 };
 

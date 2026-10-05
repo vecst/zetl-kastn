@@ -87,5 +87,6 @@ internal partial class MainWindow
         templateEditor.Close();
         creationEditor.Close();
         pictureCache.Dispose();
+        SetEditingEnabled();
     }
 }

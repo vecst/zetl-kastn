@@ -71,34 +71,16 @@ internal partial class MainWindow
     private async void OnDeleteCreationClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is not KastnCreationCard creation)
-        {
-            return;
-        }
-
-        var confirmed = await KastnDialogs.ConfirmAsync(
-            this,
-            $"Delete the creation type '{creation.Name}'? This cannot be undone.",
-            "Delete");
-        if (!confirmed)
-        {
-            return;
-        }
-
-        try
-        {
-            creationStore.Delete(creation.Source.Id);
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
-        {
-            statusText.Text = $"Could not delete creation type: {ex.Message}";
-            return;
-        }
-
-        RebuildCreationCards();
-        RefreshLandingMode();
-        statusText.Text = $"Deleted creation type '{creation.Name}'.";
+        if ((sender as Control)?.DataContext is KastnCreationCard card)
+            await DeleteCreationAsync(card, () => KastnDialogs.ConfirmAsync(this,
+                $"Delete the creation type '{card.Name}'? This cannot be undone.", "Delete"));
     }
+
+    private Task DeleteCreationAsync(KastnCreationCard card, Func<Task<bool>> confirm) =>
+        ZetlCreationTypeDefaults.IsBuiltIn(card.Source.Id) ? Task.CompletedTask
+            : DeleteNativeCatalogAsync(card.Source, confirm,
+                () => creationStore.LoadAll().FirstOrDefault(document => document.Id == card.Source.Id),
+                () => creationStore.Delete(card.Source.Id), RebuildCreationCards, "creation type", card.Name);
 
     private KastnCreationEditorPresenter CreateCreationEditorPresenter() => new(new(
         creationEditorTitle, creationNameBox, creationCategoryBox, creationDescriptionBox,

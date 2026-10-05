@@ -25,6 +25,8 @@ internal sealed record KastnProjectCard(
     bool CanCreateTemporaryFromReplay,
     bool IsTemporary)
 {
+    public long ActionGeneration { get; init; }
+
     public bool IsActive =>
         string.Equals(Status, "Active", StringComparison.OrdinalIgnoreCase);
 

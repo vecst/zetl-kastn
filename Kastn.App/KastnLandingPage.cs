@@ -37,6 +37,7 @@ internal sealed class KastnLandingPage
     private Dictionary<string, KastnProjectCard> allProjects = new(StringComparer.Ordinal);
     private HashSet<string> projectNames = new(StringComparer.OrdinalIgnoreCase);
     private long actionVersion;
+    private long projectActionGeneration;
     private bool suppressSelection;
     private bool retired;
 
@@ -94,12 +95,18 @@ internal sealed class KastnLandingPage
 
     public bool ProjectNameExists(string name) => projectNames.Contains(name.Trim());
 
+    public bool OwnsProjectCard(KastnProjectCard card) => !retired
+        && card.ActionGeneration == projectActionGeneration
+        && allProjects.TryGetValue(card.Id, out var current) && ReferenceEquals(current, card);
+
+    public void ResetProjectActions() { projectActionGeneration++; }
+
     private void RebuildProjects()
     {
         var next = new Dictionary<string, KastnProjectCard>(StringComparer.Ordinal);
         foreach (var summary in summaries)
         {
-            var card = CreateProjectCard(summary);
+            var card = CreateProjectCard(summary) with { ActionGeneration = projectActionGeneration };
             next.Add(card.Id, allProjects.TryGetValue(card.Id, out var previous) && previous == card ? previous : card);
         }
         allProjects = next;

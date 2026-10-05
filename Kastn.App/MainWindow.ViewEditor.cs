@@ -153,7 +153,7 @@ internal partial class MainWindow
 
     private async Task DeleteSelectedViewAsync(Func<ZetlViewDocument, Task<bool>> confirm)
     {
-        if (viewWriteInProgress) return;
+        if (viewWriteInProgress || lifetime.IsRetired || lifetime.AllowClose) return;
         var view = ZetlViewDefaults.Clone(SelectedView);
         if (ZetlViewDefaults.IsBuiltIn(view.Id))
         {
@@ -163,20 +163,25 @@ internal partial class MainWindow
         var context = ViewEditorContext();
         var projectScoped = viewCatalog.IsProjectScoped(view.Id);
         var editorSession = viewEditor.State;
+        var current = CaptureNativeAction();
+        var completionCurrent = CaptureNativeAction(trackEditor: false);
+        bool CanDelete() => current() && context.Matches(ViewEditorContext());
         viewWriteInProgress = true;
         try
         {
-            if (!await confirm(view) || !context.Matches(ViewEditorContext())) return;
+            if (!await confirm(view) || !CanDelete()) return;
+            using var busy = projectScoped ? mutations.TryBeginWrite() : null;
+            if (projectScoped && busy is null) return;
             var result = await viewPersistence.DeleteAsync(view, projectScoped, context.Project,
-                ExecuteMutationAsync, () => context.Matches(ViewEditorContext()));
-            if (!context.Matches(ViewEditorContext()) || !ReferenceEquals(viewEditor.State, editorSession)) return;
+                ExecuteMutationAsync, CanDelete);
+            if (!completionCurrent() || !context.Matches(ViewEditorContext()) || !ReferenceEquals(viewEditor.State, editorSession)) return;
             if (!result.Success)
             {
                 statusText.Text = result.Error!;
                 return;
             }
             await connection.SynchronizeAsync();
-            if (!context.Matches(ViewEditorContext()) || !ReferenceEquals(viewEditor.State, editorSession)
+            if (!completionCurrent() || !context.Matches(ViewEditorContext()) || !ReferenceEquals(viewEditor.State, editorSession)
                 || connection.Current.Project?.Id != context.Project?.Id) return;
             var selectId = (viewPickerBox.SelectedItem as ZetlViewDocument)?.Id;
             ApplySnapshot(connection.Current);
@@ -187,7 +192,7 @@ internal partial class MainWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or OperationCanceledException)
         {
-            if (context.Matches(ViewEditorContext()) && ReferenceEquals(viewEditor.State, editorSession))
+            if (completionCurrent() && context.Matches(ViewEditorContext()) && ReferenceEquals(viewEditor.State, editorSession))
                 statusText.Text = $"Could not delete view: {ex.Message}";
         }
         finally { viewWriteInProgress = false; }

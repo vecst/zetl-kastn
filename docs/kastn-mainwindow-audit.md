@@ -457,6 +457,31 @@ extracting undo or the renderers.
   intentional latency-probe skips. The stale-menu and native-action sweep is the
   next orchestration target.
 
+- Completed the stale-menu/native-action sweep. Save Slip and Delete Slip now
+  follow their toolbar availability, and menu/keyboard saves share the editor
+  save owner. Removed the redundant background focus/caret restoration; snapshot
+  presentation already preserves focus and must retain later caret movements.
+- Project and bucket native adapters capture their destinations before prompts
+  and prerequisite saves. Shared admission checks navigation intent, project and
+  server lifetime, editor selection/content, catalog authoring sessions, and
+  target revisions before sending. Sent commands retain the mutation owner's
+  exclusive write lease through synchronization; late selection/status effects
+  cannot replace newer navigation or unsaved writing. Bucket heading changes now
+  use this boundary instead of bypassing mutation/history handling.
+- Native project cards validate owner identity and an action generation, so a
+  stale popup cannot act after a project/server reset even when IDs and revisions
+  recur. Template/creation deletion checks the original disk fingerprint both
+  before and after confirmation, preserves built-ins and newer editor sessions,
+  and rejects retired windows. View deletion adds the same native context guard
+  while retaining its captured target when only the view picker changes.
+- Added 40 owner/headless real-IPC cases for successful captured targets, delayed
+  prompts, remote revisions, later typing/selection/navigation, retired windows,
+  replacement catalog files, replay's two prompts, exclusive native writes and
+  menu save/caret behavior. Validation: solution build with zero warnings/errors;
+  1,260 tests passed, with the same two intentional latency-probe skips. The next
+  orchestration step is a final construction/event-wiring and dead-code audit;
+  remaining performance experiments should be driven by fresh measurements.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |
@@ -488,6 +513,11 @@ narrow cleanup candidates, distinct from the active behavior listed later.
 | Seed comment (`Templates.cs:646`) | Claims capture templates have no seeds and skip seeding; the method tests bucket contents and does not exclude capture templates. | Describe the actual empty-bucket skip, or verify the intended product rule before changing behavior. |
 
 ### Active Code That Looks Stale But Needs A Behavior Decision
+
+These observations describe the original source baseline. The progress entries
+above record their resolutions: menu availability is restored, batching was
+removed after snapshot ownership, board dictionaries moved into the presenter,
+and the template catalog is owned independently. The tooling constructor remains.
 
 - `saveSlipMenuItem` and `deleteSlipMenuItem` remain declared in XAML and wired
   to actions, but `SetEditingEnabled` always disables both. Decide whether the

@@ -188,15 +188,17 @@ internal partial class MainWindow
         }
     }
 
-    private static KastnProjectCard? ProjectFromControl(object? sender)
+    private KastnProjectCard? ProjectFromControl(object? sender)
     {
-        return sender is Control control
+        var card = sender is Control control
             ? control.Tag as KastnProjectCard ?? control.DataContext as KastnProjectCard
             : null;
+        return card is not null && landing.OwnsProjectCard(card) ? card : null;
     }
 
     private async Task OpenProjectCardAsync(KastnProjectCard project)
     {
+        if (!landing.OwnsProjectCard(project)) return;
         if (await navigation.NavigateProjectAsync(project.Id) != KastnProjectNavigationStatus.SaveBlocked) return;
         ClearLandingSelection();
     }
