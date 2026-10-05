@@ -4,6 +4,39 @@ This is the authoritative roadmap for remaining Kastn/Zetl product work.
 Product direction lives in [`kastn.md`](kastn.md); current workbench behavior
 lives in [`kastn-workbench.md`](kastn-workbench.md).
 
+## October 5, 2026 Checkpoint
+
+The application cleanup and performance pass is complete on `codex/cleanup`:
+
+- MainWindow ownership, presenters, final wiring, and dead-code audit are
+  complete. The window now delegates navigation, mutations, snapshots,
+  settings, creation, rendering, and application lifetime to focused owners.
+- Tree, reader, Board, and inspector rendering follows the viewport. Snapshot
+  updates reuse indexes and structure; picture decoding and retention are
+  bounded. Large-project and many-bucket work has been exercised interactively.
+- Autosave across buckets, tree drag feedback, application icons, exported PDF
+  task checkboxes, and first-use tray-menu layout have been corrected.
+- Latest full automated validation: 1,271 tests passed and two intentional
+  latency-probe skips. The final solution build had no warnings or errors.
+- Zetl uses software rendering on Windows. An isolated 100-cycle popup probe
+  settled near 103 MiB working set / 33 MiB private memory, with no closed note
+  windows retained after diagnostic collection. The real-profile host measured
+  about 106 MiB working set / 51 MiB private memory after disabling previously
+  enabled full page heap. These are different workloads, not universal limits.
+  The debugging configuration repair is separate from the renderer change;
+  see [`zetl-popup-memory.md`](zetl-popup-memory.md) for evidence and reproduction.
+
+The next requested pass is the existing GitHub Pages landing page on
+`gh-pages`: correct wording and simplify overlapping download/install options
+while preserving its overall design and behavior.
+
+After that, the remaining near-term work is Kastn memory measurement (startup,
+project switching, pictures, and long sessions), release reliability and
+published Windows smoke checks, and Board spacing/interaction polish. Global
+search, Calendar, cross-project organization, and production Linux input and
+clipboard support remain subsequent product work. This checkpoint does not
+close the outstanding reliability items below.
+
 ## Product Invariants
 
 - Zetl is the resident capture, Replay, Pop, and fast-output process.
