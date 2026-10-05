@@ -10,6 +10,43 @@ namespace ZETL.Tests;
 [Collection(RealTimeCollection.Name)]
 public class KastnLifecycleTests
 {
+    [Fact] public void ControllerRejectsRefreshCapturedBeforeLaterNavigation()
+    {
+        RunAsync(async () =>
+        {
+            using var release = new ManualResetEventSlim();
+            var arrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            string? delayedId = null;
+            using var fixture = new LifecycleFixture(dropResponseForTesting: command =>
+            {
+                if (command.Kind == ZetlCommandKind.GetProject && command.ProjectId == delayedId
+                    && arrived.TrySetResult()) release.Wait(TimeSpan.FromSeconds(8));
+                return false;
+            });
+            var second = fixture.Store.CreateProject("Second", ["Inbox"], "Inbox");
+            var third = fixture.Store.CreateProject("Third", ["Inbox"], "Inbox");
+            await using var controller = CreateConnectedController(fixture);
+            var initial = await WaitForSnapshotAsync(controller, snapshot => snapshot.ConnectionState == KastnConnectionState.Online);
+            var published = new ConcurrentQueue<KastnSessionSnapshot>();
+            controller.SnapshotChanged += (_, snapshot) => published.Enqueue(snapshot);
+            delayedId = second.Id;
+            var older = controller.NavigateToProjectAsync(second.Id);
+            try
+            {
+                await arrived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                var newer = controller.NavigateToProjectAsync(third.Id);
+                release.Set();
+                await Task.WhenAll(older, newer).WaitAsync(TimeSpan.FromSeconds(8));
+                await controller.RefreshAsync();
+                Assert.Equal(third.Id, controller.Current.Project?.Id);
+                Assert.DoesNotContain(published, snapshot => snapshot.Project?.Id == second.Id);
+                Assert.All(published, snapshot => Assert.True(snapshot.PublicationVersion > initial.PublicationVersion));
+                Assert.Equal(2, controller.Current.NavigationVersion);
+            }
+            finally { release.Set(); }
+        });
+    }
+
     [Fact] public void RefreshPumpCollapsesBurstIntoOneDirtyRerun()
     {
         RunAsync(async () =>

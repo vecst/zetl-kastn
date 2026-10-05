@@ -71,6 +71,7 @@ internal partial class MainWindow
         if (connection is not null) connection.SnapshotChanged -= OnSnapshotChanged;
         navigation.Retire();
         mutations.Retire();
+        snapshots.Retire();
         editHistory.Retire();
         draftJournalTimer?.Stop();
         savingVisualTimer?.Stop();

@@ -14,4 +14,6 @@ internal sealed record KastnSessionSnapshot(
     ZETL.Contracts.ZetlProjectSnapshot? Project)
 {
     public string? ServerInstanceId { get; init; }
+    public long PublicationVersion { get; init; }
+    public long NavigationVersion { get; init; }
 }

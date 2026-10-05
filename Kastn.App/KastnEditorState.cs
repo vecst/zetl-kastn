@@ -170,6 +170,18 @@ internal sealed class KastnEditorState
         Accept(current, keepDraft: false);
     }
 
+    // Revision ordering is local to a server lifetime. Retire pending acceptance
+    // tokens even if a restarted/restored store reuses IDs and lower revisions.
+    public void ReconcileSession(ZetlSlipSnapshot? current)
+    {
+        SelectionVersion++;
+        if (current is null || current.Id != SlipId) return;
+        if (!IsDirty && ConflictCurrent is null) { Accept(current, keepDraft: false); return; }
+        if (current.Text == BaselineText && KastnInlineStyleEditing.StyleListsEqual(current.InlineStyles, BaselineInlineStyles))
+            Accept(current, keepDraft: true);
+        else ConflictCurrent = current;
+    }
+
     public bool ReconcileConflict(ZetlResponseEnvelope response)
     {
         if (response.Conflict is not { TargetKind: ZetlEntityKind.Slip } conflict

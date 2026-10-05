@@ -407,8 +407,33 @@ extracting undo or the renderers.
   partial failure, competing selection/navigation, later drafts, and stale save/
   confirmation prerequisites. Validation: solution build with zero warnings/errors;
   1,192 tests passed, with the same two intentional latency-probe skips.
-  Snapshot application ordering is next, followed by
-  landing-page ownership and the stale-menu sweep.
+  Snapshot application ordering follows this pass.
+
+- Extracted `KastnSnapshotCoordinator`: one owner admits deliveries, coalesces
+  queued bursts, rejects older publications/navigation intents, and orders native
+  reconciliation. Synchronous workflow updates supersede queued projections;
+  nested dispatcher processing defers reconciliation until the outer update ends.
+- Project/server epochs preserve lifetime barriers through coalesced round trips.
+  History, old actions, rendering caches and editor acceptance tokens retire,
+  while a return to the currently displayed project retains selection and writing.
+  A replaced server can adopt lower revisions; changed baselines retain local
+  drafts with a conflict. Project adoption clears project-local tree identities.
+- Controller refreshes capture navigation/client state before IPC and validate
+  it before publishing. Older responses cannot rewrite the latest destination
+  or publish online for a disconnected client. State/status publications update
+  the latest projection under the same lock; current navigation disconnects
+  continue through the existing visible failure boundary.
+- `MainWindow.Snapshots.cs` applies the native effects. Editor acknowledgement,
+  binding and draft recovery finish before presenter refreshes; bucket/destination
+  controls and the inspector avoid their earlier duplicate snapshot refreshes.
+  Refresh guards restore their prior value even on failure, and retired windows
+  reject pending deliveries.
+- Added 14 owner, delayed real-IPC and headless UI cases covering stale delivery,
+  synchronous supersession, nested dispatch, lifetime round trips, lower server
+  revisions, latest navigation, guard recovery, focus, selection and unsaved
+  writing. Validation: solution build with zero warnings/errors; 1,206 tests
+  passed, with the same two intentional latency-probe skips. Landing-page
+  ownership and the stale-menu sweep remain next.
 
 ## Responsibility Map
 

@@ -22,6 +22,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     private bool hasEverConnected;
     private bool launchAttemptedForOutage;
     private long navigationVersion;
+    private long publicationVersion;
     private volatile bool suppressRelaunch;
 
     public KastnConnectionController(
@@ -70,8 +71,11 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     {
         if (!string.IsNullOrWhiteSpace(projectId))
         {
-            desiredProjectId = projectId;
-            projectSelectionRequested = false;
+            lock (stateGate)
+            {
+                desiredProjectId = projectId;
+                projectSelectionRequested = false;
+            }
         }
 
         runTask ??= Task.Run(() => RunAsync(cancellation.Token));
@@ -91,16 +95,11 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         string? projectId,
         CancellationToken cancellationToken = default)
     {
-        Interlocked.Increment(ref navigationVersion);
-        if (string.IsNullOrWhiteSpace(projectId))
+        lock (stateGate)
         {
-            desiredProjectId = null;
-            projectSelectionRequested = true;
-        }
-        else
-        {
-            desiredProjectId = projectId;
-            projectSelectionRequested = false;
+            navigationVersion++;
+            desiredProjectId = string.IsNullOrWhiteSpace(projectId) ? null : projectId;
+            projectSelectionRequested = string.IsNullOrWhiteSpace(projectId);
         }
 
         var connected = client;
@@ -285,87 +284,103 @@ internal sealed class KastnConnectionController : IAsyncDisposable
 
     private async Task RefreshCoreAsync(CancellationToken cancellationToken)
     {
-        var connected = client;
-        if (connected is null)
+        ZetlIpcClient? connected;
+        string? projectId;
+        long navigation;
+        lock (stateGate)
+        {
+            connected = client;
+            projectId = projectSelectionRequested ? null : desiredProjectId;
+            navigation = navigationVersion;
+        }
+        if (connected is null || !connected.IsConnected)
         {
             return;
         }
-        if (!ReferenceEquals(client, connected) || !connected.IsConnected)
-        {
-            return;
-        }
 
-        var listResponse = await connected.ExecuteAsync(
-            new ZetlCommandEnvelope
-            {
-                CommandId = Guid.NewGuid().ToString("N"),
-                Kind = ZetlCommandKind.ListProjects
-            },
-            cancellationToken).ConfigureAwait(false);
-        EnsureSuccess(listResponse);
-        var projects = listResponse.Payload?.Deserialize<List<ZetlProjectSummary>>(
-                ZetlProtocolJson.Options)
-            ?? [];
-
-        var projectId = projectSelectionRequested ? null : desiredProjectId;
-        if (projectId is not null && projects.All(project => project.Id != projectId))
+        try
         {
-            projectId = Current.Project is { } current
-                && projects.Any(project => project.Id == current.Id)
-                    ? current.Id
-                    : null;
-            if (projectId is null)
+            var listResponse = await connected.ExecuteAsync(
+                new ZetlCommandEnvelope
+                {
+                    CommandId = Guid.NewGuid().ToString("N"),
+                    Kind = ZetlCommandKind.ListProjects
+                },
+                cancellationToken).ConfigureAwait(false);
+            EnsureSuccess(listResponse);
+            var projects = listResponse.Payload?.Deserialize<List<ZetlProjectSummary>>(
+                    ZetlProtocolJson.Options)
+                ?? [];
+
+            if (projectId is not null && projects.All(project => project.Id != projectId))
             {
-                projectSelectionRequested = true;
+                projectId = Current.Project is { } current
+                    && projects.Any(project => project.Id == current.Id)
+                        ? current.Id
+                        : null;
             }
-        }
 
-        ZetlProjectSnapshot? projectSnapshot = null;
-        if (projectId is not null)
-        {
-            // A list refresh can change lane/status summaries without changing
-            // this project's content. Reuse its snapshot when revisions match;
-            // still publish so the UI can settle selection after a batch.
-            if (Current is { ConnectionState: KastnConnectionState.Online, Project: { } openProject }
-                && string.Equals(projectId, openProject.Id, StringComparison.Ordinal)
-                && projects.FirstOrDefault(summary => summary.Id == projectId) is { } openSummary
-                && openSummary.ChangeSequence == openProject.ChangeSequence
-                && openSummary.MetadataRevision == openProject.MetadataRevision)
+            ZetlProjectSnapshot? projectSnapshot = null;
+            if (projectId is not null)
             {
-                projectSnapshot = openProject;
-                desiredProjectId = openProject.Id;
-                projectSelectionRequested = false;
+                // A list refresh can change lane/status summaries without changing
+                // this project's content. Reuse its snapshot when revisions match;
+                // still publish so the UI can settle selection after a batch.
+                if (Current is { ConnectionState: KastnConnectionState.Online, Project: { } openProject }
+                    && string.Equals(projectId, openProject.Id, StringComparison.Ordinal)
+                    && projects.FirstOrDefault(summary => summary.Id == projectId) is { } openSummary
+                    && openSummary.ChangeSequence == openProject.ChangeSequence
+                    && openSummary.MetadataRevision == openProject.MetadataRevision)
+                {
+                    projectSnapshot = openProject;
+                }
+                else
+                {
+                    var projectResponse = await connected.ExecuteAsync(
+                        new ZetlCommandEnvelope
+                        {
+                            CommandId = Guid.NewGuid().ToString("N"),
+                            Kind = ZetlCommandKind.GetProject,
+                            ProjectId = projectId
+                        },
+                        cancellationToken).ConfigureAwait(false);
+                    EnsureSuccess(projectResponse);
+                    projectSnapshot = projectResponse.Payload?.Deserialize<ZetlProjectSnapshot>(
+                        ZetlProtocolJson.Options);
+                }
             }
-            else
+
+            var snapshot = new KastnSessionSnapshot(
+                KastnConnectionState.Online,
+                projectSnapshot is null
+                    ? projects.Count == 0
+                        ? "Connected to Zetl. No projects yet."
+                        : "Connected to Zetl. Select a project."
+                    : $"Connected to Zetl. Viewing {projectSnapshot.Name}.",
+                projects,
+                projectSnapshot)
             {
-                var projectResponse = await connected.ExecuteAsync(
-                    new ZetlCommandEnvelope
-                    {
-                        CommandId = Guid.NewGuid().ToString("N"),
-                        Kind = ZetlCommandKind.GetProject,
-                        ProjectId = projectId
-                    },
-                    cancellationToken).ConfigureAwait(false);
-                EnsureSuccess(projectResponse);
-                projectSnapshot = projectResponse.Payload?.Deserialize<ZetlProjectSnapshot>(
-                    ZetlProtocolJson.Options);
+                ServerInstanceId = connected.ServerInstanceId
+            };
+            lock (stateGate)
+            {
+                // Navigation can change while List/GetProject awaits IPC. An older
+                // refresh must not overwrite the new destination or resurrect a
+                // disconnected client. Its waiting refresh will fetch the new intent.
+                if (navigation != navigationVersion || !ReferenceEquals(client, connected) || !connected.IsConnected) return;
                 desiredProjectId = projectSnapshot?.Id;
                 projectSelectionRequested = projectSnapshot is null;
+                snapshot = StampSnapshot(snapshot);
+                Current = snapshot;
             }
+            ZetlEventPublisher.Publish(SnapshotChanged, this, snapshot);
         }
-
-        Publish(new KastnSessionSnapshot(
-            KastnConnectionState.Online,
-            projectSnapshot is null
-                ? projects.Count == 0
-                    ? "Connected to Zetl. No projects yet."
-                    : "Connected to Zetl. Select a project."
-                : $"Connected to Zetl. Viewing {projectSnapshot.Name}.",
-            projects,
-            projectSnapshot)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or OperationCanceledException
+            && !cancellationToken.IsCancellationRequested && navigation != NavigationVersion)
         {
-            ServerInstanceId = connected.ServerInstanceId
-        });
+            // A failed response from an obsolete navigation cannot report
+            // a failure against the new session. Its refresh is already waiting.
+        }
     }
 
     private static void EnsureSuccess(ZetlResponseEnvelope response)
@@ -468,10 +483,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             return;
         }
 
-        Publish(Current with
-        {
-            Status = $"Kastn could not refresh from Zetl. {exception.Message}"
-        });
+        Publish(null, $"Kastn could not refresh from Zetl. {exception.Message}");
     }
 
     private void SetClient(ZetlIpcClient value)
@@ -504,22 +516,19 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     private static TaskCompletionSource NewConnectionSignal() => new(
         TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private void Publish(KastnConnectionState state, string status)
+    private void Publish(KastnConnectionState? state, string status)
     {
-        Publish(Current with
-        {
-            ConnectionState = state,
-            Status = status
-        });
-    }
-
-    private void Publish(KastnSessionSnapshot snapshot)
-    {
+        KastnSessionSnapshot snapshot;
         lock (stateGate)
         {
+            snapshot = StampSnapshot(Current with { ConnectionState = state ?? Current.ConnectionState, Status = status });
             Current = snapshot;
         }
 
         ZetlEventPublisher.Publish(SnapshotChanged, this, snapshot);
     }
+
+    // Called under stateGate; publication order survives event delivery races.
+    private KastnSessionSnapshot StampSnapshot(KastnSessionSnapshot snapshot) => snapshot with
+    { PublicationVersion = ++publicationVersion, NavigationVersion = navigationVersion };
 }

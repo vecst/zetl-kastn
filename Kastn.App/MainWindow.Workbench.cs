@@ -1825,10 +1825,10 @@ internal partial class MainWindow
     }
 
     // The center View is persistent; this toggle changes only the right Detail pane.
-    private void SetDetailPaneMode(bool showDetails)
+    private void SetDetailPaneMode(bool showDetails, bool refreshInspector = true)
     {
         detailShowingMetadata = showDetails;
-        RefreshSlipInspector();
+        if (refreshInspector) RefreshSlipInspector();
         editorPanel.IsVisible = !showDetails;
         inspectorPanel.IsVisible = showDetails;
         var hasProject = currentProject is not null;

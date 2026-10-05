@@ -134,7 +134,6 @@ internal partial class MainWindow : Window
     private DispatcherTimer? draftJournalTimer;
     private string? restoredDraftKey;
     private bool recoveredDraftActive;
-    private string? renderServerInstanceId;
     private KastnEditorSaveOperation? pendingEditorSave;
     private KastnEditorMutationAcceptance? pendingEditorMutation;
     private readonly KastnNavigationCoordinator navigation;
@@ -180,6 +179,7 @@ internal partial class MainWindow : Window
         lifetime = CreateWindowLifetime();
         mutations = new(OnMutationStateChanged);
         navigation = CreateNavigationCoordinator();
+        snapshots = CreateSnapshotCoordinator();
         WireWindowLifetime();
     }
 
@@ -213,6 +213,7 @@ internal partial class MainWindow : Window
         lifetime = CreateWindowLifetime();
         mutations = new(OnMutationStateChanged);
         navigation = CreateNavigationCoordinator();
+        snapshots = CreateSnapshotCoordinator();
         Icon = KastnIcon.Create();
         landingLaneItems.ItemsSource = laneCards;
         landingProjectList.ItemsSource = recentProjects;
@@ -391,159 +392,6 @@ internal partial class MainWindow : Window
     {
         if (lifetime.IsRetired) return;
         statusText.Text = $"Kastn could not open the requested project. {exception.Message}";
-    }
-
-    private void OnSnapshotChanged(object? sender, KastnSessionSnapshot snapshot)
-    {
-        if (lifetime.IsRetired) return;
-
-        Dispatcher.UIThread.Post(() => ApplySnapshot(snapshot));
-    }
-
-    private void ApplySnapshot(KastnSessionSnapshot snapshot)
-    {
-        if (lifetime.IsRetired) return;
-        var priorProjectId = currentProject?.Id;
-        var selectedProjectId = snapshot.Project?.Id;
-        var selectedBucketId = SelectedBucketId;
-        var selectedSlipId = editorState.SlipId;
-
-        // Rendering has its own server lifetime: history reconciliation can
-        // observe a restart before its queued UI snapshot is applied.
-        var serverChanged = snapshot.ConnectionState == KastnConnectionState.Online
-            && renderServerInstanceId is not null && snapshot.ServerInstanceId is not null
-            && renderServerInstanceId != snapshot.ServerInstanceId;
-        editHistory.ObserveSession(snapshot);
-        navigation.ObserveSession(selectedProjectId, editHistory.Generation);
-        selectedSlipId = navigation.PendingSlipId ?? selectedSlipId;
-        if (snapshot.ConnectionState == KastnConnectionState.Online && snapshot.ServerInstanceId is not null)
-            renderServerInstanceId = snapshot.ServerInstanceId;
-
-        // Rendered controls and decoded pictures belong to this project/server.
-        if (!string.Equals(priorProjectId, selectedProjectId, StringComparison.Ordinal) || serverChanged)
-        {
-            projectIndex = null;
-            readerPresenter.Clear();
-            boardPresenter.Clear();
-            inspectorPresenter.Clear();
-            viewRenderCache.Clear();
-            pictureCache.Reset();
-        }
-
-        refreshing = true;
-        try
-        {
-            lastProjectSummaries = snapshot.Projects;
-            PopulateProjectCards();
-            RefreshLandingGridLayout();
-
-            landingProjectList.SelectedItem = null;
-            landingProjectWorkspaceList.SelectedItem = null;
-
-            currentProject = snapshot.Project;
-            if (currentProject is { } projectSnapshot)
-            {
-                var selectedViewId = string.Equals(priorProjectId, projectSnapshot.Id, StringComparison.Ordinal)
-                    ? (viewPickerBox.SelectedItem as ZetlViewDocument)?.Id
-                    : projectSnapshot.DefaultViewId;
-                RefreshViewCatalog(projectSnapshot, selectedViewId, force: serverChanged);
-                if (!string.Equals(priorProjectId, projectSnapshot.Id, StringComparison.Ordinal))
-                {
-                    // Remember the opened project for the "reopen last project" startup
-                    // preference (Kastn-owned state, not the shared settings file).
-                    stateStore.LastProjectId = projectSnapshot.Id;
-                    selectedBucketId = null;
-                    selectedSlipId = null;
-                    editorState.Select(null);
-                    if (RecoverySlipId(projectSnapshot) is { } recoverySlipId)
-                    {
-                        selectedSlipId = recoverySlipId;
-                        navigation.RequestSlip(recoverySlipId);
-                    }
-                    searchBox.Text = "";
-                    // On opening a project, render with its default view (set by a
-                    // creation type, or chosen earlier), falling back to the first.
-                    SelectViewForProject(projectSnapshot);
-                }
-
-                projectTitle.Text = projectSnapshot.Name;
-                projectSummary.Text =
-                    $"{projectSnapshot.Buckets.Count} buckets, "
-                    + $"{projectSnapshot.Slips.Count} slips, "
-                    + $"change {projectSnapshot.ChangeSequence}";
-                RefreshFilterChoices(projectSnapshot);
-                RefreshBuckets(projectSnapshot, selectedBucketId);
-
-                var currentSlip = selectedSlipId is null
-                    ? null
-                    : projectSnapshot.Slips.FirstOrDefault(slip => slip.Id == selectedSlipId);
-                var acknowledged = pendingEditorSave is { } save && save.ProjectId == projectSnapshot.Id
-                    && save.TryAcknowledgeSnapshot(currentSlip)
-                    || pendingEditorMutation is { } mutation && mutation.Command.ProjectId == projectSnapshot.Id
-                        && mutation.TryAcknowledgeSnapshot(currentSlip, projectSnapshot);
-                if (!acknowledged)
-                {
-                    editorState.Reconcile(currentSlip);
-                }
-                UpdateEditorFromState();
-                RefreshSlipView(force: true);
-                RestoreDraftIfAvailable(projectSnapshot);
-                projectView.IsVisible = true;
-                emptyState.IsVisible = false;
-            }
-            else
-            {
-                currentProject = null;
-                projectIndex = null;
-                RefreshViewCatalog(null, force: false);
-                treeProjection.Clear();
-                projectTree.SetHierarchy(treeProjection.Roots);
-                editorState.Select(null);
-                UpdateEditorFromState();
-                RefreshViewer();
-                projectView.IsVisible = false;
-                emptyState.IsVisible = true;
-                var showLandingChoices = snapshot.ConnectionState == KastnConnectionState.Online
-                    && (snapshot.Projects.Count > 0 || KastnTemplateCatalog.BuiltIns.Count > 0);
-                landingModeToggle.IsVisible = showLandingChoices;
-                emptyStateText.Text = snapshot.ConnectionState == KastnConnectionState.Online
-                    ? "Select a project or template to begin."
-                    : snapshot.Status;
-                RefreshLandingMode();
-            }
-
-            // Local authoring sessions stay open across snapshots. Structured
-            // view writes remain scoped to the project where that session opened.
-            if (templateEditor.State is not null)
-            {
-                projectView.IsVisible = false;
-                emptyState.IsVisible = false;
-                viewEditorView.IsVisible = false;
-                templateEditorView.IsVisible = true;
-            }
-            else if (viewEditor.State is not null)
-            {
-                projectView.IsVisible = false;
-                emptyState.IsVisible = false;
-                templateEditorView.IsVisible = false;
-                viewEditorView.IsVisible = true;
-            }
-            else if (creationEditor.State is not null)
-            {
-                projectView.IsVisible = false;
-                emptyState.IsVisible = false;
-                templateEditorView.IsVisible = false;
-                viewEditorView.IsVisible = false;
-                creationEditorView.IsVisible = true;
-            }
-
-            viewEditor.RefreshPreview();
-            SetConnectionState(snapshot);
-        }
-        finally
-        {
-            refreshing = false;
-        }
     }
 
     private void ShowLandingSection(LandingSection section)
@@ -826,7 +674,7 @@ internal partial class MainWindow : Window
 
     private string lastFilterChoicesSignature = "";
 
-    private void RefreshBuckets(ZetlProjectSnapshot project, string? selectedBucketId)
+    private void RefreshBuckets(ZetlProjectSnapshot project, string? selectedBucketId, bool refreshDetails = true)
     {
         // Capture the whole current selection (tree node ids) before the rebuild, so
         // an action that refreshes keeps the entire group selected — not just the
@@ -856,9 +704,12 @@ internal partial class MainWindow : Window
             project.Buckets.FirstOrDefault()?.Id);
 
         ApplyTreeNodeSelection(restoreIds);
-        RefreshBucketEditor();
-        RefreshDestinationBuckets();
-        SetDetailPaneMode(detailShowingMetadata);
+        if (refreshDetails)
+        {
+            RefreshBucketEditor();
+            RefreshDestinationBuckets();
+            SetDetailPaneMode(detailShowingMetadata);
+        }
     }
 
     // Re-select a set of tree nodes by id: a single node sets SelectedItem, several
@@ -1051,32 +902,29 @@ internal partial class MainWindow : Window
             return;
         }
 
-        UpdateFilterButton();
-        var filtered = CurrentFilteredSlips();
-
         var wasRefreshing = refreshing;
         refreshing = true;
         try
         {
-            var binding = navigation.ResolveEditor(filtered, CurrentSelection());
-            if (binding.Bind)
-            {
-                editorState.Select(binding.Slip);
-                UpdateEditorFromState();
-                if (binding.Focus && binding.Slip is { } selected)
-                {
-                    slipEditor.Focus();
-                    if (IsUntitledKastnSlip(selected)) slipEditor.SelectAll();
-                    else slipEditor.CaretIndex = slipEditor.Text?.Length ?? 0;
-                }
-            }
-
+            BindSlipEditor();
             RefreshViewer();
             RefreshDestinationBuckets();
         }
-        finally
+        finally { refreshing = wasRefreshing; }
+    }
+
+    private void BindSlipEditor()
+    {
+        UpdateFilterButton();
+        var binding = navigation.ResolveEditor(CurrentFilteredSlips(), CurrentSelection());
+        if (!binding.Bind) return;
+        editorState.Select(binding.Slip);
+        UpdateEditorFromState();
+        if (binding.Focus && binding.Slip is { } selected)
         {
-            refreshing = wasRefreshing;
+            slipEditor.Focus();
+            if (IsUntitledKastnSlip(selected)) slipEditor.SelectAll();
+            else slipEditor.CaretIndex = slipEditor.Text?.Length ?? 0;
         }
     }
 
