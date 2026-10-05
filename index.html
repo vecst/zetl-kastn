@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zetl: keep your train of thought</title>
-<meta name="description" content="Capture text, links, pictures, and ideas without switching windows. Tap to work normally, hold to keep it, and compose documents with Kastn. Free for Windows.">
-<meta property="og:title" content="Zetl: keep your train of thought">
-<meta property="og:description" content="Tap to work normally. Hold to capture a thought. Gather the pieces as you go, then compose them into documents with Kastn.">
+<title>ZetlKastn: keep your train of thought</title>
+<meta name="description" content="ZetlKastn pairs frictionless note capture with a workspace for organizing and composing ideas. Capture with Zetl; connect, edit, and compose with Kastn. Free for Windows.">
+<meta property="og:title" content="ZetlKastn: keep your train of thought">
+<meta property="og:description" content="Two apps, one workspace. Zetl keeps capture frictionless; Kastn helps you organize, connect, and compose the ideas you keep.">
 <meta property="og:type" content="website">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -115,6 +115,7 @@ header.top .btn { margin-left: auto; }
 .hero p.lede { font-size: clamp(18px, 2.2vw, 21px); color: var(--muted); max-width: 40em; margin: 0 auto 30px; }
 .hero .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .hero .meta { margin-top: 18px; font-size: 14px; color: var(--muted); }
+.hero .name-note { margin: -12px auto 28px; max-width: 40em; font-size: 15px; color: var(--muted); }
 
 /* Demo */
 .demo { padding: 24px 0 64px; }
@@ -243,7 +244,7 @@ footer a { color: var(--muted); }
   <div class="wrap">
     <a class="brand" href="#">
       <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-opacity=".18" stroke-width="5"/><circle cx="16" cy="16" r="12" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" stroke-dasharray="56 76" transform="translate(32 0) scale(-1 1) rotate(-90 16 16)"/></svg>
-      Zetl
+      ZetlKastn
     </a>
     <nav class="links" aria-label="Sections">
       <a href="#try">Try it</a>
@@ -260,7 +261,8 @@ footer a { color: var(--muted); }
   <section class="hero">
     <div class="wrap">
       <h1>Keep your <em>train of thought.</em></h1>
-      <p class="lede">Capture the thought without switching windows. Zetl adds a second action to the shortcuts you already use: tap to work normally, hold to keep a quote, a picture, or an idea. Gather it as you go, then compose it into documents and PDFs with Kastn.</p>
+      <p class="lede">ZetlKastn has two halves. <strong>Zetl</strong> keeps taking a note as frictionless as possible: tap your shortcuts to work normally, hold to keep a quote, picture, or idea without switching windows. <strong>Kastn</strong> is where you organize, connect, and compose those pieces into documents.</p>
+      <p class="name-note">A name inspired by <em>zettelkasten</em>, split between capture and composition.</p>
       <div class="actions">
         <a class="btn primary" href="#download">Download for Windows</a>
         <a class="btn ghost" href="#try">Feel the hold</a>
@@ -326,7 +328,8 @@ footer a { color: var(--muted); }
         <h2>Capture now. Compose later.</h2>
       </div>
       <div>
-        <p>Zetl isn't a note app, and it isn't a clipboard manager. It's a keyboard-driven workspace for capturing what matters while you work and shaping it into something you can use.</p>
+        <p>ZetlKastn isn't a note app, and it isn't a clipboard manager. It's a keyboard-driven workspace for capturing what matters while you work and shaping it into something you can use.</p>
+        <p>Taking a note should ask as little of you as possible. Catch the idea first; organize it when you're ready. Zetl keeps that first step quick and out of the way. Kastn gives you room to connect the pieces and decide what they become.</p>
         <p>Tap <kbd>Ctrl+C</kbd> to copy. Hold it to review and keep the copy, or hold <kbd>Ctrl+X</kbd> to jot down a thought. Compose gathers your saved notes into text or table rows you can paste into a document, slide, or email. Open Kastn when you want to organize the pieces, edit them together, and export a document or PDF.</p>
         <p>The first time you run it, a short tour measures how long your own taps and holds take, then has you try each hold for real. A ring in the corner fills while you hold, so you can feel exactly where a tap ends and a hold begins.</p>
       </div>
@@ -394,7 +397,7 @@ footer a { color: var(--muted); }
           <li>Run <code>Zetl.exe</code>. Its icon appears by the clock, and the first-run tour opens. Open <code>Kastn.exe</code> when you want to organize or edit your notes.</li>
         </ol>
         <p>Zetl isn't code-signed yet, so Windows may show a SmartScreen warning the first time: choose <b>More info → Run anyway</b>. It runs on 64-bit Windows, and can't reach apps running as administrator unless it's run as administrator too.</p>
-        <div class="callout"><p>Zetl is in release-candidate testing. Expect some rough edges, and please <a href="https://github.com/vecst/zetl-kastn/issues">report what you find</a>.</p></div>
+        <div class="callout"><p>ZetlKastn is in release-candidate testing. Expect some rough edges, and please <a href="https://github.com/vecst/zetl-kastn/issues">report what you find</a>.</p></div>
       </div>
     </div>
   </section>
@@ -402,7 +405,7 @@ footer a { color: var(--muted); }
 
 <footer>
   <div class="wrap">
-    <span>Zetl is free software under the GNU General Public License v3 or later.</span>
+    <span>ZetlKastn is free software under the GNU General Public License v3 or later.</span>
     <nav aria-label="Project links">
       <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/guide.md">User guide</a>
       <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/building.md">Build from source</a>
