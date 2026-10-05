@@ -12,34 +12,10 @@ internal partial class MainWindow
         cancelCreationButton.Click += async (_, _) => await CancelCreationEditAsync();
     }
 
-    private void RebuildCreationCards()
-    {
-        var loaded = creationStore.LoadAll();
-        var templatesById = templateCatalog.LoadAll().ToDictionary(t => t.Id, StringComparer.Ordinal);
-        creations.Clear();
-        foreach (var creation in loaded)
-        {
-            var templateName = templatesById.TryGetValue(creation.TemplateId, out var t)
-                ? t.Name
-                : creation.TemplateId;
-            var viewName = creation.PrimaryViewId is { } viewId
-                ? viewCatalog.Global.FirstOrDefault(v => v.Id == viewId)?.Name ?? viewId
-                : "no view";
-            creations.Add(new CreationListItem(
-                creation.Category,
-                creation.Name,
-                $"Template: {templateName}  ·  View: {viewName}",
-                creation,
-                !ZetlCreationTypeDefaults.IsBuiltIn(creation.Id)));
-        }
-
-        RefreshLandingGridLayout();
-    }
-
     private async void OnUseCreationClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is not CreationListItem creation)
+        if ((sender as Control)?.DataContext is not KastnCreationCard creation)
         {
             return;
         }
@@ -70,7 +46,7 @@ internal partial class MainWindow
     private void OnEditCreationClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is CreationListItem creation)
+        if ((sender as Control)?.DataContext is KastnCreationCard creation)
         {
             if (ZetlCreationTypeDefaults.IsBuiltIn(creation.Source.Id))
             {
@@ -86,7 +62,7 @@ internal partial class MainWindow
     private void OnDuplicateCreationClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is CreationListItem creation)
+        if ((sender as Control)?.DataContext is KastnCreationCard creation)
         {
             OpenCreationEditor(ZetlCreationTypeDefaults.Duplicate(creation.Source), isNew: true);
         }
@@ -95,7 +71,7 @@ internal partial class MainWindow
     private async void OnDeleteCreationClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is not CreationListItem creation)
+        if ((sender as Control)?.DataContext is not KastnCreationCard creation)
         {
             return;
         }
@@ -169,9 +145,7 @@ internal partial class MainWindow
         CloseCreationEditor();
         if (currentProject is null)
         {
-            landingSection = LandingSection.Creations;
-            RebuildCreationCards();
-            RefreshLandingMode();
+            ShowLandingSection(KastnLandingSection.Creations);
         }
         statusText.Text = $"Saved creation type '{saved.Name}'.";
     }

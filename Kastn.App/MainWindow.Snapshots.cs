@@ -10,7 +10,7 @@ internal partial class MainWindow
 
     private KastnSnapshotCoordinator CreateSnapshotCoordinator() => new(editorState,
         () => connection?.NavigationVersion ?? 0, action => Dispatcher.UIThread.Post(action), new(
-            EnterSnapshotUpdate, ObserveSnapshotSession,
+            EnterUiUpdate, ObserveSnapshotSession,
             () => new(SelectedBucketId, navigation.PendingSlipId ?? editorState.SlipId,
                 (viewPickerBox.SelectedItem as ZetlViewDocument)?.Id),
             ResetSnapshotRendering, UpdateSnapshotProjects, AdoptSnapshotProject, UpdateSnapshotProjection,
@@ -22,11 +22,11 @@ internal partial class MainWindow
     private void OnSnapshotChanged(object? sender, KastnSessionSnapshot snapshot) => snapshots.Queue(snapshot);
     private void ApplySnapshot(KastnSessionSnapshot snapshot) => snapshots.ApplyNow(snapshot);
 
-    private IDisposable EnterSnapshotUpdate()
+    private IDisposable EnterUiUpdate()
     {
         var previous = refreshing;
         refreshing = true;
-        return new SnapshotUpdateScope(() => refreshing = previous);
+        return new UiUpdateScope(() => refreshing = previous);
     }
 
     private void ObserveSnapshotSession(KastnSnapshotPlan plan)
@@ -50,11 +50,9 @@ internal partial class MainWindow
 
     private void UpdateSnapshotProjects(KastnSessionSnapshot snapshot)
     {
-        lastProjectSummaries = snapshot.Projects;
-        PopulateProjectCards();
+        landing.UpdateProjects(snapshot.Projects);
         RefreshLandingGridLayout();
-        landingProjectList.SelectedItem = null;
-        landingProjectWorkspaceList.SelectedItem = null;
+        ClearLandingSelection();
     }
 
     private KastnSnapshotSelection AdoptSnapshotProject(KastnSnapshotPlan plan, KastnSnapshotSelection selection)
@@ -148,7 +146,7 @@ internal partial class MainWindow
         SetConnectionState(snapshot);
     }
 
-    private sealed class SnapshotUpdateScope(Action release) : IDisposable
+    private sealed class UiUpdateScope(Action release) : IDisposable
     {
         private Action? current = release;
         public void Dispose() => Interlocked.Exchange(ref current, null)?.Invoke();

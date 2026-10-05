@@ -1385,7 +1385,7 @@ internal partial class MainWindow
             return;
         }
 
-        await DeleteProjectAsync(new ProjectListItem(
+        await DeleteProjectAsync(new KastnProjectCard(
             currentProject.Id,
             currentProject.Name,
             currentProject.MetadataRevision,
@@ -1404,7 +1404,7 @@ internal partial class MainWindow
                 StringComparison.Ordinal)));
     }
 
-    private async Task RenameProjectAsync(ProjectListItem project)
+    private async Task RenameProjectAsync(KastnProjectCard project)
     {
         if (!IsOnline)
         {
@@ -1469,7 +1469,7 @@ internal partial class MainWindow
                 : "Journal mode off.");
     }
 
-    private async Task SetProjectStatusAsync(ProjectListItem project, string status)
+    private async Task SetProjectStatusAsync(KastnProjectCard project, string status)
     {
         if (!IsOnline)
         {
@@ -1494,7 +1494,7 @@ internal partial class MainWindow
         HandleSimpleResponse(response, $"Project {verb}.");
     }
 
-    private async Task SetActiveProjectAsync(ProjectListItem project, bool shifted)
+    private async Task SetActiveProjectAsync(KastnProjectCard project, bool shifted)
     {
         if (!IsOnline)
         {
@@ -1516,7 +1516,7 @@ internal partial class MainWindow
             shifted ? "Project set as Shift." : "Project set as Main.");
     }
 
-    private async Task CreateTemporaryProjectFromReplayAsync(ProjectListItem project)
+    private async Task CreateTemporaryProjectFromReplayAsync(KastnProjectCard project)
     {
         if (!IsOnline)
         {
@@ -1550,8 +1550,7 @@ internal partial class MainWindow
             "Temporary Project",
             "Project name",
             $"{project.Name} Temporary",
-            candidate => lastProjectSummaries.Any(summary =>
-                string.Equals(summary.Name, candidate, StringComparison.OrdinalIgnoreCase))
+            candidate => landing.ProjectNameExists(candidate)
                     ? "A project with that name already exists."
                     : null);
         if (string.IsNullOrWhiteSpace(name))
@@ -1588,7 +1587,7 @@ internal partial class MainWindow
         HandleSimpleResponse(response, "Created temporary project.");
     }
 
-    private async Task DeleteProjectAsync(ProjectListItem project)
+    private async Task DeleteProjectAsync(KastnProjectCard project)
     {
         if (!IsOnline)
         {

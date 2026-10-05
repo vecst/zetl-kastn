@@ -10,7 +10,7 @@ internal partial class MainWindow
     private async void OnUseTemplateClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is TemplateListItem template)
+        if ((sender as Control)?.DataContext is KastnTemplateCard template)
         {
             await CreateProjectFromTemplateAsync(template.Source);
         }
@@ -25,7 +25,7 @@ internal partial class MainWindow
     private void OnEditTemplateClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is not TemplateListItem template)
+        if ((sender as Control)?.DataContext is not KastnTemplateCard template)
         {
             return;
         }
@@ -45,7 +45,7 @@ internal partial class MainWindow
     private void OnDuplicateTemplateClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is TemplateListItem template)
+        if ((sender as Control)?.DataContext is KastnTemplateCard template)
         {
             // A fresh id + name, so duplicating a built-in yields an editable copy
             // and the original preset stays immutable.
@@ -56,7 +56,7 @@ internal partial class MainWindow
     private async void OnDeleteTemplateClick(object? sender, RoutedEventArgs args)
     {
         args.Handled = true;
-        if ((sender as Control)?.DataContext is not TemplateListItem template)
+        if ((sender as Control)?.DataContext is not KastnTemplateCard template)
         {
             return;
         }
@@ -136,10 +136,7 @@ internal partial class MainWindow
         CloseTemplateEditor();
         if (currentProject is null)
         {
-            landingSection = LandingSection.Templates;
-            landingShowingConsumable = saved.IsConsumable;
-            RebuildTemplateCards();
-            RefreshLandingMode();
+            ShowLandingSection(KastnLandingSection.Templates, saved.IsConsumable);
         }
         statusText.Text = $"Saved template '{saved.Name}'.";
     }

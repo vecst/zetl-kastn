@@ -435,6 +435,28 @@ extracting undo or the renderers.
   passed, with the same two intentional latency-probe skips. Landing-page
   ownership and the stale-menu sweep remain next.
 
+- Extracted `KastnLandingPage`: it owns section/archive/template-type state,
+  lane and overlay resolution, recent ordering, the project library, catalog
+  reload policy, and action-selection suppression. Bindings use read-only
+  observable collections of independent card records; MainWindow applies
+  visibility, layout, selection and native event routing.
+- Wire-equivalent project summaries retain their card models and generate no
+  collection notifications. Changed libraries use linear indexed reconciliation
+  instead of clearing every list. Catalog visits still reread disk, retaining
+  unchanged cards and detecting nested document changes. Creation cards also
+  reread global views, so external renames/deletions update dependency labels.
+- Project-name validation uses all summary names, including lane-pinned,
+  archived and temporary projects. Nested selection clears preserve the existing
+  refresh guard, and an old pointer-action callback cannot release a later
+  suppression. Retirement prevents further catalog loads or state updates.
+- Added 14 owner/headless UI cases for overlays, recent limits/order, archived
+  libraries, changed revisions, wire identity, nested source changes, missing
+  dependencies, offline modes, external catalogs, native card/focus identity,
+  list navigation, action suppression and nested update guards. Validation:
+  solution build with zero warnings/errors; 1,220 tests passed, with the same two
+  intentional latency-probe skips. The stale-menu and native-action sweep is the
+  next orchestration target.
+
 ## Responsibility Map
 
 | Partial | Lines | Responsibilities currently mixed together |

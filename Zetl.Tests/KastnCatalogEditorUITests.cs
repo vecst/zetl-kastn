@@ -52,8 +52,9 @@ public partial class ZetlUITests
         {
             object source = kind == "template" ? ZetlTemplateDefaults.CreateAll().First() : ZetlCreationTypeDefaults.CreateAll().First();
             var original = JsonSerializer.Serialize(source, source.GetType(), JsonFile.Options);
-            var itemType = typeof(MainWindow).GetNestedType(kind == "template" ? "TemplateListItem" : "CreationListItem", BindingFlags.NonPublic)!;
-            var item = Activator.CreateInstance(itemType, ["Built-in", "Preset", "", source, false]);
+            object item = kind == "template"
+                ? new KastnTemplateCard("Built-in", "Preset", "", (ZetlTemplateDocument)source, false)
+                : new KastnCreationCard("Built-in", "Preset", "", (ZetlCreationTypeDocument)source, false);
             typeof(MainWindow).GetMethod(kind == "template" ? "OnEditTemplateClick" : "OnEditCreationClick", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(window, [new Button { DataContext = item }, new RoutedEventArgs(Button.ClickEvent)]);
             CatalogName(window, kind).Text = "My independent copy";

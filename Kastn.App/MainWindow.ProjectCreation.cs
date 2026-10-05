@@ -26,7 +26,7 @@ internal partial class MainWindow
             {
                 var answer = await KastnDialogs.PromptTemplateProjectAsync(this, $"New {request.TemplateName} Project",
                     request.TemplateName, request.AllowTemporary, request.InitialTemporary,
-                    candidate => projects.Any(project => string.Equals(project.Name, candidate, StringComparison.OrdinalIgnoreCase))
+                    candidate => landing.ProjectNameExists(candidate)
                         ? "A project with that name already exists." : null);
                 return answer is null ? null : new(answer.Name, answer.Temporary);
             },

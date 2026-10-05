@@ -72,6 +72,7 @@ internal partial class MainWindow
         navigation.Retire();
         mutations.Retire();
         snapshots.Retire();
+        landing.Retire();
         editHistory.Retire();
         draftJournalTimer?.Stop();
         savingVisualTimer?.Stop();

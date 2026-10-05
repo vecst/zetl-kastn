@@ -23,7 +23,6 @@ internal partial class MainWindow : Window
     private readonly KastnSettings settings;
     private readonly KastnProjectCreationWorkflow projectCreation;
     private string UntitledSlipTitle => settings.Current.UntitledSlipTitle;
-    private const int RecentProjectLimit = 10;
 
     private readonly KastnConnectionController connection;
     // Built-ins plus user templates; corrupt/invalid user files are skipped with a
@@ -42,14 +41,8 @@ internal partial class MainWindow : Window
     private readonly KastnDraftStore draftStore;
     // Creation types: bundle a template with a default view.
     private readonly ZetlCreationTypeStore creationStore;
-    private readonly ObservableCollection<CreationListItem> creations = [];
-    private LandingSection landingSection;
     // Sentinel for the creation editor's "no view" choice.
     private static readonly ZetlViewDocument NoView = new() { Id = "", Name = "(no view)" };
-    private readonly ObservableCollection<LaneCardItem> laneCards = [];
-    private readonly ObservableCollection<ProjectListItem> recentProjects = [];
-    private readonly ObservableCollection<ProjectListItem> projects = [];
-    private readonly ObservableCollection<TemplateListItem> templates = [];
     private readonly ObservableCollection<FilterItem> sources = [];
     private readonly ObservableCollection<FilterItem> sessions = [];
     private readonly ObservableCollection<DateFilterItem> dates = [];
@@ -149,10 +142,6 @@ internal partial class MainWindow : Window
     private GridLength rightColumnWidth = new GridLength(360, GridUnitType.Pixel);
     private GridLength rightSplitterWidth = new GridLength(8, GridUnitType.Pixel);
     private bool bucketHeadingUpdating;
-    private bool landingShowingConsumable;
-    private bool landingShowArchived;
-    private IReadOnlyList<ZetlProjectSummary> lastProjectSummaries = [];
-    private bool suppressLandingProjectSelection;
     private readonly KastnViewRenderCache viewRenderCache = new();
     private readonly KastnWindowLifetime lifetime;
 
@@ -180,6 +169,7 @@ internal partial class MainWindow : Window
         mutations = new(OnMutationStateChanged);
         navigation = CreateNavigationCoordinator();
         snapshots = CreateSnapshotCoordinator();
+        landing = CreateLandingPage();
         WireWindowLifetime();
     }
 
@@ -214,11 +204,12 @@ internal partial class MainWindow : Window
         mutations = new(OnMutationStateChanged);
         navigation = CreateNavigationCoordinator();
         snapshots = CreateSnapshotCoordinator();
+        landing = CreateLandingPage();
         Icon = KastnIcon.Create();
-        landingLaneItems.ItemsSource = laneCards;
-        landingProjectList.ItemsSource = recentProjects;
-        landingProjectWorkspaceList.ItemsSource = projects;
-        landingTemplateItems.ItemsSource = templates;
+        landingLaneItems.ItemsSource = landing.Lanes;
+        landingProjectList.ItemsSource = landing.RecentProjects;
+        landingProjectWorkspaceList.ItemsSource = landing.Projects;
+        landingTemplateItems.ItemsSource = landing.Templates;
         sourceFilterBox.ItemsSource = sources;
         sessionFilterBox.ItemsSource = sessions;
         dateFilterBox.ItemsSource = dates;
@@ -360,14 +351,14 @@ internal partial class MainWindow : Window
         restoreSlipButton.Click += async (_, _) => await RestoreSlipAsync();
         useZetlButton.Click += (_, _) => UseZetlVersion();
         keepMineButton.Click += async (_, _) => await KeepMineAsync();
-        landingProjectsButton.Click += (_, _) => ShowLandingSection(LandingSection.Projects);
-        landingTemplatesButton.Click += (_, _) => ShowLandingSection(LandingSection.Templates);
-        landingCreateButton.Click += (_, _) => ShowLandingSection(LandingSection.Creations);
+        landingProjectsButton.Click += (_, _) => ShowLandingSection(KastnLandingSection.Projects);
+        landingTemplatesButton.Click += (_, _) => ShowLandingSection(KastnLandingSection.Templates);
+        landingCreateButton.Click += (_, _) => ShowLandingSection(KastnLandingSection.Creations);
         landingCurrentProjectsButton.Click += (_, _) => SetArchivedProjectMode(showArchived: false);
         landingArchivedProjectsButton.Click += (_, _) => SetArchivedProjectMode(showArchived: true);
         landingCaptureButton.Click += (_, _) => SetTemplateType(consumable: false);
         landingConsumableButton.Click += (_, _) => SetTemplateType(consumable: true);
-        landingCreationItems.ItemsSource = creations;
+        landingCreationItems.ItemsSource = landing.Creations;
         WireTemplateEditor();
         WireCreationEditor();
         SizeChanged += (_, _) => RefreshLandingGridLayout();
@@ -393,233 +384,6 @@ internal partial class MainWindow : Window
         if (lifetime.IsRetired) return;
         statusText.Text = $"Kastn could not open the requested project. {exception.Message}";
     }
-
-    private void ShowLandingSection(LandingSection section)
-    {
-        landingSection = section;
-        landingProjectList.SelectedItem = null;
-        landingProjectWorkspaceList.SelectedItem = null;
-        // Re-read each catalog from disk on visit so added/removed user files show
-        // up without restarting Kastn.
-        if (section == LandingSection.Templates)
-        {
-            RebuildTemplateCards();
-        }
-
-        if (section == LandingSection.Creations)
-        {
-            RebuildCreationCards();
-        }
-
-        RefreshLandingMode();
-    }
-
-    private void SetTemplateType(bool consumable)
-    {
-        landingShowingConsumable = consumable;
-        RebuildTemplateCards();
-        RefreshLandingMode();
-    }
-
-    private void RebuildTemplateCards()
-    {
-        var type = landingShowingConsumable
-            ? ZetlTemplateTypes.Consumable
-            : ZetlTemplateTypes.Capture;
-        var loadedTemplates = templateCatalog.LoadAll();
-        templates.Clear();
-        foreach (var template in loadedTemplates.Where(
-            item => string.Equals(item.Type, type, StringComparison.Ordinal)))
-        {
-            templates.Add(new TemplateListItem(
-                template.Category,
-                template.Name,
-                template.Description,
-                template,
-                !ZetlTemplateDefaults.IsBuiltIn(template.Id)));
-        }
-
-        RefreshLandingGridLayout();
-    }
-
-    private void RefreshLandingMode()
-    {
-        var showChoices = emptyState.IsVisible && landingModeToggle.IsVisible;
-        var showProjects = landingSection == LandingSection.Projects;
-        var showTemplates = landingSection == LandingSection.Templates;
-        var showCreations = landingSection == LandingSection.Creations;
-        // The toggle stays visible even with no visible projects, so archived-only
-        // workspaces can still reveal their projects.
-        landingProjectsPanel.IsVisible = showChoices;
-        landingLowerContent.IsVisible = showChoices;
-        landingProjectLibraryHeader.IsVisible = showChoices;
-        landingProjectList.IsVisible = showChoices && recentProjects.Count > 0;
-        landingProjectWorkspaceList.IsVisible = showChoices && showProjects && projects.Count > 0;
-        landingTemplateList.IsVisible = showChoices && showTemplates;
-        landingTemplateList.IsEnabled = IsOnline;
-        landingCreationList.IsVisible = showChoices && showCreations;
-        landingCreationList.IsEnabled = IsOnline;
-        landingLowerActionRow.IsVisible = showChoices
-            && (showProjects || showTemplates || showCreations);
-        landingProjectArchiveToggle.IsVisible = showChoices && showProjects;
-        landingTemplateTypeToggle.IsVisible = showChoices && showTemplates;
-        landingTemplateTypeToggle.IsEnabled = IsOnline;
-        landingNewTemplateButton.IsVisible = showChoices && showTemplates;
-        landingNewCreationButton.IsVisible = showChoices && showCreations;
-        landingWorkspaceTitle.Text = showCreations
-            ? "Create"
-            : showTemplates ? "Templates" : "Projects";
-        landingWorkspaceSubtitle.Text = showCreations
-            ? "Start from a saved creation type."
-            : showTemplates
-                ? "Start a project from a reusable template."
-                : "Open a project or manage the library.";
-        landingProjectsButton.IsEnabled = !showProjects;
-        landingTemplatesButton.IsEnabled = !showTemplates;
-        landingCurrentProjectsButton.IsEnabled = landingShowArchived;
-        landingArchivedProjectsButton.IsEnabled = !landingShowArchived;
-        landingCreateButton.IsVisible = showChoices;
-        landingCreateButton.IsEnabled = !showCreations;
-        landingCaptureButton.IsEnabled = landingShowingConsumable;
-        landingConsumableButton.IsEnabled = !landingShowingConsumable;
-        RefreshLandingGridLayout();
-    }
-
-    private void RefreshLandingGridLayout()
-    {
-        var contentWidth = Math.Max(560, Bounds.Width - 500);
-        var lowerHeight = Math.Max(240, Bounds.Height - 210);
-        landingProjectList.MaxHeight = lowerHeight;
-        landingProjectWorkspaceList.Width = contentWidth;
-        landingProjectWorkspaceList.MaxHeight = lowerHeight;
-        landingTemplateList.Width = contentWidth;
-        landingTemplateList.MaxHeight = lowerHeight;
-        landingCreationList.Width = contentWidth;
-        landingCreationList.MaxHeight = lowerHeight;
-    }
-
-    // Rebuild the landing project cards from the last snapshot's summaries.
-    // Recents stay on current projects; the workspace tab switches current/archived.
-    // Callers manage the `refreshing` guard
-    // because mutating `projects` fires the list's selection handler.
-    private void PopulateProjectCards()
-    {
-        laneCards.Clear();
-        recentProjects.Clear();
-        projects.Clear();
-        var allProjects = lastProjectSummaries.Select(CreateProjectListItem).ToList();
-
-        AddLaneCard(allProjects, ZetlStateRules.NormalLane, LaneLabel(ZetlStateRules.NormalLane));
-        AddLaneCard(allProjects, ZetlStateRules.ShiftLane, LaneLabel(ZetlStateRules.ShiftLane));
-
-        var laneProjectIds = laneCards
-            .SelectMany(card => new[] { card.Project?.Id, card.OverlayProject?.Id })
-            .Where(id => id is not null)
-            .ToHashSet(StringComparer.Ordinal);
-        foreach (var project in allProjects
-            .Where(project =>
-                !project.IsTemporary
-                && !laneProjectIds.Contains(project.Id)
-                && project.IsArchived == landingShowArchived)
-            .OrderBy(project => project.Name, StringComparer.OrdinalIgnoreCase))
-        {
-            projects.Add(project);
-        }
-
-        foreach (var project in allProjects
-            .Where(project => !project.IsTemporary && !project.IsArchived)
-            .OrderByDescending(project => project.LastActivityUtc ?? DateTimeOffset.MinValue)
-            .ThenBy(project => project.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(RecentProjectLimit))
-        {
-            recentProjects.Add(project);
-        }
-    }
-
-    private static ProjectListItem CreateProjectListItem(ZetlProjectSummary project)
-    {
-        return new ProjectListItem(
-            project.Id,
-            project.Name,
-            project.MetadataRevision,
-            LandingProjectDetail(project),
-            string.IsNullOrWhiteSpace(project.PreviewText)
-                ? "No slips yet"
-                : project.PreviewText,
-            LandingProjectActivity(project),
-            project.LastActivityUtc,
-            project.Status,
-            project.VisibleSlipCount,
-            project.ActiveLane,
-            project.UnderlyingLane,
-            project.CanCreateTemporaryFromReplay,
-            string.Equals(
-                project.Kind,
-                ZetlStateRules.TemporaryConsumableProjectKind,
-                StringComparison.Ordinal));
-    }
-
-    private void AddLaneCard(
-        IReadOnlyList<ProjectListItem> visibleProjects,
-        string lane,
-        string label)
-    {
-        var overlay = visibleProjects.FirstOrDefault(project =>
-            project.IsTemporary
-            && string.Equals(project.ActiveLane, lane, StringComparison.Ordinal));
-        var project = visibleProjects.FirstOrDefault(project =>
-            !project.IsTemporary
-            && (string.Equals(project.ActiveLane, lane, StringComparison.Ordinal)
-                || (overlay is not null
-                    && string.Equals(project.UnderlyingLane, lane, StringComparison.Ordinal))));
-        laneCards.Add(new LaneCardItem(lane, label, project, overlay));
-    }
-
-    private void SetArchivedProjectMode(bool showArchived)
-    {
-        if (landingShowArchived == showArchived)
-        {
-            return;
-        }
-
-        landingShowArchived = showArchived;
-        refreshing = true;
-        try
-        {
-            PopulateProjectCards();
-        }
-        finally
-        {
-            refreshing = false;
-        }
-
-        RefreshLandingGridLayout();
-        RefreshLandingMode();
-    }
-
-    private static string LandingProjectDetail(ZetlProjectSummary project)
-    {
-        var detail = $"{project.VisibleSlipCount} slip{Plural(project.VisibleSlipCount)}"
-            + $" | {project.VisibleBucketCount} bucket{Plural(project.VisibleBucketCount)}";
-        if (string.Equals(project.Kind, ZetlStateRules.TemporaryConsumableProjectKind, StringComparison.Ordinal))
-        {
-            detail = $"Temporary | {detail}";
-        }
-
-        return project.DeletedSlipCount == 0
-            ? detail
-            : $"{detail} | {project.DeletedSlipCount} deleted";
-    }
-
-    private static string LandingProjectActivity(ZetlProjectSummary project)
-    {
-        return project.LastActivityUtc is null
-            ? "No activity yet"
-            : $"Last slip {project.LastActivityUtc.Value.LocalDateTime:g}";
-    }
-
-    private string LaneLabel(string lane) =>
-        this.settings.Current.LaneLabel(string.Equals(lane, ZetlStateRules.ShiftLane, StringComparison.Ordinal));
 
     private void RefreshFilterChoices(ZetlProjectSnapshot project)
     {
@@ -950,117 +714,6 @@ internal partial class MainWindow : Window
         filtersButton.Content = activeCount == 0 ? "Filters ▾" : $"Filters ({activeCount}) ▾";
     }
 
-    private async void OnProjectSelectionChanged(object? sender, SelectionChangedEventArgs args)
-    {
-        if (suppressLandingProjectSelection)
-        {
-            suppressLandingProjectSelection = false;
-            refreshing = true;
-            landingProjectList.SelectedItem = null;
-            landingProjectWorkspaceList.SelectedItem = null;
-            refreshing = false;
-            return;
-        }
-
-        if (!refreshing
-            && sender is ListBox listBox
-            && listBox.SelectedItem is ProjectListItem project)
-        {
-            await OpenProjectCardAsync(project);
-        }
-    }
-
-    private void OnProjectCardActionPointerPressed(object? sender, PointerPressedEventArgs args)
-    {
-        suppressLandingProjectSelection = true;
-        Dispatcher.UIThread.Post(
-            () => suppressLandingProjectSelection = false,
-            DispatcherPriority.Background);
-    }
-
-    private async void OnProjectCardOpenClick(object? sender, RoutedEventArgs args)
-    {
-        args.Handled = true;
-        if (ProjectFromControl(sender) is { } project)
-        {
-            await OpenProjectCardAsync(project);
-        }
-    }
-
-    private async void OnProjectCardRenameClick(object? sender, RoutedEventArgs args)
-    {
-        args.Handled = true;
-        if (ProjectFromControl(sender) is { } project)
-        {
-            await RenameProjectAsync(project);
-        }
-    }
-
-    private async void OnProjectCardPinClick(object? sender, RoutedEventArgs args)
-    {
-        args.Handled = true;
-        if (ProjectFromControl(sender) is { } project)
-        {
-            await SetActiveProjectAsync(project, shifted: false);
-        }
-    }
-
-    private async void OnProjectCardSetAlternateClick(object? sender, RoutedEventArgs args)
-    {
-        args.Handled = true;
-        if (ProjectFromControl(sender) is { } project)
-        {
-            await SetActiveProjectAsync(project, shifted: true);
-        }
-    }
-
-    private async void OnProjectCardDeleteClick(object? sender, RoutedEventArgs args)
-    {
-        args.Handled = true;
-        if (ProjectFromControl(sender) is { } project)
-        {
-            await DeleteProjectAsync(project);
-        }
-    }
-
-    private async void OnProjectCardStatusClick(object? sender, RoutedEventArgs args)
-    {
-        args.Handled = true;
-        if (ProjectFromControl(sender) is { } project)
-        {
-            await SetProjectStatusAsync(project, project.StatusActionTarget);
-        }
-    }
-
-    private async void OnProjectCardUseTemporarilyClick(object? sender, RoutedEventArgs args)
-    {
-        args.Handled = true;
-        if (ProjectFromControl(sender) is { } project)
-        {
-            await CreateTemporaryProjectFromReplayAsync(project);
-        }
-    }
-
-    private static ProjectListItem? ProjectFromControl(object? sender)
-    {
-        return sender is Control control
-            ? control.Tag as ProjectListItem ?? control.DataContext as ProjectListItem
-            : null;
-    }
-
-    private async Task OpenProjectCardAsync(ProjectListItem project)
-    {
-        if (await navigation.NavigateProjectAsync(project.Id) != KastnProjectNavigationStatus.SaveBlocked) return;
-        var wasRefreshing = refreshing;
-        refreshing = true;
-        try
-        {
-            landingProjectList.SelectedItem = null;
-            landingProjectWorkspaceList.SelectedItem = null;
-        }
-        finally { refreshing = wasRefreshing; }
-    }
-
     private async Task CloseProjectAsync()
     {
         if (currentProject is null) return;
@@ -1341,96 +994,6 @@ internal partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
-
-    // The landing page shows exactly one of these lists at a time.
-    private enum LandingSection
-    {
-        Projects,
-        Templates,
-        Creations
-    }
-
-    private sealed record ProjectListItem(
-        string Id,
-        string Name,
-        long MetadataRevision,
-        string Detail,
-        string PreviewText,
-        string ActivityText,
-        DateTimeOffset? LastActivityUtc,
-        string Status,
-        int VisibleSlipCount,
-        string ActiveLane,
-        string UnderlyingLane,
-        bool CanCreateTemporaryFromReplay,
-        bool IsTemporary)
-    {
-        public bool IsActive =>
-            string.Equals(Status, "Active", StringComparison.OrdinalIgnoreCase);
-
-        public bool IsArchived =>
-            string.Equals(Status, "Archived", StringComparison.OrdinalIgnoreCase);
-
-        // The badge only appears for non-Active projects, so Active shows nothing.
-        public bool ShowStatusBadge => !IsActive;
-
-        // One contextual status action per card: seal/put-away an active project,
-        // or bring a finished/archived one back.
-        public string StatusActionLabel => IsActive
-            ? "Archive"
-            : IsArchived ? "Unarchive" : "Reactivate";
-
-        public string StatusActionTarget => IsActive ? "Archived" : "Active";
-
-        public bool CanUseTemporarily => IsArchived && CanCreateTemporaryFromReplay;
-
-        public bool CanSetActive =>
-            IsActive && !string.Equals(ActiveLane, ZetlStateRules.NormalLane, StringComparison.Ordinal);
-
-        public bool CanSetAlternateActive =>
-            IsActive && !string.Equals(ActiveLane, ZetlStateRules.ShiftLane, StringComparison.Ordinal);
-
-        public string SetActiveActionLabel =>
-            string.Equals(ActiveLane, ZetlStateRules.NormalLane, StringComparison.Ordinal)
-                ? "Active"
-                : "Set Active";
-    }
-
-    private sealed record LaneCardItem(
-        string Lane,
-        string Label,
-        ProjectListItem? Project,
-        ProjectListItem? OverlayProject)
-    {
-        public bool HasProject => Project is not null;
-        public bool HasOverlay => OverlayProject is not null;
-        public bool IsEmpty => Project is null;
-        public string ProjectName => Project?.Name ?? $"No {Label} project";
-        public string ProjectDetail => Project?.Detail ?? "Select or create a project to keep here.";
-        public string ProjectPreview => Project?.PreviewText ?? "This lane is empty.";
-        public string ProjectActivity => Project?.ActivityText ?? "";
-        public string EmptyTitle => $"{Label} is empty";
-        public string EmptyDetail => "Choose a project from the library to keep this lane ready.";
-        public string OverlayName => OverlayProject?.Name ?? "";
-        public string OverlayDetail => OverlayProject?.Detail ?? "";
-        public string OverlayProgress => OverlayProject is null
-            ? ""
-            : $"{OverlayProject.VisibleSlipCount} replay item{Plural(OverlayProject.VisibleSlipCount)} left";
-    }
-
-    private sealed record TemplateListItem(
-        string Kind,
-        string Name,
-        string Detail,
-        ZetlTemplateDocument Source,
-        bool IsUser);
-
-    private sealed record CreationListItem(
-        string Kind,
-        string Name,
-        string Detail,
-        ZetlCreationTypeDocument Source,
-        bool IsUser);
 
     private sealed record FilterItem(string? Value, string Label);
     private sealed record TypeFilterItem(ZetlSlipType? Value, string Label);

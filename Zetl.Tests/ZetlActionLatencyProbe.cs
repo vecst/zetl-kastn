@@ -78,9 +78,9 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
                     ? slip with { Revision = slip.Revision + 1, Text = slip.Text + "!" } : slip).ToArray() };
                 Apply(current);
             }, 5);
-            foreach (var method in new[] { "PopulateProjectCards", "RefreshFilterChoices", "RefreshBuckets", "UpdateEditorFromState", "RefreshSlipView" })
+            foreach (var method in new[] { "UpdateSnapshotProjects", "RefreshFilterChoices", "RefreshBuckets", "UpdateEditorFromState", "RefreshSlipView" })
             {
-                object?[] args = method switch { "RefreshFilterChoices" => [current], "RefreshBuckets" => [current, null], "RefreshSlipView" => [true], _ => [] };
+                object?[] args = method switch { "UpdateSnapshotProjects" => [new KASTN.KastnSessionSnapshot(KASTN.KastnConnectionState.Online, "Connected", [], current)], "RefreshFilterChoices" => [current], "RefreshBuckets" => [current, null, true], "RefreshSlipView" => [true], _ => [] };
                 Time(method, () => typeof(KASTN.MainWindow).GetMethod(method, flags)!.Invoke(window, args), 3);
             }
             var rowsBefore = window.projectTree.GetVisualDescendants().OfType<TreeViewItem>()
@@ -88,7 +88,7 @@ public class ZetlActionLatencyProbe(ITestOutputHelper output)
             current = current with { ChangeSequence = current.ChangeSequence + 1, Slips = current.Slips.Reverse().ToArray() };
             typeof(KASTN.MainWindow).GetField("currentProject", flags)!.SetValue(window, current);
             typeof(KASTN.MainWindow).GetField("projectIndex", flags)!.SetValue(window, new KASTN.KastnProjectIndex(current));
-            Time("Reverse tree only", () => typeof(KASTN.MainWindow).GetMethod("RefreshBuckets", flags)!.Invoke(window, [current, null]));
+            Time("Reverse tree only", () => typeof(KASTN.MainWindow).GetMethod("RefreshBuckets", flags)!.Invoke(window, [current, null, true]));
             Time("Reverse reader only", () => typeof(KASTN.MainWindow).GetMethod("RefreshSlipView", flags)!.Invoke(window, [true]));
             Time("Reverse slip order", () => { current = current with { ChangeSequence = current.ChangeSequence + 1, Slips = current.Slips.Reverse().ToArray() }; Apply(current); }, 3);
             var rowsAfter = window.projectTree.GetVisualDescendants().OfType<TreeViewItem>()
