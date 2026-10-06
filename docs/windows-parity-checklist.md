@@ -52,14 +52,17 @@ recursive shortcut handling.
       project instead of opening the Shift Journal. Merely selecting the Shift
       project is not remembered; it must be explicitly activated. With no active
       Shift project, reopen the last selected Shift project (or its Journal)
-      rather than falling back across lanes.
+      rather than falling back across lanes. (The Shift Board now falls back to
+      the Shift Journal when one exists, 2de0770; captures were already
+      lane-correct. Lane activation on a fresh profile is still open.)
 - [x] Every tray menu action opens the expected flow.
 - [x] A second launch reports that Zetl is already running and exits.
 - [x] `Quit` removes the tray icon and a later launch starts normally.
-- [ ] **TODO:** Coordinated Quit must foreground Kastn's confirmation when
-      Kastn is behind other windows and must coalesce repeated Quit requests.
-      Currently a second Quit can close Zetl before Kastn confirms, after which
-      the still-running Kastn relaunches Zetl.
+- [ ] Coordinated Quit coalesces repeated Quit requests (fixed in source, b29ab3c,
+      not yet verified on a packaged build): with a dirty Kastn editor's
+      confirmation pending, Quit again, then cancel. Neither process exits or
+      restarts, and Zetl's toast points to Kastn's dialog. Kastn's confirmation
+      must also come to the front when Kastn is behind other windows.
 - [x] Ending Zetl from Task Manager does not corrupt state and a later launch
       starts normally.
 - [x] With a dirty Kastn editor, test normal Exit and coordinated Zetl Quit both

@@ -92,6 +92,28 @@ Windows version:
 Important target applications and versions:
 ```
 
+### Upgrade In Place (Required)
+
+Testers upgrade over their existing data, so every candidate also runs on a copy
+of a real profile from the previous release. Never point a candidate at the
+original profile for this check.
+
+1. Quit Zetl and Kastn. Copy the previous release's profile (normally
+   `%AppData%\Zetl`) to a candidate-specific folder, for example
+   `C:\tmp\zetl-rc-upgrade-abcdef1`.
+2. Launch the published candidate with `--data-dir` pointing at the copy.
+3. Confirm every project, bucket, nested bucket, slip, and picture is present;
+   the Journal and Shift Journal still route captures; settings and themes kept
+   their values; Replay review and older Pop Review buckets are intact; and Kastn
+   opens the same projects.
+4. The tour opens once for a profile that never finished or skipped it (an
+   RC 1 profile that only saw the old help window), and not for one whose tour
+   was Completed or Skipped.
+5. Make a capture, an edit in Kastn, and a restart, and confirm all three
+   persisted.
+
+Preserve the copy if anything is missing or changed; it is the evidence.
+
 ## 4. Test In Phases
 
 Work through the matching checklist sections in this order. Keep the same
@@ -139,18 +161,41 @@ Run the restoration matrix:
 | File Explorer | The same file-list clipboard can still be pasted |
 | Mixed text/image source | Every advertised representation remains usable |
 
+#### How Replay Handles Your Clipboard
+
+Since RC 2.1, Replay leaves its own item on the clipboard between pastes, so an
+app that is slow to read a paste never gets the wrong thing. Your clipboard comes
+back when the queue runs out (after a 500 ms settle), when Replay is turned off,
+or, if Replay ended some other way, just before your next tapped `Ctrl+V`. Judge
+every restoration check at those moments, never between two Replay pastes.
+
+Each Replay run ends in exactly one of three outcomes. Record which one you saw:
+
+1. **Backup succeeded.** Mid-queue, the clipboard holds the Replay item. After
+   the queue ends or Replay is turned off, the original clipboard returns exactly,
+   every advertised representation included. A newer copy you make during Replay
+   is never overwritten.
+2. **Backup unavailable.** Replay still pastes, warns once that your previous
+   clipboard can't be restored afterwards, and never claims a restore later. This
+   passes when the warning is honest; it is not a restoration pass.
+3. **Staging failed.** No paste is sent, the item stays first in the queue, and
+   Zetl says so.
+
 #### Explorer File-List Restoration
 
-This test proves that Replay restores a multi-item Windows shell clipboard, not
-just its visible text fallback.
+This test shows whether Replay can restore a multi-item Windows shell clipboard,
+not just its visible text fallback. Zetl backs up every memory-held clipboard
+format, but Explorer may also offer formats it renders on demand, which can make
+a full backup impossible. Either outcome 1 or outcome 2 can be correct here; the
+test establishes which, and `docs/guide.md` must then match it (it currently says
+a file copied in File Explorer can't be backed up).
 
-Prepare an isolated source and two verification destinations in PowerShell:
+Prepare an isolated source and a verification destination in PowerShell:
 
 ```powershell
 $root = Join-Path $env:TEMP ("zetl-rc-file-list-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 $source = New-Item -ItemType Directory -Path (Join-Path $root "source")
-$afterOne = New-Item -ItemType Directory -Path (Join-Path $root "after-replay-01")
-$afterTwo = New-Item -ItemType Directory -Path (Join-Path $root "after-replay-02")
+$after = New-Item -ItemType Directory -Path (Join-Path $root "after-replay")
 Set-Content -LiteralPath (Join-Path $source "alpha.txt") -Value "FILELIST-ALPHA"
 Set-Content -LiteralPath (Join-Path $source "beta.txt") -Value "FILELIST-BETA"
 New-Item -ItemType Directory -Path (Join-Path $source "empty-folder")
@@ -167,29 +212,21 @@ Then run the test:
    `empty-folder`. Right-click and choose **Copy**. Do not press `Ctrl+C`; the
    context-menu command avoids Zetl's auto-capture path.
 4. Without copying anything else, switch to a plain editor and tap `Ctrl+V`.
-   Confirm the first Replay item appears as `FILELIST-REPLAY-01`.
-5. Open `after-replay-01` in Explorer, right-click its empty background, and
-   choose **Paste**. Confirm all three selected entries appear, both text files
-   retain their exact sentinel contents, and the source entries still exist.
-6. Return to the editor without copying anything and tap `Ctrl+V` again.
-   Confirm the second item appears as `FILELIST-REPLAY-02` and the Replay bucket
-   completes normally.
-7. Open `after-replay-02`, use Explorer's context-menu **Paste**, and verify the
-   same three entries and file contents again.
-8. Confirm the Replay review bucket contains exactly the two consumed slips and
-   the user clipboard remains the Explorer file list rather than the second
-   Replay item's text.
+   Confirm `FILELIST-REPLAY-01` appears, and note whether Zetl warned that the
+   previous clipboard can't be restored.
+5. Tap `Ctrl+V` again. Confirm `FILELIST-REPLAY-02` appears and the bucket
+   returns to Standard. Wait at least a second for the final restore.
+6. Open `after-replay` in Explorer, right-click its empty background, and
+   choose **Paste**.
 
-Pass means the file list can be pasted after **both** Replay operations, the
-copy operation remains a copy rather than becoming a move, and there are no
-missing, renamed, or damaged entries.
-
-If Replay reports an unsupported clipboard format and keeps the queued slip,
-verify the original file list still pastes and record the exact format name.
-That confirms the fail-safe behavior, but the restoration capability remains
-unpassed and needs a checklist TODO. If Replay proceeds but either verification
-paste fails, stop and preserve the disposable profile and notification/log
-evidence.
+Pass with outcome 1 when no warning appeared, all three entries paste into
+`after-replay`, both text files keep their exact contents, and the source entries
+still exist (a copy, not a move). Pass with outcome 2 when Zetl warned at step 4,
+both items still landed in order, and nothing claimed a restore afterwards; then
+the original file list is gone, as the warning said. Either way the Replay review
+bucket holds exactly the two consumed slips. If Replay proceeded without a
+warning but the paste in step 6 fails or is damaged, that is a failure: stop and
+preserve the disposable profile and notification/log evidence.
 
 For Calc fidelity, distinguish the two values deliberately:
 
@@ -207,15 +244,25 @@ Also verify:
 2. review-bucket archival without duplicates;
 3. Zetl undo restoring the consumed item and Replay state;
 4. a newer clipboard change during the restore delay is never overwritten;
-5. unsupported formats pause Replay without changing the clipboard or queue;
+5. a clipboard that can't be backed up gives outcome 2 (paste proceeds with an honest
+   warning), and a staging failure gives outcome 3 (no paste, item kept);
 6. temporary consumables self-dispose after completion while durable
    consumables remain.
 
-### Phase D: Pop, Compile, And Output
+### Phase D: Pass-Through, Compose, And Output
 
-1. Verify Pop removal and undo with text and image slips.
-2. Exercise Compile selection, output modes, Copy, Paste Now, and destination
-   saves.
+1. Pass-through, with a project active and capturing copies:
+   - With the setting off, a copy pasted straight away stays in the project.
+   - Hold `Ctrl+P`: the tray turns orange and the toast says pass-through is on
+     for now. Copy and paste straight away: the copy moves to the project's
+     **Passed Through** bucket, and holding `Ctrl+Z` brings it back.
+   - A held `Ctrl+C` capture and a quick note never pass through, and pasting an
+     older copy (with a newer one captured since) moves nothing.
+   - Each lane flips separately (`Ctrl+Shift+P` for the Shift lane), and the flip
+     ends after 10 minutes without a copy or paste, or on a project switch.
+   - Repeat with a picture and with spreadsheet cells.
+2. Exercise Compose selection, output modes (Formatted, Plain, TSV), Copy, Paste
+   Now, `Ctrl+Enter`, and destination saves. TSV into a spreadsheet lands as cells.
 3. Confirm the original foreground target and clipboard behavior.
 4. Export clean and archival project packages and compare their privacy data.
 
