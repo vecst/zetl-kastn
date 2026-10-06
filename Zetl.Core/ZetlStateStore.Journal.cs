@@ -101,6 +101,18 @@ internal sealed partial class ZetlStateStore
         }
     }
 
+    // The lane's current journal if it exists and is still active, without creating
+    // or activating anything: for views that only want to show the lane's home.
+    public ZetlProject? FindLaneJournal(bool shifted)
+    {
+        lock (stateGate)
+        {
+            var pointerId = shifted ? State.ShiftDefaultJournalProjectId : State.DefaultJournalProjectId;
+            return State.Projects.FirstOrDefault(project =>
+                project.Id == pointerId && project.JournalMode && IsActiveStatus(project));
+        }
+    }
+
     // The lane's default journal, created on first use and tracked by id (so a rename
     // never loses it). Activated only when the caller asks (Ctrl+J, a rolled-over
     // journal that was active); capture lookups use it without activating it.

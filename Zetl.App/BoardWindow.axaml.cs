@@ -185,9 +185,13 @@ internal partial class BoardWindow : ZetlPopupWindow
             projectBox.ItemsSource = store.State.Projects.ToList();
             var firstChoiceId = preferActiveProject ? activeProjectId : selectedProjectId;
             var secondChoiceId = preferActiveProject ? selectedProjectId : activeProjectId;
+            // With nothing active or selected, the Shift Board opens on the Shift
+            // Journal rather than the last project written in either lane; the Main
+            // Board keeps landing on the last project touched.
             projectBox.SelectedItem = store.State.Projects.FirstOrDefault(
                     project => project.Id == firstChoiceId)
                 ?? store.State.Projects.FirstOrDefault(project => project.Id == secondChoiceId)
+                ?? (shiftedLane ? store.FindLaneJournal(shifted: true) : null)
                 ?? store.GetMostRecentlyWrittenProject()
                 ?? store.State.Projects.FirstOrDefault();
             RefreshSelectedProject(selectedBucketId, selectedNoteId);

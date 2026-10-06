@@ -291,4 +291,24 @@ public class ZetlJournalTests
         AssertEqual("Work", on.ProjectName, "It reactivates the last deliberate project by name.");
         AssertEqual(work.Id, store.GetActiveProject()?.Id, "Work is active again.");
     }
+
+    [Fact(DisplayName = "Journal lookup finds each lane's journal without creating one")]
+    public static void FindLaneJournalNeverCreates()
+    {
+        using var temp = new TempStateFile();
+        var store = new ZetlStateStore(temp.Path);
+        var before = store.State.Projects.Count;
+
+        AssertTrue(store.FindLaneJournal(shifted: true) is null, "No Shift journal exists yet.");
+        AssertEqual(before, store.State.Projects.Count, "Looking doesn't create one.");
+
+        var main = store.GetCaptureHome();
+        var shift = store.GetCaptureHome(shifted: true);
+        AssertEqual(shift.Id, store.FindLaneJournal(shifted: true)?.Id, "The Shift lane finds its own journal.");
+        AssertEqual(main.Id, store.FindLaneJournal(shifted: false)?.Id, "The Main lane finds its own.");
+        AssertTrue(main.Id != shift.Id, "The two lanes keep separate journals.");
+
+        store.SetProjectStatus(shift, ZetlStateRules.FinishedStatus);
+        AssertTrue(store.FindLaneJournal(shifted: true) is null, "A finished journal is no longer the lane's home.");
+    }
 }
