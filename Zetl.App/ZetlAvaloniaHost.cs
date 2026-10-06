@@ -543,40 +543,29 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     // Coordinated quit. With no Kastn connected, Zetl just shuts down. With Kastn
     // connected, Zetl asks it to close too. Kastn raises itself for confirmation,
     // and a cancel there aborts Zetl's quit, so closing Zetl no longer silently
-    // relaunches because Kastn was still open.
-    private async void RequestQuit()
+    // relaunches because Kastn was still open. A Quit while Kastn is still
+    // deciding waits on that same decision (see ZetlQuitCoordinator).
+    private void RequestQuit()
     {
         if (disposed)
         {
             return;
         }
 
-        if (!ipcServer.HasClient("Kastn"))
+        quitCoordinator ??= new ZetlQuitCoordinator(
+            () => ipcServer.HasClient("Kastn"),
+            () => KastnControlChannel.RequestShutdownAsync(),
+            () => desktop.Shutdown(),
+            Log);
+        if (quitCoordinator.IsWaitingOnKastn)
         {
-            desktop.Shutdown();
-            return;
+            notifications.Show("Kastn is asking about unsaved changes. Answer it there to finish quitting.");
         }
 
-        KastnShutdownDecision decision;
-        try
-        {
-            decision = await KastnControlChannel.RequestShutdownAsync();
-        }
-        catch (Exception ex)
-        {
-            // Don't trap the user in an unquittable Zetl if the signal fails.
-            Log($"Kastn shutdown request failed ({ex.GetType().Name}): {ex.Message}");
-            decision = KastnShutdownDecision.NoKastn;
-        }
-
-        if (decision == KastnShutdownDecision.Cancel)
-        {
-            Log("Quit cancelled at Kastn's confirmation.");
-            return;
-        }
-
-        desktop.Shutdown();
+        ZetlAsync.RunLogged(quitCoordinator.RequestAsync, "quit", Log);
     }
+
+    private ZetlQuitCoordinator? quitCoordinator;
 
     // The keyboard hook's call into Chordl, timed. This is the path that must
     // stay instant, so recording is a few interlocked operations and only an
