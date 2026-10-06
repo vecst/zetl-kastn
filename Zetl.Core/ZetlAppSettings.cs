@@ -188,6 +188,13 @@ internal static class ZetlTutorialState
 {
     public const string Completed = "Completed";
     public const string Skipped = "Skipped";
+
+    // Startup offers the tour until it has been finished or skipped once. This
+    // reads the tour's own state rather than HasSeenFirstRun, which RC 1's old
+    // help window also set, so people upgrading from it still get the tour.
+    public static bool ShouldOffer(ZetlAppSettings settings) =>
+        !string.Equals(settings.TutorialState, Completed, StringComparison.Ordinal)
+        && !string.Equals(settings.TutorialState, Skipped, StringComparison.Ordinal);
 }
 
 internal static class ZetlIdleCopyCapture

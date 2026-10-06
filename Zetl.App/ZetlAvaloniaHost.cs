@@ -1253,10 +1253,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         notifications.Show("Settings saved.");
     }
 
-    // A new install opens the tour; it stays in the tray menu afterwards.
+    // Startup opens the tour until it has been finished or skipped, including for
+    // someone upgrading from RC 1's old help window. It stays in the tray menu.
     private void ShowFirstRunIfNeeded()
     {
-        if (!settingsStore.Settings.HasSeenFirstRun)
+        if (ZetlTutorialState.ShouldOffer(settingsStore.Settings))
         {
             ZetlAsync.RunLogged(ShowTutorialAsync, "first-run tour", Log);
         }

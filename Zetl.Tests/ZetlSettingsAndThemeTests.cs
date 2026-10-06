@@ -131,6 +131,32 @@ public class ZetlSettingsAndThemeTests
         AssertTrue(loaded.Settings.HasSeenFirstRun, "First-run flag should round-trip.");
     }
 
+    [Fact(DisplayName = "Zetl offers the tour until it is finished or skipped, including after RC 1's help")]
+    public static void TourIsOfferedUntilFinishedOrSkipped()
+    {
+        using var temp = new TempStateFile();
+        var directory = System.IO.Path.GetDirectoryName(temp.Path)!;
+        ZetlAppSettings Profile(string name, string json)
+        {
+            var path = System.IO.Path.Combine(directory, name);
+            System.IO.File.WriteAllText(path, json);
+            return new ZetlAppSettingsStore(path).Settings;
+        }
+
+        AssertTrue(
+            ZetlTutorialState.ShouldOffer(new ZetlAppSettings()),
+            "A fresh profile is offered the tour.");
+        AssertTrue(
+            ZetlTutorialState.ShouldOffer(Profile("rc1.json", """{ "hasSeenFirstRun": true }""")),
+            "An RC 1 profile saw only the old help window, so it still gets the tour.");
+        AssertFalse(
+            ZetlTutorialState.ShouldOffer(Profile("done.json", """{ "hasSeenFirstRun": true, "tutorialState": "Completed" }""")),
+            "Someone who finished the tour isn't shown it again.");
+        AssertFalse(
+            ZetlTutorialState.ShouldOffer(Profile("skipped.json", """{ "hasSeenFirstRun": true, "tutorialState": "Skipped" }""")),
+            "Someone who skipped the tour isn't shown it again.");
+    }
+
     [Fact(DisplayName = "Zetl app settings default to Capture and Quick Note buckets")]
     public static void AppSettingsDefaultToCaptureAndQuickNoteBuckets()
     {
