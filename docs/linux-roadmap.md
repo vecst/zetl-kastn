@@ -57,14 +57,34 @@ virtual-key cleanup, but those changes still need a fresh hardware verification.
 
 ## Priority 1: Re-verify Input Safety
 
-- [ ] Re-run the spike on the Wayland target after the all-keys-up and virtual
+Re-run on October 6, 2026: AerynOS 2026.08, KDE Plasma 6 Wayland, Keychron C2
+Pro. `tools/KeyStateProbe` logged the keys and modifiers the compositor
+delivered to a focused window, so a logically stuck key would have appeared as
+a modifier on later keys; none did. Voice cues (`scripts/linux-say.ps1`) paced
+each step and the probe or spike log confirmed it.
+
+- [x] Re-run the spike on the Wayland target after the all-keys-up and virtual
       release changes.
-- [ ] Verify typing, Ctrl, Shift, Caps Lock, and target keys after normal exit,
-      panic release, exceptions, and `SIGKILL`.
-- [ ] Start runs while modifiers and ordinary keys are physically held.
-- [ ] Exercise hardware autorepeat before and during grab.
-- [ ] Re-grab immediately after every exit path.
+- [x] Typing, Ctrl+C tap (suppressed and replayed), Ctrl+C hold (suppressed),
+      Shift, and Caps Lock were correct after safety timeout, panic release,
+      `SIGTERM`, and `SIGKILL` with Ctrl or Shift held through the grab.
+- [ ] Verify the exception exit path (inject it with a synthetic keyboard).
+- [x] Starting while Ctrl or a letter was held waited for release, then
+      grabbed cleanly.
+- [x] Hardware autorepeat before and during grab.
+- [x] Re-grab immediately after panic, timeout, and `SIGKILL`.
 - [ ] Repeat under X11 when an X11 target is available.
+
+Findings for the production backend:
+
+- KWin drives keyboard LEDs through the device even while Zetl holds the grab,
+  so Caps Lock's light followed on both Keychron nodes without forwarding.
+- `SIGTERM` ended the spike without its cleanup (exit 143). The keyboard was
+  still correct because closing the descriptors released the grab and KWin
+  dropped the destroyed virtual device's keys, but the backend should handle
+  `SIGTERM` (logout, `systemctl stop`) with an orderly release.
+- The Keychron exposes a second keyboard node (`-if02-event-kbd`); the backend
+  must grab every keyboard node of a device, not only the first.
 
 Do not move exclusive-grab code into the production app until the keyboard
 returns to a correct logical state after every tested termination path.
