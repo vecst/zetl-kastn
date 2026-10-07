@@ -91,24 +91,38 @@ returns to a correct logical state after every tested termination path.
 
 ## Priority 2: Production Keyboard Backend
 
-Implement `LinuxKeyboardBackend` behind `IKeyboardBackend`:
+`Zetl.Linux` implements `LinuxKeyboardBackend` behind `IKeyboardBackend`, and
+Zetl selects it on Linux. The device-free decisions live in
+`LinuxKeyboardRouter`; `LinuxEvdev` holds the system calls.
 
-- [ ] Move Linux constants, structs, ioctl wrappers, and safe handles out of the
-      spike.
-- [ ] Map Linux `KEY_*` values to Chordl key values.
-- [ ] Preserve key-down, key-up, and repeat semantics.
-- [ ] Forward required non-key events and synchronization boundaries.
-- [ ] Avoid reading Zetl's own uinput device.
-- [ ] Support multiple physical keyboards without duplicate events.
-- [ ] Handle device add/remove, backend restart, suspend, and resume.
-- [ ] Implement `SendChord` and `SendPaste`.
-- [ ] Make disposal and failure paths release virtual modifiers and device
-      grabs.
-- [ ] Report actionable device and permission errors.
-- [ ] Test recorded Linux event sequences through the portable Chordl suite.
+- [x] Move Linux constants, structs, and ioctl wrappers out of the spike.
+- [x] Map Linux `KEY_*` values to Chordl key values (the standard keyboard;
+      media and vendor keys bypass Chordl).
+- [x] Preserve key-down, key-up, and repeat semantics. A repeat Chordl
+      swallows for a key the desktop holds releases that key, because a
+      Wayland compositor repeats held keys itself.
+- [x] Forward synchronization boundaries; frames emptied by suppression are
+      dropped. Only key and SYN events are forwarded: only pure keyboard
+      nodes are taken, never combined keyboard/pointer nodes.
+- [x] Avoid reading Zetl's own uinput device (by kernel name and by name),
+      and take virtual keyboards only for tests.
+- [x] Support multiple physical keyboards (both Keychron nodes) through one
+      virtual keyboard.
+- [x] Handle device add/remove (inotify) and backend restart.
+- [ ] Verify suspend and resume.
+- [x] Implement `SendChord` and `SendPaste` from the virtual keyboard's own
+      modifier state.
+- [x] Make disposal and failure paths release virtual keys before ending
+      grabs, including SIGTERM/SIGHUP/SIGINT and a failed reader.
+- [x] Report device and permission errors naming the device.
+- [x] Test recorded Linux event sequences (`LinuxKeyboardRouterTests`) and
+      real kernel devices (`LinuxKeyboardBackendTests`, synthetic uinput
+      keyboards whose output the test grabs so nothing reaches the desktop).
 
-Done when two keyboards, hotplug, restart, and forced termination recover
-without duplicate, lost, inverted, or stuck input.
+Verified October 6, 2026 in the real app on the Keychron under KDE Wayland:
+both nodes taken in about 120 ms; typing, native browser copy, a replayed
+Ctrl+V tap, and a Ctrl+C hold; SIGTERM exit left no stuck key and no virtual
+device.
 
 ## Priority 3: Linux Clipboard
 

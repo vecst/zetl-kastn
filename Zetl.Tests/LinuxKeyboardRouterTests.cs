@@ -63,6 +63,22 @@ public sealed class LinuxKeyboardRouterTests
     }
 
     [Fact]
+    public void ASwallowedRepeatOfAPassedKeyStopsTheDesktopsOwnRepeat()
+    {
+        // Chordl lets the first Ctrl+C through and swallows its repeats.
+        suppress = (vk, _) => vk == ChordlKeys.VK_C && seen.Count(e => e.Vk == ChordlKeys.VK_C) > 1;
+        var router = CreateRouter();
+        Press(router, LeftCtrl, 1);
+        Press(router, C, 1);
+        Press(router, C, 2);
+        Press(router, C, 2);
+        Press(router, C, 0);
+
+        Assert.Equal(["LeftCtrl1", "SYN", "C1", "SYN", "C0", "SYN"], output.Describe());
+        Assert.Equal([LeftCtrl], router.OutputDown);
+    }
+
+    [Fact]
     public void AFailingHandlerFailsOpen()
     {
         var router = new LinuxKeyboardRouter(output, (_, _, _, _) => throw new InvalidOperationException("boom"), logs.Add);

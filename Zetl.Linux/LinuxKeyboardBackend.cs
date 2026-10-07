@@ -77,6 +77,8 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
         outputSysName = LinuxEvdev.GetVirtualSysName(outputDescriptor);
         router = new LinuxKeyboardRouter(new DescriptorOutput(outputDescriptor), handleKeyEvent, log);
         router.PanicRequested += OnPanic;
+        // Compile the chord path now rather than inside the first tap's key event.
+        ZetlChordInjection.BuildCtrlChord(Chordl.ChordlKeys.VK_V, false, false, false, false, false);
         wake = LinuxEvdev.CreateWakePipe();
         inotifyDescriptor = LinuxEvdev.WatchDirectory(InputDirectory, LinuxEvdev.InCreate | LinuxEvdev.InAttrib);
         if (inotifyDescriptor < 0)

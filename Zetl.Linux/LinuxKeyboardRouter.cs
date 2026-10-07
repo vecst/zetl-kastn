@@ -75,7 +75,23 @@ internal sealed class LinuxKeyboardRouter(
             return;
         }
 
-        if (!ShouldSuppress(inputEvent)) Emit(inputEvent);
+        if (!ShouldSuppress(inputEvent))
+        {
+            Emit(inputEvent);
+        }
+        else if (inputEvent.Value == 2 && IsOutputDown(inputEvent.Code))
+        {
+            // Chordl swallows repeats after a key it let through (a held Ctrl+C
+            // copies once). Windows repeats are input events the hook can drop;
+            // a Wayland compositor repeats a held key itself and ignores evdev's
+            // repeats, so release the key to stop the desktop's own repeat.
+            Emit(LinuxInputEvent.Key(inputEvent.Code, 0));
+        }
+    }
+
+    private bool IsOutputDown(ushort key)
+    {
+        lock (outputGate) return outputDown.Contains(key);
     }
 
     /// <summary>
