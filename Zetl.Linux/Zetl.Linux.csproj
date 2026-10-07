@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Zetl.Linux</AssemblyName>
     <RootNamespace>ZETL</RootNamespace>
+    <!-- Wayland's dispatcher callback is an unmanaged function pointer. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Zetl" />

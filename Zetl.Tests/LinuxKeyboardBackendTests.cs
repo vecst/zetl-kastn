@@ -242,7 +242,7 @@ public sealed class LinuxKeyboardBackendTests : IDisposable
         {
             Name = name;
             descriptor = LinuxEvdev.CreateVirtualKeyboard(name);
-            Assert.True(descriptor >= 0, $"uinput: {LinuxEvdev.ErrorText(-descriptor)}");
+            Assert.True(descriptor >= 0, $"uinput: {LinuxPosix.ErrorText(-descriptor)}");
             var sysName = LinuxEvdev.GetVirtualSysName(descriptor)!;
             Node = WaitForEventNode(sysName);
         }
@@ -277,7 +277,7 @@ public sealed class LinuxKeyboardBackendTests : IDisposable
             }
             finally
             {
-                LinuxEvdev.Close(probe);
+                LinuxPosix.Close(probe);
             }
         }
 
@@ -309,7 +309,7 @@ public sealed class LinuxKeyboardBackendTests : IDisposable
             var events = new List<LinuxInputEvent>();
             while (pending.Count < count && DateTime.UtcNow < deadline)
             {
-                if (!LinuxEvdev.Poll([descriptor], 50)[0]) continue;
+                if (!LinuxPosix.Poll([descriptor], 50)[0]) continue;
                 if (LinuxEvdev.ReadEvents(descriptor, scratch, events) < 0) break;
                 foreach (var e in events.Where(e => e.IsKey)) pending.Enqueue(Describe(e));
             }
@@ -319,7 +319,7 @@ public sealed class LinuxKeyboardBackendTests : IDisposable
             return keys;
         }
 
-        public void Dispose() => LinuxEvdev.Close(descriptor);
+        public void Dispose() => LinuxPosix.Close(descriptor);
     }
 
     /// <summary>The device node of a kernel input device, once this user can open it.</summary>
@@ -335,7 +335,7 @@ public sealed class LinuxKeyboardBackendTests : IDisposable
             // udev grants the input group access a moment after the node appears.
             if (node is not null && LinuxEvdev.OpenDevice($"/dev/input/{node}") is >= 0 and var probe)
             {
-                LinuxEvdev.Close(probe);
+                LinuxPosix.Close(probe);
                 return $"/dev/input/{node}";
             }
 

@@ -68,7 +68,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
         if (outputDescriptor < 0)
         {
             log($"Linux keyboard: can't create a virtual keyboard through /dev/uinput "
-                + $"({LinuxEvdev.ErrorText(-outputDescriptor)}). Zetl needs write access to "
+                + $"({LinuxPosix.ErrorText(-outputDescriptor)}). Zetl needs write access to "
                 + "/dev/uinput to forward keys; global shortcuts are off.");
             outputDescriptor = -1;
             return false;
@@ -79,7 +79,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
         router.PanicRequested += OnPanic;
         // Compile the chord path now rather than inside the first tap's key event.
         ZetlChordInjection.BuildCtrlChord(Chordl.ChordlKeys.VK_V, false, false, false, false, false);
-        wake = LinuxEvdev.CreateWakePipe();
+        wake = LinuxPosix.CreateWakePipe();
         inotifyDescriptor = LinuxEvdev.WatchDirectory(InputDirectory, LinuxEvdev.InCreate | LinuxEvdev.InAttrib);
         if (inotifyDescriptor < 0)
         {
@@ -125,7 +125,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
         if (Interlocked.Exchange(ref disposed, 1) == 1) return;
         stopping = true;
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
-        if (wake.Write >= 0) LinuxEvdev.Signal(wake.Write);
+        if (wake.Write >= 0) LinuxPosix.Signal(wake.Write);
         if (readerThread is { } thread && thread != Thread.CurrentThread)
         {
             thread.Join(TimeSpan.FromSeconds(1));
@@ -151,13 +151,13 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
                 if (inotifyDescriptor >= 0) descriptors.Add(inotifyDescriptor);
                 descriptors.AddRange(grabbed.Select(source => source.Descriptor));
                 var waiting = sources.Values.Any(source => !source.Grabbed);
-                var ready = LinuxEvdev.Poll(descriptors, waiting ? 50 : -1);
+                var ready = LinuxPosix.Poll(descriptors, waiting ? 50 : -1);
                 if (stopping) break;
 
-                if (ready[0]) LinuxEvdev.Drain(wake.Read);
+                if (ready[0]) LinuxPosix.Drain(wake.Read);
                 if (inotifyDescriptor >= 0 && ready[1])
                 {
-                    LinuxEvdev.Drain(inotifyDescriptor);
+                    LinuxPosix.Drain(inotifyDescriptor);
                     Scan();
                 }
 
@@ -206,7 +206,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
 
         if (count < 0)
         {
-            RemoveSource(source, LinuxEvdev.ErrorText(-count));
+            RemoveSource(source, LinuxPosix.ErrorText(-count));
         }
     }
 
@@ -245,7 +245,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
             var error = LinuxEvdev.Grab(source.Descriptor, enabled: true);
             if (error != 0)
             {
-                log($"Linux keyboard: can't take {source.Name} ({source.Node}): {LinuxEvdev.ErrorText(error)}. "
+                log($"Linux keyboard: can't take {source.Name} ({source.Node}): {LinuxPosix.ErrorText(error)}. "
                     + "Its shortcuts are unavailable.");
                 RemoveSource(source, reason: null);
                 continue;
@@ -293,7 +293,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
                 // rescans. Report each refusal once.
                 if (reportedDenied.Add(node))
                 {
-                    log($"Linux keyboard: can't open {path} ({name}): {LinuxEvdev.ErrorText(-descriptor)}. "
+                    log($"Linux keyboard: can't open {path} ({name}): {LinuxPosix.ErrorText(-descriptor)}. "
                         + "Zetl needs read/write access to keyboard devices (usually the 'input' group).");
                 }
 
@@ -302,7 +302,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
 
             if (!LinuxEvdev.IsKeyboard(descriptor))
             {
-                LinuxEvdev.Close(descriptor);
+                LinuxPosix.Close(descriptor);
                 continue;
             }
 
@@ -388,7 +388,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
             LinuxEvdev.Grab(source.Descriptor, enabled: false);
         }
 
-        LinuxEvdev.Close(source.Descriptor);
+        LinuxPosix.Close(source.Descriptor);
         sources.Remove(source.Node);
         if (reason is not null) log($"Linux keyboard: {source.Name} ({source.Node}) is gone ({reason}).");
     }
@@ -399,7 +399,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
         foreach (var source in sources.Values.ToList())
         {
             if (source.Grabbed) LinuxEvdev.Grab(source.Descriptor, enabled: false);
-            LinuxEvdev.Close(source.Descriptor);
+            LinuxPosix.Close(source.Descriptor);
         }
 
         sources.Clear();
@@ -425,16 +425,16 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
             foreach (var source in sources.Values)
             {
                 if (source.Grabbed) LinuxEvdev.Grab(source.Descriptor, enabled: false);
-                LinuxEvdev.Close(source.Descriptor);
+                LinuxPosix.Close(source.Descriptor);
             }
 
             sources.Clear();
             LinuxEvdev.DestroyVirtualKeyboard(outputDescriptor);
             outputDescriptor = -1;
-            LinuxEvdev.Close(inotifyDescriptor);
+            LinuxPosix.Close(inotifyDescriptor);
             inotifyDescriptor = -1;
-            LinuxEvdev.Close(wake.Read);
-            LinuxEvdev.Close(wake.Write);
+            LinuxPosix.Close(wake.Read);
+            LinuxPosix.Close(wake.Write);
             wake = (-1, -1);
         }
     }

@@ -192,12 +192,12 @@ internal static class ZetlWindowsSelfTests
                     outputDib.AsSpan(14, 2)) == 32);
             failures += Check(
                 "clipboard validates PNG snapshots without recompressing",
-                AvaloniaWindowsClipboard.TryCreatePngSnapshot(
+                ZetlClipboardImages.TryCreatePngSnapshot(
                     png,
                     out var pngSnapshot)
                 && pngSnapshot is { Width: 1, Height: 1 }
                 && pngSnapshot.PngBytes.SequenceEqual(png)
-                && !AvaloniaWindowsClipboard.TryCreatePngSnapshot(
+                && !ZetlClipboardImages.TryCreatePngSnapshot(
                     png[..24],
                     out _));
 

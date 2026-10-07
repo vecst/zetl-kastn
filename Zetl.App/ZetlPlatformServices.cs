@@ -28,8 +28,15 @@ internal static class ZetlPlatformServices
 
     public static IClipboard CreateClipboard(Action<string> log)
     {
-        return OperatingSystem.IsWindows()
-            ? new AvaloniaWindowsClipboard(log)
+        if (OperatingSystem.IsWindows())
+        {
+            return new AvaloniaWindowsClipboard(log);
+        }
+
+        // Wayland's clipboard-manager protocol; without it (X11, or a
+        // compositor lacking ext-data-control) capture stays off.
+        return OperatingSystem.IsLinux() && WaylandDataControl.TryConnect(log) is { } selection
+            ? new LinuxClipboard(selection, ZetlClipboardImages.Normalize, log)
             : new UnsupportedClipboard(log);
     }
 }
