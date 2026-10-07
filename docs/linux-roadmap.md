@@ -159,6 +159,8 @@ User setup, install, and rollback are in [`linux-setup.md`](linux-setup.md).
 - [x] Self-contained `linux-x64` bundle (`scripts/publish-linux-x64.sh`) with a
       per-user installer: desktop entries, icons, optional autostart, uninstall.
 - [x] Document rollback of the permission changes.
+- [x] AppImage (`scripts/publish-linux-appimage.sh`): both apps in one image;
+      each launches the other through the AppImage so either can close first.
 - [ ] A distribution package (an AerynOS `stone.yaml` recipe for boulder, then
       others) that installs the udev rule system-wide.
 - [ ] Decide whether a `--diagnose` report of candidate and usable devices is

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Entry point of the Zetl AppImage. Starts Zetl, or Kastn when called with
+# --kastn or through a link named kastn. Zetl and Kastn launch each other
+# through the AppImage file, so each has its own mount (see ZetlAppImage).
+here=$(dirname "$(readlink -f "$0")")
+case "$(basename "${ARGV0:-$0}")" in
+    kastn|Kastn) exec "$here/usr/lib/zetl/Kastn" "$@" ;;
+esac
+if [ "${1:-}" = --kastn ]; then
+    shift
+    exec "$here/usr/lib/zetl/Kastn" "$@"
+fi
+exec "$here/usr/lib/zetl/Zetl" "$@"

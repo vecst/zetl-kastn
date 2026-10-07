@@ -9,24 +9,37 @@ internal static class ZetlKastnLauncher
         string? explicitPath = null,
         string? pipeName = null)
     {
-        var path = ResolvePath(explicitPath)
-            ?? throw new FileNotFoundException(
-                "Zetl could not find Kastn. Install both applications together "
-                + "or set KASTN_EXECUTABLE.");
         var startInfo = new ProcessStartInfo
         {
             UseShellExecute = false,
-            CreateNoWindow = false,
-            WorkingDirectory = Path.GetDirectoryName(path)!
+            CreateNoWindow = false
         };
-        if (path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(explicitPath)
+            && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("KASTN_EXECUTABLE"))
+            && ZetlAppImage.CurrentPath() is { } appImage)
         {
-            startInfo.FileName = "dotnet";
-            startInfo.ArgumentList.Add(path);
+            // From the AppImage, start Kastn through the AppImage file so it gets
+            // its own mount and does not depend on this process (see ZetlAppImage).
+            startInfo.FileName = appImage;
+            startInfo.WorkingDirectory = Path.GetDirectoryName(appImage)!;
+            startInfo.ArgumentList.Add(ZetlAppImage.KastnSwitch);
         }
         else
         {
-            startInfo.FileName = path;
+            var path = ResolvePath(explicitPath)
+                ?? throw new FileNotFoundException(
+                    "Zetl could not find Kastn. Install both applications together "
+                    + "or set KASTN_EXECUTABLE.");
+            startInfo.WorkingDirectory = Path.GetDirectoryName(path)!;
+            if (path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                startInfo.FileName = "dotnet";
+                startInfo.ArgumentList.Add(path);
+            }
+            else
+            {
+                startInfo.FileName = path;
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(projectId))

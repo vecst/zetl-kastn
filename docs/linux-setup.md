@@ -36,6 +36,25 @@ trust you give Zetl on Windows, extended to your other programs on Linux.
 
 ## Install
 
+There are two ways to run Zetl. Both need the keyboard setup above.
+
+### AppImage
+
+`Zetl-<version>-x86_64.AppImage` is one file that runs on most distributions:
+
+```bash
+chmod +x Zetl-*-x86_64.AppImage
+./Zetl-*-x86_64.AppImage            # Zetl
+./Zetl-*-x86_64.AppImage --kastn    # Kastn
+```
+
+It needs FUSE, which most desktops have. Zetl and Kastn launch each other
+through the AppImage file, so either can be closed without affecting the other.
+To start Zetl when you log in, add the AppImage to your desktop's autostart
+settings (KDE: System Settings, Autostart).
+
+### Installed bundle
+
 Unpack the `linux-x64` bundle and run its installer as yourself (not root):
 
 ```bash

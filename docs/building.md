@@ -87,7 +87,19 @@ scripts/publish-linux-x64.sh
 
 It stages Zetl, Kastn, the installer, desktop entries, icons, and the udev
 rule, checks that both executables (`--version`) identify the current commit,
-and replaces `artifacts/publish/linux-x64/`. Installing and permission setup
+and replaces `artifacts/publish/linux-x64/`.
+
+Build the AppImage the same way:
+
+```bash
+scripts/publish-linux-appimage.sh
+```
+
+It publishes both apps into one AppDir (the ordinary multi-file layout, since
+the image is already a single file), runs the same commit check, and packs
+`artifacts/publish/linux-x64-appimage/Zetl-<version>-x86_64.AppImage` with a
+SHA256 file. `appimagetool` and the AppImage runtime are pinned by version and
+checksum and cached in `artifacts/tools/appimage/`. Installing and permission setup
 are in [`linux-setup.md`](linux-setup.md).
 
 ## Previews

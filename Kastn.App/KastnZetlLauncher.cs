@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using ZETL;
 
 namespace KASTN;
 
@@ -10,11 +11,11 @@ internal static class KastnZetlLauncher
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var path = ResolvePath(explicitPath)
-            ?? throw new FileNotFoundException(
-                "Kastn could not find Zetl. Install both applications together "
-                + "or set ZETL_EXECUTABLE.");
-        var startInfo = CreateStartInfo(path);
+        var startInfo = AppImageStartInfo(explicitPath)
+            ?? CreateStartInfo(ResolvePath(explicitPath)
+                ?? throw new FileNotFoundException(
+                    "Kastn could not find Zetl. Install both applications together "
+                    + "or set ZETL_EXECUTABLE."));
         if (!string.IsNullOrWhiteSpace(pipeName))
         {
             startInfo.ArgumentList.Add($"--ipc-pipe={pipeName}");
@@ -23,6 +24,24 @@ internal static class KastnZetlLauncher
         _ = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Kastn could not start Zetl.");
         return Task.CompletedTask;
+    }
+
+    // From the AppImage, start Zetl through the AppImage file so it gets its
+    // own mount and outlives this Kastn (see ZetlAppImage).
+    private static ProcessStartInfo? AppImageStartInfo(string? explicitPath)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitPath)
+            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ZETL_EXECUTABLE"))
+            || ZetlAppImage.CurrentPath() is not { } appImage)
+        {
+            return null;
+        }
+
+        return new ProcessStartInfo(appImage)
+        {
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(appImage)!
+        };
     }
 
     internal static string? ResolvePath(string? explicitPath = null)
