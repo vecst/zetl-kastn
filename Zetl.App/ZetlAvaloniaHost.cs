@@ -515,6 +515,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     {
         if (ipcServer.HasClient("Kastn"))
         {
+            // Before any await: the tray click gave Zetl the foreground right.
+            ZetlForegroundHandoff.AllowProcessesNamed("Kastn");
             try
             {
                 await KastnControlChannel.ActivateAsync(null);
@@ -561,6 +563,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             notifications.Show("Kastn is asking about unsaved changes. Answer it there to finish quitting.");
         }
+
+        // Kastn raises its confirmation for this quit; let it take the focus
+        // that the tray click gave Zetl.
+        ZetlForegroundHandoff.AllowProcessesNamed("Kastn");
 
         ZetlAsync.RunLogged(quitCoordinator.RequestAsync, "quit", Log);
     }

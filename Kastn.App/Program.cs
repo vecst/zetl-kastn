@@ -37,6 +37,9 @@ internal static class Program
         {
             singleInstanceMutex.Dispose();
             singleInstanceMutex = null;
+            // This launch came from the user (often through Zetl, which handed
+            // us the foreground right); pass it on to the Kastn being raised.
+            ZetlForegroundHandoff.AllowProcessesNamed("Kastn");
             try
             {
                 KastnControlChannel.ActivateAsync(projectId, activationPipe)
