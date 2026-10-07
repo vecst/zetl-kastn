@@ -32,7 +32,8 @@ public partial class ZetlUITests
             Assert.Equal(19, block.FontSize);
             Assert.Equal(Color.Parse("#2563EB"), Assert.IsAssignableFrom<ISolidColorBrush>(block.Foreground).Color);
         });
-        Assert.All(text[..^1], block => Assert.Equal("Georgia", block.FontFamily.Name));
+        // The authored family renders as the platform resolves it (a serif where Georgia is missing).
+        Assert.All(text[..^1], block => Assert.Equal(ZetlFontFamilies.ResolveName("Georgia"), block.FontFamily.Name));
         Assert.Equal("Consolas", text[^1].FontFamily.Name);
         Assert.Equal(TextAlignment.Right, text[0].TextAlignment);
         Assert.Contains(ContentInlines(text[0]), inline => inline is Span span && span.FontWeight == FontWeight.Bold);
@@ -135,7 +136,7 @@ public partial class ZetlUITests
         Assert.Equal(3, preview.MaxLines);
         Assert.Equal(TextTrimming.CharacterEllipsis, preview.TextTrimming);
         Assert.Equal(17, preview.FontSize);
-        Assert.Equal("Georgia", preview.FontFamily.Name);
+        Assert.Equal(ZetlFontFamilies.ResolveName("Georgia"), preview.FontFamily.Name);
         Assert.Equal("Untitled", KastnSlipContentRenderer.CreateBoardPreview(slip with { Text = " " }, "Untitled").Text);
         var content = new StackPanel();
         KastnSlipContentRenderer.AddPictureCaption(content, slip with { Text = " caption " });

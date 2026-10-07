@@ -96,8 +96,8 @@ internal sealed class ZetlThemeManager
         resources["ZetlAccentTextBrush"] = Brush(palette.AccentText);
         resources["ZetlBorderBrush"] = Brush(palette.Border);
         resources["ZetlErrorBrush"] = Brush(palette.Error);
-        resources["ZetlFontFamily"] = new FontFamily(theme.Typography.FontFamily);
-        resources["ZetlMonoFontFamily"] = new FontFamily(theme.Typography.MonoFontFamily);
+        resources["ZetlFontFamily"] = ZetlFontFamilies.Resolve(theme.Typography.FontFamily);
+        resources["ZetlMonoFontFamily"] = ZetlFontFamilies.Resolve(theme.Typography.MonoFontFamily);
         resources["ZetlBodyFontSize"] = theme.Typography.BodyFontSize;
         resources["ZetlHeadingFontSize"] = theme.Typography.HeadingFontSize;
         resources["ZetlTitleFontSize"] = theme.Typography.TitleFontSize;

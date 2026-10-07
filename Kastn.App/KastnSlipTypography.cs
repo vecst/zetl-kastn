@@ -18,7 +18,7 @@ internal static class KastnSlipTypography
 
         try
         {
-            return new FontFamily(family);
+            return ZetlFontFamilies.Resolve(family);
         }
         catch (ArgumentException)
         {
