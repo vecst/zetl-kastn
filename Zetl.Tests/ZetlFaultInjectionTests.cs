@@ -480,7 +480,7 @@ public class ZetlFaultInjectionTests
         }
     }
 
-    [Fact] public void TestClipboardFailureDuringCompile()
+    [WindowsOnlyFact] public void TestClipboardFailureDuringCompile()
     {
         var root = Path.Combine(Path.GetTempPath(), "ZetlFaultTest_" + Guid.NewGuid().ToString("n"));
         Directory.CreateDirectory(root);

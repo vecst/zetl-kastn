@@ -28,6 +28,10 @@ The platform-neutral work is complete:
       settings, notifications, toasts, tray, themes, and window policy are
       implemented in Avalonia.
 - [x] The Avalonia app is the only Windows UI and platform host.
+- [x] The whole solution builds and the full test suite passes on Linux
+      (AerynOS 2026.08, October 6, 2026). Kastn's PDF fonts resolve through
+      fontconfig, and Kastn's control pipe keeps a listener open between
+      connections (on Unix a gap resets queued clients).
 
 ## Current Linux Baseline
 

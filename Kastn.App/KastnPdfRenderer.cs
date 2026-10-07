@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.ComponentModel;
+using System.Diagnostics;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.Rendering;
 using PdfSharp.Fonts;
@@ -493,9 +496,11 @@ internal static class KastnPdfRenderer
 }
 
 /// <summary>
-/// Supplies font bytes to MigraDoc without System.Drawing, by reading a curated set
-/// of Windows system TTFs. Unsupported or unavailable families fall back to Arial;
-/// this keeps arbitrary values from older or hand-edited projects safe.
+/// Supplies font bytes to MigraDoc without System.Drawing, for a curated set of
+/// families. Windows reads the system TTFs by file name; elsewhere fontconfig picks
+/// each family's installed substitute (Liberation Sans for Arial, and so on).
+/// Unsupported or unavailable families fall back to Arial; this keeps arbitrary
+/// values from older or hand-edited projects safe.
 /// </summary>
 internal sealed class KastnPdfFontResolver : IFontResolver
 {
@@ -597,7 +602,7 @@ internal sealed class KastnPdfFontResolver : IFontResolver
             return null;
         }
 
-        var exact = LoadSystemFont(family.FileFor(style));
+        var exact = LoadSystemFont(family, style);
         if (exact is not null)
         {
             return exact;
@@ -608,7 +613,7 @@ internal sealed class KastnPdfFontResolver : IFontResolver
         if (family == ConsolasFamily || family == CourierNewFamily)
         {
             var alternateMono = family == ConsolasFamily ? CourierNewFamily : ConsolasFamily;
-            var alternate = LoadSystemFont(alternateMono.FileFor(style));
+            var alternate = LoadSystemFont(alternateMono, style);
             if (alternate is not null)
             {
                 return alternate;
@@ -617,13 +622,13 @@ internal sealed class KastnPdfFontResolver : IFontResolver
 
         // A regular face is preferable to failing outright when a particular style
         // file is missing. Arial remains the final family fallback for every request.
-        if (style != FaceStyle.Regular && LoadSystemFont(family.Regular) is { } regular)
+        if (style != FaceStyle.Regular && LoadSystemFont(family, FaceStyle.Regular) is { } regular)
         {
             return regular;
         }
 
-        return LoadSystemFont(ArialFamily.FileFor(style))
-            ?? LoadSystemFont(ArialFamily.Regular);
+        return LoadSystemFont(ArialFamily, style)
+            ?? LoadSystemFont(ArialFamily, FaceStyle.Regular);
     }
 
     private static FontFamilyFiles FindFamily(string? familyName)
@@ -676,13 +681,16 @@ internal sealed class KastnPdfFontResolver : IFontResolver
         return style >= FaceStyle.Regular && style <= FaceStyle.BoldItalic;
     }
 
-    private static byte[]? LoadSystemFont(string file)
+    private static byte[]? LoadSystemFont(FontFamilyFiles family, FaceStyle style)
     {
         try
         {
-            var path = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.Fonts), file);
-            return File.Exists(path) ? File.ReadAllBytes(path) : null;
+            var path = OperatingSystem.IsWindows()
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Fonts),
+                    family.FileFor(style))
+                : MatchFontconfigFile(family.DisplayName, style);
+            return path is not null && File.Exists(path) ? File.ReadAllBytes(path) : null;
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
@@ -690,5 +698,64 @@ internal sealed class KastnPdfFontResolver : IFontResolver
         {
             return null;
         }
+    }
+
+    private static readonly ConcurrentDictionary<string, string?>
+        FontconfigMatches = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The file fontconfig substitutes for a family and style, or null when there is
+    /// none PDFsharp can embed. Only face index 0 of a .ttf/.otf qualifies: a nonzero
+    /// index is a collection member or a variable-font named instance, and handing
+    /// PDFsharp those whole-file bytes would embed the wrong face.
+    /// </summary>
+    private static string? MatchFontconfigFile(string familyName, FaceStyle style)
+    {
+        var pattern = familyName + ":fontformat=TrueType" + style switch
+        {
+            FaceStyle.Bold => ":bold",
+            FaceStyle.Italic => ":italic",
+            FaceStyle.BoldItalic => ":bold:italic",
+            _ => ""
+        };
+        return FontconfigMatches.GetOrAdd(pattern, static pattern =>
+        {
+            try
+            {
+                using var process = Process.Start(
+                    new ProcessStartInfo("fc-match")
+                    {
+                        ArgumentList = { "--format=%{index}|%{file}", pattern },
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false
+                    });
+                if (process is null)
+                {
+                    return null;
+                }
+
+                var output = process.StandardOutput.ReadToEndAsync();
+                if (!process.WaitForExit(2000) || process.ExitCode != 0)
+                {
+                    try { process.Kill(); } catch (InvalidOperationException) { }
+                    return null;
+                }
+
+                var parts = output.Result.Split('|', 2);
+                return parts.Length == 2
+                    && parts[0] == "0"
+                    && (parts[1].EndsWith(".ttf", StringComparison.OrdinalIgnoreCase)
+                        || parts[1].EndsWith(".otf", StringComparison.OrdinalIgnoreCase))
+                        ? parts[1]
+                        : null;
+            }
+            catch (Exception ex) when (ex is Win32Exception
+                or IOException
+                or InvalidOperationException)
+            {
+                // fontconfig's tools are absent: behave as if no face were installed.
+                return null;
+            }
+        });
     }
 }

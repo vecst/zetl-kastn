@@ -140,10 +140,16 @@ public sealed class KastnSettingsTests : IDisposable
         Assert.Same(original, owner.Current);
     }
 
-    [Theory]
-    [InlineData(FileShare.None)]
-    [InlineData(FileShare.Read)]
-    public void FailedReadOrWritePreservesTheFileAndCachedPreferences(FileShare sharing)
+    [Fact]
+    public void FailedReadPreservesTheFileAndCachedPreferences() =>
+        FailedReadOrWritePreservesTheFileAndCachedPreferences(FileShare.None);
+
+    // A reader that allows other readers only blocks the replacing write on Windows.
+    [WindowsOnlyFact]
+    public void FailedWritePreservesTheFileAndCachedPreferences() =>
+        FailedReadOrWritePreservesTheFileAndCachedPreferences(FileShare.Read);
+
+    private void FailedReadOrWritePreservesTheFileAndCachedPreferences(FileShare sharing)
     {
         JsonFile.WriteAtomic(SettingsPath, new ZetlAppSettings { ThemeVariant = "Dark" });
         var originalBytes = File.ReadAllBytes(SettingsPath);
