@@ -22,6 +22,7 @@ internal static class ZetlX11Activation
     private static IntPtr display;
     private static IntPtr activeWindowAtom;
     private static IntPtr pidAtom;
+    private static IntPtr clientListAtom;
     private const long WindowType = 33;   // XA_WINDOW
     private const long CardinalType = 6;  // XA_CARDINAL
     private static bool unavailable;
@@ -78,6 +79,7 @@ internal static class ZetlX11Activation
 
         activeWindowAtom = XInternAtom(display, "_NET_ACTIVE_WINDOW", onlyIfExists: 0);
         pidAtom = XInternAtom(display, "_NET_WM_PID", onlyIfExists: 0);
+        clientListAtom = XInternAtom(display, "_NET_CLIENT_LIST", onlyIfExists: 0);
         return true;
     }
 
@@ -92,9 +94,20 @@ internal static class ZetlX11Activation
         {
             window = IntPtr.Zero;
             if (!EnsureDisplay(log: null)) return false;
-            window = ReadLongProperty(XDefaultRootWindow(display), activeWindowAtom, WindowType) is { } value
-                ? (IntPtr)value
-                : IntPtr.Zero;
+            var root = XDefaultRootWindow(display);
+            if (ReadLongProperties(root, activeWindowAtom, WindowType, 1) is not [var active] || active == 0)
+            {
+                return true;
+            }
+
+            // While a native Wayland window is active, KWin names a helper window
+            // of its own; only a managed client window counts as an app window.
+            if (ReadLongProperties(root, clientListAtom, WindowType, 4096) is { } clients
+                && clients.Contains(active))
+            {
+                window = (IntPtr)active;
+            }
+
             return true;
         }
     }
@@ -135,10 +148,13 @@ internal static class ZetlX11Activation
         }
     }
 
-    // Reads the first 32-bit-format item of a property; Xlib returns those as C longs.
-    private static long? ReadLongProperty(IntPtr window, IntPtr property, long type)
+    private static long? ReadLongProperty(IntPtr window, IntPtr property, long type) =>
+        ReadLongProperties(window, property, type, 1) is [var value] ? value : null;
+
+    // Reads up to maxItems 32-bit-format items; Xlib returns those as C longs.
+    private static long[]? ReadLongProperties(IntPtr window, IntPtr property, long type, int maxItems)
     {
-        if (XGetWindowProperty(display, window, property, 0, 1, 0, (IntPtr)type,
+        if (XGetWindowProperty(display, window, property, 0, maxItems, 0, (IntPtr)type,
                 out _, out var format, out var count, out _, out var data) != 0)
         {
             return null;
@@ -146,7 +162,10 @@ internal static class ZetlX11Activation
 
         try
         {
-            return data != IntPtr.Zero && format == 32 && count != 0 ? Marshal.ReadInt64(data) : null;
+            if (data == IntPtr.Zero || format != 32) return null;
+            var values = new long[(int)count];
+            for (var i = 0; i < values.Length; i++) values[i] = Marshal.ReadInt64(data, i * 8);
+            return values;
         }
         finally
         {

@@ -140,7 +140,10 @@ device.
 - [x] Transfers time out and never block the Wayland thread or key handling.
 - [x] Unit tests over a scripted selection; integration tests against the real
       compositor with `wl-copy`/`wl-paste` and a second data-control client.
-- [ ] Verify slip editing, Compose copy, Pass-through, and Replay end to end.
+- [x] Replay end to end: items pasted in order through the virtual keyboard,
+      each read confirmed and archived, and the user's clipboard restored when
+      the queue ran out (October 7, 2026).
+- [ ] Verify slip editing and Compose copy/paste end to end.
 - [ ] An X11-session clipboard (none yet: capture is off without
       `ext-data-control-v1`).
 - [ ] Check GNOME, which may not offer `ext-data-control-v1`.
@@ -182,9 +185,15 @@ window policy is involved.
       the desktop, and hand focus back when they close.
 - [x] Capture, quick note, and Board verified by hand on KDE Plasma Wayland
       (October 7, 2026).
-- [ ] Run tray, Compile, settings, templates, and first-run flows.
-- [ ] Verify placement on multiple monitors and scaled displays.
-- [ ] Test normal and Shift lanes.
+- [x] First-run tour, Compose, toasts, the hold indicator, the tray icon, and
+      Kastn (connected to Zetl over IPC) render and come forward on KDE.
+- [x] Shift lane capture and Compose; pass-through flip.
+- [ ] Settings, templates, and the tray menu.
+- [ ] Verify placement on multiple monitors and scaled displays. Avalonia
+      renders unscaled under Xwayland at fractional scaling (the Board is
+      1040 physical px on a 1.2x display).
+- [ ] Fixed layouts assume Segoe UI widths; Linux sans fonts are 2-8% wider,
+      which clips the Board's toolbar. Decide the UI font or loosen layouts.
 - [ ] Test logout/login, suspend/resume, and compositor restart.
 
 ### Release Candidate
