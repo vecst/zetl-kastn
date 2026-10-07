@@ -126,21 +126,24 @@ device.
 
 ## Priority 3: Linux Clipboard
 
-Implement `IClipboard` for common desktop sessions:
+`LinuxClipboard` implements `IClipboard` over Wayland's `ext-data-control-v1`
+(see the clipboard model in [`linux-port.md`](linux-port.md)).
 
-- [ ] Detect Wayland versus X11.
-- [ ] Support `wl-copy`/`wl-paste` on Wayland.
-- [ ] Support `xclip` or `xsel` on X11.
-- [ ] Use a content-derived change token.
-- [ ] Apply process timeouts away from keyboard handling.
-- [ ] Preserve multiline Unicode text.
-- [ ] Handle missing tools, empty clipboard, unsupported content, and command
-      failures without crashing.
-- [ ] Document the initial external-tool dependencies.
-- [ ] Define the image clipboard path separately from the text-first backend.
-
-Done when copy capture, slip editing, compile copy, Pop, Replay, and clipboard
-restoration pass integration tests under supported X11 and Wayland sessions.
+- [x] Read and write through the compositor's clipboard-manager protocol, with
+      a change token advanced by selection events.
+- [x] Capture text, HTML (the copied fragment), images, and LibreOffice Calc's
+      native replay bundle from one selection generation.
+- [x] Never read copies marked with the password-manager hint.
+- [x] Exact backup and restore of every MIME type.
+- [x] Staged pastes that report the read that pastes, despite KDE clipboard
+      monitors reading every new selection.
+- [x] Transfers time out and never block the Wayland thread or key handling.
+- [x] Unit tests over a scripted selection; integration tests against the real
+      compositor with `wl-copy`/`wl-paste` and a second data-control client.
+- [ ] Verify slip editing, Compose copy, Pass-through, and Replay end to end.
+- [ ] An X11-session clipboard (none yet: capture is off without
+      `ext-data-control-v1`).
+- [ ] Check GNOME, which may not offer `ext-data-control-v1`.
 
 ## Priority 4: Permissions And Installation
 
@@ -170,13 +173,16 @@ window policy is involved.
 
 ### Avalonia Linux Alpha
 
-- [ ] Select Linux backends at startup.
-- [ ] Run tray, capture, Board, Compile, settings, templates, and first-run
-      flows.
-- [ ] Verify X11 focus and placement.
-- [ ] Verify Wayland activation and placement fallback.
+- [x] Select Linux backends at startup.
+- [x] Shortcut popups come to the front with focus on KDE Wayland (X11
+      activation as a tool request), dismiss on click-away to another app or
+      the desktop, and hand focus back when they close.
+- [x] Capture, quick note, and Board verified by hand on KDE Plasma Wayland
+      (October 7, 2026).
+- [ ] Run tray, Compile, settings, templates, and first-run flows.
+- [ ] Verify placement on multiple monitors and scaled displays.
 - [ ] Test normal and Shift lanes.
-- [ ] Test logout/login, suspend/resume, device hotplug, and compositor restart.
+- [ ] Test logout/login, suspend/resume, and compositor restart.
 
 ### Release Candidate
 

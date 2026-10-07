@@ -21,6 +21,8 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
     public const string DefaultVirtualDeviceName = "Zetl virtual keyboard";
     private const string InputDirectory = "/dev/input";
     private static readonly TimeSpan GrabSettle = TimeSpan.FromMilliseconds(100);
+    // A device node appears before udev grants the input group access to it.
+    private static readonly TimeSpan PermissionGrace = TimeSpan.FromSeconds(2);
 
     private readonly Action<string> log;
     private readonly bool allowVirtualDevices;
@@ -28,6 +30,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
     private readonly Func<string, bool> acceptDeviceName;
     private readonly Dictionary<string, Source> sources = [];
     private readonly HashSet<string> reportedDenied = [];
+    private readonly Dictionary<string, long> deniedSince = [];
     private readonly List<PosixSignalRegistration> signalRegistrations = [];
     private LinuxKeyboardRouter? router;
     private int outputDescriptor = -1;
@@ -86,7 +89,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
             log("Linux keyboard: can't watch /dev/input; keyboards plugged in later need a restart.");
         }
 
-        Scan();
+        Scan(reportDenied: true);
         if (sources.Count == 0 && reportedDenied.Count > 0)
         {
             log("Linux keyboard: no keyboard could be opened; global shortcuts are off.");
@@ -151,14 +154,19 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
                 if (inotifyDescriptor >= 0) descriptors.Add(inotifyDescriptor);
                 descriptors.AddRange(grabbed.Select(source => source.Descriptor));
                 var waiting = sources.Values.Any(source => !source.Grabbed);
-                var ready = LinuxPosix.Poll(descriptors, waiting ? 50 : -1);
+                var ready = LinuxPosix.Poll(descriptors, waiting ? 50 : deniedSince.Count > 0 ? 500 : -1);
                 if (stopping) break;
 
                 if (ready[0]) LinuxPosix.Drain(wake.Read);
                 if (inotifyDescriptor >= 0 && ready[1])
                 {
                     LinuxPosix.Drain(inotifyDescriptor);
-                    Scan();
+                    Scan(reportDenied: false);
+                }
+                else if (deniedSince.Count > 0)
+                {
+                    // Retry refused devices; report the ones still refused after the grace.
+                    Scan(reportDenied: false);
                 }
 
                 var offset = inotifyDescriptor >= 0 ? 2 : 1;
@@ -268,7 +276,12 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
         }
     }
 
-    private void Scan()
+    /// <summary>
+    /// Opens keyboards not yet tracked. A refusal is reported at once on the
+    /// first scan, but a device that just appeared gets a grace period, since
+    /// udev applies its permissions a moment after the node exists.
+    /// </summary>
+    private void Scan(bool reportDenied)
     {
         IEnumerable<string> nodes;
         try
@@ -281,6 +294,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
             return;
         }
 
+        foreach (var gone in deniedSince.Keys.Except(nodes).ToList()) deniedSince.Remove(gone);
         foreach (var node in nodes.Order(StringComparer.Ordinal))
         {
             if (stopping || sources.ContainsKey(node) || !IsCandidate(node, out var name)) continue;
@@ -289,9 +303,17 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
             var descriptor = LinuxEvdev.OpenDevice(path);
             if (descriptor < 0)
             {
-                // udev may still be applying permissions; a later attribute change
-                // rescans. Report each refusal once.
-                if (reportedDenied.Add(node))
+                var now = System.Diagnostics.Stopwatch.GetTimestamp();
+                var firstDenied = deniedSince.TryGetValue(node, out var since) ? since : deniedSince[node] = now;
+                var stillDenied = reportDenied
+                    || System.Diagnostics.Stopwatch.GetElapsedTime(firstDenied, now) >= PermissionGrace;
+                if (stillDenied)
+                {
+                    deniedSince.Remove(node);
+                }
+
+                // Report each lasting refusal once.
+                if (stillDenied && reportedDenied.Add(node))
                 {
                     log($"Linux keyboard: can't open {path} ({name}): {LinuxPosix.ErrorText(-descriptor)}. "
                         + "Zetl needs read/write access to keyboard devices (usually the 'input' group).");
@@ -307,6 +329,7 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
             }
 
             reportedDenied.Remove(node);
+            deniedSince.Remove(node);
             sources[node] = new Source(nextSourceId++, node, name, descriptor);
         }
     }

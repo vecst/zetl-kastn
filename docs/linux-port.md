@@ -92,21 +92,31 @@ modifier down without its matching release.
 
 ## Clipboard Model
 
-The initial Linux clipboard backend may use desktop tools:
+Zetl talks to the compositor's clipboard directly through `ext-data-control-v1`,
+the Wayland protocol KWin (and wlroots compositors) give clipboard managers.
+`WaylandDataControl` owns its own Wayland connection on a dedicated thread;
+`LinuxClipboard` implements `IClipboard` over it.
 
-- Wayland: `wl-copy` and `wl-paste`
-- X11: `xclip` or `xsel`
+Why not `wl-copy`/`wl-paste` or Klipper's D-Bus interface:
 
-`IClipboard` should expose the same behavior the runtime expects on Windows:
-read, write, and a stable change token. On Linux, a content hash can act as the
-change token.
+- a data-control client sees every selection change without focus, so the
+  change token is a generation counter advanced by compositor events, not a
+  polled content hash;
+- every MIME type of one copy is read from a single offer, so a capture is
+  never torn between two copies;
+- text and HTML (and LibreOffice's native bundle) go on the clipboard together,
+  which `wl-copy` cannot do and Zetl's rich copy and clipboard restore need;
+- Klipper's D-Bus interface carries text only.
 
-Clipboard processes must have timeouts and must never block the input event
-loop. Missing tools and unsupported content should produce actionable
-notifications rather than terminate capture.
+Transfers never block the Wayland thread: incoming data is read on the caller's
+thread, and Zetl's own data is written from the thread pool, so Zetl can read a
+selection it owns. Copies marked `x-kde-passwordManagerHint` are never read for
+capture. Staged pastes carry that hint too; because some KDE clipboard monitors
+read every new selection regardless, a staged paste waits for them to go quiet
+before the paste is sent, and only later reads count as the paste landing.
 
-Text is the first integration target. Picture capture and restoration require a
-separate MIME-aware clipboard path.
+Without `ext-data-control-v1` (X11 sessions, compositors that lack it) the
+clipboard falls back to the unsupported stub and capture is off.
 
 ## Avalonia Window Policy
 
@@ -117,9 +127,17 @@ The UI is shared, but foreground behavior cannot be identical:
 - Shortcut Boards auto-hide; tray-opened Boards remain open.
 - Child dialogs temporarily protect an owning Board from auto-hide.
 - Windows restores the captured target before synthetic paste.
-- X11 can provide comparable activation and placement where permitted.
-- Wayland may deny activation or exact placement; Zetl must continue cleanly
-  with compositor-controlled behavior.
+
+Avalonia runs on X11, under Xwayland on Wayland desktops. Zetl reads keys below
+the desktop, so the window manager never sees a shortcut as input to Zetl and
+refuses ordinary activation. `ZetlX11Activation` asks the way task switchers do
+(`_NET_ACTIVE_WINDOW` from a pager/tool source), keeping the popup above until
+the window manager's active window is the popup. Avalonia's own activation
+tracking misses activations it did not request, so the click-away watcher
+follows X11 keyboard focus, which leaves Zetl's windows whenever another app or
+the desktop is clicked. A shortcut's target is the active X11 window, or "a
+Wayland window" when a native app had focus; the compositor's focus chain hands
+focus back to it when a popup closes.
 
 Platform-specific activation belongs in the UI host, not in the keyboard or
 portable runtime layers.
@@ -129,9 +147,9 @@ portable runtime layers.
 - `Chordl/` — portable tap/hold engine
 - `Zetl.Core/` — state, persistence, settings, and platform contracts
 - `Zetl.Runtime/` — portable shortcut/workflow orchestration
-- `Zetl.App/` — shared Avalonia application
-- `Zetl.Tests/` — portable behavior tests
-- `Zetl.Linux.Spike/` — disposable evdev/uinput safety work
-
-The production Linux backend should graduate from the spike only after the
-hardware safety gate in [`linux-roadmap.md`](linux-roadmap.md) passes.
+- `Zetl.Linux/` — evdev/uinput keyboard backend and Wayland data-control clipboard
+- `Zetl.App/` — shared Avalonia application, including X11 activation
+- `Zetl.Tests/` — portable behavior tests, plus Linux kernel and compositor
+  integration tests that skip elsewhere
+- `Zetl.Linux.Spike/` — the original evdev/uinput safety spike, superseded by
+  `Zetl.Linux`
