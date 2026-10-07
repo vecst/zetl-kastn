@@ -26,5 +26,6 @@
     <ProjectReference Include="..\Zetl.Contracts\Zetl.Contracts.csproj" />
     <ProjectReference Include="..\Zetl.Core\Zetl.Core.csproj" />
     <ProjectReference Include="..\Zetl.Runtime\Zetl.Runtime.csproj" />
+    <ProjectReference Include="..\Zetl.Linux\Zetl.Linux.csproj" />
   </ItemGroup>
 </Project>

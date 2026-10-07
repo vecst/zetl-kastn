@@ -237,7 +237,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             notifications.Show(OperatingSystem.IsWindows()
                 ? "Failed to install the global keyboard hook."
-                : "Zetl started without global shortcuts; the Linux input backend is not installed yet.");
+                : "Global shortcuts are off: Zetl couldn't take the keyboard. The log names the device and what access is missing.");
         }
         else
         {

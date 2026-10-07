@@ -3,18 +3,16 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>Zetl.Runtime</AssemblyName>
+    <AssemblyName>Zetl.Linux</AssemblyName>
     <RootNamespace>ZETL</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Zetl" />
-    <InternalsVisibleTo Include="Zetl.App" />
-    <InternalsVisibleTo Include="Zetl.Linux" />
     <InternalsVisibleTo Include="Zetl.Tests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Chordl\Chordl.csproj" />
-    <ProjectReference Include="..\Zetl.Contracts\Zetl.Contracts.csproj" />
     <ProjectReference Include="..\Zetl.Core\Zetl.Core.csproj" />
+    <ProjectReference Include="..\Zetl.Runtime\Zetl.Runtime.csproj" />
   </ItemGroup>
 </Project>

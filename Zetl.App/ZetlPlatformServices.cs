@@ -16,8 +16,13 @@ internal static class ZetlPlatformServices
         Action<string> log,
         bool allowInjectedInputForTesting)
     {
-        return OperatingSystem.IsWindows()
-            ? new AvaloniaWindowsKeyboardBackend(log, allowInjectedInputForTesting)
+        if (OperatingSystem.IsWindows())
+        {
+            return new AvaloniaWindowsKeyboardBackend(log, allowInjectedInputForTesting);
+        }
+
+        return OperatingSystem.IsLinux()
+            ? new LinuxKeyboardBackend(log, allowInjectedInputForTesting)
             : new UnsupportedKeyboardBackend(log);
     }
 
