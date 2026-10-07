@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="ZETL.ZetlSettingsWindow"
-        Width="1080" Height="760"
+        Width="1120" Height="760"
         MinWidth="900" MinHeight="620"
         CanResize="True"
         SystemDecorations="BorderOnly"
@@ -69,7 +69,7 @@
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
               <ComboBox Grid.Row="4" Grid.Column="1" x:Name="captureOriginBox"
-                        Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+                        Width="250" Margin="0,12,0,0" HorizontalAlignment="Left" />
 
               <TextBlock Grid.Row="5" Grid.Column="0"
                          Text="Default project buckets (one per line)"
@@ -122,7 +122,7 @@
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
               <ComboBox Grid.Row="10" Grid.Column="1" x:Name="idleCopyCaptureBox"
-                        Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+                        Width="250" Margin="0,12,0,0" HorizontalAlignment="Left" />
 
               <TextBlock Grid.Row="11" Grid.Column="0"
                          Text="Journal interval"
@@ -136,7 +136,7 @@
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
               <ComboBox Grid.Row="12" Grid.Column="1" x:Name="popupPositionBox"
-                        Width="220" Margin="0,12,0,0" HorizontalAlignment="Left" />
+                        Width="250" Margin="0,12,0,0" HorizontalAlignment="Left" />
             </Grid>
 
             <!-- Advanced Section -->
@@ -214,13 +214,13 @@
                          Text="On startup"
                          VerticalAlignment="Center" />
               <ComboBox Grid.Row="1" Grid.Column="1" x:Name="kastnStartupBox"
-                        Width="220" HorizontalAlignment="Left" />
+                        Width="250" HorizontalAlignment="Left" />
 
               <TextBlock Grid.Row="2" Grid.Column="0"
                          Text="Main lane label"
                          VerticalAlignment="Center" />
               <TextBox Grid.Row="2" Grid.Column="1" x:Name="kastnMainLaneLabelBox"
-                       Width="220"
+                       Width="250"
                        HorizontalAlignment="Left"
                        MaxLength="20"
                        Watermark="Main" />
@@ -229,7 +229,7 @@
                          Text="Shift lane label"
                          VerticalAlignment="Center" />
               <TextBox Grid.Row="3" Grid.Column="1" x:Name="kastnAlternateLaneLabelBox"
-                       Width="220"
+                       Width="250"
                        HorizontalAlignment="Left"
                        MaxLength="20"
                        Watermark="Shift" />
@@ -238,7 +238,7 @@
                          Text="Default reading view"
                          VerticalAlignment="Center" />
               <ComboBox Grid.Row="4" Grid.Column="1" x:Name="kastnDefaultViewBox"
-                        Width="220" HorizontalAlignment="Left" />
+                        Width="250" HorizontalAlignment="Left" />
 
               <TextBlock Grid.Row="5" Grid.Column="0"
                          Text="After creating from a template"
@@ -275,7 +275,7 @@
                 <TextBlock Text="Advanced Kastn Settings" Classes="heading" Foreground="{DynamicResource ZetlMutedTextBrush}" />
                 <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="Default new slip title" VerticalAlignment="Center" />
-                  <TextBox Grid.Row="0" Grid.Column="1" x:Name="untitledSlipTitleBox" Width="220" HorizontalAlignment="Left" />
+                  <TextBox Grid.Row="0" Grid.Column="1" x:Name="untitledSlipTitleBox" Width="250" HorizontalAlignment="Left" />
 
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="Max slip label length (chars)" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="maxSlipLabelLengthBox"
@@ -358,13 +358,13 @@
 
               <TextBlock Grid.Row="1" Grid.Column="0" Text="Indicator position" VerticalAlignment="Center" />
               <ComboBox Grid.Row="1" Grid.Column="1" x:Name="holdIndicatorPositionBox"
-                        Width="220" HorizontalAlignment="Left" />
+                        Width="250" HorizontalAlignment="Left" />
             </Grid>
           </StackPanel>
         </ScrollViewer>
 
         <!-- Panel 5: Theme Settings -->
-        <Grid x:Name="themeEditorPanel" IsVisible="False" ColumnDefinitions="250,*" ColumnSpacing="14">
+        <Grid x:Name="themeEditorPanel" IsVisible="False" ColumnDefinitions="270,*" ColumnSpacing="14">
           <!-- Left Column of Theme Editor -->
           <Grid Grid.Column="0" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="8">
             <TextBlock Grid.Row="0" Text="Theme" Classes="heading" />

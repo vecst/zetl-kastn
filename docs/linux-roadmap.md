@@ -192,8 +192,9 @@ window policy is involved.
 - [ ] Verify placement on multiple monitors and scaled displays. Avalonia
       renders unscaled under Xwayland at fractional scaling (the Board is
       1040 physical px on a 1.2x display).
-- [ ] Fixed layouts assume Segoe UI widths; Linux sans fonts are 2-8% wider,
-      which clips the Board's toolbar. Decide the UI font or loosen layouts.
+- [x] Fixed layouts assumed Segoe UI widths; Linux sans fonts are 2-8% wider.
+      The Board and Settings were given room so nothing clips (every Zetl
+      window checked under Noto Sans).
 - [ ] Test logout/login, suspend/resume, and compositor restart.
 
 ### Release Candidate
