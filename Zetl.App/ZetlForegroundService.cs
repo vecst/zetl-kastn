@@ -19,6 +19,15 @@ internal static class ZetlForegroundService
 
     public static object? CaptureTarget()
     {
+        if (OperatingSystem.IsLinux())
+        {
+            // Always a target, so shortcut-opened popups keep shortcut behavior
+            // (click-away dismissal) even when the app is a native Wayland one
+            // whose window Zetl cannot name.
+            return new LinuxForegroundTarget(
+                ZetlX11Activation.TryGetActiveWindow(out var active) ? active : IntPtr.Zero);
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             return null;
@@ -38,6 +47,19 @@ internal static class ZetlForegroundService
 
     public static void RestoreTarget(object? target, Action<string>? log = null)
     {
+        if (target is LinuxForegroundTarget linuxTarget)
+        {
+            // When a popup closes, the window manager's focus chain returns focus
+            // to the window before it; an X11 app is also asked explicitly.
+            if (linuxTarget.X11Window != IntPtr.Zero)
+            {
+                ZetlX11Activation.RequestActivation(linuxTarget.X11Window, log);
+            }
+
+            log?.Invoke($"Restore: {DescribeTarget(target)}.");
+            return;
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             return;
@@ -64,6 +86,13 @@ internal static class ZetlForegroundService
 
     public static string DescribeTarget(object? target)
     {
+        if (target is LinuxForegroundTarget linuxTarget)
+        {
+            return linuxTarget.X11Window == IntPtr.Zero
+                ? "a Wayland window"
+                : $"x11=0x{linuxTarget.X11Window.ToInt64():X}";
+        }
+
         if (target is not WindowsForegroundTarget windowsTarget)
         {
             return "none";
@@ -125,6 +154,10 @@ internal static class ZetlForegroundService
         Win32Interop.GetWindowThreadProcessId(target.Handle, out var processId);
         return processId == target.ProcessId;
     }
+
+    // The window manager's active X11 window when the shortcut fired; zero
+    // when a native Wayland window had focus.
+    private sealed record LinuxForegroundTarget(IntPtr X11Window);
 
     private readonly record struct WindowsForegroundTarget(
         IntPtr Handle,

@@ -21,7 +21,9 @@ internal interface IClickAwayDismissable
 //   does not move the foreground, so no Deactivated ever arrives).
 //
 // Popups normally dismiss on the OS Deactivated event; this catches the
-// cases that event misses. Windows only.
+// cases that event misses. On Linux (X11 under Xwayland) it is the only
+// signal: Avalonia's activation tracking misses activations Zetl requests
+// as a tool, so it watches X11 keyboard focus instead.
 internal sealed class ZetlClickAwayWatcher
 {
     private const int VkLeftButton = 0x01;
@@ -31,6 +33,7 @@ internal sealed class ZetlClickAwayWatcher
     private readonly uint ownProcessId = (uint)Environment.ProcessId;
     private readonly DispatcherTimer timer;
     private IntPtr lastForeground;
+    private bool focusWasInZetl;
 
     public ZetlClickAwayWatcher(Action onClickOutside)
     {
@@ -44,7 +47,25 @@ internal sealed class ZetlClickAwayWatcher
 
     public void Start()
     {
-        if (!OperatingSystem.IsWindows() || timer.IsEnabled)
+        if (timer.IsEnabled)
+        {
+            return;
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            // Dismiss only on a transition out of Zetl, as on Windows: a popup
+            // that never got focus is not dismissed before the user acts.
+            if (ZetlX11Activation.FocusIsInProcess(ownProcessId) is { } inside)
+            {
+                focusWasInZetl = inside;
+                timer.Start();
+            }
+
+            return;
+        }
+
+        if (!OperatingSystem.IsWindows())
         {
             return;
         }
@@ -66,6 +87,12 @@ internal sealed class ZetlClickAwayWatcher
 
     private void Tick()
     {
+        if (OperatingSystem.IsLinux())
+        {
+            if (X11FocusLeftZetl()) onClickOutside();
+            return;
+        }
+
         // A drag that began in one of our windows (e.g. highlighting note text)
         // holds the mouse capture on this UI thread. While the button is held,
         // WindowFromPoint reports whatever is physically under the pointer as it
@@ -93,6 +120,16 @@ internal sealed class ZetlClickAwayWatcher
 
         lastForeground = foreground;
         return foreground != IntPtr.Zero && !BelongsToZetl(foreground);
+    }
+
+    // Clicking another app or the desktop moves keyboard focus off Zetl's X11
+    // windows; a click on a native Wayland surface leaves no X11 window focused.
+    private bool X11FocusLeftZetl()
+    {
+        if (ZetlX11Activation.FocusIsInProcess(ownProcessId) is not { } inside) return false;
+        var left = focusWasInZetl && !inside;
+        focusWasInZetl = inside;
+        return left;
     }
 
     private bool ClickedOutsideZetl()

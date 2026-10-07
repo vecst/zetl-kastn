@@ -25,15 +25,63 @@ internal static class ZetlWindowActivation
 
         window.WindowState = WindowState.Normal;
 
+        if (OperatingSystem.IsLinux())
+        {
+            ActivateX11Window(window, log);
+            return;
+        }
+
         if (!OperatingSystem.IsWindows())
         {
-            // Other platforms (incl. Wayland) may deny activation; degrade
-            // cleanly with Avalonia's own activation.
             window.Activate();
             return;
         }
 
         ActivateWindowsForeground(window, activationTarget, log);
+    }
+
+    // The Linux counterpart of the Windows foreground steal: keep the popup
+    // above while activation is contested, and ask the window manager to
+    // activate it the way a task switcher would, retrying until it holds focus.
+    private static void ActivateX11Window(Window window, Action<string>? log)
+    {
+        var handle = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        window.Topmost = true;
+        window.Activate();
+        if (handle == IntPtr.Zero || !ZetlX11Activation.RequestActivation(handle, log))
+        {
+            window.Topmost = false;
+            return;
+        }
+
+        var attempts = 0;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
+        window.Closing += (_, _) =>
+        {
+            window.Topmost = false;
+            timer.Stop();
+        };
+        timer.Tick += (_, _) =>
+        {
+            attempts++;
+            if (!window.IsVisible)
+            {
+                timer.Stop();
+                return;
+            }
+
+            var active = ZetlX11Activation.TryGetActiveWindow(out var current) && current == handle;
+            if (active || attempts >= 6)
+            {
+                window.Topmost = false;
+                timer.Stop();
+                log?.Invoke($"Activation settled: attempts={attempts}, active={active}.");
+                return;
+            }
+
+            ZetlX11Activation.RequestActivation(handle, log);
+        };
+        timer.Start();
     }
 
     private static void ActivateWindowsForeground(
