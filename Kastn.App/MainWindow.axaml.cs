@@ -763,14 +763,23 @@ internal partial class MainWindow : Window
 
     private void BringToForeground()
     {
-        if (!OperatingSystem.IsWindows()
-            || TryGetPlatformHandle() is not { Handle: { } handle }
-            || handle == IntPtr.Zero)
+        if (TryGetPlatformHandle() is not { Handle: { } handle } || handle == IntPtr.Zero)
         {
             return;
         }
 
-        SetForegroundWindow(handle);
+        if (OperatingSystem.IsLinux())
+        {
+            // Activation requested by another process (Zetl) is refused by the
+            // window manager's focus-stealing prevention; ask as a tool does.
+            ZetlX11Activation.RequestActivation(handle, Console.Error.WriteLine);
+            return;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            SetForegroundWindow(handle);
+        }
     }
 
     private bool IsOnline =>

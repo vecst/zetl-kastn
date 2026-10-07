@@ -22,6 +22,9 @@ internal partial class MainWindow
 
     private void WireWindowLifetime()
     {
+        // Kastn started by Zetl has no startup notification, so the window
+        // manager opens it behind the active window; bring it forward once.
+        if (OperatingSystem.IsLinux()) Opened += (_, _) => BringToForeground();
         Closing += (_, args) =>
         {
             if (lifetime.AllowClose) return;

@@ -101,7 +101,7 @@
                                   IsEnabled="{Binding HasProject}"
                                   Click="OnProjectCardOpenClick">
                             <Border Classes="surface"
-                                    Height="116"
+                                    MinHeight="116"
                                     Padding="12"
                                     Opacity="0.86">
                               <Grid RowDefinitions="Auto,*,Auto">
@@ -139,7 +139,7 @@
                           </Button>
 
                           <Border Classes="surface"
-                                  Height="116"
+                                  MinHeight="116"
                                   Padding="12"
                                   VerticalAlignment="Bottom"
                                   IsVisible="{Binding IsEmpty}"
