@@ -64,6 +64,32 @@ the current clean Git commit, and then replaces the previous bundle in
 to run the live clipboard self-tests and a disposable persistence scenario
 before the bundle is installed.
 
+## Linux
+
+On Linux, build and test the same way with the .NET 10 SDK:
+
+```bash
+dotnet build Zetl.slnx
+dotnet test Zetl.Tests/Zetl.Tests.csproj --no-build
+```
+
+Tests that need the kernel or the compositor run only where they can: the
+keyboard tests need write access to `/dev/uinput` (they drive synthetic
+keyboards and grab Zetl's output, so no keystroke reaches the desktop), and
+the clipboard tests need a Wayland session with `wl-copy`/`wl-paste`. They skip
+elsewhere, including on Windows.
+
+Publish the self-contained Linux bundle (on Linux, from a clean checkout):
+
+```bash
+scripts/publish-linux-x64.sh
+```
+
+It stages Zetl, Kastn, the installer, desktop entries, icons, and the udev
+rule, checks that both executables (`--version`) identify the current commit,
+and replaces `artifacts/publish/linux-x64/`. Installing and permission setup
+are in [`linux-setup.md`](linux-setup.md).
+
 ## Previews
 
 Open individual windows against disposable state:
@@ -120,10 +146,12 @@ path and the hold path, and a line for any unusually slow key event.
 - `Zetl.Core/`: state, persistence, settings, templates, views, and themes
 - `Zetl.Contracts/`: versioned Kastn/Zetl wire contracts
 - `Zetl.Runtime/`: shortcut routing and workflow orchestration
+- `Zetl.Linux/`: the Linux keyboard (evdev/uinput) and clipboard (Wayland) backends
 - `Zetl.App/`: the Avalonia tray application
 - `Kastn.App/`: the Avalonia workbench
 - `Zetl.Tests/`: behavior and storage tests
-- `Zetl.Linux.Spike/`: evdev/uinput safety work
+- `Zetl.Linux.Spike/`: the original evdev/uinput safety spike
+- `packaging/linux/`: installer, desktop entries, icons, and udev rule
 
 Linux architecture and remaining platform work are in
 [`linux-roadmap.md`](linux-roadmap.md). The full documentation map is

@@ -18,6 +18,8 @@ implementation context.
 
 - [`kastn-roadmap.md`](kastn-roadmap.md) — current Kastn/Zetl product work
 - [`linux-roadmap.md`](linux-roadmap.md) — current Linux platform work
+- [`linux-setup.md`](linux-setup.md) — installing Zetl on Linux, keyboard
+  permissions, and undoing them
 - [`rc-testing-workflow.md`](rc-testing-workflow.md) — ordered Windows RC gate,
   disposable-profile procedure, and failure evidence workflow
 - [`windows-parity-checklist.md`](windows-parity-checklist.md) — manual Windows

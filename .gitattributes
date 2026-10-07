@@ -1,0 +1,4 @@
+# Linux packaging is read by sh, udev, and desktop environments: keep LF.
+*.sh text eol=lf
+*.desktop text eol=lf
+*.rules text eol=lf

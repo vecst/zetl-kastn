@@ -14,6 +14,16 @@ internal static class Program
     public static int Main(string[] args)
     {
         StartupArgs = args;
+        if (args.Any(arg => arg.Equals("--version", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Release scripts check that both apps identify the same commit.
+            Console.WriteLine(typeof(Program).Assembly
+                .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+                .FirstOrDefault()?.InformationalVersion ?? "unknown");
+            return 0;
+        }
+
         var ipcSmokeDirectory = args.FirstOrDefault(arg =>
                 arg.StartsWith("--ipc-smoke-server=", StringComparison.OrdinalIgnoreCase))
             ?["--ipc-smoke-server=".Length..];

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Zetl
+GenericName=Capture shortcuts
+Comment=Tap a shortcut as always; hold it to capture into Zetl
+Exec=@BINDIR@/Zetl
+Icon=zetl
+Terminal=false
+Categories=Utility;
+StartupWMClass=Zetl

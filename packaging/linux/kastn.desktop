@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Kastn
+GenericName=Zetl workbench
+Comment=Browse, organize, and compose Zetl projects
+Exec=@BINDIR@/Kastn
+Icon=kastn
+Terminal=false
+Categories=Office;Utility;
+StartupWMClass=Kastn

@@ -147,16 +147,19 @@ device.
 
 ## Priority 4: Permissions And Installation
 
-- [ ] Choose the supported `/dev/input/event*` and `/dev/uinput` permission
-      model.
-- [ ] Provide udev rules and group/setup instructions.
-- [ ] Detect insufficient permissions at startup.
-- [ ] Add a diagnostic report listing candidate and usable devices.
-- [ ] Package the application, desktop file, icon, and optional autostart.
-- [ ] Document rollback and uninstall of permission changes.
+User setup, install, and rollback are in [`linux-setup.md`](linux-setup.md).
 
-The installed app must run as the desktop user. Permission failures should name
-the exact missing device or group and the corrective action.
+- [x] Permission model: the desktop user in the `input` group, plus a udev rule
+      (`packaging/linux/70-zetl-uinput.rules`) giving that group `/dev/uinput`.
+- [x] Detect insufficient permissions at startup; the log names the device and
+      the missing access, and the installer reports what is missing.
+- [x] Self-contained `linux-x64` bundle (`scripts/publish-linux-x64.sh`) with a
+      per-user installer: desktop entries, icons, optional autostart, uninstall.
+- [x] Document rollback of the permission changes.
+- [ ] A distribution package (an AerynOS `stone.yaml` recipe for boulder, then
+      others) that installs the udev rule system-wide.
+- [ ] Decide whether a `--diagnose` report of candidate and usable devices is
+      still needed beyond the log and installer check.
 
 ## Integration Milestones
 
