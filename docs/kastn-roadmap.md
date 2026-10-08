@@ -12,13 +12,14 @@ here wait in [`ideas.md`](ideas.md#deferred).
 
 **Main track**
 
-1. **RC 3.1.** Finish RC 3 testing, merge the post-RC 3 branch (transparency and
-   Compose wording, delta reads, the Board overwrite fix, the Linux keyboard and
-   single-instance fixes, the log settings fix), publish Windows and Linux builds.
-2. **Quick wins.** Start at login on Windows (a setting like Linux's autostart),
+1. **Quick wins.** Start at login on Windows (a setting like Linux's autostart),
    then the open Priority 1 fixes: capture and Replay destination defaults and
    fresh-profile Journals (verify first; they may be fixed), the recovered-draft
    layout, and `data:image` clipboard payloads.
+2. **RC 3.1.** Finish RC 3 testing and ship the post-RC 3 branch with the quick
+   wins: transparency and Compose wording, delta reads, the Board overwrite
+   fix, the Linux keyboard and single-instance fixes, the log settings fix.
+   Publish Windows and Linux builds.
 3. **Release gate.** The testing half of Priority 1, the delta IPC acceptance
    matrix and measurements, the Windows parity checklist on a published build,
    and the packaging, identity, and protocol compatibility policy.
