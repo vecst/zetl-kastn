@@ -18,6 +18,8 @@ implementation context.
 
 - [`kastn-roadmap.md`](kastn-roadmap.md) — current Kastn/Zetl product work
 - [`linux-roadmap.md`](linux-roadmap.md) — current Linux platform work
+- [`linux-gnome-clipboard.md`](linux-gnome-clipboard.md) — plan for GNOME's
+  clipboard through a Shell extension and D-Bus, with Clipman as prior art
 - [`linux-setup.md`](linux-setup.md) — installing Zetl on Linux, keyboard
   permissions, and undoing them
 - [`rc-testing-workflow.md`](rc-testing-workflow.md) — ordered Windows RC gate,

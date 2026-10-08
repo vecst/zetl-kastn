@@ -156,7 +156,8 @@ device.
       over D-Bus, most likely through a small GNOME Shell extension that Zetl
       installs, behind the same `ILinuxSelection` seam. The remote-desktop
       portal clipboard is the no-install alternative, but it asks for consent
-      and shows a "being controlled" indicator while active.
+      and shows a "being controlled" indicator while active. Design and prior
+      art (Clipman): [`linux-gnome-clipboard.md`](linux-gnome-clipboard.md).
 
 ## Priority 4: Permissions And Installation
 
