@@ -26,9 +26,7 @@ internal static class Program
 
         var projectId = Value(args, "--project=");
         var activationPipe = Value(args, "--activation-pipe=");
-        var mutexName = OperatingSystem.IsWindows()
-            ? @"Local\KastnSingleInstance"
-            : "KastnSingleInstance";
+        var mutexName = ZetlSingleInstance.MutexName("Kastn");
         singleInstanceMutex = new Mutex(
             initiallyOwned: true,
             mutexName,

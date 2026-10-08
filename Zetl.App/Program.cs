@@ -63,9 +63,7 @@ internal static class Program
         var ownsMutex = false;
         if (!preview)
         {
-            var mutexName = OperatingSystem.IsWindows()
-                ? @"Local\ZetlSingleInstance"
-                : "ZetlSingleInstance";
+            var mutexName = ZetlSingleInstance.MutexName("Zetl");
             singleInstanceMutex = new Mutex(
                 initiallyOwned: true,
                 mutexName,
@@ -75,7 +73,7 @@ internal static class Program
                 singleInstanceMutex.Dispose();
                 singleInstanceMutex = null;
                 ShowStartupMessage(
-                    "Zetl is already running in this session.",
+                    "Zetl is already running.",
                     "Zetl");
                 return 0;
             }
