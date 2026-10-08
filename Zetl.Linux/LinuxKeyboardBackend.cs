@@ -358,18 +358,11 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
             && HasBit(keys, LinuxKeyMap.KeyLeftCtrl);
     }
 
-    private static bool IsVirtual(string device)
-    {
-        try
-        {
-            var target = new DirectoryInfo(device).ResolveLinkTarget(returnFinalTarget: true);
-            return target?.FullName.Contains("/devices/virtual/", StringComparison.Ordinal) == true;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-    }
+    // Uinput keyboards live under /sys/devices/virtual. The device link is
+    // relative to the real event directory, not /sys/class/input, so it must be
+    // resolved by the kernel: lexical resolution made every device look physical.
+    internal static bool IsVirtual(string device) =>
+        LinuxPosix.RealPath(device)?.StartsWith("/sys/devices/virtual/", StringComparison.Ordinal) == true;
 
     private static string? ReadSysfs(string path)
     {

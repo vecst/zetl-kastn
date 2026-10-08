@@ -134,6 +134,25 @@ internal static class LinuxPosix
 
     public static nint Write(int descriptor, byte[] buffer, nuint count) => write(descriptor, buffer, count);
 
+    /// <summary>
+    /// The canonical path with every symlink resolved by the kernel's rules, or
+    /// null when it does not exist. Unlike .NET's link resolution, a relative
+    /// link is taken from where its parent really is, which matters in sysfs.
+    /// </summary>
+    public static string? RealPath(string path)
+    {
+        var resolved = realpath(path, 0);
+        if (resolved == 0) return null;
+        try
+        {
+            return Marshal.PtrToStringUTF8(resolved);
+        }
+        finally
+        {
+            free(resolved);
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct PollDescriptor
     {
@@ -144,6 +163,12 @@ internal static class LinuxPosix
 
     [DllImport("libc", SetLastError = true)]
     private static extern int close(int descriptor);
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern nint realpath(string path, nint resolved);
+
+    [DllImport("libc")]
+    private static extern void free(nint pointer);
 
     [DllImport("libc", SetLastError = true)]
     private static extern nint read(int descriptor, byte[] buffer, nuint count);

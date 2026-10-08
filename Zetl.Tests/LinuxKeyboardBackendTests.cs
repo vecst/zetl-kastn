@@ -137,6 +137,26 @@ public sealed class LinuxKeyboardBackendTests : IDisposable
         Assert.Equal(["A1", "A0"], output.ReadKeys(2));
     }
 
+    // Outside tests Zetl takes only physical keyboards, never someone else's
+    // uinput device (KDE Connect, ydotool, input-remapper, a running test).
+    [LinuxUinputFact]
+    public void LeavesVirtualKeyboardsAloneOutsideTests()
+    {
+        var keyboard = AddFake("virtual");
+        Assert.True(LinuxKeyboardBackend.IsVirtual($"/sys/class/input/{Path.GetFileName(keyboard.Node)}/device"));
+
+        backend = new LinuxKeyboardBackend(
+            line => { lock (logs) logs.Add(line); },
+            allowInjectedInputForTesting: false,
+            virtualDeviceName: $"{prefix} output",
+            acceptDeviceName: name => name.StartsWith(prefix, StringComparison.Ordinal) && !name.EndsWith(" output"));
+        backend.Start((_, _, _, _) => false);
+        Thread.Sleep(300);
+
+        Assert.DoesNotContain(Logs(), line => line.Contains(keyboard.Name));
+        Assert.True(keyboard.IsFree(), "A virtual keyboard should stay ungrabbed.");
+    }
+
     [LinuxUinputFact]
     public void AFailingHandlerLetsKeysThrough()
     {
