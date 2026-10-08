@@ -120,10 +120,11 @@ leverage.
 - [x] Opening the Zetl Board (held Ctrl+B) while editing a slip in Kastn: Kastn
       saves on focus loss just after the Board loads that slip. The Board now
       tracks the text it loaded, reloads Kastn's newer text, and never writes
-      untouched text back (`ZetlBoardNoteDraft`).
-- [ ] Editing the same slip in the Zetl Board and Kastn at once still ends
-      last-writer-wins with no conflict notice; the Board writes in-process
-      without a revision check. Decide on a light conflict signal for the Board.
+      untouched text back (`ZetlBoardNoteDraft`). Verified by hand: Board edits
+      reach Kastn at once, and an edit resumed in the Board saves back to it.
+      True simultaneous edits would still be last-writer-wins (the Board writes
+      in-process without a revision check), but Kastn saves on focus loss
+      before the Board can be typed in, so no real flow reaches that today.
 - [ ] Exercise simultaneous Kastn/Zetl startup races.
 - [ ] Test Zetl restart, Kastn restart, forced termination, login, and reboot.
 - [ ] Stress reconnect retries, duplicate command delivery, stale revisions,
