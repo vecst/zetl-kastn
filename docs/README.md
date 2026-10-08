@@ -29,6 +29,8 @@ implementation context.
 
 These are the authoritative places to answer “what remains?”
 
+Ideas not yet committed to any roadmap are collected in [`ideas.md`](ideas.md).
+
 ## Product And Architecture
 
 - [`kastn.md`](kastn.md) — product boundary between Zetl and Kastn
