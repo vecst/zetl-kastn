@@ -248,4 +248,4 @@ internal interface IImageUrlResolver
 
 internal sealed record ZetlResolvedImageUrl(
     ZetlClipboardImage Image,
-    string SourceUrl);
+    string? SourceUrl);

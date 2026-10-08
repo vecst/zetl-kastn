@@ -315,6 +315,18 @@ internal static class ZetlWindowsSelfTests
                 noCurlResolver.TryResolveAsync("https://example.test/blocked")
                     .GetAwaiter().GetResult() is null);
 
+            // A copied data: image is decoded in place, never fetched, and keeps
+            // no source address; a data URI that is not a decodable image stays text.
+            var inline = resolver.TryResolveAsync($"data:image/png;base64,{Convert.ToBase64String(png)}")
+                .GetAwaiter().GetResult();
+            failures += Check(
+                "image URL resolver decodes a copied data: image",
+                inline?.Image is { Width: 1, Height: 1 } && inline.SourceUrl is null);
+            failures += Check(
+                "image URL resolver leaves a non-image data: URI as text",
+                resolver.TryResolveAsync("data:image/png;base64,PGh0bWw+PC9odG1sPg==")
+                    .GetAwaiter().GetResult() is null);
+
             if (canRestoreCallerClipboard)
             {
                 var sample = $"zetl-selftest-{Guid.NewGuid():N}";

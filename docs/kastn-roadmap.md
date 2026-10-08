@@ -13,8 +13,8 @@ here wait in [`ideas.md`](ideas.md#deferred).
 **Main track**
 
 1. **Quick wins.** Start at login from Settings (done, Windows and Linux),
-   then the open Priority 1 fixes: remembering the last selected Shift project,
-   the recovered-draft layout, and `data:image` clipboard payloads.
+   then the open Priority 1 fixes: remembering the last selected Shift project
+   and the recovered-draft layout (`data:image` clipboard payloads are done).
 2. **RC 3.1.** Finish RC 3 testing and ship the post-RC 3 branch with the quick
    wins: transparency and Compose wording, delta reads, the Board overwrite
    fix, the Linux keyboard and single-instance fixes, the log settings fix.
@@ -221,9 +221,10 @@ leverage.
       lane's active project or the Journal (`GetCaptureHome`), held captures and
       quick notes to today's day, tapped copies to today's Capture child
       (59e92d8), and a fresh Journal's active bucket is today's day.)
-- [ ] Decode valid clipboard `data:image/...;base64,...` payloads into normalized
+- [x] Decode valid clipboard `data:image/...;base64,...` payloads into normalized
       image slips under the same MIME, dimension, and size validation used for
       clipboard and HTTP images; malformed or unsupported data URIs stay text.
+      (`ZetlDataImageUri` plus the image resolver's PNG normalization.)
 - [x] Preserve lane activation when a Quick Note is submitted to the
       already-active project (1274e99 made activation deliberate;
       `RuntimeQuickNoteKeepsActiveProject` covers it).

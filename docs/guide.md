@@ -197,6 +197,9 @@ Zetl captures:
 - pictures on the clipboard
 - links that point straight at an image, which Zetl downloads and saves as the
   picture
+- a copied `data:image/...;base64,...` address (what a browser's "Copy image
+  address" gives for an inline image), saved as the picture without going
+  online; one that isn't a readable image stays text
 
 Pictures are stored as PNG project assets; copying the same picture again
 reuses the stored file.

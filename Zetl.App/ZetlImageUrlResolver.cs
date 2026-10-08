@@ -55,6 +55,14 @@ internal sealed class ZetlImageUrlResolver : IImageUrlResolver
 
     public async Task<ZetlResolvedImageUrl?> TryResolveAsync(string text)
     {
+        // An inline data: image carries its bytes in the copied text itself; it
+        // gets the same decode and PNG normalization as a download, and keeps no
+        // source address (the URI is the image).
+        if (ZetlDataImageUri.TryDecode(text, MaximumDownloadBytes, out var inline, out var mediaType))
+        {
+            return NormalizeToPng(inline, $"a copied {mediaType} data URI", sourceUrl: null);
+        }
+
         if (!TryParseHttpUrl(text, out var uri))
         {
             return null;
@@ -65,7 +73,7 @@ internal sealed class ZetlImageUrlResolver : IImageUrlResolver
         {
             var downloaded = await DownloadAsync(uri, timeout.Token);
             return downloaded is { } image
-                ? NormalizeToPng(image.Bytes, image.FinalUrl)
+                ? NormalizeToPng(image.Bytes, image.FinalUrl, image.FinalUrl)
                 : null;
         }
         catch (Exception ex) when (
@@ -196,7 +204,7 @@ internal sealed class ZetlImageUrlResolver : IImageUrlResolver
     // Decode and re-encode to PNG. The SKCodec pass is the final authority on
     // whether the bytes are a usable image, so curl bytes (which carry no content
     // type) are validated here just like in-process bytes.
-    private ZetlResolvedImageUrl? NormalizeToPng(byte[] encodedBytes, string finalUrl)
+    private ZetlResolvedImageUrl? NormalizeToPng(byte[] encodedBytes, string origin, string? sourceUrl)
     {
         using var encodedData = SKData.CreateCopy(encodedBytes);
         using var codec = SKCodec.Create(encodedData);
@@ -205,14 +213,14 @@ internal sealed class ZetlImageUrlResolver : IImageUrlResolver
             || codec.Info.Height <= 0
             || (long)codec.Info.Width * codec.Info.Height > MaximumPixelCount)
         {
-            log?.Invoke($"Image URL capture skipped: undecodable or oversized image from {finalUrl}.");
+            log?.Invoke($"Image URL capture skipped: undecodable or oversized image from {origin}.");
             return null;
         }
 
         using var bitmap = SKBitmap.Decode(encodedBytes);
         if (bitmap is null || bitmap.Width <= 0 || bitmap.Height <= 0)
         {
-            log?.Invoke($"Image URL capture skipped: image failed to decode from {finalUrl}.");
+            log?.Invoke($"Image URL capture skipped: image failed to decode from {origin}.");
             return null;
         }
 
@@ -225,7 +233,7 @@ internal sealed class ZetlImageUrlResolver : IImageUrlResolver
 
         return new ZetlResolvedImageUrl(
             new ZetlClipboardImage(png.ToArray(), bitmap.Width, bitmap.Height),
-            finalUrl);
+            sourceUrl);
     }
 
     // Fetch through the system curl, whose TLS handshake some hosts accept where
