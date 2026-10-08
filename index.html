@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZetlKastn: keep your train of thought</title>
-<meta name="description" content="ZetlKastn pairs frictionless note capture with a workspace for organizing and composing ideas. Capture with Zetl; connect, edit, and compose with Kastn. Free for Windows.">
+<meta name="description" content="ZetlKastn pairs frictionless note capture with a workspace for organizing and composing ideas. Capture with Zetl; connect, edit, and compose with Kastn. Free for Windows and Linux.">
 <meta property="og:title" content="ZetlKastn: keep your train of thought">
 <meta property="og:description" content="Two apps, one workspace. Zetl keeps capture frictionless; Kastn helps you organize, connect, and compose the ideas you keep.">
 <meta property="og:type" content="website">
@@ -229,6 +229,8 @@ table.keys-table { width: 100%; border-collapse: collapse; background: var(--sur
 ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 0 0 22px; display: grid; gap: 14px; }
 ol.steps li { counter-increment: step; position: relative; padding-left: 46px; }
 ol.steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; display: grid; place-items: center; font-size: 15px; }
+.platform { margin: 0 0 12px; font-size: 18px; }
+.platform ~ .platform { margin-top: 30px; }
 .callout { border-left: 4px solid var(--accent); background: var(--surface); border-radius: 0 10px 10px 0; padding: 14px 18px; font-size: 15.5px; }
 .callout p { margin: 0; }
 
@@ -264,10 +266,10 @@ footer a { color: var(--muted); }
       <p class="lede">ZetlKastn has two halves. <strong>Zetl</strong> keeps taking a note as frictionless as possible: tap your shortcuts to work normally, hold to keep a quote, picture, or idea without switching windows. <strong>Kastn</strong> is where you organize, connect, and compose those pieces into documents.</p>
       <p class="name-note">A name inspired by <em>zettelkasten</em>, split between capture and composition.</p>
       <div class="actions">
-        <a class="btn primary" href="#download">Download for Windows</a>
+        <a class="btn primary" href="#download">Download</a>
         <a class="btn ghost" href="#try">Try tap and hold</a>
       </div>
-      <p class="meta">Free and open source · 64-bit Windows · No account, no cloud</p>
+      <p class="meta">Free and open source · Windows and Linux · No account, no cloud</p>
     </div>
   </section>
 
@@ -376,7 +378,7 @@ footer a { color: var(--muted); }
         <h2>Your notes stay on your computer</h2>
       </div>
       <div>
-        <p>Zetl has no account and no cloud. Everything you save lives in readable files under <code>%AppData%\Zetl</code> on your own machine.</p>
+        <p>Zetl has no account and no cloud. Everything you save lives in readable files under <code>%AppData%\Zetl</code> on Windows or <code>~/.config/Zetl</code> on Linux, on your own machine.</p>
         <p>Copies that a password manager marks as private are never read or saved, even while a project is collecting your copies. When you export a project to share, a clean copy leaves out which apps and windows your notes came from.</p>
         <p>The only time Zetl goes online is when you copy a link to an image: it downloads that image so it can save the picture.</p>
       </div>
@@ -387,16 +389,24 @@ footer a { color: var(--muted); }
     <span id="install" aria-hidden="true"></span>
     <div class="wrap split">
       <div>
-        <h2>Download for Windows</h2>
-        <p class="intro">Download, extract, and run. No installer or account needed.</p>
+        <h2>Download</h2>
+        <p class="intro">For 64-bit Windows and Linux. No account needed.</p>
       </div>
       <div>
+        <h3 class="platform">Windows</h3>
         <ol class="steps">
-          <li><a href="https://github.com/vecst/zetl-kastn/releases/latest">Get the latest Windows release</a> and download <code>Zetl-…-win-x64.zip</code>.</li>
+          <li><a href="https://github.com/vecst/zetl-kastn/releases/latest">Get the latest release</a> and download <code>Zetl-…-win-x64.zip</code>.</li>
           <li>Extract the whole zip into a folder and keep its files together.</li>
           <li>Run <code>Zetl.exe</code>. Its icon appears by the clock, and the first-run tour opens. Open <code>Kastn.exe</code> when you want to organize or edit your notes.</li>
         </ol>
         <p>Zetl isn't code-signed yet, so Windows may show a SmartScreen warning the first time: choose <b>More info → Run anyway</b>. It runs on 64-bit Windows, and can't reach apps running as administrator unless it's run as administrator too.</p>
+        <h3 class="platform">Linux</h3>
+        <ol class="steps">
+          <li><a href="https://github.com/vecst/zetl-kastn/releases/latest">Get the latest release</a> and download <code>Zetl-…-linux-x86_64.AppImage</code>.</li>
+          <li>Give Zetl keyboard access once. It works below the desktop, the way it hooks the keyboard on Windows, so your user needs the <code>input</code> group and <code>/dev/uinput</code>. The <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/linux-setup.md">Linux setup guide</a> has the commands, what they grant, and how to undo them.</li>
+          <li>Make the AppImage executable and run it. Run it with <code>--kastn</code> to open Kastn.</li>
+        </ol>
+        <p>Linux support is new, and tested on KDE Plasma 6 (Wayland). Capturing what you copy needs a desktop with the <code>ext-data-control</code> clipboard protocol, which KDE Plasma 6, Sway, and Hyprland have. If your keyboard ever stops responding, hold both <kbd>Shift</kbd> keys and press <kbd>Esc</kbd>: Zetl lets go of it at once.</p>
         <div class="callout"><p>ZetlKastn is in release-candidate testing. Expect some rough edges, and please <a href="https://github.com/vecst/zetl-kastn/issues">report what you find</a>.</p></div>
       </div>
     </div>
@@ -408,6 +418,7 @@ footer a { color: var(--muted); }
     <span>ZetlKastn is free software under the GNU General Public License v3 or later.</span>
     <nav aria-label="Project links">
       <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/guide.md">User guide</a>
+      <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/linux-setup.md">Linux setup</a>
       <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/building.md">Build from source</a>
       <a href="https://github.com/vecst/zetl-kastn">Source</a>
     </nav>
