@@ -15,7 +15,8 @@ internal partial class BoardWindow : ZetlPopupWindow
     private readonly Func<ZetlTemplateDocument, string, bool, ZetlProject?>? createProjectFromTemplate;
     private bool refreshing;
     private bool childDialogOpen;
-    private ZetlSlip? editingNote;
+    // The slip in the editor and the text it was loaded with.
+    private readonly ZetlBoardNoteDraft noteDraft = new();
     private List<BoardNoteItem> noteItems = [];
     private Bitmap? selectedImagePreview;
 
@@ -176,7 +177,7 @@ internal partial class BoardWindow : ZetlPopupWindow
 
         var selectedProjectId = ActiveProject?.Id;
         var selectedBucketId = ActiveBucket?.Id;
-        var selectedNoteId = ActiveNote?.Id ?? editingNote?.Id;
+        var selectedNoteId = ActiveNote?.Id ?? noteDraft.Slip?.Id;
         var activeProjectId = store.GetActiveProject(shiftedLane)?.Id;
 
         refreshing = true;
@@ -322,7 +323,7 @@ internal partial class BoardWindow : ZetlPopupWindow
         DisposeNoteImages();
         noteList.ItemsSource = Array.Empty<BoardNoteItem>();
         composingBucket = null;
-        editingNote = null;
+        noteDraft.Load(null);
         noteEditor.Text = "";
         imageCaptionBox.Text = "";
         noteEditor.IsEnabled = false;
@@ -342,18 +343,17 @@ internal partial class BoardWindow : ZetlPopupWindow
 
         // Preserve unsaved edits across a background refresh (e.g. the activity
         // log flushing while you type): if the same note is still selected and the
-        // editor holds changes not yet written, keep them rather than resetting to
-        // the stored text. Raw, untrimmed comparison so a trailing space being
-        // typed still counts as a pending edit and survives.
-        if (editingNote is not null
-            && !editingNote.IsImage
-            && ActiveNote?.Id == editingNote.Id
-            && !string.Equals(noteEditor.Text ?? "", editingNote.Text, StringComparison.Ordinal))
+        // editor holds typing not yet written, keep it. Anything else reloads,
+        // including a newer text another writer (Kastn) saved meanwhile.
+        if (noteDraft.Slip is { IsImage: false } shown
+            && ActiveNote?.Id == shown.Id
+            && noteDraft.IsEdited(noteEditor.Text))
         {
             return;
         }
 
-        editingNote = ActiveNote;
+        noteDraft.Load(ActiveNote);
+        var editingNote = noteDraft.Slip;
         noteEditor.Text = editingNote?.Text ?? "";
         var isImage = editingNote?.IsImage == true;
         imageCaptionBox.Text = isImage ? editingNote?.Text ?? "" : "";
@@ -368,7 +368,7 @@ internal partial class BoardWindow : ZetlPopupWindow
 
     // Commits the editor's contents: a new-note draft is added to the store only
     // when it has non-blank text (so the Board never persists empty notes), and
-    // an existing note is updated only when its text actually changed.
+    // an existing note is updated only when it was edited here.
     private void SaveEditingNote()
     {
         if (refreshing)
@@ -389,36 +389,16 @@ internal partial class BoardWindow : ZetlPopupWindow
             return;
         }
 
-        if (editingNote?.IsImage == true)
-        {
-            var caption = imageCaptionBox.Text?.Trim() ?? "";
-            if (!string.Equals(editingNote.Text, caption, StringComparison.Ordinal))
-            {
-                store.UpdateSlip(editingNote, caption);
-            }
-
-            return;
-        }
-
-        if (editingNote?.IsImage == true
-            && ActiveNote?.Id == editingNote.Id
-            && !string.Equals(
-                imageCaptionBox.Text ?? "",
-                editingNote.Text,
-                StringComparison.Ordinal))
+        // Only typing done in the Board is written back. Text the editor merely
+        // loaded is never saved, so a newer save from Kastn is not overwritten.
+        if (noteDraft.Slip is not { } note
+            || noteDraft.TextToSave(note.IsImage ? imageCaptionBox.Text : noteEditor.Text) is not { } changed)
         {
             return;
         }
 
-        if (editingNote is null || text.Length == 0)
-        {
-            return;
-        }
-
-        if (!string.Equals(editingNote.Text, text, StringComparison.Ordinal))
-        {
-            store.UpdateSlip(editingNote, text);
-        }
+        store.UpdateSlip(note, changed);
+        noteDraft.Load(note);
     }
 
     private async Task AddProjectAsync()
@@ -602,7 +582,7 @@ internal partial class BoardWindow : ZetlPopupWindow
         try
         {
             composingBucket = bucket;
-            editingNote = null;
+            noteDraft.Load(null);
             noteList.SelectedItem = null;
             noteEditor.Text = "";
             noteEditor.IsVisible = true;
@@ -624,7 +604,7 @@ internal partial class BoardWindow : ZetlPopupWindow
     {
         if (ActiveBucket is { } bucket && ActiveNote is { } note)
         {
-            editingNote = null;
+            noteDraft.Load(null);
             store.DeleteSlip(bucket, note.Id);
         }
     }
