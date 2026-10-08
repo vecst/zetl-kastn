@@ -12,7 +12,7 @@ here wait in [`ideas.md`](ideas.md#deferred).
 
 **Main track**
 
-1. **Quick wins.** Start at login on Windows (a setting like Linux's autostart),
+1. **Quick wins.** Start at login from Settings (done, Windows and Linux),
    then the open Priority 1 fixes: capture and Replay destination defaults and
    fresh-profile Journals (verify first; they may be fixed), the recovered-draft
    layout, and `data:image` clipboard payloads.

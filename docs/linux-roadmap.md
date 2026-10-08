@@ -173,6 +173,8 @@ User setup, install, and rollback are in [`linux-setup.md`](linux-setup.md).
 - [x] Document rollback of the permission changes.
 - [x] AppImage (`scripts/publish-linux-appimage.sh`): both apps in one image;
       each launches the other through the AppImage so either can close first.
+- [x] Start at login from Zetl's Settings: writes the XDG autostart entry
+      (the AppImage file when running from one) and repairs it after a move.
 - [ ] A distribution package (an AerynOS `stone.yaml` recipe for boulder, then
       others) that installs the udev rule system-wide.
 - [ ] Decide whether a `--diagnose` report of candidate and usable devices is

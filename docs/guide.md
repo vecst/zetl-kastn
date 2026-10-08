@@ -435,6 +435,8 @@ Project and bucket management isn't part of undo yet.
 
 Settings live in `%AppData%\Zetl\settings.json` and include:
 
+- starting Zetl when you log in (kept in Windows' own startup list, so turning
+  Zetl off in Task Manager's Startup apps shows here too)
 - capture origin detail and toast duration
 - automatic copy capture, and what copies do with no project active
 - quick-note clipboard behavior

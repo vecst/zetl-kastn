@@ -24,6 +24,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly ZetlProjectService projectService;
     private readonly ZetlIpcServer ipcServer;
     private readonly ZetlAppSettingsStore settingsStore;
+    private readonly ZetlStartAtLogin startAtLogin = ZetlStartAtLogin.ForThisProcess();
     private readonly ZetlThemeStore themeStore;
     private readonly ZetlTemplateStore templateStore;
     private readonly ZetlActivityLogBuffer activityLog = new();
@@ -160,6 +161,19 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         coordinator.RegisterActions(router);
 
         ApplySettings();
+        try
+        {
+            if (startAtLogin.RepairIfMoved())
+            {
+                Log("Start at login now points at this copy of Zetl; the previous one is gone.");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or System.Security.SecurityException)
+        {
+            Log($"Start at login could not be checked: {ex.Message}");
+        }
+
         store.ConsolidateDefaultProject();
         store.ConsolidateDefaultProject(shifted: true);
         store.ClearActiveProject();
@@ -1183,11 +1197,14 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             themeManager,
             themeStore,
             settingsStore);
+        window.ShowStartAtLogin(startAtLogin.IsAvailable, startAtLogin.IsEnabled);
         await ShowUntilClosedAsync(window);
         if (!window.Saved)
         {
             return;
         }
+
+        ApplyStartAtLogin(window.StartAtLogin);
 
         var settings = settingsStore.Settings;
         settings.ToastDisplayMs = window.ToastDisplayMs;
@@ -1294,6 +1311,26 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             processor.RepeatSuppressionDelay = TimeSpan.FromMilliseconds(settingsStore.Settings.RepeatSuppressionDelayMs);
             processor.HoldDelay = TimeSpan.FromMilliseconds(settingsStore.Settings.HoldDelayMs);
+        }
+    }
+
+    private void ApplyStartAtLogin(bool wanted)
+    {
+        if (!startAtLogin.IsAvailable || wanted == startAtLogin.IsEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            startAtLogin.Set(wanted);
+            Log(wanted ? "Start at login: on." : "Start at login: off.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or System.Security.SecurityException or InvalidOperationException)
+        {
+            Log($"Start at login could not be changed: {ex.Message}");
+            notifications.Show("Zetl could not change starting at login.");
         }
     }
 

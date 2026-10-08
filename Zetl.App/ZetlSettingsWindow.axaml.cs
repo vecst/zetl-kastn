@@ -285,6 +285,19 @@ internal partial class ZetlSettingsWindow : Window
     public string DefaultCompileMode => compileModeBox.SelectedItem as string ?? "Formatted";
 
     public bool ComposeCtrlEnterPastes => composeCtrlEnterPastesBox.IsChecked == true;
+
+    public bool StartAtLogin => startAtLoginBox.IsChecked == true;
+
+    // Start at login lives in the desktop's own login entry, not in settings, so
+    // the host passes in what that entry says now.
+    public void ShowStartAtLogin(bool available, bool enabled)
+    {
+        startAtLoginBox.IsChecked = enabled;
+        startAtLoginBox.IsEnabled = available;
+        ToolTip.SetTip(startAtLoginBox, available
+            ? null
+            : "Only an installed or published Zetl can start at login.");
+    }
     public int DefaultTsvRowLength => (int)(tsvRowLengthBox.Value ?? 5);
     public int DayStartHour => (int)(dayStartHourBox.Value ?? 0);
     public int JournalAutoReturnHours => (int)(autoReturnHoursBox.Value ?? 0);

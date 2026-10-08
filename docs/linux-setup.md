@@ -50,8 +50,9 @@ chmod +x Zetl-*-linux-x86_64.AppImage
 
 It needs FUSE, which most desktops have. Zetl and Kastn launch each other
 through the AppImage file, so either can be closed without affecting the other.
-To start Zetl when you log in, add the AppImage to your desktop's autostart
-settings (KDE: System Settings, Autostart).
+To start Zetl when you log in, turn on **Start at login** in Zetl's Settings.
+It adds an autostart entry for the AppImage file, and repairs that entry if
+you move the AppImage and run it from its new place.
 
 ### Installed bundle
 

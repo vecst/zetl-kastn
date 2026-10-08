@@ -146,8 +146,6 @@ controls, and editor tools: the Backlog in
 
 ## Platform and packaging
 
-- **Start at login on Windows,** a setting like Linux's autostart (a gap Lukas
-  called one of the biggest).
 - **A smaller Windows download:** ship Zetl and Kastn in one folder sharing one
   .NET runtime, as the AppImage does, instead of two self-contained
   executables. Probably about half the size, at the cost of a folder of many

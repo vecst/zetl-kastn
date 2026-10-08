@@ -30,18 +30,23 @@
         <ScrollViewer x:Name="zetlSettingsPanel" IsVisible="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="20" Margin="0,0,12,0">
             <TextBlock Text="Zetl General Settings" Classes="heading" />
-            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+            <Grid ColumnDefinitions="230,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
               <TextBlock Grid.Row="0" Grid.Column="0"
+                         Text="Start at login"
+                         VerticalAlignment="Center" />
+              <CheckBox Grid.Row="0" Grid.Column="1" x:Name="startAtLoginBox"
+                        Content="Start Zetl when you log in" />
+              <TextBlock Grid.Row="1" Grid.Column="0"
                          Text="Toast display time (ms)"
                          VerticalAlignment="Center" />
-              <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="toastMsBox"
+              <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="toastMsBox"
                              Width="150" HorizontalAlignment="Left"
                              Minimum="200" Maximum="5000" Increment="50" />
 
-              <TextBlock Grid.Row="1" Grid.Column="0"
+              <TextBlock Grid.Row="2" Grid.Column="0"
                          Text="Auto-capture on copy"
                          VerticalAlignment="Center" />
-              <StackPanel Grid.Row="1" Grid.Column="1" Spacing="6" Margin="0,8,0,0">
+              <StackPanel Grid.Row="2" Grid.Column="1" Spacing="6" Margin="0,8,0,0">
                 <CheckBox x:Name="autoCaptureBox"
                           Content="Capture plain Ctrl+C into the active bucket" />
                 <CheckBox x:Name="passThroughBox">
@@ -50,43 +55,43 @@
                 </CheckBox>
               </StackPanel>
 
-              <TextBlock Grid.Row="2" Grid.Column="0"
+              <TextBlock Grid.Row="3" Grid.Column="0"
                          Text="Quick note to clipboard"
                          VerticalAlignment="Center" />
-              <CheckBox Grid.Row="2" Grid.Column="1" x:Name="quickNoteClipboardBox"
+              <CheckBox Grid.Row="3" Grid.Column="1" x:Name="quickNoteClipboardBox"
                         Margin="0,8,0,0"
                         Content="Held Ctrl+X note also copies its text to the clipboard" />
 
-              <TextBlock Grid.Row="3" Grid.Column="0"
+              <TextBlock Grid.Row="4" Grid.Column="0"
                          Text="Restore clipboard after Replay"
                          VerticalAlignment="Center" />
-              <CheckBox Grid.Row="3" Grid.Column="1" x:Name="replayResumeClipboardBox"
+              <CheckBox Grid.Row="4" Grid.Column="1" x:Name="replayResumeClipboardBox"
                         Margin="0,8,0,0"
                         Content="Going back to the original clipboard before Replay was enabled" />
 
-              <TextBlock Grid.Row="4" Grid.Column="0"
+              <TextBlock Grid.Row="5" Grid.Column="0"
                          Text="Capture origin"
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
-              <ComboBox Grid.Row="4" Grid.Column="1" x:Name="captureOriginBox"
+              <ComboBox Grid.Row="5" Grid.Column="1" x:Name="captureOriginBox"
                         Width="250" Margin="0,12,0,0" HorizontalAlignment="Left" />
 
-              <TextBlock Grid.Row="5" Grid.Column="0"
+              <TextBlock Grid.Row="6" Grid.Column="0"
                          Text="Default project buckets (one per line)"
                          Margin="0,14,10,0"
                          VerticalAlignment="Top"
                          TextWrapping="Wrap" />
-              <TextBox Grid.Row="5" Grid.Column="1" x:Name="defaultBucketsBox"
+              <TextBox Grid.Row="6" Grid.Column="1" x:Name="defaultBucketsBox"
                        Margin="0,12,0,0"
                        AcceptsReturn="True"
                        MinHeight="110"
                        ScrollViewer.VerticalScrollBarVisibility="Auto" />
 
-              <TextBlock Grid.Row="6" Grid.Column="0"
+              <TextBlock Grid.Row="7" Grid.Column="0"
                          Text="Default Compose format"
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
-              <Grid Grid.Row="6" Grid.Column="1" ColumnDefinitions="140,*" Margin="0,12,0,0">
+              <Grid Grid.Row="7" Grid.Column="1" ColumnDefinitions="140,*" Margin="0,12,0,0">
                 <ComboBox x:Name="compileModeBox" Width="140" VerticalAlignment="Center" />
                 <CheckBox Grid.Column="1" x:Name="composeCtrlEnterPastesBox" Margin="14,0,0,0">
                   <TextBlock TextWrapping="Wrap"
@@ -94,50 +99,50 @@
                 </CheckBox>
               </Grid>
 
-              <TextBlock Grid.Row="7" Grid.Column="0"
+              <TextBlock Grid.Row="8" Grid.Column="0"
                          Text="Default TSV row length"
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
-              <NumericUpDown Grid.Row="7" Grid.Column="1" x:Name="tsvRowLengthBox"
+              <NumericUpDown Grid.Row="8" Grid.Column="1" x:Name="tsvRowLengthBox"
                              Width="150" Margin="0,12,0,0" HorizontalAlignment="Left"
                              Minimum="1" Maximum="50" Increment="1" />
 
-              <TextBlock Grid.Row="8" Grid.Column="0"
+              <TextBlock Grid.Row="9" Grid.Column="0"
                          Text="Journal day starts at (hour)"
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
-              <NumericUpDown Grid.Row="8" Grid.Column="1" x:Name="dayStartHourBox"
+              <NumericUpDown Grid.Row="9" Grid.Column="1" x:Name="dayStartHourBox"
                              Width="150" Margin="0,12,0,0" HorizontalAlignment="Left"
                              Minimum="0" Maximum="23" Increment="1" />
 
-              <TextBlock Grid.Row="9" Grid.Column="0"
+              <TextBlock Grid.Row="10" Grid.Column="0"
                          Text="Deactivate a quiet project after (hours, 0 = off)"
                          Margin="0,12,10,0"
                          VerticalAlignment="Center"
                          TextWrapping="Wrap" />
-              <NumericUpDown Grid.Row="9" Grid.Column="1" x:Name="autoReturnHoursBox"
+              <NumericUpDown Grid.Row="10" Grid.Column="1" x:Name="autoReturnHoursBox"
                              Width="150" Margin="0,12,0,0" HorizontalAlignment="Left"
                              Minimum="0" Maximum="168" Increment="1" />
 
-              <TextBlock Grid.Row="10" Grid.Column="0"
+              <TextBlock Grid.Row="11" Grid.Column="0"
                          Text="When no project is active"
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
-              <ComboBox Grid.Row="10" Grid.Column="1" x:Name="idleCopyCaptureBox"
+              <ComboBox Grid.Row="11" Grid.Column="1" x:Name="idleCopyCaptureBox"
                         Width="250" Margin="0,12,0,0" HorizontalAlignment="Left" />
 
-              <TextBlock Grid.Row="11" Grid.Column="0"
+              <TextBlock Grid.Row="12" Grid.Column="0"
                          Text="Journal interval"
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
-              <ComboBox Grid.Row="11" Grid.Column="1" x:Name="journalIntervalBox"
+              <ComboBox Grid.Row="12" Grid.Column="1" x:Name="journalIntervalBox"
                         Width="140" Margin="0,12,0,0" HorizontalAlignment="Left" />
 
-              <TextBlock Grid.Row="12" Grid.Column="0"
+              <TextBlock Grid.Row="13" Grid.Column="0"
                          Text="Popup position"
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
-              <ComboBox Grid.Row="12" Grid.Column="1" x:Name="popupPositionBox"
+              <ComboBox Grid.Row="13" Grid.Column="1" x:Name="popupPositionBox"
                         Width="250" Margin="0,12,0,0" HorizontalAlignment="Left" />
             </Grid>
 
