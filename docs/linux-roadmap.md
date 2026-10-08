@@ -105,7 +105,12 @@ Zetl selects it on Linux. The device-free decisions live in
       dropped. Only key and SYN events are forwarded: only pure keyboard
       nodes are taken, never combined keyboard/pointer nodes.
 - [x] Avoid reading Zetl's own uinput device (by kernel name and by name),
-      and take virtual keyboards only for tests.
+      and take virtual keyboards only for tests. (Fixed October 8, 2026: the
+      virtual check resolved sysfs links lexically and never matched, so Zetl
+      tried to grab every uinput keyboard; it now uses `realpath`.)
+- [x] One Zetl and one Kastn per user. (Fixed October 8, 2026: an unprefixed
+      .NET mutex is per Unix session on Linux, so launches from the menu,
+      autostart, or Kastn's relaunch could run a second Zetl.)
 - [x] Support multiple physical keyboards (both Keychron nodes) through one
       virtual keyboard.
 - [x] Handle device add/remove (inotify) and backend restart.
@@ -146,7 +151,12 @@ device.
 - [ ] Verify slip editing and Compose copy/paste end to end.
 - [ ] An X11-session clipboard (none yet: capture is off without
       `ext-data-control-v1`).
-- [ ] Check GNOME, which may not offer `ext-data-control-v1`.
+- [ ] Check GNOME, which may not offer `ext-data-control-v1`. Planned route:
+      skip Wayland and reach GNOME's own clipboard (Mutter's `Meta.Selection`)
+      over D-Bus, most likely through a small GNOME Shell extension that Zetl
+      installs, behind the same `ILinuxSelection` seam. The remote-desktop
+      portal clipboard is the no-install alternative, but it asks for consent
+      and shows a "being controlled" indicator while active.
 
 ## Priority 4: Permissions And Installation
 
@@ -193,7 +203,14 @@ window policy is involved.
 - [ ] Settings, templates, and the tray menu.
 - [ ] Verify placement on multiple monitors and scaled displays. Avalonia
       renders unscaled under Xwayland at fractional scaling (the Board is
-      1040 physical px on a 1.2x display).
+      1040 physical px on a 1.2x display). Cause found October 8, 2026:
+      Avalonia scales from `Xft.dpi`, which Plasma sets at login when Xwayland
+      apps scale themselves, but the test session (up since September 5) had
+      no `RESOURCE_MANAGER` at all; `AVALONIA_GLOBAL_SCALE_FACTOR=1.2` gives
+      the designed sizes. Next: check a fresh login; if `Xft.dpi` is still
+      missing, report it to Plasma/AerynOS and fall back to XSETTINGS
+      (`Gdk/UnscaledDPI`). Xwayland has one scale, so a second monitor at a
+      different scale cannot match from an X11 app.
 - [x] Fixed layouts assumed Segoe UI widths; Linux sans fonts are 2-8% wider.
       The Board and Settings were given room so nothing clips (every Zetl
       window checked under Noto Sans).
