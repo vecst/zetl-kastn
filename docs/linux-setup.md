@@ -40,12 +40,12 @@ There are two ways to run Zetl. Both need the keyboard setup above.
 
 ### AppImage
 
-`Zetl-<version>-x86_64.AppImage` is one file that runs on most distributions:
+`Zetl-v<version>-linux-x86_64.AppImage` is one file that runs on most distributions:
 
 ```bash
-chmod +x Zetl-*-x86_64.AppImage
-./Zetl-*-x86_64.AppImage            # Zetl
-./Zetl-*-x86_64.AppImage --kastn    # Kastn
+chmod +x Zetl-*-linux-x86_64.AppImage
+./Zetl-*-linux-x86_64.AppImage            # Zetl
+./Zetl-*-linux-x86_64.AppImage --kastn    # Kastn
 ```
 
 It needs FUSE, which most desktops have. Zetl and Kastn launch each other

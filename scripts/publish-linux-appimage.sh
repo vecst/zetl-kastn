@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds Zetl-<version>-x86_64.AppImage (Zetl and Kastn in one image) into
+# Builds Zetl-v<version>-linux-x86_64.AppImage (Zetl and Kastn in one image) into
 # artifacts/publish/linux-x64-appimage. Run on Linux from a clean checkout.
 # appimagetool and the AppImage runtime are pinned and checked by SHA256.
 #
@@ -86,7 +86,7 @@ install -D -m 644 packaging/linux/70-zetl-uinput.rules "$appdir/usr/share/zetl/7
 
 file_version=${version%%+*}
 mkdir -p "$out_dir"
-image=$out_dir/Zetl-$file_version-x86_64.AppImage
+image=$out_dir/Zetl-v$file_version-linux-x86_64.AppImage
 # Extract-and-run lets appimagetool work where FUSE is unavailable (CI).
 ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$tools/appimagetool-x86_64.AppImage" \
     --no-appstream --runtime-file "$tools/runtime-x86_64" "$appdir" "$image.part" >/dev/null

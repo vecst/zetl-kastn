@@ -99,6 +99,8 @@ Zetl comes in two parts:
 
 ## Install
 
+### Windows
+
 1. Download the latest `Zetl-…-win-x64.zip` from the
    [Releases page](https://github.com/vecst/zetl-kastn/releases/latest).
 2. Extract the whole zip into a folder and keep its files together.
@@ -112,13 +114,27 @@ Run anyway**.
 Zetl runs on 64-bit Windows. It can't reach apps running as administrator
 unless Zetl is run as administrator too.
 
+### Linux
+
+1. Download the latest `Zetl-…-linux-x86_64.AppImage` from the
+   [Releases page](https://github.com/vecst/zetl-kastn/releases/latest).
+2. Give Zetl keyboard access once: it needs to be in the `input` group and
+   able to use `/dev/uinput`. [Linux setup](docs/linux-setup.md) has the steps,
+   what they grant, and how to undo them.
+3. Make the AppImage executable and run it. Run it with `--kastn` for Kastn.
+
+The Linux version is newer than the Windows one. It's tested on KDE Plasma 6
+(Wayland); capture needs a desktop with the `ext-data-control` clipboard
+protocol, which KDE Plasma 6 and wlroots desktops (Sway, Hyprland) have.
+
 > Zetl is in release-candidate testing. Expect some rough edges, and please
 > [report what you find](https://github.com/vecst/zetl-kastn/issues).
 
 ## Your notes stay on your computer
 
 Zetl has no account and no cloud. Everything you save lives in readable files
-under `%AppData%\Zetl` on your own machine. Copies that a password manager marks
+under `%AppData%\Zetl` (Windows) or `~/.config/Zetl` (Linux) on your own
+machine. Copies that a password manager marks
 as private are never read or saved, even while a project is collecting your
 copies. The only time Zetl goes online is when you copy a link to an image: it
 downloads that image so it can save the picture. When you export a project to
@@ -127,6 +143,7 @@ share, a clean copy leaves out which apps and windows your notes came from.
 ## Learn more
 
 - [User guide](docs/guide.md): everything Zetl and Kastn can do, in detail
+- [Linux setup](docs/linux-setup.md): keyboard access, installing, and undoing it
 - [Building from source](docs/building.md): for developers and the curious
 
 Zetl is free software under the [GNU General Public License v3](LICENSE) or
