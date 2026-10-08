@@ -357,8 +357,9 @@ cross-project mutation or asset-store migration.
 - [ ] Kastn's workspace search runs on the same engine for browsing inside the
       workbench.
 - [ ] Add a Calendar landing mode beside Projects. A local calendar day shows
-      every project with slips captured that day, with activity counts; a
-      project may therefore appear on multiple days.
+      every project with activity that day (slips captured, the project
+      created, or its details edited), with activity counts; a project may
+      therefore appear on multiple days. `Zetl Logs` is hidden by default.
 - [ ] Selecting a Calendar project opens it with the chosen day's filter active.
 - [ ] Remember Projects or Calendar as the user's preferred Kastn landing mode.
 - [ ] Measure query latency and memory across the existing 20,000-slip baseline
@@ -371,14 +372,15 @@ The held-shortcut background is in
 Search, Calendar, and the timeline idea in [`ideas.md`](ideas.md) share one
 query/result model.
 
-Open decisions:
+Decided (October 8, 2026):
 
-- whether project creation or metadata-only edits count as Calendar activity; and
-- whether `Zetl Logs` appears on the Calendar by default.
-
-Decided (October 8, 2026): held `Ctrl+F` always searches the whole workspace,
-even over Kastn with a project open. Searching just the open project is a
-tapped `Ctrl+F` inside Kastn, which already focuses its project search.
+- Creating a project and editing its details count as Calendar activity, not
+  only captured slips.
+- `Zetl Logs` stays off the Calendar by default. (Moving the logs out of
+  project storage altogether is under consideration; see [`ideas.md`](ideas.md).)
+- Held `Ctrl+F` always searches the whole workspace, even over Kastn with a
+  project open. Searching just the open project is a tapped `Ctrl+F` inside
+  Kastn, which already focuses its project search.
 
 ## Priority 4: Project Board And Cross-Project Organization
 

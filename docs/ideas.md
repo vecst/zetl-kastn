@@ -76,6 +76,17 @@ Other programs claiming hold gestures through Zetl, Zetl staying the only
 keyboard hook: a cut-and-rename-on-paste file tool is the first example. See
 [`hold-routing-discussion.md`](hold-routing-discussion.md).
 
+## Logs out of project storage
+
+The activity log is a protected `Zetl Logs` project today: every notification
+adds a slip, and the whole project file is rewritten each time (old entries are
+trimmed). Lukas is considering moving the logs to their own store so project
+storage doesn't get clogged (October 8, 2026). An append-only log, for example
+one file per day, would make each entry a cheap append, keep logs out of
+revisions, change notifications, and sync, and leave trimming to deleting old
+files. Open: how Kastn and Notification History read it, and whether anything
+still needs logs as slips (Compose, search).
+
 ## Sync across machines
 
 Syncing slips between desktop and laptop, Syncthing first. Lukas's direction
