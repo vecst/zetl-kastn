@@ -44,6 +44,13 @@ Held Ctrl+F (find in Zetl), held Ctrl+S (checkpoint), a portable
 text-interaction layer, and other candidates:
 [`hold-shortcut-ideas-discussion.md`](hold-shortcut-ideas-discussion.md).
 
+## Naming: Holdcuts
+
+"Holdcuts" is the chosen future name for Zetl's tap/hold shortcuts (decided
+October 2, 2026). It is not used in Zetl or Kastn yet; the UI and guide say
+"tap and hold" or "hold shortcut" until it is rolled out. Fine to use in the
+repo's docs.
+
 ## Zetl as a hold host
 
 Other programs claiming hold gestures through Zetl, Zetl staying the only
