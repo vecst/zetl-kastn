@@ -77,6 +77,12 @@ internal sealed class ZetlAppSettings
     public int LogRetentionDays { get; set; } = 14;
     public int LogMaxNotesPerDay { get; set; } = 2000;
     public int LogFlushIntervalMs { get; set; } = 5000;
+
+    // The log values in effect, held to the ranges the Settings window offers,
+    // so a hand-edited settings file cannot turn logging off or trim every line.
+    public int EffectiveLogRetentionDays => Math.Clamp(LogRetentionDays, 1, 365);
+    public int EffectiveLogMaxNotesPerDay => Math.Clamp(LogMaxNotesPerDay, 100, 50000);
+    public int EffectiveLogFlushIntervalMs => Math.Clamp(LogFlushIntervalMs, 500, 60000);
     public int MaxUndoActions { get; set; } = 100;
     public string UntitledSlipTitle { get; set; } = "Untitled";
     public int MaxSlipLabelLength { get; set; } = 24;

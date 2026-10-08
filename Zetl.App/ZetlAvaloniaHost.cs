@@ -15,9 +15,6 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 {
     private const string AllowInjectedInputArgument = "--allow-injected-input-for-testing";
     private const int MaxUndoActions = 100;
-    private const int LogFlushIntervalMs = 5000;
-    private const int LogRetentionDays = 14;
-    private const int LogMaxNotesPerDay = 2000;
     // A key event slower than this is logged on its own, not just summarized.
     private const double SlowKeyEventMs = 2;
     private static readonly TimeSpan LatencySummaryInterval = TimeSpan.FromMinutes(10);
@@ -202,7 +199,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         projectService.ProjectChanged += OnProjectServiceProjectChanged;
         logFlushTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(LogFlushIntervalMs)
+            Interval = TimeSpan.FromMilliseconds(settingsStore.Settings.EffectiveLogFlushIntervalMs)
         };
         logFlushTimer.Tick += (_, _) => FlushLogNotes();
         logFlushTimer.Start();
@@ -1286,7 +1283,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             settingsStore.Settings.PopupPosition);
         if (logFlushTimer is not null)
         {
-            logFlushTimer.Interval = TimeSpan.FromMilliseconds(settingsStore.Settings.LogFlushIntervalMs);
+            logFlushTimer.Interval = TimeSpan.FromMilliseconds(settingsStore.Settings.EffectiveLogFlushIntervalMs);
         }
         if (undoStack is not null)
         {
@@ -1312,8 +1309,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         {
             store.AppendLogSlips(
                 batch,
-                LogRetentionDays,
-                LogMaxNotesPerDay);
+                settingsStore.Settings.EffectiveLogRetentionDays,
+                settingsStore.Settings.EffectiveLogMaxNotesPerDay);
         }
         catch (Exception ex)
         {

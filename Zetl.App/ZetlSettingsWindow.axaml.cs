@@ -107,9 +107,9 @@ internal partial class ZetlSettingsWindow : Window
         journalIntervalBox.SelectedItem = ZetlJournalInterval.Normalize(settings.JournalInterval);
 
         // Zetl Advanced Settings binding
-        logRetentionDaysBox.Value = Clamp(settings.LogRetentionDays, 1, 365);
-        logMaxNotesBox.Value = Clamp(settings.LogMaxNotesPerDay, 100, 50000);
-        logFlushMsBox.Value = Clamp(settings.LogFlushIntervalMs, 500, 60000);
+        logRetentionDaysBox.Value = settings.EffectiveLogRetentionDays;
+        logMaxNotesBox.Value = settings.EffectiveLogMaxNotesPerDay;
+        logFlushMsBox.Value = settings.EffectiveLogFlushIntervalMs;
         maxUndoBox.Value = Clamp(settings.MaxUndoActions, 5, 1000);
         clipPollMsBox.Value = Clamp(settings.ClipboardPollIntervalMs, 5, 200);
         clipObsTimeoutMsBox.Value = Clamp(settings.ClipboardObservationTimeoutMs, 50, 2000);
