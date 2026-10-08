@@ -13,9 +13,8 @@ here wait in [`ideas.md`](ideas.md#deferred).
 **Main track**
 
 1. **Quick wins.** Start at login from Settings (done, Windows and Linux),
-   then the open Priority 1 fixes: capture and Replay destination defaults and
-   fresh-profile Journals (verify first; they may be fixed), the recovered-draft
-   layout, and `data:image` clipboard payloads.
+   then the open Priority 1 fixes: remembering the last selected Shift project,
+   the recovered-draft layout, and `data:image` clipboard payloads.
 2. **RC 3.1.** Finish RC 3 testing and ship the post-RC 3 branch with the quick
    wins: transparency and Compose wording, delta reads, the Board overwrite
    fix, the Linux keyboard and single-instance fixes, the log settings fix.
@@ -208,16 +207,20 @@ leverage.
 - [x] Make coordinated Quit re-entrant and reliably foreground its existing
       Kastn confirmation (b29ab3c: a repeated Quit waits on Kastn's pending
       answer; 02cfb4c: Zetl hands Kastn the foreground).
-- [ ] Initialize and activate both rolling Journals on a fresh profile, keep
-      Shift Board fallback inside the Shift lane, and remember the last selected
-      Shift project when that lane has no explicit active project.
+- [ ] Remember the last selected Shift project when that lane has no explicit
+      active project. (The rest of this item is settled: the Shift Board falls
+      back to the Shift Journal (2de0770), and activation became deliberate in
+      1274e99, so a fresh profile no longer activates the Journals on its own.)
 - [ ] Keep the recovered-draft conflict comparison above Kastn's status bar at
       the supported window sizes.
 - [ ] Record project and bucket creation in Notification History and the
       protected `Zetl Logs` project.
-- [ ] Correct capture and Replay destination defaults: prefer the lane's current
+- [x] Correct capture and Replay destination defaults: prefer the lane's current
       project, and within a rolling Journal prefer today's child rather than the
-      first seeded Monday child.
+      first seeded Monday child. (Verified October 8, 2026: capture goes to the
+      lane's active project or the Journal (`GetCaptureHome`), held captures and
+      quick notes to today's day, tapped copies to today's Capture child
+      (59e92d8), and a fresh Journal's active bucket is today's day.)
 - [ ] Decode valid clipboard `data:image/...;base64,...` payloads into normalized
       image slips under the same MIME, dimension, and size validation used for
       clipboard and HTTP images; malformed or unsupported data URIs stay text.
