@@ -87,14 +87,13 @@ naive two-way sync loses edits; the design is Lukas's to shape.
 
 ## Find and time
 
-- **Held Ctrl+F to find across Zetl.** Lukas wants it (October 8, 2026): there
-  is no good find yet. It is already planned: global search in
-  [`kastn-roadmap.md`](kastn-roadmap.md#priority-3-workspace-discovery), with
-  held Ctrl+F opening it once search is solid, and the hold design in
-  [`hold-shortcut-ideas-discussion.md`](hold-shortcut-ideas-discussion.md#held-ctrlf-find-in-zetl).
+- **Held Ctrl+F to find across Zetl.** Now planned as a core Zetl feature: a
+  Zetl find popup whose results paste, copy, or open in Kastn, with a setting
+  for what `Ctrl+Enter` does. See
+  [`kastn-roadmap.md`](kastn-roadmap.md#priority-3-workspace-discovery).
 - **A timeline view in Kastn.** Slips laid out along time, within a project or
   across projects. The planned Calendar landing mode (projects active on a
-  day) is its cross-project cousin; both should share the search/Calendar
+  day) is its cross-project cousin; both should share the search engine's
   query model, which groups slips by capture date.
 
 ## Kastn

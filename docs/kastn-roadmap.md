@@ -331,39 +331,52 @@ The detailed design is in [`kastn-undo-roadmap.md`](kastn-undo-roadmap.md).
 
 ## Priority 3: Workspace Discovery
 
-Kastn currently searches and filters slips inside the open project. The next
-discovery layer should answer workspace-wide questions without requiring the
-user to remember which project contains a note. This is read-only work and can
-ship before cross-project mutation or asset-store migration.
+Find is a core Zetl feature (decided October 8, 2026): held `Ctrl+F` from any
+app should be as quick as a quick note, so the search engine lives in the shared
+core and Zetl, which is resident and already holds every project, answers it
+with its own popup. Kastn's workspace search, Calendar, and a later timeline
+view use the same engine. This is read-only work and can ship before
+cross-project mutation or asset-store migration.
 
-- [ ] Define a read-only workspace query boundary over project summaries and
-      addressable slip hits while keeping Zetl the storage authority.
-- [ ] Add global search across slip title/body, project name, bucket path, and
-      stable slip id. Search active, finished, and Journal projects by default;
-      make archived projects opt-in.
-- [ ] Show project, bucket path, capture date, type, and a short matching snippet
-      in each result; opening a result must select the exact project and slip.
+- [ ] Put a read-only workspace search engine in the shared core: project
+      summaries and addressable slip hits, with Zetl the storage authority.
+      Kastn reaches it over IPC rather than reading project files.
+- [ ] Search slip title/body, project name, bucket path, and stable slip id.
+      Search active, finished, and Journal projects by default; make archived
+      projects opt-in.
+- [ ] Held `Ctrl+F` opens a Zetl find popup over the app it was held in, without
+      changing ordinary tap-`Ctrl+F` behavior in that app. Typing filters
+      results live; each result shows project, bucket path, capture date, type,
+      and a short matching snippet.
+- [ ] Result actions: paste the slip into the app `Ctrl+F` was held in, copy it,
+      or open it in Kastn with the exact project and slip selected.
+- [ ] A setting chooses what `Ctrl+Enter` does on a result (paste, copy, or open
+      in Kastn), like Compose's `Ctrl+Enter` setting; the other actions stay
+      one key away.
+- [ ] Kastn's workspace search runs on the same engine for browsing inside the
+      workbench.
 - [ ] Add a Calendar landing mode beside Projects. A local calendar day shows
       every project with slips captured that day, with activity counts; a
       project may therefore appear on multiple days.
 - [ ] Selecting a Calendar project opens it with the chosen day's filter active.
 - [ ] Remember Projects or Calendar as the user's preferred Kastn landing mode.
 - [ ] Measure query latency and memory across the existing 20,000-slip baseline
-      before introducing a persistent index. JSON remains canonical unless the
+      before introducing a persistent index, and keep the popup's first results
+      within capture-popup latency. JSON remains canonical unless the
       measurements show it is the limiting factor.
-- [ ] After global search is stable, let held `Ctrl+F` launch or focus it without
-      changing ordinary tap-`Ctrl+F` behavior in the foreground application.
 
-The held-shortcut entry point is discussed in
+The held-shortcut background is in
 [`hold-shortcut-ideas-discussion.md`](hold-shortcut-ideas-discussion.md#held-ctrlf-find-in-zetl).
-The search and Calendar surfaces should share one query/result model.
+Search, Calendar, and the timeline idea in [`ideas.md`](ideas.md) share one
+query/result model.
 
 Open decisions:
 
 - whether project creation or metadata-only edits count as Calendar activity;
 - whether `Zetl Logs` appears on the Calendar by default; and
-- whether a global-search invocation from an open project initially scopes to
-  that project or always starts workspace-wide.
+- whether a search started from an open project (in Kastn, or Zetl's popup
+  while Kastn shows a project) first scopes to that project or always starts
+  workspace-wide.
 
 ## Priority 4: Project Board And Cross-Project Organization
 

@@ -66,7 +66,12 @@ Challenges:
   would make the gesture feel slow.
 - Results need enough context to avoid opening the wrong project/slip.
 
-Suggested first slice:
+Decided (October 8, 2026): find is a core Zetl feature. Held `Ctrl+F` opens
+a Zetl find popup, not Kastn; results paste into the app, copy, or open in
+Kastn, and a setting picks what `Ctrl+Enter` does. The plan is in
+[`kastn-roadmap.md`](kastn-roadmap.md#priority-3-workspace-discovery).
+
+Earlier suggested first slice, superseded:
 
 - Held `Ctrl+F` opens/focuses Kastn search when Kastn is running.
 - If Kastn is not running, launch/focus Kastn and land in search.
