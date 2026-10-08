@@ -11,6 +11,33 @@ The remote-desktop portal's clipboard needs no install, but it asks for consent
 and shows a "being controlled" indicator while active, which rules it out for an
 always-running capture tool.
 
+## Revised plan (October 8, 2026): an X11 clipboard backend first
+
+`wl-copy`/`wl-paste` are no lite path: without `ext-data-control-v1`, Wayland
+lets a client read the clipboard only while it has focus, so `wl-paste` flashes
+a window to take focus, which on GNOME can flicker, be refused, and pull focus
+from the app being captured, and `wl-paste --watch` cannot work at all.
+
+X11 has no focus rule for the clipboard, and Zetl's windows already run as an
+X11 client under Xwayland on every Wayland desktop. Compositors bridge the
+clipboard between Wayland apps and Xwayland. So the order is:
+
+1. **Full:** `ext-data-control-v1` (KDE, wlroots), as now.
+2. **Lite:** an X11 selection backend (XFixes change notification,
+   `XConvertSelection` reads, owning `CLIPBOARD` for writes) for X11 sessions,
+   GNOME, and any desktop with Xwayland. X11 offers every target the source
+   provides, and as owner Zetl sees each request, so fidelity and staged-paste
+   confirmation may survive; where the bridge drops formats, text and pictures
+   are the floor.
+3. **GNOME extension:** only if Lite falls short on GNOME (popup focus,
+   capture origin).
+
+Gate: confirm GNOME bridges a copy from a native Wayland app to Xwayland
+immediately, with no X11 window focused (`xclip -selection clipboard -o` and
+`-t TARGETS -o` after copying in GNOME Text Editor; then the reverse with
+`echo hello | xclip -selection clipboard`). KWin once synced only when an X11
+window gained focus.
+
 ## First tier: the interaction works
 
 Lukas's call (October 8, 2026): on GNOME the core interaction must work even

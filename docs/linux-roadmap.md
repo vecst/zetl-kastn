@@ -149,8 +149,9 @@ device.
       each read confirmed and archived, and the user's clipboard restored when
       the queue ran out (October 7, 2026).
 - [ ] Verify slip editing and Compose copy/paste end to end.
-- [ ] An X11-session clipboard (none yet: capture is off without
-      `ext-data-control-v1`).
+- [ ] An X11 selection clipboard backend: the X11-session clipboard and the
+      planned "lite" path for GNOME and other desktops through Xwayland's
+      clipboard bridge (see [`linux-gnome-clipboard.md`](linux-gnome-clipboard.md)).
 - [ ] Check GNOME, which may not offer `ext-data-control-v1`. Planned route:
       skip Wayland and reach GNOME's own clipboard (Mutter's `Meta.Selection`)
       over D-Bus, most likely through a small GNOME Shell extension that Zetl
