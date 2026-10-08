@@ -548,6 +548,10 @@ public class ZetlIpcTests
                     var snapshot = open.Payload?.Deserialize<ZetlProjectSnapshot>(
                         ZetlProtocolJson.Options)
                         ?? throw new InvalidOperationException("Process smoke open returned no project.");
+                    Assert.Contains(ZetlIpcCapabilities.ProjectChanges, client.Capabilities);
+                    var bootstrapResponse = await client.ExecuteAsync(ZetlCommandEnvelope.Create(
+                        "process-bootstrap", ZetlCommandKind.GetProjectChanges, new GetProjectChangesCommand(), project.Id));
+                    var bootstrap = bootstrapResponse.Payload!.Value.Deserialize<ZetlProjectChanges>(ZetlProtocolJson.Options)!;
                     var add = await client.ExecuteAsync(ZetlCommandEnvelope.Create(
                         "process-add",
                         ZetlCommandKind.AddSlip,
@@ -560,6 +564,14 @@ public class ZetlIpcTests
                         project.Id));
 
                     AssertEqual(ZetlResponseStatus.Success, add.Status, "Real process mutation should succeed.");
+                    var deltaResponse = await client.ExecuteAsync(ZetlCommandEnvelope.Create(
+                        "process-delta", ZetlCommandKind.GetProjectChanges,
+                        new GetProjectChangesCommand { Cursor = bootstrap.Cursor }, project.Id));
+                    var delta = deltaResponse.Payload!.Value.Deserialize<ZetlProjectChanges>(ZetlProtocolJson.Options)!;
+                    Assert.Null(delta.Snapshot);
+                    Assert.Equal("written by another process", delta.Slips.Single().Text);
+                    Assert.Equal(delta.Cursor.Sequence,
+                        ZetlProjectChangesReducer.Apply(bootstrap.Snapshot, bootstrap.Cursor, delta).ChangeSequence);
                 }
 
                 File.WriteAllText(stopFile, "stop");

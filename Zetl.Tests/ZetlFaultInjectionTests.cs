@@ -6,6 +6,9 @@ using ZETL;
 using Xunit;
 using static ZETL.Tests.XunitAsserts;
 
+using ZETL.Contracts;
+using System.Text.Json;
+
 namespace ZETL.Tests;
 
 public class ZetlFaultInjectionTests
@@ -84,6 +87,24 @@ public class ZetlFaultInjectionTests
             storage.DurableState.Projects.Single(item => item.Id == "project-a")
                 .Buckets.Single(item => item.Id == "bucket-a").Slips.Single().Text,
             "A later successful write should persist from the restored baseline.");
+    }
+
+    [Fact] public void DeltaCursorResetsAfterFailedWriteRollbackEvenWithSameSequence()
+    {
+        var storage = new FaultingStateStorage(StateWithTwoProjects());
+        var store = new ZetlStateStore(storage, "delta-fault-session");
+        var service = new ZetlProjectService(store);
+        ZetlProjectChanges Read(ZetlProjectCursor? cursor) => service.Execute(ZetlCommandEnvelope.Create(Guid.NewGuid().ToString("N"),
+            ZetlCommandKind.GetProjectChanges, new GetProjectChangesCommand { Cursor = cursor }, "project-a"))
+            .Payload!.Value.Deserialize<ZetlProjectChanges>(ZetlProtocolJson.Options)!;
+        var first = Read(null);
+        storage.FailNextProjectWrite = true;
+        var slip = store.State.Projects.Single(p => p.Id == "project-a").Buckets.Single(b => b.Id == "bucket-a").Slips.Single();
+        Assert.Throws<IOException>(() => store.UpdateSlip(slip, "must not leak"));
+        var restored = Read(first.Cursor);
+        Assert.Equal("project_replaced", restored.ResetReason);
+        Assert.Equal(first.Cursor.Sequence, restored.Cursor.Sequence);
+        Assert.Equal("durable text", restored.Snapshot!.Slips.Single(s => s.Id == slip.Id).Text);
     }
 
     [Fact] public void PersistenceCoordinatorAdvancesBaselineOnlyAfterSuccessfulWrite()

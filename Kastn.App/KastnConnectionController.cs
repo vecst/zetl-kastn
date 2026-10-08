@@ -13,6 +13,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
     private readonly TimeSpan uncertainRetryTimeout;
     private readonly CancellationTokenSource cancellation = new();
     private readonly KastnRefreshCoordinator refreshCoordinator;
+    private readonly KastnProjectSync projectSync = new();
     private readonly object stateGate = new();
     private ZetlIpcClient? client;
     private TaskCompletionSource connectionChanged = NewConnectionSignal();
@@ -307,7 +308,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                     Kind = ZetlCommandKind.ListProjects
                 },
                 cancellationToken).ConfigureAwait(false);
-            EnsureSuccess(listResponse);
+            KastnProjectSync.EnsureSuccess(listResponse);
             var projects = listResponse.Payload?.Deserialize<List<ZetlProjectSummary>>(
                     ZetlProtocolJson.Options)
                 ?? [];
@@ -321,6 +322,7 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             }
 
             ZetlProjectSnapshot? projectSnapshot = null;
+            KastnProjectRead? projectRead = null;
             if (projectId is not null)
             {
                 // A list refresh can change lane/status summaries without changing
@@ -336,17 +338,9 @@ internal sealed class KastnConnectionController : IAsyncDisposable
                 }
                 else
                 {
-                    var projectResponse = await connected.ExecuteAsync(
-                        new ZetlCommandEnvelope
-                        {
-                            CommandId = Guid.NewGuid().ToString("N"),
-                            Kind = ZetlCommandKind.GetProject,
-                            ProjectId = projectId
-                        },
-                        cancellationToken).ConfigureAwait(false);
-                    EnsureSuccess(projectResponse);
-                    projectSnapshot = projectResponse.Payload?.Deserialize<ZetlProjectSnapshot>(
-                        ZetlProtocolJson.Options);
+                    projectRead = await projectSync.ReadAsync(connected, projectId, cancellationToken)
+                        .ConfigureAwait(false);
+                    projectSnapshot = projectRead.Snapshot;
                 }
             }
 
@@ -364,10 +358,12 @@ internal sealed class KastnConnectionController : IAsyncDisposable
             };
             lock (stateGate)
             {
-                // Navigation can change while List/GetProject awaits IPC. An older
+                // Navigation can change while the list and project reads await IPC. An older
                 // refresh must not overwrite the new destination or resurrect a
                 // disconnected client. Its waiting refresh will fetch the new intent.
                 if (navigation != navigationVersion || !ReferenceEquals(client, connected) || !connected.IsConnected) return;
+                // The cursor advances only with the snapshot it describes.
+                projectSync.Commit(projectRead, projects);
                 desiredProjectId = projectSnapshot?.Id;
                 projectSelectionRequested = projectSnapshot is null;
                 snapshot = StampSnapshot(snapshot);
@@ -380,15 +376,6 @@ internal sealed class KastnConnectionController : IAsyncDisposable
         {
             // A failed response from an obsolete navigation cannot report
             // a failure against the new session. Its refresh is already waiting.
-        }
-    }
-
-    private static void EnsureSuccess(ZetlResponseEnvelope response)
-    {
-        if (response.Status != ZetlResponseStatus.Success)
-        {
-            throw new InvalidOperationException(
-                response.Error?.Message ?? $"Zetl returned {response.Status}.");
         }
     }
 

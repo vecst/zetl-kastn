@@ -40,6 +40,9 @@ These are the authoritative places to answer “what remains?”
 - [`kastn-contracts.md`](kastn-contracts.md) — mutation, revision, snapshot, and
   protocol invariants
 - [`kastn-ipc.md`](kastn-ipc.md) — named-pipe framing and lifecycle
+- [`delta-ipc.md`](delta-ipc.md) — cursor-based project change reads, resets
+  and retention; adoption plan in
+  [`kastn-delta-ipc-handoff.md`](kastn-delta-ipc-handoff.md)
 - [`kastn-storage-baseline.md`](kastn-storage-baseline.md) — repeatable JSON
   storage measurements
 - [`kastn-rendering-performance.md`](kastn-rendering-performance.md) — large-project

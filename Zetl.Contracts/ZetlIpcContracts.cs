@@ -44,4 +44,10 @@ public sealed record ZetlIpcWelcome
 {
     public required string ServerInstanceId { get; init; }
     public required int ProtocolVersion { get; init; }
+    public IReadOnlyList<string> Capabilities { get; init; } = [];
+}
+
+public static class ZetlIpcCapabilities
+{
+    public const string ProjectChanges = "projectChangesV1";
 }

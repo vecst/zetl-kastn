@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using KASTN;
 using ZETL.Contracts;
 
@@ -19,7 +20,7 @@ public class KastnLifecycleTests
             string? delayedId = null;
             using var fixture = new LifecycleFixture(dropResponseForTesting: command =>
             {
-                if (command.Kind == ZetlCommandKind.GetProject && command.ProjectId == delayedId
+                if (IsProjectRead(command) && command.ProjectId == delayedId
                     && arrived.TrySetResult()) release.Wait(TimeSpan.FromSeconds(8));
                 return false;
             });
@@ -326,7 +327,7 @@ public class KastnLifecycleTests
             var getProjectAttempts = 0;
             using var fixture = new LifecycleFixture(
                 dropResponseForTesting: command =>
-                    command.Kind == ZetlCommandKind.GetProject
+                    IsProjectRead(command)
                     && Interlocked.Increment(ref getProjectAttempts) == 1);
             await using var controller = new KastnConnectionController(
                 _ => throw new InvalidOperationException("Zetl was already running."),
@@ -399,6 +400,116 @@ public class KastnLifecycleTests
                 "Kastn should refresh its snapshot after a durable Zetl change.");
         });
     }
+
+    [Fact] public void ControllerRebuildsChangedProjectFromDeltas()
+    {
+        RunAsync(async () =>
+        {
+            var cursors = new ConcurrentQueue<ZetlProjectCursor?>();
+            using var fixture = new LifecycleFixture(dropResponseForTesting: command =>
+            {
+                if (command.Kind == ZetlCommandKind.GetProjectChanges) cursors.Enqueue(CursorOf(command));
+                return false;
+            });
+            var kept = fixture.AddSlip("kept as it was");
+            var edited = fixture.AddSlip("edited later");
+            var moved = fixture.AddSlip("moved later");
+            var deleted = fixture.AddSlip("deleted later");
+            await using var controller = CreateConnectedController(fixture);
+            var initial = await WaitForSnapshotAsync(controller, snapshot => snapshot.Project?.Slips.Count == 4);
+
+            var later = fixture.Execute(ZetlCommandEnvelope.Create(
+                NewId(), ZetlCommandKind.AddBucket, new AddBucketCommand { Name = "Later" }, fixture.Project.Id))
+                .Payload!.Value.Deserialize<ZetlBucketSnapshot>(ZetlProtocolJson.Options)!;
+            fixture.Execute(ZetlCommandEnvelope.Create(
+                NewId(), ZetlCommandKind.UpdateSlip, new UpdateSlipCommand { Text = "edited" },
+                fixture.Project.Id, edited, Slip(initial, edited).Revision));
+            fixture.Execute(ZetlCommandEnvelope.Create(
+                NewId(), ZetlCommandKind.MoveSlip, new MoveSlipCommand { DestinationBucketId = later.Id },
+                fixture.Project.Id, moved, Slip(initial, moved).Revision));
+            fixture.Execute(ZetlCommandEnvelope.Create(
+                NewId(), ZetlCommandKind.DeleteSlip, new DeleteSlipCommand(),
+                fixture.Project.Id, deleted, Slip(initial, deleted).Revision));
+            fixture.AddSlip("captured while Kastn is open");
+            var full = fixture.ReadFullProjectJson();
+
+            // Coalesced invalidations may take a few reads; the end state must
+            // match a direct full read exactly.
+            var converged = await WaitForSnapshotAsync(controller, snapshot =>
+                snapshot.Project is { } project && JsonSerializer.Serialize(project, ZetlProtocolJson.Options) == full);
+
+            Assert.Same(Slip(initial, kept), Slip(converged, kept));
+            Assert.True(cursors.TryDequeue(out var bootstrap) && bootstrap is null, "The first read should bootstrap.");
+            Assert.NotEmpty(cursors);
+            Assert.All(cursors, cursor => Assert.NotNull(cursor));
+        });
+    }
+
+    [Fact] public void ControllerResumesFromRetainedCursorAfterReconnect()
+    {
+        RunAsync(async () =>
+        {
+            var cursors = new ConcurrentQueue<ZetlProjectCursor?>();
+            using var fixture = new LifecycleFixture(dropResponseForTesting: command =>
+            {
+                if (command.Kind == ZetlCommandKind.GetProjectChanges) cursors.Enqueue(CursorOf(command));
+                return false;
+            });
+            await using var controller = CreateConnectedController(fixture);
+            await WaitForSnapshotAsync(controller, snapshot => snapshot.Project is not null);
+            var kept = controller.Current.Project!.Buckets[0];
+
+            // The same Zetl process (one change feed) behind a new connection.
+            fixture.StopServer();
+            await WaitForSnapshotAsync(controller, snapshot => snapshot.ConnectionState == KastnConnectionState.Offline);
+            fixture.AddSlip("captured while Kastn was away");
+            cursors.Clear();
+            fixture.StartServer();
+            var resumed = await WaitForSnapshotAsync(controller, snapshot =>
+                snapshot.ConnectionState == KastnConnectionState.Online
+                && snapshot.Project?.Slips.Any(slip => slip.Text == "captured while Kastn was away") == true);
+
+            Assert.NotEmpty(cursors);
+            Assert.All(cursors, cursor => Assert.NotNull(cursor));
+            Assert.Same(kept, resumed.Project!.Buckets[0]);
+            Assert.Equal(fixture.ReadFullProjectJson(), JsonSerializer.Serialize(resumed.Project, ZetlProtocolJson.Options));
+        });
+    }
+
+    [Fact] public void ControllerReadsWholeProjectsFromZetlWithoutDeltas()
+    {
+        RunAsync(async () =>
+        {
+            var deltaReads = 0;
+            var fullReads = 0;
+            using var fixture = new LifecycleFixture(
+                dropResponseForTesting: command =>
+                {
+                    if (command.Kind == ZetlCommandKind.GetProjectChanges) Interlocked.Increment(ref deltaReads);
+                    if (command.Kind == ZetlCommandKind.GetProject) Interlocked.Increment(ref fullReads);
+                    return false;
+                },
+                serverOptions: new ZetlIpcServerOptions { Capabilities = [] });
+            await using var controller = CreateConnectedController(fixture);
+            await WaitForSnapshotAsync(controller, snapshot => snapshot.Project is not null);
+
+            fixture.AddSlip("captured from an older Zetl");
+            var refreshed = await WaitForSnapshotAsync(controller, snapshot =>
+                snapshot.Project?.Slips.Any(slip => slip.Text == "captured from an older Zetl") == true);
+
+            Assert.Equal(0, Volatile.Read(ref deltaReads));
+            Assert.True(Volatile.Read(ref fullReads) >= 2, "Each changed refresh should read the whole project.");
+            Assert.Equal(fixture.ReadFullProjectJson(), JsonSerializer.Serialize(refreshed.Project, ZetlProtocolJson.Options));
+        });
+    }
+
+    private static ZetlProjectCursor? CursorOf(ZetlCommandEnvelope command) =>
+        command.Payload?.Deserialize<GetProjectChangesCommand>(ZetlProtocolJson.Options)?.Cursor;
+
+    private static ZetlSlipSnapshot Slip(KastnSessionSnapshot snapshot, string slipId) =>
+        snapshot.Project!.Slips.Single(slip => slip.Id == slipId);
+
+    private static string NewId() => Guid.NewGuid().ToString("N");
 
     [Fact] public void ControllerConvergesAfterChangeBurstWithBoundedRefreshes()
     {
@@ -654,6 +765,11 @@ public class KastnLifecycleTests
         });
     }
 
+    // Kastn reads the open project with GetProjectChanges, or GetProject from
+    // a Zetl that does not offer delta reads.
+    private static bool IsProjectRead(ZetlCommandEnvelope command) =>
+        command.Kind is ZetlCommandKind.GetProject or ZetlCommandKind.GetProjectChanges;
+
     private static KastnConnectionController CreateConnectedController(
         LifecycleFixture fixture)
     {
@@ -712,12 +828,15 @@ public class KastnLifecycleTests
         private ZetlIpcServer? server;
 
         private readonly Func<ZetlCommandEnvelope, bool>? dropResponseForTesting;
+        private readonly ZetlIpcServerOptions? serverOptions;
 
         public LifecycleFixture(
             bool startServer = true,
-            Func<ZetlCommandEnvelope, bool>? dropResponseForTesting = null)
+            Func<ZetlCommandEnvelope, bool>? dropResponseForTesting = null,
+            ZetlIpcServerOptions? serverOptions = null)
         {
             this.dropResponseForTesting = dropResponseForTesting;
+            this.serverOptions = serverOptions;
             Directory.CreateDirectory(directory);
             PipeName = $"kastn-lifecycle-{Guid.NewGuid():N}";
             Store = new ZetlStateStore(
@@ -748,7 +867,8 @@ public class KastnLifecycleTests
                 service,
                 PipeName,
                 log: null,
-                dropResponseForTesting: dropResponseForTesting);
+                dropResponseForTesting: dropResponseForTesting,
+                options: serverOptions);
             server.Start();
         }
 
@@ -758,7 +878,7 @@ public class KastnLifecycleTests
             server = null;
         }
 
-        public void AddSlip(string text)
+        public string AddSlip(string text)
         {
             var response = service.Execute(ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
@@ -774,6 +894,28 @@ public class KastnLifecycleTests
                 ZetlResponseStatus.Success,
                 response.Status,
                 "Lifecycle fixture mutation should succeed.");
+            return response.Payload!.Value.Deserialize<ZetlSlipSnapshot>(ZetlProtocolJson.Options)!.Id;
+        }
+
+        public ZetlResponseEnvelope Execute(ZetlCommandEnvelope command)
+        {
+            var response = service.Execute(command);
+            AssertEqual(ZetlResponseStatus.Success, response.Status, $"{command.Kind} should succeed.");
+            return response;
+        }
+
+        // What a full GetProject returns now, to compare against Kastn's rebuilt
+        // snapshot. Serialized so record collections compare by content.
+        public string ReadFullProjectJson()
+        {
+            var response = service.Execute(new ZetlCommandEnvelope
+            {
+                CommandId = Guid.NewGuid().ToString("N"),
+                Kind = ZetlCommandKind.GetProject,
+                ProjectId = Project.Id
+            });
+            AssertEqual(ZetlResponseStatus.Success, response.Status, "A full project read should succeed.");
+            return response.Payload!.Value.GetRawText();
         }
 
         public void Dispose()

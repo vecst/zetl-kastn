@@ -56,7 +56,8 @@ public enum ZetlCommandKind
     ReorderSlip,
     DeleteSlip,
     SetSlipPicture,
-    RemoveSlipPicture
+    RemoveSlipPicture,
+    GetProjectChanges
 }
 
 public enum ZetlResponseStatus

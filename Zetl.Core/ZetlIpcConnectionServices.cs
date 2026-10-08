@@ -13,6 +13,10 @@ internal sealed record ZetlIpcServerOptions
     public TimeSpan FrameProgressTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     public int ResponseCapacity { get; init; } = 256;
+
+    // Additive commands advertised in Welcome. Tests narrow it to act as an
+    // older Zetl so clients exercise their fallback paths.
+    public IReadOnlyList<string> Capabilities { get; init; } = [ZetlIpcCapabilities.ProjectChanges];
 }
 
 internal sealed class ZetlIpcServerHandshake(
@@ -61,7 +65,8 @@ internal sealed class ZetlIpcServerHandshake(
                 new ZetlIpcWelcome
                 {
                     ServerInstanceId = serverInstanceId,
-                    ProtocolVersion = ZetlProtocol.CurrentVersion
+                    ProtocolVersion = ZetlProtocol.CurrentVersion,
+                    Capabilities = options.Capabilities
                 }),
             cancellationToken).ConfigureAwait(false);
         return hello;

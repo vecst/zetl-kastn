@@ -38,6 +38,13 @@ internal static class ZetlProjectSnapshotMapper
     }
 
     public static ZetlProjectSnapshot ToSnapshot(ZetlProject project)
+        => ToMetadataSnapshot(project) with
+        {
+            Buckets = project.Buckets.Select(ToSnapshot).ToList(),
+            Slips = project.Buckets.SelectMany(bucket => bucket.Slips.Select(slip => ToSnapshot(bucket, slip))).ToList()
+        };
+
+    public static ZetlProjectSnapshot ToMetadataSnapshot(ZetlProject project)
     {
         return new ZetlProjectSnapshot
         {
@@ -52,11 +59,7 @@ internal static class ZetlProjectSnapshotMapper
             JournalMode = project.JournalMode,
             ActiveBucketId = project.ActiveBucketId,
             DefaultViewId = project.DefaultViewId,
-            Views = project.Views.Select(ToSnapshot).ToList(),
-            Buckets = project.Buckets.Select(ToSnapshot).ToList(),
-            Slips = project.Buckets
-                .SelectMany(bucket => bucket.Slips.Select(slip => ToSnapshot(bucket, slip)))
-                .ToList()
+            Views = project.Views.Select(ToSnapshot).ToList()
         };
     }
 

@@ -71,6 +71,13 @@ back into command failures merely because the follow-up projection refresh fails
 
 - `ListProjects` returns project summaries.
 - `GetProject` returns one complete project snapshot.
+- `GetProjectChanges` returns an atomic full bootstrap/reset or a cursor-based
+  state delta. Its cursor binds service epoch, project, sequence and opaque
+  retained token; sequence alone is insufficient. `ZetlProjectChangesReducer`
+  validates and reconstructs snapshots before the client advances its cursor.
+  Deltas include changed records, physical removals, metadata/views and affected
+  complete orders. Soft-deleted slips remain in the snapshot. See the
+  [delta sync contract](delta-ipc.md).
 - A project snapshot includes its project-scoped structured view documents.
 - `SaveProjectView` and `DeleteProjectView` mutate those documents against the
   project's metadata revision; successful responses mean the containing
@@ -96,6 +103,9 @@ back into command failures merely because the follow-up projection refresh fails
 - Version 1 covers text and picture slips plus the first Kastn workbench.
 - Unknown JSON properties are ignored for forward-compatible additions.
 - Breaking changes require a new protocol version and handshake negotiation.
+- Optional Welcome capabilities advertise additive commands. Version 1's
+  `projectChangesV1` enables delta reads; clients without support keep using
+  `GetProject`. This generic command adds no agent-specific core behavior.
 - Picture transfer is content-addressed in both directions: `GetSlipPicture`
   reads normalized bytes, and `SetSlipPicture` / `RemoveSlipPicture` attach or
   detach a slip's picture as revision-checked mutations carrying normalized

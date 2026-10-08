@@ -87,6 +87,7 @@ public static class ZetlContractRules
     public static bool IsReadOnly(ZetlCommandKind kind) =>
         kind is ZetlCommandKind.ListProjects
             or ZetlCommandKind.GetProject
+            or ZetlCommandKind.GetProjectChanges
             or ZetlCommandKind.GetSlipPicture;
 
     public static bool RequiresTarget(ZetlCommandKind kind)
@@ -127,7 +128,8 @@ public static class ZetlContractRules
 
     public static bool RequiresPayload(ZetlCommandKind kind)
     {
-        return kind is ZetlCommandKind.CreateProject
+        return kind is ZetlCommandKind.GetProjectChanges
+            or ZetlCommandKind.CreateProject
             or ZetlCommandKind.CreateTemporaryProjectFromReplay
             or ZetlCommandKind.RenameProject
             or ZetlCommandKind.SetActiveProject

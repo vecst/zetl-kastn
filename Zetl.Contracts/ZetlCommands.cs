@@ -6,6 +6,11 @@ public sealed record ListProjectsCommand;
 
 public sealed record GetProjectCommand;
 
+public sealed record GetProjectChangesCommand
+{
+    public ZetlProjectCursor? Cursor { get; init; }
+}
+
 public sealed record GetSlipPictureCommand;
 
 public sealed record CreateProjectCommand

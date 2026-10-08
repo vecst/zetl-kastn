@@ -179,6 +179,41 @@ Done when no tested crash path loses an acknowledged mutation, conflict recovery
 never silently discards an edit, and capture latency remains acceptable while
 Kastn is active.
 
+## Delta IPC Adoption
+
+Kastn reads its open project by cursor-based delta when Zetl advertises
+`projectChangesV1`, instead of a full `GetProject` on every changed refresh.
+This came out of the HAIUX plugin, which drives Zetl/Kastn for shared AI and
+human work and needs cheap polling of large projects. Protocol:
+[`delta-ipc.md`](delta-ipc.md); plan and acceptance checklist:
+[`kastn-delta-ipc-handoff.md`](kastn-delta-ipc-handoff.md).
+
+- [x] Bring the generic `GetProjectChanges` command, change feed, reducer, and
+      Welcome capability onto the Kastn branch (HAIUX itself stays separate).
+- [x] Transport integration: `KastnProjectSync` owns the applied snapshot and
+      cursor for the open project and rebuilds full snapshots, so the editor,
+      draft, tree, Board, reader, and picture reconciliation are unchanged. The
+      summary fast path, navigation/client admission, and older-Zetl
+      `GetProject` fallback are preserved; the cursor commits only with the
+      snapshot it describes; an invalid batch gets one bootstrap retry.
+- [x] Same-Zetl reconnect resumes from the retained cursor; a restarted Zetl
+      answers the old cursor with an explicit reset.
+- [ ] Widen the acceptance matrix from the handoff: styles, reorders, nested
+      buckets, metadata/views, restore/purge, events before responses,
+      deferred batches, concurrent same-slip edits, cursor expiry and capacity
+      resets, malformed or gapped responses, failed refresh after a confirmed
+      save, rapid A-to-B-to-A navigation, and project deletion.
+- [ ] Keep baselines for more than the open project if A-to-B-to-A bootstraps
+      show up in practice (a deliberately bounded cache, kept out of the
+      publication path).
+- [ ] Measure full, delta, reset, and idle reads in Kastn: payload bytes,
+      allocations, refresh time, and UI latency on large-text, many-bucket, and
+      picture-heavy projects. Count retained baselines and Zetl's indexes before
+      claiming memory savings.
+- [ ] Only if profiling shows value: pass changed-entity hints to indexes and
+      presenters instead of rediffing full snapshots.
+- [ ] Verify on Linux.
+
 ## Priority 2: Finish Existing Workbench Designs
 
 ### Linked Slips

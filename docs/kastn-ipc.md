@@ -34,7 +34,9 @@ Message kinds are `hello`, `welcome`, `command`, `response`,
 The client sends `hello` first with its name, instance ID, and whether it wants
 project-change notifications. Zetl accepts only the current protocol version
 and replies with `welcome`, which includes the server instance ID and accepted
-version.
+version. Welcome may also include a capabilities list. `projectChangesV1`
+advertises the additive `GetProjectChanges` command; absence means clients should
+use `GetProject`. Existing version-1 clients remain supported.
 
 An unsupported version receives a protocol error and the connection closes.
 The server instance ID changes whenever Zetl restarts, allowing Kastn to know
@@ -57,16 +59,39 @@ dimensions, MIME type, and content hash without exposing an asset path,
 advancing revisions, or publishing a `projectChanged` event. Kastn uses it for
 onscreen previews and picture-aware exports.
 
+`GetProjectChanges` is also read-only and bypasses mutation-response caching.
+It accepts an optional opaque cursor, returns an atomic full bootstrap/reset
+or changed records/removals/order lists, and keeps picture bytes on demand.
+The cursor binds service epoch, project, sequence and a retained version token.
+Invalid/expired cursors return an explicit reset reason and full snapshot.
+Apply the complete batch before advancing the cursor. See the
+[delta sync contract](delta-ipc.md) for fields, bounds and recovery.
+
 Subscribed clients receive `projectChanged` invalidations after a durable
 write. Each project has a monotonically increasing change sequence. Delivery is
 monotonic per project, but a slow client may receive only the newest pending
 event for that project because intermediate invalidations are coalesced. A
-client should request a fresh snapshot when:
+client using full snapshots (Kastn does when Zetl lacks `projectChangesV1`)
+should request a fresh snapshot when:
 
 - it first connects;
 - the server instance ID changes;
 - it reconnects after any disconnection;
 - it observes a gap in a project's change sequence.
+
+A delta-capable client can instead query from its last applied cursor after a
+notification, reconnect or sequence gap. A retained cursor can bridge a
+disconnection; a reset response supplies the authoritative replacement when it
+cannot. Polling does not require notification subscription. State deltas may
+coalesce intermediate transitions, so neither they nor invalidations provide a
+reliable mutation event log for bucket triggers. Kastn and HAIUX use this path.
+
+Kastn reads its open project this way through `KastnProjectSync`, which keeps
+the applied snapshot and cursor for that project and rebuilds a full snapshot
+from each delta, so the editor and views still reconcile whole snapshots. Its
+cursor advances only when the controller publishes the snapshot it describes.
+Remaining adoption work and the acceptance checklist are in the
+[Kastn delta IPC handoff](kastn-delta-ipc-handoff.md).
 
 An event caused by a command may arrive before that command's response because
 the durable change is published while the command executes. Clients should use

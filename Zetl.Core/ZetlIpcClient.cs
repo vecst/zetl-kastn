@@ -37,6 +37,7 @@ public sealed class ZetlIpcClient : IAsyncDisposable
     public event EventHandler? Disconnected;
 
     public string? ServerInstanceId { get; private set; }
+    public IReadOnlyList<string> Capabilities { get; private set; } = [];
     public bool IsConnected => pipe.IsConnected && !cancellation.IsCancellationRequested;
 
     public async Task ConnectAsync(
@@ -75,6 +76,7 @@ public sealed class ZetlIpcClient : IAsyncDisposable
         }
 
         ServerInstanceId = welcome.ServerInstanceId;
+        Capabilities = welcome.Capabilities ?? [];
         readLoop = Task.Run(() => ReadLoopAsync(cancellation.Token));
     }
 

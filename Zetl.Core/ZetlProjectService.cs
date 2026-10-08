@@ -13,15 +13,18 @@ internal sealed class ZetlProjectService
     private readonly Dictionary<string, ZetlResponseEnvelope> completedCommands = new(StringComparer.Ordinal);
     private readonly Queue<string> completedCommandOrder = new();
     private int serviceMutationDepth;
+    private readonly ZetlProjectChangesFeed changesFeed;
 
     public ZetlProjectService(
         ZetlStateStore store,
         int completedCommandCapacity = DefaultCompletedCommandCapacity,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        ZetlProjectChangesFeed? changesFeed = null)
     {
         this.store = store;
         this.completedCommandCapacity = Math.Max(1, completedCommandCapacity);
         this.log = log;
+        this.changesFeed = changesFeed ?? new();
         store.ProjectPersisted += OnProjectPersisted;
     }
 
@@ -45,7 +48,7 @@ internal sealed class ZetlProjectService
                     validation.Status,
                     validation.Code!,
                     validation.Message!);
-                return command.Kind == ZetlCommandKind.GetSlipPicture
+                return command.Kind is ZetlCommandKind.GetSlipPicture or ZetlCommandKind.GetProjectChanges
                     ? error
                     : Remember(command.CommandId, error);
             }
@@ -80,7 +83,7 @@ internal sealed class ZetlProjectService
                     ex.Message);
             }
 
-            return command.Kind == ZetlCommandKind.GetSlipPicture
+            return command.Kind is ZetlCommandKind.GetSlipPicture or ZetlCommandKind.GetProjectChanges
                 ? response
                 : Remember(command.CommandId, response);
         }
@@ -110,6 +113,7 @@ internal sealed class ZetlProjectService
         {
             ZetlCommandKind.ListProjects => ListProjects(command),
             ZetlCommandKind.GetProject => GetProject(command),
+            ZetlCommandKind.GetProjectChanges => GetProjectChanges(command),
             ZetlCommandKind.GetSlipPicture => GetSlipPicture(command),
             ZetlCommandKind.CreateProject => CreateProject(command),
             ZetlCommandKind.CreateTemporaryProjectFromReplay => CreateTemporaryProjectFromReplay(command),
@@ -199,6 +203,14 @@ internal sealed class ZetlProjectService
         return project is null
             ? NotFound(command, ZetlEntityKind.Project, command.ProjectId!)
             : Success(command, project, ZetlProjectSnapshotMapper.ToSnapshot(project));
+    }
+
+    private ZetlResponseEnvelope GetProjectChanges(ZetlCommandEnvelope command)
+    {
+        var project = FindProject(command.ProjectId!);
+        if (project is null) return NotFound(command, ZetlEntityKind.Project, command.ProjectId!);
+        var request = Payload<GetProjectChangesCommand>(command);
+        return Success(command, project, changesFeed.Read(project, request.Cursor));
     }
 
     private ZetlResponseEnvelope GetSlipPicture(ZetlCommandEnvelope command)
