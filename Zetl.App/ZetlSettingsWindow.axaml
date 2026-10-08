@@ -86,11 +86,13 @@
                          Text="Default Compose format"
                          Margin="0,12,0,0"
                          VerticalAlignment="Center" />
-              <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" Spacing="14" Margin="0,12,0,0">
-                <ComboBox x:Name="compileModeBox" Width="140" />
-                <CheckBox x:Name="composeCtrlEnterPastesBox"
-                          Content="Ctrl+Enter pastes right away (otherwise it copies)" />
-              </StackPanel>
+              <Grid Grid.Row="6" Grid.Column="1" ColumnDefinitions="140,*" Margin="0,12,0,0">
+                <ComboBox x:Name="compileModeBox" Width="140" VerticalAlignment="Center" />
+                <CheckBox Grid.Column="1" x:Name="composeCtrlEnterPastesBox" Margin="14,0,0,0">
+                  <TextBlock TextWrapping="Wrap"
+                             Text="Ctrl+Enter pastes the result right away. Unchecked, it only goes on your clipboard, for you to paste yourself." />
+                </CheckBox>
+              </Grid>
 
               <TextBlock Grid.Row="7" Grid.Column="0"
                          Text="Default TSV row length"

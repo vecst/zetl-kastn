@@ -20,7 +20,7 @@ internal sealed class ZetlAppSettings
     public List<string> DefaultProjectBuckets { get; set; } = ZetlBucketDefaults.Standard.ProjectBuckets.ToList();
     public string DefaultCompileMode { get; set; } = "Formatted";
     // Compose: whether Ctrl+Enter pastes the result straight into the app the
-    // hold came from (otherwise it copies), and whether Formatted output starts
+    // hold came from (otherwise it only goes on the clipboard), and whether Formatted output starts
     // with the project and bucket headings. The dialog remembers the latter.
     public bool ComposeCtrlEnterPastes { get; set; } = true;
     public bool ComposeHeadings { get; set; } = true;

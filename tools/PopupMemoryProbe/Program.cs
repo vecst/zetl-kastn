@@ -12,7 +12,7 @@ internal static class Entry
     internal static int Cycles;
     internal static string Mode = "both";
     internal static bool Detailed;
-    internal static double Opacity = 1;
+    internal static int OpacityPercent = 100;
     internal static bool TrayWarmup;
 
     [STAThread]
@@ -24,7 +24,7 @@ internal static class Entry
         if (Mode is not ("popup" or "indicator" or "both")) throw new ArgumentException("Mode: popup, indicator or both.");
         Detailed = args.Contains("--detailed");
         TrayWarmup = args.Contains("--tray-warmup");
-        if (args.Contains("--opacity=90")) Opacity = .9;
+        if (args.Contains("--opacity=90")) OpacityPercent = 90;
         var factory = typeof(ZETL.App).Assembly.GetType("ZETL.Program")!
             .GetMethod("CreateWindowsOptions", BindingFlags.Static | BindingFlags.NonPublic);
         var options = !args.Contains("--default-renderer") && factory is not null
@@ -148,7 +148,9 @@ public sealed class ProbeApp : ZETL.App
         var window = (Window)constructor.Invoke([store, project, bucket, "", false, false, null]);
         window.ShowInTaskbar = false;
         window.ShowActivated = false;
-        window.Opacity = Entry.Opacity;
+        // Fade the popup the way Zetl does, transparency hint included.
+        typeof(ZETL.App).Assembly.GetType("ZETL.ZetlWindowPlacement")!
+            .GetMethod("ApplyPopupOpacity")!.Invoke(null, [window, Entry.OpacityPercent]);
         var rendered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         window.Show();
         window.RequestAnimationFrame(_ => window.RequestAnimationFrame(_ => rendered.TrySetResult()));

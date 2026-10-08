@@ -39,6 +39,12 @@ on Windows. This avoids that renderer's device/cache footprint without forcing
 garbage collection or trimming the process working set in production. Kastn's
 renderer and Zetl's Linux configuration are unchanged.
 
+A software window is presented opaque unless it asks for a transparent surface,
+so popup opacity below 100% drew over black until faded popups also requested
+`WindowTransparencyLevel.Transparent` (`ZetlWindowPlacement.ApplyPopupOpacity`,
+which the probe now calls too). With that hint, 30 cycles at 90% opacity settled
+at the same 103 MiB working set and 34 MiB private bytes.
+
 ## Native probe
 
 `tools/PopupMemoryProbe` loads Zetl's real styles and opens its real quick-note

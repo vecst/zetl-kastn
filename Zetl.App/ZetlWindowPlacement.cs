@@ -155,8 +155,21 @@ internal static class ZetlWindowPlacement
             area.Y + (int)(y * scaling));
         if (placement.IsPopup)
         {
-            window.Opacity = ZetlPopupOpacity.Clamp(PopupOpacityPercent) / 100.0;
+            ApplyPopupOpacity(window, PopupOpacityPercent);
         }
+    }
+
+    public static void ApplyPopupOpacity(Window window, int percent)
+    {
+        var opacity = ZetlPopupOpacity.Clamp(percent) / 100.0;
+        window.Opacity = opacity;
+        // Zetl renders in software on Windows, and a software window is
+        // presented opaque unless it asks for a transparent surface, so without
+        // this hint a faded popup showed black behind it instead of the desktop.
+        // A fully opaque popup skips the hint and keeps the plain surface.
+        window.TransparencyLevelHint = opacity < 1
+            ? [WindowTransparencyLevel.Transparent]
+            : [];
     }
 
     // Place a small overlay (the hold indicator) at an anchor on the screen the

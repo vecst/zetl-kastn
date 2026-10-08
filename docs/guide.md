@@ -324,7 +324,8 @@ Compose can:
 - finish the source project
 
 `Ctrl+Enter` pastes the result straight into the app you held `Ctrl+V` in; a
-setting in Settings → Zetl makes it copy instead.
+setting in Settings → Zetl makes it only put the result on your clipboard, for
+you to paste yourself.
 
 A `TSV` is just the table: rows of cells, with a bucket's column headers (from
 its starting text) once at the top, and no project or bucket names. It goes on
