@@ -1,8 +1,19 @@
 # Ideas
 
 Future ideas worth remembering: not committed work. Committed work lives in
-[`kastn-roadmap.md`](kastn-roadmap.md) and [`linux-roadmap.md`](linux-roadmap.md).
-When an idea is picked up, move it to a roadmap and link it from here.
+[`kastn-roadmap.md`](kastn-roadmap.md) and [`linux-roadmap.md`](linux-roadmap.md),
+whose Working Order already schedules the logs store, find, `@bucket`
+filing, Calendar and timeline, and Windows start at login. When an idea is
+picked up, move it to a roadmap and link it from here.
+
+## Deferred
+
+Agreed October 8, 2026 as extra features for down the road, after the working
+order: spreadsheet copies into TSV buckets, different capture dialogs, more
+hold shortcuts, file references and Zetl as a hold host, sync and profiles,
+the Kastn backlog, delta IPC extras (multi-project baselines, change hints),
+the Holdcuts rollout (a good fit for the public release announcement), a
+smaller Windows download, and native Wayland. Each is described below.
 
 ## Capture
 

@@ -4,6 +4,47 @@ This is the authoritative roadmap for remaining Kastn/Zetl product work.
 Product direction lives in [`kastn.md`](kastn.md); current workbench behavior
 lives in [`kastn-workbench.md`](kastn-workbench.md).
 
+## Working Order
+
+Agreed with Lukas on October 8, 2026. Work top to bottom on the main track; the
+Linux track runs alongside at the pace of hardware testing. Ideas not listed
+here wait in [`ideas.md`](ideas.md#deferred).
+
+**Main track**
+
+1. **RC 3.1.** Finish RC 3 testing, merge the post-RC 3 branch (transparency and
+   Compose wording, delta reads, the Board overwrite fix, the Linux keyboard and
+   single-instance fixes, the log settings fix), publish Windows and Linux builds.
+2. **Quick wins.** Start at login on Windows (a setting like Linux's autostart),
+   then the open Priority 1 fixes: capture and Replay destination defaults and
+   fresh-profile Journals (verify first; they may be fixed), the recovered-draft
+   layout, and `data:image` clipboard payloads.
+3. **Release gate.** The testing half of Priority 1, the delta IPC acceptance
+   matrix and measurements, the Windows parity checklist on a published build,
+   and the packaging, identity, and protocol compatibility policy.
+4. **Logs as their own store** (plan in [`ideas.md`](ideas.md#logs-out-of-project-storage)),
+   including recording project and bucket creation. Before find, so search
+   never has logs to exclude.
+5. **Find** (Priority 3): the core engine, the held `Ctrl+F` popup, result
+   actions and the `Ctrl+Enter` setting, then Kastn's search on the engine.
+6. **`@bucket` filing** of quick notes ([`ideas.md`](ideas.md#bucket-at-the-start-of-a-note)).
+7. **Calendar** landing mode, then the timeline view; both reuse find's engine.
+8. **Workbench growth:** Board spacing and interaction cleanup, then Priorities
+   4, 5, and 6.
+
+**Linux track** (details in [`linux-roadmap.md`](linux-roadmap.md))
+
+1. Checks: the `xclip` and GNOME Shell version tests on Ubuntu and Solus, and
+   `Xft.dpi` after a fresh Plasma login.
+2. Daily use on the box: scaling, suspend/resume and logout, settings, templates,
+   and the tray menu end to end, multiple monitors.
+3. The X11 selection clipboard (the lite tier for X11 sessions and GNOME); the
+   GNOME Shell extension only if Lite falls short.
+4. Packaging: AppImage autostart; draft the AerynOS recipe, file the package
+   request when policy allows.
+5. Housekeeping: the keyboard exception exit test, retire `Zetl.Linux.Spike`,
+   drop the headless milestone, tick the RC items RC 3 met.
+
 ## October 5, 2026 Checkpoint
 
 The application cleanup and performance pass is complete on `codex/cleanup`:
@@ -163,9 +204,9 @@ leverage.
       policy.
 - [ ] Dogfood both applications together through restart, capture, editing, and
       publishing workflows.
-- [ ] Make coordinated Quit re-entrant and reliably foreground its existing
-      Kastn confirmation. A repeated tray Quit can currently close Zetl before
-      Kastn answers, after which the still-running Kastn relaunches Zetl.
+- [x] Make coordinated Quit re-entrant and reliably foreground its existing
+      Kastn confirmation (b29ab3c: a repeated Quit waits on Kastn's pending
+      answer; 02cfb4c: Zetl hands Kastn the foreground).
 - [ ] Initialize and activate both rolling Journals on a fresh profile, keep
       Shift Board fallback inside the Shift lane, and remember the last selected
       Shift project when that lane has no explicit active project.
@@ -179,9 +220,9 @@ leverage.
 - [ ] Decode valid clipboard `data:image/...;base64,...` payloads into normalized
       image slips under the same MIME, dimension, and size validation used for
       clipboard and HTTP images; malformed or unsupported data URIs stay text.
-- [ ] Preserve lane activation when a Quick Note is submitted to the
-      already-active project. No completion path should clear the active project
-      unless the user explicitly chooses to deactivate it.
+- [x] Preserve lane activation when a Quick Note is submitted to the
+      already-active project (1274e99 made activation deliberate;
+      `RuntimeQuickNoteKeepsActiveProject` covers it).
 
 Done when no tested crash path loses an acknowledged mutation, conflict recovery
 never silently discards an edit, and capture latency remains acceptable while
