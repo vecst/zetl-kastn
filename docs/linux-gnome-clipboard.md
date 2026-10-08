@@ -11,6 +11,23 @@ The remote-desktop portal's clipboard needs no install, but it asks for consent
 and shows a "being controlled" indicator while active, which rules it out for an
 always-running capture tool.
 
+## First tier: the interaction works
+
+Lukas's call (October 8, 2026): on GNOME the core interaction must work even
+if fidelity and metadata are lower. The first tier is:
+
+- **Must work:** held Ctrl+C capture of text and pictures, quick notes, Replay
+  and Compose pasting text, and popups that take focus.
+- **May degrade:** exact multi-format backup and restore (restore the text
+  only), rich formats such as HTML and Calc's native bundle, read-confirmed
+  staged pastes (fall back to a timed paste), and capture origin.
+
+Capture origin may not be lost: the extension can report the focused window's
+app ID and title (`global.display.get_focus_window()`), which Zetl cannot learn
+on GNOME Wayland any other way. Popup focus may also need the extension,
+since Mutter may refuse Zetl's X11 activation request; Clipman activates its
+popup from the extension (`MetaWindow.activate`).
+
 ## Prior art: Clipman
 
 [Clipman](https://github.com/MohammedEl-sayedAhmed/clipman) by Mohammed
