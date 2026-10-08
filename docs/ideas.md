@@ -32,6 +32,25 @@ example a minimal single-line box for fast notes beside the full dialog with
 project and bucket pickers. Open: which styles, and whether the choice is a
 setting, per lane, or per shortcut.
 
+### Spreadsheet copies into TSV buckets
+
+A CSV, TSV, or spreadsheet copy (Excel, LibreOffice Calc) could become a table
+bucket instead of one slip: each cell a slip, the row length set from the copied
+columns, and the first row as the bucket's column headers (its starting text),
+so Compose's TSV output gives the table back. From a TSV bucket, Kastn could then
+split it into buckets by column (one bucket per column, named by its header) or
+by row. Questions:
+
+- Where the choice appears: in the capture dialog for a table copy, or as a
+  Kastn action on a captured table slip (which may keep the original slip).
+- Sources: Calc's native bundle, an HTML table, tab-separated text, and CSV with
+  quoting; what happens to empty and merged cells.
+- Naming row buckets (first column, row number) and whether a split keeps the
+  original bucket.
+
+Table copies already capture as text plus a picture; see the dual-format
+capture work.
+
 ### File references from held shortcuts
 
 Held Ctrl+C on files makes a slip that references them; held Ctrl+X also records
@@ -65,6 +84,18 @@ switch; a lock file per profile saying who holds it and since when, with a way
 to request it; for advanced users, a profile under git with automatic merging.
 Today Zetl loads state once at startup and writes whole project files, so
 naive two-way sync loses edits; the design is Lukas's to shape.
+
+## Find and time
+
+- **Held Ctrl+F to find across Zetl.** Lukas wants it (October 8, 2026): there
+  is no good find yet. It is already planned: global search in
+  [`kastn-roadmap.md`](kastn-roadmap.md#priority-3-workspace-discovery), with
+  held Ctrl+F opening it once search is solid, and the hold design in
+  [`hold-shortcut-ideas-discussion.md`](hold-shortcut-ideas-discussion.md#held-ctrlf-find-in-zetl).
+- **A timeline view in Kastn.** Slips laid out along time, within a project or
+  across projects. The planned Calendar landing mode (projects active on a
+  day) is its cross-project cousin; both should share the search/Calendar
+  query model, which groups slips by capture date.
 
 ## Kastn
 
