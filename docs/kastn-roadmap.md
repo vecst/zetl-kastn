@@ -345,7 +345,8 @@ cross-project mutation or asset-store migration.
       Search active, finished, and Journal projects by default; make archived
       projects opt-in.
 - [ ] Held `Ctrl+F` opens a Zetl find popup over the app it was held in, without
-      changing ordinary tap-`Ctrl+F` behavior in that app. Typing filters
+      changing ordinary tap-`Ctrl+F` behavior in that app. It always searches
+      the whole workspace, including over Kastn. Typing filters
       results live; each result shows project, bucket path, capture date, type,
       and a short matching snippet.
 - [ ] Result actions: paste the slip into the app `Ctrl+F` was held in, copy it,
@@ -372,11 +373,12 @@ query/result model.
 
 Open decisions:
 
-- whether project creation or metadata-only edits count as Calendar activity;
-- whether `Zetl Logs` appears on the Calendar by default; and
-- whether a search started from an open project (in Kastn, or Zetl's popup
-  while Kastn shows a project) first scopes to that project or always starts
-  workspace-wide.
+- whether project creation or metadata-only edits count as Calendar activity; and
+- whether `Zetl Logs` appears on the Calendar by default.
+
+Decided (October 8, 2026): held `Ctrl+F` always searches the whole workspace,
+even over Kastn with a project open. Searching just the open project is a
+tapped `Ctrl+F` inside Kastn, which already focuses its project search.
 
 ## Priority 4: Project Board And Cross-Project Organization
 
