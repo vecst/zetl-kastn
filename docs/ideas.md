@@ -78,14 +78,32 @@ keyboard hook: a cut-and-rename-on-paste file tool is the first example. See
 
 ## Logs out of project storage
 
-The activity log is a protected `Zetl Logs` project today: every notification
-adds a slip, and the whole project file is rewritten each time (old entries are
-trimmed). Lukas is considering moving the logs to their own store so project
-storage doesn't get clogged (October 8, 2026). An append-only log, for example
-one file per day, would make each entry a cheap append, keep logs out of
-revisions, change notifications, and sync, and leave trimming to deleting old
-files. Open: how Kastn and Notification History read it, and whether anything
-still needs logs as slips (Compose, search).
+Today the activity log is a protected `Zetl Logs` project: each flush rewrites
+the whole project file, every line is stored as a full slip (about 870 bytes
+for a line like `[11:51:46] Settings saved.`, which made it the largest
+project file at 312 KB for 360 lines), and each write holds the store's lock,
+notifies Kastn, and refreshes an open Board. It also has to be excluded from
+the Calendar, find, and sync.
+
+**Plan (agreed October 8, 2026):** logs become their own machine-local store,
+like a separate profile, written in the background as events happen.
+
+- **Format:** a `logs/` folder with one file per day, one JSON object per line
+  (JSON Lines). Each event is an append of a few dozen bytes; nothing is
+  rewritten. A half-written last line after a crash is skipped on read.
+- **Writer:** a single background writer drains a queue on the existing flush
+  interval and writes whatever is queued on exit. Logging never takes the
+  store's lock, so a capture never waits on it.
+- **Retention:** delete day files older than the retention setting; the
+  per-day line limit still applies.
+- **Reading:** Kastn opens the log folder read-only as a project-like view,
+  days as buckets and lines as slips built in memory, never saved as slips.
+  The tray's Notification History is unchanged.
+- **Separation:** logs are outside project storage, so find, the Calendar,
+  change notifications, and sync never see them, and each machine keeps its
+  own log under the profiles idea.
+- **Existing project:** stop writing `Zetl Logs` and remove it once (it only
+  holds 14 days); nothing is converted.
 
 ## Sync across machines
 
