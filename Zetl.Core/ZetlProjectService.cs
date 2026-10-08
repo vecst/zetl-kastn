@@ -210,7 +210,31 @@ internal sealed class ZetlProjectService
         var project = FindProject(command.ProjectId!);
         if (project is null) return NotFound(command, ZetlEntityKind.Project, command.ProjectId!);
         var request = Payload<GetProjectChangesCommand>(command);
-        return Success(command, project, changesFeed.Read(project, request.Cursor));
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var changes = changesFeed.Read(project, request.Cursor);
+        var response = Success(command, project, changes);
+        LogProjectChanges(changes, response, started);
+        return response;
+    }
+
+    // Counts and timing only, never slip content, for judging delta reads in use.
+    private void LogProjectChanges(ZetlProjectChanges changes, ZetlResponseEnvelope response, long started)
+    {
+        if (log is null)
+        {
+            return;
+        }
+
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        var bytes = response.Payload?.GetRawText().Length ?? 0;
+        var shape = changes.Snapshot is { } snapshot
+            ? $"reset={changes.ResetReason} buckets={snapshot.Buckets.Count} slips={snapshot.Slips.Count}"
+            : $"from={changes.FromCursor?.Sequence} buckets={changes.Buckets.Count} slips={changes.Slips.Count} "
+                + $"removed={changes.RemovedBucketIds.Count + changes.RemovedSlipIds.Count} "
+                + $"orders={changes.SlipOrders.Count + (changes.BucketOrder is null ? 0 : 1)} "
+                + $"metadata={(changes.Metadata is null ? "no" : "yes")}";
+        log($"Project changes read: project={changes.ProjectId[..Math.Min(8, changes.ProjectId.Length)]} "
+            + $"seq={changes.Cursor.Sequence} {shape} chars={bytes} ms={elapsed:F1}");
     }
 
     private ZetlResponseEnvelope GetSlipPicture(ZetlCommandEnvelope command)
