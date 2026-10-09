@@ -189,20 +189,29 @@ internal partial class BoardWindow : ZetlPopupWindow
         refreshing = true;
         try
         {
-            projectBox.ItemsSource = store.State.Projects.ToList();
             var firstChoiceId = preferActiveProject ? activeProjectId : selectedProjectId;
             var secondChoiceId = preferActiveProject ? selectedProjectId : activeProjectId;
             // With nothing active or selected, a Board reopens on the project this
             // lane's Board last showed; failing that, the Shift Board opens on the
             // Shift Journal rather than the last project written in either lane, and
             // the Main Board lands on the last project touched.
-            projectBox.SelectedItem = store.State.Projects.FirstOrDefault(
+            var chosen = store.State.Projects.FirstOrDefault(
                     project => project.Id == firstChoiceId)
                 ?? store.State.Projects.FirstOrDefault(project => project.Id == secondChoiceId)
                 ?? store.State.Projects.FirstOrDefault(project => project.Id == RememberedProjectId)
                 ?? (shiftedLane ? store.FindLaneJournal(shifted: true) : null)
                 ?? store.GetMostRecentlyWrittenProject()
                 ?? store.State.Projects.FirstOrDefault();
+            // Opening the Board moves a journal from a finished week (or day, or
+            // month) to this one, as a capture would. Only on opening: a background
+            // refresh must not pull someone away from last week's journal on purpose.
+            if (preferActiveProject && chosen is not null)
+            {
+                chosen = store.CurrentPeriodJournal(chosen, shiftedLane);
+            }
+
+            projectBox.ItemsSource = store.State.Projects.ToList();
+            projectBox.SelectedItem = chosen;
             RefreshSelectedProject(selectedBucketId, selectedNoteId);
         }
         finally

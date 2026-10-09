@@ -101,6 +101,26 @@ internal sealed partial class ZetlStateStore
         }
     }
 
+    // A lane journal from a finished period (last week's, say) stands for the lane's
+    // current journal: this returns this period's journal instead, minting it if
+    // needed and carrying the lane's activation over, the way capture rolls it.
+    // Anything else is returned unchanged. For views opening on a lane's project.
+    public ZetlProject CurrentPeriodJournal(ZetlProject project, bool shifted)
+    {
+        lock (stateGate)
+        {
+            if (!project.JournalMode
+                || !IsFormattedJournalName(project.Name, shifted)
+                || string.Equals(project.Name, ExpectedJournalProjectName(DateTime.Now, shifted), StringComparison.OrdinalIgnoreCase))
+            {
+                return project;
+            }
+
+            var wasActive = GetActiveProject(shifted)?.Id == project.Id;
+            return GetOrCreateJournalProject(shifted, activate: wasActive);
+        }
+    }
+
     // The lane's current journal if it exists and is still active, without creating
     // or activating anything: for views that only want to show the lane's home.
     public ZetlProject? FindLaneJournal(bool shifted)

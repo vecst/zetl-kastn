@@ -311,4 +311,37 @@ public class ZetlJournalTests
         store.SetProjectStatus(shift, ZetlStateRules.FinishedStatus);
         AssertTrue(store.FindLaneJournal(shifted: true) is null, "A finished journal is no longer the lane's home.");
     }
+    [Fact(DisplayName = "Opening on last week's journal moves to this week's, keeping activation")]
+    public static void CurrentPeriodJournalRollsAnOldJournal()
+    {
+        using var temp = new TempStateFile();
+        var store = new ZetlStateStore(temp.Path);
+        store.Defaults = store.Defaults with { JournalInterval = "Weekly", DayStartHour = 0 };
+
+        foreach (var shifted in new[] { true, false })
+        {
+            // Last week's journal, active in its lane.
+            var old = store.GetCaptureHome(shifted);
+            store.SetActiveProject(old.Id, shifted);
+            store.UpdateProjectName(old, shifted ? "Journal Shift Week 01 2020" : "Journal Week 01 2020");
+
+            var current = store.CurrentPeriodJournal(old, shifted);
+            AssertTrue(current.Id != old.Id, "An old week's journal hands over to this week's.");
+            AssertEqual(store.ExpectedJournalProjectName(DateTime.Now, shifted), current.Name, "The Board opens on this week's journal.");
+            AssertEqual(current.Id, store.GetActiveProject(shifted)?.Id, "The lane's activation moves with it.");
+            AssertEqual(current.Id, store.CurrentPeriodJournal(current, shifted).Id, "This week's journal stays put.");
+        }
+
+        // An old journal that wasn't active hands over without activating anything.
+        var idle = store.GetCaptureHome();
+        store.ClearActiveProject();
+        store.UpdateProjectName(idle, "Journal Week 02 2020");
+        var rolled = store.CurrentPeriodJournal(idle, shifted: false);
+        AssertTrue(rolled.Id != idle.Id, "An inactive old journal still opens on this week's.");
+        AssertTrue(store.GetActiveProject() is null, "Opening activates nothing.");
+
+        // Anything that isn't a lane journal is left alone.
+        var work = store.CreateProject("Work", ["Inbox"], "Inbox");
+        AssertEqual(work.Id, store.CurrentPeriodJournal(work, shifted: false).Id, "Ordinary projects are untouched.");
+    }
 }
