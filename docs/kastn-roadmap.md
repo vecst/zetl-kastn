@@ -12,9 +12,9 @@ here wait in [`ideas.md`](ideas.md#deferred).
 
 **Main track**
 
-1. **Quick wins.** Start at login from Settings (done, Windows and Linux),
-   then the recovered-draft layout (remembering the last Shift project and
-   `data:image` clipboard payloads are done).
+1. **Quick wins (done).** Start at login from Settings (Windows and Linux),
+   remembering each lane's last Board project, `data:image` clipboard
+   payloads, the recovered-draft layout, and Kastn's idle render loop.
 2. **RC 3.1.** Finish RC 3 testing and ship the post-RC 3 branch with the quick
    wins: transparency and Compose wording, delta reads, the Board overwrite
    fix, the Linux keyboard and single-instance fixes, the log settings fix.
@@ -212,8 +212,9 @@ leverage.
       for the session, before the Journal or last-written fallbacks.) (The rest of this item is settled: the Shift Board falls
       back to the Shift Journal (2de0770), and activation became deliberate in
       1274e99, so a fresh profile no longer activates the Journals on its own.)
-- [ ] Keep the recovered-draft conflict comparison above Kastn's status bar at
-      the supported window sizes.
+- [x] Keep the recovered-draft conflict comparison above Kastn's status bar at
+      the supported window sizes. (While shown, the comparison and editor share
+      the height; checked at 1180x620 and 1380x820.)
 - [ ] Record project and bucket creation in Notification History and the
       protected `Zetl Logs` project.
 - [x] Correct capture and Replay destination defaults: prefer the lane's current

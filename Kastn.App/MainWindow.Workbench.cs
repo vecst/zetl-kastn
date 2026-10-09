@@ -1247,9 +1247,20 @@ internal partial class MainWindow
         await SaveEditorAsync();
     }
 
+    // The comparison needs room at Kastn's smallest window: while it shows, it
+    // and the editor share the remaining height (two thirds to the comparison)
+    // instead of the comparison sizing to its content and sliding under the
+    // status bar.
+    private void SetConflictVisible(bool visible)
+    {
+        conflictPanel.IsVisible = visible;
+        editorPanel.RowDefinitions[3].Height = visible ? new GridLength(2, GridUnitType.Star) : GridLength.Auto;
+        slipEditor.MinHeight = visible ? 60 : 140;
+    }
+
     private void ShowConflict()
     {
-        conflictPanel.IsVisible = editorState.ConflictCurrent is not null;
+        SetConflictVisible(editorState.ConflictCurrent is not null);
         localConflictText.Text = editorState.DraftText;
         remoteConflictText.Text = editorState.ConflictCurrent?.Text ?? "";
         statusText.Text = "Resolve the slip conflict before continuing.";
@@ -1286,7 +1297,7 @@ internal partial class MainWindow
             representationToggleButton.IsVisible = false;
             attachPictureButton.IsVisible = false;
             removePictureButton.IsVisible = false;
-            conflictPanel.IsVisible = false;
+            SetConflictVisible(false);
             slipMetadataText.Text = $"{selectedSlips.Count} slips selected. "
                 + "Choose a destination, then move or delete them together.";
             SetEditingEnabled();
@@ -1298,7 +1309,7 @@ internal partial class MainWindow
             && !editorState.IsDirty
                 ? ""
                 : editorState.DraftText);
-        conflictPanel.IsVisible = editorState.ConflictCurrent is not null;
+        SetConflictVisible(editorState.ConflictCurrent is not null);
         if (editorState.ConflictCurrent is { } conflict)
         {
             localConflictText.Text = editorState.DraftText;

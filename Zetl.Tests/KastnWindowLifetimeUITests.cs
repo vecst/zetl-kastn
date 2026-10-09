@@ -1,4 +1,5 @@
 using System.Reflection;
+using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using KASTN;
@@ -104,6 +105,39 @@ public partial class ZetlUITests
             publish(controller, new(KastnConnectionState.Online, "Connected to Zetl.", [], project));
             Dispatcher.UIThread.RunJobs();
             Assert.False(window.connectionProgress.IsIndeterminate);
+        }
+        finally { CloseWindow(window); }
+    }
+
+    // At Kastn's smallest window the conflict comparison and its buttons must
+    // stay above the status bar instead of sliding under it.
+    [AvaloniaTheory]
+    [InlineData(1180, 620)]
+    [InlineData(1380, 820)]
+    public void ConflictComparisonFitsAboveTheStatusBar(double width, double height)
+    {
+        var (window, controller, project) = WorkflowWindow();
+        try
+        {
+            window.Width = width;
+            window.Height = height;
+            window.slipEditor.Text = "local writing";
+            Dispatcher.UIThread.RunJobs();
+            InterruptLinkWorkflow(window, controller, project, "remote");
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+            Assert.True(window.conflictPanel.IsVisible);
+
+            var statusTop = ((Avalonia.Visual)window.statusText.Parent!.Parent!)
+                .TranslatePoint(new Avalonia.Point(0, 0), window)!.Value.Y;
+            foreach (var control in new Avalonia.Controls.Control[]
+                { window.keepMineButton, window.useZetlButton, window.remoteConflictText })
+            {
+                var bottom = control.TranslatePoint(new Avalonia.Point(0, control.Bounds.Height), window)!.Value.Y;
+                Assert.True(bottom <= statusTop + 0.5, $"{control.Name} ends at {bottom:F0}, under the status bar at {statusTop:F0}.");
+            }
+            Assert.True(window.localConflictText.Bounds.Height >= 40, "Your version should stay readable.");
+            Assert.True(window.remoteConflictText.Bounds.Height >= 40, "Zetl's version should stay readable.");
         }
         finally { CloseWindow(window); }
     }
