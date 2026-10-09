@@ -48,13 +48,19 @@ internal sealed class ZetlStartAtLogin
             return appImage;
         }
 
-        var expected = windows ? "Zetl.exe" : "Zetl";
-        return processPath is not null
-            && string.Equals(Path.GetFileName(processPath), expected, windows
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal)
-                ? processPath
-                : null;
+        if (processPath is null)
+        {
+            return null;
+        }
+
+        // Split by the target platform's separators, not the host's, so this
+        // answers the same on every OS (Windows paths use either slash).
+        var fileName = windows
+            ? processPath[(processPath.LastIndexOfAny(['\\', '/']) + 1)..]
+            : processPath[(processPath.LastIndexOf('/') + 1)..];
+        return windows
+            ? string.Equals(fileName, "Zetl.exe", StringComparison.OrdinalIgnoreCase) ? processPath : null
+            : string.Equals(fileName, "Zetl", StringComparison.Ordinal) ? processPath : null;
     }
 
     public bool IsAvailable => entry is not null && command is not null;
