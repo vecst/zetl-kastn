@@ -83,6 +83,31 @@ public partial class ZetlUITests
         finally { CloseWindow(window); }
     }
 
+    // A hidden indeterminate bar still animates and keeps the render loop busy,
+    // so the bar animates only while it shows.
+    [AvaloniaFact]
+    public void ConnectionProgressAnimatesOnlyWhileConnecting()
+    {
+        var (window, controller, project) = WorkflowWindow();
+        try
+        {
+            Assert.False(window.connectionProgress.IsVisible);
+            Assert.False(window.connectionProgress.IsIndeterminate);
+
+            var publish = (EventHandler<KastnSessionSnapshot>)typeof(KastnConnectionController)
+                .GetField("SnapshotChanged", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller)!;
+            publish(controller, new(KastnConnectionState.Connecting, "Reconnecting to Zetl...", [], project));
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(window.connectionProgress.IsVisible);
+            Assert.True(window.connectionProgress.IsIndeterminate);
+
+            publish(controller, new(KastnConnectionState.Online, "Connected to Zetl.", [], project));
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(window.connectionProgress.IsIndeterminate);
+        }
+        finally { CloseWindow(window); }
+    }
+
     [AvaloniaFact]
     public async Task UnchangedConflictCanStillBeExplicitlyDiscarded()
     {

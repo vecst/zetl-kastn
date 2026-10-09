@@ -558,6 +558,10 @@ internal partial class MainWindow : Window
         offlineBanner.IsVisible = snapshot.ConnectionState == KastnConnectionState.Offline;
         connectionProgress.IsVisible =
             snapshot.ConnectionState == KastnConnectionState.Connecting;
+        // An indeterminate bar animates even while hidden, keeping the render
+        // loop drawing frames (about a fifth of a core) for as long as Kastn is
+        // online. Stop the animation with the bar.
+        connectionProgress.IsIndeterminate = connectionProgress.IsVisible;
         connectionIndicator.Fill = online
             ? new SolidColorBrush(Color.Parse("#71D49B"))
             : new SolidColorBrush(Color.Parse("#FFB86B"));
