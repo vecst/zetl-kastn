@@ -36,8 +36,9 @@ internal interface ILinuxSelection
 }
 
 /// <summary>
-/// The compositor's clipboard through ext-data-control-v1, the protocol KWin
-/// gives clipboard managers. Unlike an ordinary Wayland client, a data-control
+/// The compositor's clipboard through its clipboard-manager protocol:
+/// ext-data-control-v1, or the older wlroots zwlr-data-control on compositors
+/// that only have that. Unlike an ordinary Wayland client, a data-control
 /// client sees every selection change without having focus, which is what a
 /// tray app capturing copies needs.
 ///
@@ -53,6 +54,7 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
     private static readonly TimeSpan SelectionConfirmTimeout = TimeSpan.FromSeconds(1);
 
     private readonly Action<string> log;
+    private readonly IReadOnlyList<WaylandDataControlProtocol> candidates;
     private readonly ConcurrentQueue<Action> requests = new();
     private readonly Dictionary<IntPtr, List<string>> offers = [];
     private readonly Dictionary<IntPtr, OwnedSource> sources = [];
@@ -64,6 +66,7 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
     private readonly GCHandle registryHandle;
     private readonly List<(uint Name, string Interface)> globals = [];
     private IntPtr display;
+    private WaylandDataControlProtocol? protocol;
     private IntPtr manager;
     private IntPtr device;
     private IntPtr currentOffer;
@@ -74,9 +77,10 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
     private volatile bool stopping;
     private volatile bool failed;
 
-    private WaylandDataControl(Action<string> log)
+    private WaylandDataControl(Action<string> log, IReadOnlyList<WaylandDataControlProtocol> candidates)
     {
         this.log = log;
+        this.candidates = candidates;
         deviceHandle = GCHandle.Alloc(new Listener(OnDeviceEvent));
         offerHandle = GCHandle.Alloc(new Listener(OnOfferEvent));
         sourceHandle = GCHandle.Alloc(new Listener(OnSourceEvent));
@@ -92,11 +96,18 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
 
     public uint Generation => Volatile.Read(ref generation);
 
+    /// <summary>The protocol this connection uses, e.g. "ext-data-control-v1".</summary>
+    public string? ProtocolName => protocol?.Name;
+
     /// <summary>
-    /// Connects to the session's Wayland compositor. Null (with the reason
-    /// logged) when there is no Wayland session or it lacks ext-data-control.
+    /// Connects to the session's Wayland compositor through the first offered
+    /// protocol of <paramref name="protocols"/> (by default every supported one,
+    /// newest first, or only the one ZETL_WAYLAND_DATA_CONTROL names). Null (with
+    /// the reason logged) when there is no Wayland session or no protocol fits.
     /// </summary>
-    public static WaylandDataControl? TryConnect(Action<string> log)
+    public static WaylandDataControl? TryConnect(
+        Action<string> log,
+        IReadOnlyList<WaylandDataControlProtocol>? protocols = null)
     {
         if (!OperatingSystem.IsLinux()) return null;
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
@@ -111,10 +122,25 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
             return null;
         }
 
-        var control = new WaylandDataControl(log);
+        var control = new WaylandDataControl(log, protocols ?? ConfiguredProtocols(log));
         if (control.Connect()) return control;
         control.Dispose();
         return null;
+    }
+
+    // ZETL_WAYLAND_DATA_CONTROL=zwlr (or ext) limits Zetl to one protocol, to
+    // test a fallback or work around a compositor's broken implementation.
+    private static IReadOnlyList<WaylandDataControlProtocol> ConfiguredProtocols(Action<string> log)
+    {
+        var forced = Environment.GetEnvironmentVariable("ZETL_WAYLAND_DATA_CONTROL");
+        if (string.IsNullOrWhiteSpace(forced)) return WaylandClient.DataControlProtocols;
+        var only = WaylandClient.DataControlProtocols
+            .Where(candidate => candidate.Name.StartsWith(forced.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        log(only.Count > 0
+            ? $"Linux clipboard: ZETL_WAYLAND_DATA_CONTROL limits the clipboard to {only[0].Name}."
+            : $"Linux clipboard: ZETL_WAYLAND_DATA_CONTROL='{forced}' names no supported protocol; ignoring it.");
+        return only.Count > 0 ? only : WaylandClient.DataControlProtocols;
     }
 
     private bool Connect()
@@ -129,22 +155,33 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
         var registry = WaylandClient.GetRegistry(display);
         WaylandClient.Listen(registry, registryHandle);
         WaylandClient.wl_display_roundtrip(display);
-        var managerGlobal = globals.FirstOrDefault(g => g.Interface == "ext_data_control_manager_v1");
-        var seatGlobal = globals.FirstOrDefault(g => g.Interface == "wl_seat");
-        if (managerGlobal.Interface is null || seatGlobal.Interface is null)
+        (uint Name, string Interface) managerGlobal = default;
+        foreach (var candidate in candidates)
         {
-            log("Linux clipboard: the compositor does not offer ext-data-control-v1 "
-                + "(KDE Plasma 6 and wlroots compositors do); clipboard capture is off.");
+            managerGlobal = globals.FirstOrDefault(g => g.Interface == candidate.ManagerName);
+            if (managerGlobal.Interface is not null)
+            {
+                protocol = candidate;
+                break;
+            }
+        }
+
+        var seatGlobal = globals.FirstOrDefault(g => g.Interface == "wl_seat");
+        if (protocol is null || seatGlobal.Interface is null)
+        {
+            log("Linux clipboard: the compositor offers no clipboard-manager protocol "
+                + $"({string.Join(" or ", candidates.Select(candidate => candidate.Name))}; "
+                + "KDE Plasma 6 and wlroots compositors have one); clipboard capture is off.");
             return false;
         }
 
-        manager = WaylandClient.BindGlobal(registry, managerGlobal.Name, WaylandClient.ManagerInterface, 1);
+        manager = WaylandClient.BindGlobal(registry, managerGlobal.Name, protocol.Manager, 1);
         var seat = WaylandClient.BindGlobal(registry, seatGlobal.Name, WaylandClient.SeatInterface, 1);
         WaylandClient.Listen(seat, ignoreHandle);
         device = WaylandClient.Send(
             manager,
             WaylandClient.ManagerGetDataDevice,
-            WaylandClient.DeviceInterface,
+            protocol.Device,
             0,
             WlArgument.Of(IntPtr.Zero),
             WlArgument.Of(seat));
@@ -159,7 +196,7 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
         wake = LinuxPosix.CreateWakePipe();
         thread = new Thread(EventLoop) { IsBackground = true, Name = "Zetl Wayland clipboard" };
         thread.Start();
-        log("Linux clipboard: connected through ext-data-control-v1.");
+        log($"Linux clipboard: connected through {protocol.Name}.");
         return true;
     }
 
@@ -211,7 +248,7 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
         var before = Invoke(() =>
         {
             var source = WaylandClient.Send(
-                manager, WaylandClient.ManagerCreateDataSource, WaylandClient.SourceInterface, 0, WlArgument.Of(IntPtr.Zero));
+                manager, WaylandClient.ManagerCreateDataSource, protocol!.Source, 0, WlArgument.Of(IntPtr.Zero));
             if (source == IntPtr.Zero) return (Created: false, Generation: 0u);
             WaylandClient.Listen(source, sourceHandle);
             sources[source] = new OwnedSource(data, sent, replaced);

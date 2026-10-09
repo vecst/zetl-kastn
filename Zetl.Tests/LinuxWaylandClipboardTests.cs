@@ -4,10 +4,13 @@ using Xunit;
 
 namespace ZETL.Tests;
 
-/// <summary>Runs only inside a Wayland session that has wl-clipboard's tools.</summary>
-public sealed class WaylandClipboardFactAttribute : FactAttribute
+/// <summary>
+/// Runs once per clipboard-manager protocol the session's compositor offers,
+/// only inside a Wayland session that has wl-clipboard's tools.
+/// </summary>
+public sealed class WaylandClipboardTheoryAttribute : TheoryAttribute
 {
-    public WaylandClipboardFactAttribute()
+    public WaylandClipboardTheoryAttribute()
     {
         if (!OperatingSystem.IsLinux() || string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
         {
@@ -16,6 +19,10 @@ public sealed class WaylandClipboardFactAttribute : FactAttribute
         else if (!File.Exists("/usr/bin/wl-copy") || !File.Exists("/usr/bin/wl-paste"))
         {
             Skip = "Needs wl-copy and wl-paste.";
+        }
+        else if (LinuxWaylandClipboardTests.OfferedProtocols.Count == 0)
+        {
+            Skip = "The compositor offers no clipboard-manager protocol.";
         }
     }
 }
@@ -30,15 +37,43 @@ public sealed class LinuxWaylandClipboardTests : IDisposable
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(3);
     private readonly List<string> logs = [];
-    private readonly WaylandDataControl? selection;
-    private readonly LinuxClipboard? clipboard;
-    private readonly string? originalText;
+    private WaylandDataControl? selection;
+    private LinuxClipboard? clipboard;
+    private string? originalText;
 
-    public LinuxWaylandClipboardTests()
+    /// <summary>
+    /// The supported protocols this compositor offers: KWin has only
+    /// ext-data-control; wlroots 0.19 and later have both, older wlroots only
+    /// zwlr-data-control. Each test runs over each offered protocol.
+    /// </summary>
+    public static readonly TheoryData<string> OfferedProtocols = FindOfferedProtocols();
+
+    private static TheoryData<string> FindOfferedProtocols()
     {
-        if (!OperatingSystem.IsLinux() || string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"))) return;
-        selection = WaylandDataControl.TryConnect(logs.Add);
+        var offered = new TheoryData<string>();
+        if (!OperatingSystem.IsLinux() || string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+        {
+            return offered;
+        }
+
+        foreach (var protocol in WaylandClient.DataControlProtocols)
+        {
+            using var probe = WaylandDataControl.TryConnect(_ => { }, [protocol]);
+            if (probe is not null) offered.Add(protocol.Name);
+        }
+
+        return offered;
+    }
+
+    // Connects this test's clipboard over the named protocol. The second
+    // connections some tests open pick the newest offered protocol, so a run
+    // over zwlr-data-control also checks the two protocols talk to each other.
+    private void Use(string protocolName)
+    {
+        var protocol = WaylandClient.DataControlProtocols.Single(candidate => candidate.Name == protocolName);
+        selection = WaylandDataControl.TryConnect(logs.Add, [protocol]);
         Assert.True(selection is not null, string.Join("\n", logs));
+        Assert.Equal(protocolName, selection!.ProtocolName);
         clipboard = new LinuxClipboard(selection, (bytes, _) => new ZetlClipboardImage(bytes, 1, 1), logs.Add);
         originalText = clipboard.TryGetText();
     }
@@ -49,9 +84,11 @@ public sealed class LinuxWaylandClipboardTests : IDisposable
         if (originalText is not null) Run("wl-copy", [originalText]);
     }
 
-    [WaylandClipboardFact]
-    public void ReadsWhatAnotherAppCopied()
+    [WaylandClipboardTheory]
+    [MemberData(nameof(OfferedProtocols))]
+    public void ReadsWhatAnotherAppCopied(string protocol)
     {
+        Use(protocol);
         var before = clipboard!.GetChangeToken();
         Run("wl-copy", ["Zetl probe ü ✓"]);
 
@@ -59,9 +96,11 @@ public sealed class LinuxWaylandClipboardTests : IDisposable
         Assert.Equal("Zetl probe ü ✓", clipboard.TryCaptureContent()!.Text);
     }
 
-    [WaylandClipboardFact]
-    public void OtherAppsReadWhatZetlWrites()
+    [WaylandClipboardTheory]
+    [MemberData(nameof(OfferedProtocols))]
+    public void OtherAppsReadWhatZetlWrites(string protocol)
     {
+        Use(protocol);
         Assert.True(clipboard!.ReplaceRichText("plain ü", "<b>rich</b>").Succeeded);
 
         var types = Run("wl-paste", ["--list-types"]);
@@ -71,16 +110,20 @@ public sealed class LinuxWaylandClipboardTests : IDisposable
         Assert.Contains("<b>rich</b>", Run("wl-paste", ["--type", "text/html"]));
     }
 
-    [WaylandClipboardFact]
-    public void ZetlReadsASelectionItOwns()
+    [WaylandClipboardTheory]
+    [MemberData(nameof(OfferedProtocols))]
+    public void ZetlReadsASelectionItOwns(string protocol)
     {
+        Use(protocol);
         Assert.True(clipboard!.ReplaceText("self-read").Succeeded);
         Assert.Equal("self-read", clipboard.TryCaptureContent()!.Text);
     }
 
-    [WaylandClipboardFact]
-    public async Task AStagedPasteReportsTheReadThatHappened()
+    [WaylandClipboardTheory]
+    [MemberData(nameof(OfferedProtocols))]
+    public async Task AStagedPasteReportsTheReadThatHappened(string protocol)
     {
+        Use(protocol);
         var staged = clipboard!.StagePaste("staged note", null, null, null)!;
         Assert.NotNull(staged);
         await Task.Delay(300);
@@ -94,9 +137,11 @@ public sealed class LinuxWaylandClipboardTests : IDisposable
         Assert.False(await unread.Read.WaitAsync(Timeout));
     }
 
-    [WaylandClipboardFact]
-    public void APasswordManagersCopyIsNotCaptured()
+    [WaylandClipboardTheory]
+    [MemberData(nameof(OfferedProtocols))]
+    public void APasswordManagersCopyIsNotCaptured(string protocol)
     {
+        Use(protocol);
         using var passwordManager = WaylandDataControl.TryConnect(logs.Add)!;
         var before = clipboard!.GetChangeToken();
         Assert.NotNull(passwordManager.Offer(new Dictionary<string, byte[]>
@@ -111,9 +156,11 @@ public sealed class LinuxWaylandClipboardTests : IDisposable
         Assert.Null(snapshot.Text);
     }
 
-    [WaylandClipboardFact]
-    public void ABackupRestoresEveryTypeExactly()
+    [WaylandClipboardTheory]
+    [MemberData(nameof(OfferedProtocols))]
+    public void ABackupRestoresEveryTypeExactly(string protocol)
     {
+        Use(protocol);
         using var otherApp = WaylandDataControl.TryConnect(logs.Add)!;
         var before = clipboard!.GetChangeToken();
         Assert.NotNull(otherApp.Offer(new Dictionary<string, byte[]>

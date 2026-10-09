@@ -26,9 +26,25 @@ internal unsafe interface IWaylandListener
 }
 
 /// <summary>
+/// One clipboard-manager protocol's interface tables. ext-data-control-v1 was
+/// standardized from wlroots' zwlr-data-control-unstable-v1 with the same
+/// messages in the same order, so both share opcodes and differ only by name.
+/// </summary>
+internal sealed record WaylandDataControlProtocol(
+    string Name,
+    string ManagerName,
+    IntPtr Manager,
+    IntPtr Device,
+    IntPtr Source,
+    IntPtr Offer);
+
+/// <summary>
 /// The parts of libwayland-client Zetl's clipboard uses, plus hand-built
-/// interface tables for ext-data-control-v1 (KWin's clipboard-manager protocol;
-/// the XML is not installed on most systems, so there is no generated code).
+/// interface tables for the clipboard-manager protocols: ext-data-control-v1
+/// (KDE Plasma 6, wlroots 0.19 and later) and the older wlroots
+/// zwlr-data-control-unstable-v1 it replaced (older Sway, labwc, Wayfire, and
+/// desktops built on them). The XML is not installed on most systems, so there
+/// is no generated code.
 /// Requests go through wl_proxy_marshal_array_flags rather than the variadic
 /// marshallers, and every object's events arrive through one dispatcher.
 /// Only the clipboard thread calls into this class.
@@ -40,10 +56,9 @@ internal static unsafe class WaylandClient
 
     public static readonly IntPtr RegistryInterface;
     public static readonly IntPtr SeatInterface;
-    public static readonly IntPtr ManagerInterface;
-    public static readonly IntPtr DeviceInterface;
-    public static readonly IntPtr SourceInterface;
-    public static readonly IntPtr OfferInterface;
+
+    /// <summary>The supported clipboard-manager protocols, preferred first.</summary>
+    public static readonly IReadOnlyList<WaylandDataControlProtocol> DataControlProtocols = [];
     public static readonly bool Available;
 
     static WaylandClient()
@@ -55,38 +70,48 @@ internal static unsafe class WaylandClient
             return;
         }
 
+        DataControlProtocols =
+        [
+            BuildDataControl("ext-data-control-v1", "ext_data_control"),
+            BuildDataControl("zwlr-data-control-unstable-v1", "zwlr_data_control"),
+        ];
+        Available = true;
+    }
+
+    private static WaylandDataControlProtocol BuildDataControl(string name, string prefix)
+    {
         // struct wl_interface is 40 bytes on 64-bit; allocate all four before
         // filling them, since their messages refer to one another.
-        ManagerInterface = Allocate(40);
-        DeviceInterface = Allocate(40);
-        SourceInterface = Allocate(40);
-        OfferInterface = Allocate(40);
+        var manager = Allocate(40);
+        var device = Allocate(40);
+        var source = Allocate(40);
+        var offer = Allocate(40);
 
-        // Message order and signatures follow ext-data-control-v1.xml exactly;
-        // opcodes are positions in these lists.
-        FillInterface(ManagerInterface, "ext_data_control_manager_v1",
-            [("create_data_source", "n", [SourceInterface]),
-             ("get_data_device", "no", [DeviceInterface, SeatInterface]),
+        // Message order and signatures follow ext-data-control-v1.xml (and the
+        // wlroots protocol it came from) exactly; opcodes are list positions.
+        FillInterface(manager, $"{prefix}_manager_v1",
+            [("create_data_source", "n", [source]),
+             ("get_data_device", "no", [device, SeatInterface]),
              ("destroy", "", [])],
             []);
-        FillInterface(DeviceInterface, "ext_data_control_device_v1",
-            [("set_selection", "?o", [SourceInterface]),
+        FillInterface(device, $"{prefix}_device_v1",
+            [("set_selection", "?o", [source]),
              ("destroy", "", []),
-             ("set_primary_selection", "?o", [SourceInterface])],
-            [("data_offer", "n", [OfferInterface]),
-             ("selection", "?o", [OfferInterface]),
+             ("set_primary_selection", "?o", [source])],
+            [("data_offer", "n", [offer]),
+             ("selection", "?o", [offer]),
              ("finished", "", []),
-             ("primary_selection", "?o", [OfferInterface])]);
-        FillInterface(SourceInterface, "ext_data_control_source_v1",
+             ("primary_selection", "?o", [offer])]);
+        FillInterface(source, $"{prefix}_source_v1",
             [("offer", "s", [IntPtr.Zero]),
              ("destroy", "", [])],
             [("send", "sh", [IntPtr.Zero, IntPtr.Zero]),
              ("cancelled", "", [])]);
-        FillInterface(OfferInterface, "ext_data_control_offer_v1",
+        FillInterface(offer, $"{prefix}_offer_v1",
             [("receive", "sh", [IntPtr.Zero, IntPtr.Zero]),
              ("destroy", "", [])],
             [("offer", "s", [IntPtr.Zero])]);
-        Available = true;
+        return new WaylandDataControlProtocol(name, $"{prefix}_manager_v1", manager, device, source, offer);
     }
 
     public const uint ManagerCreateDataSource = 0;
