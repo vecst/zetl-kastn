@@ -13,8 +13,8 @@ here wait in [`ideas.md`](ideas.md#deferred).
 **Main track**
 
 1. **Quick wins.** Start at login from Settings (done, Windows and Linux),
-   then the open Priority 1 fixes: remembering the last selected Shift project
-   and the recovered-draft layout (`data:image` clipboard payloads are done).
+   then the recovered-draft layout (remembering the last Shift project and
+   `data:image` clipboard payloads are done).
 2. **RC 3.1.** Finish RC 3 testing and ship the post-RC 3 branch with the quick
    wins: transparency and Compose wording, delta reads, the Board overwrite
    fix, the Linux keyboard and single-instance fixes, the log settings fix.
@@ -207,8 +207,9 @@ leverage.
 - [x] Make coordinated Quit re-entrant and reliably foreground its existing
       Kastn confirmation (b29ab3c: a repeated Quit waits on Kastn's pending
       answer; 02cfb4c: Zetl hands Kastn the foreground).
-- [ ] Remember the last selected Shift project when that lane has no explicit
-      active project. (The rest of this item is settled: the Shift Board falls
+- [x] Remember the last selected Shift project when that lane has no explicit
+      active project. (Each lane's Board reopens on the project it last showed,
+      for the session, before the Journal or last-written fallbacks.) (The rest of this item is settled: the Shift Board falls
       back to the Shift Journal (2de0770), and activation became deliberate in
       1274e99, so a fresh profile no longer activates the Journals on its own.)
 - [ ] Keep the recovered-draft conflict comparison above Kastn's status bar at

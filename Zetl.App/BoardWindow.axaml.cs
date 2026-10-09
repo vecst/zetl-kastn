@@ -152,6 +152,12 @@ internal partial class BoardWindow : ZetlPopupWindow
 
     public bool ShiftedLane => shiftedLane;
 
+    // The project shown when the Board closed. The host hands it back to the
+    // lane's next Board, which opens there when the lane has nothing active.
+    public string? ShownProjectId => ActiveProject?.Id;
+
+    public string? RememberedProjectId { get; set; }
+
     private ZetlProject? ActiveProject => projectBox.SelectedItem as ZetlProject;
 
     private ZetlBucket? ActiveBucket => (bucketList.SelectedItem as BucketDisplayItem)?.Bucket;
@@ -186,12 +192,14 @@ internal partial class BoardWindow : ZetlPopupWindow
             projectBox.ItemsSource = store.State.Projects.ToList();
             var firstChoiceId = preferActiveProject ? activeProjectId : selectedProjectId;
             var secondChoiceId = preferActiveProject ? selectedProjectId : activeProjectId;
-            // With nothing active or selected, the Shift Board opens on the Shift
-            // Journal rather than the last project written in either lane; the Main
-            // Board keeps landing on the last project touched.
+            // With nothing active or selected, a Board reopens on the project this
+            // lane's Board last showed; failing that, the Shift Board opens on the
+            // Shift Journal rather than the last project written in either lane, and
+            // the Main Board lands on the last project touched.
             projectBox.SelectedItem = store.State.Projects.FirstOrDefault(
                     project => project.Id == firstChoiceId)
                 ?? store.State.Projects.FirstOrDefault(project => project.Id == secondChoiceId)
+                ?? store.State.Projects.FirstOrDefault(project => project.Id == RememberedProjectId)
                 ?? (shiftedLane ? store.FindLaneJournal(shifted: true) : null)
                 ?? store.GetMostRecentlyWrittenProject()
                 ?? store.State.Projects.FirstOrDefault();

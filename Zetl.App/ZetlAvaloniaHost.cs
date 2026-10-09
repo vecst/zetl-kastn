@@ -61,6 +61,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly ZetlThemeManager themeManager;
     private readonly ICaptureOriginProvider captureOriginProvider;
     private readonly Dictionary<bool, BoardWindow> boards = [];
+    // The project each lane's Board showed when it last closed, for this session.
+    private readonly Dictionary<bool, string?> lastBoardProjects = [];
     private readonly object shortcutTargetsGate = new();
     private readonly Dictionary<int, object?> shortcutTargets = [];
     private readonly string diagnosticLogPath;
@@ -904,13 +906,15 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 OpenInKastn,
                 CreateProjectFromTemplate)
             {
-                ShowInTaskbar = false
+                ShowInTaskbar = false,
+                RememberedProjectId = lastBoardProjects.GetValueOrDefault(shifted)
             };
             var lane = shifted;
             // Restore on Closing (before the window vanishes) so focus hands off
             // directly, without Windows flashing whatever it picks first.
             board.Closing += (_, _) =>
             {
+                lastBoardProjects[lane] = board.ShownProjectId;
                 if (!board.ClosedByDeactivate)
                 {
                     ZetlForegroundService.RestoreTarget(board.ForegroundTarget, Log);
