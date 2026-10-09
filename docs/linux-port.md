@@ -92,8 +92,11 @@ modifier down without its matching release.
 
 ## Clipboard Model
 
-Zetl talks to the compositor's clipboard directly through `ext-data-control-v1`,
-the Wayland protocol KWin (and wlroots compositors) give clipboard managers.
+Zetl talks to the compositor's clipboard directly through its clipboard-manager
+protocol: `ext-data-control-v1` (KWin, wlroots 0.19 and later), or the older
+wlroots `zwlr-data-control-unstable-v1` it was standardized from (older Sway,
+labwc, Wayfire). The two share every message, so one client binds whichever the
+compositor offers, newest first; `ZETL_WAYLAND_DATA_CONTROL=zwlr|ext` forces one.
 `WaylandDataControl` owns its own Wayland connection on a dedicated thread;
 `LinuxClipboard` implements `IClipboard` over it.
 
@@ -115,7 +118,7 @@ capture. Staged pastes carry that hint too; because some KDE clipboard monitors
 read every new selection regardless, a staged paste waits for them to go quiet
 before the paste is sent, and only later reads count as the paste landing.
 
-Without `ext-data-control-v1` (X11 sessions, compositors that lack it) the
+Without either protocol (X11 sessions, GNOME, compositors that lack both) the
 clipboard falls back to the unsupported stub and capture is off.
 
 ## Avalonia Window Policy

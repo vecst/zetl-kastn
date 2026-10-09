@@ -131,8 +131,13 @@ device.
 
 ## Priority 3: Linux Clipboard
 
-`LinuxClipboard` implements `IClipboard` over Wayland's `ext-data-control-v1`
-(see the clipboard model in [`linux-port.md`](linux-port.md)).
+`LinuxClipboard` implements `IClipboard` over Wayland's `ext-data-control-v1`,
+or wlroots' older `zwlr-data-control-unstable-v1` where that is all the
+compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
+
+- [x] The `zwlr-data-control` fallback (October 9, 2026): every real-clipboard
+      test passes over both protocols under headless sway 1.12, and a held
+      Ctrl+C capture in the real app worked over `zwlr` alone.
 
 - [x] Read and write through the compositor's clipboard-manager protocol, with
       a change token advanced by selection events.

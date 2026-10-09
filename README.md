@@ -124,8 +124,9 @@ unless Zetl is run as administrator too.
 3. Make the AppImage executable and run it. Run it with `--kastn` for Kastn.
 
 The Linux version is newer than the Windows one. It's tested on KDE Plasma 6
-(Wayland); capture needs a desktop with the `ext-data-control` clipboard
-protocol, which KDE Plasma 6 and wlroots desktops (Sway, Hyprland) have.
+(Wayland); capture needs a desktop with a clipboard-manager protocol
+(`ext-data-control`, or wlroots' older `zwlr-data-control`), which KDE Plasma 6
+and wlroots desktops such as Sway have.
 
 > Zetl is in release-candidate testing. Expect some rough edges, and please
 > [report what you find](https://github.com/vecst/zetl-kastn/issues).
