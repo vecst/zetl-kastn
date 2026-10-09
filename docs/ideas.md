@@ -10,7 +10,7 @@ picked up, move it to a roadmap and link it from here.
 
 Agreed October 8, 2026 as extra features for down the road, after the working
 order: spreadsheet copies into TSV buckets, different capture dialogs, more
-hold shortcuts, file references and Zetl as a hold host, sync and profiles,
+hold shortcuts, an extension loader, file references and Zetl as a hold host, sync and profiles,
 the Kastn backlog, delta IPC extras (multi-project baselines, change hints),
 the Holdcuts rollout (a good fit for the public release announcement), a
 smaller Windows download, and native Wayland. Each is described below.
@@ -73,6 +73,41 @@ where the files moved. Decisions so far and the routing design are in
 Held Ctrl+F (find in Zetl), held Ctrl+S (checkpoint), a portable
 text-interaction layer, and other candidates:
 [`hold-shortcut-ideas-discussion.md`](hold-shortcut-ideas-discussion.md).
+
+## Extension loader
+
+Power users who adopt Zetl will want to mod it; extensions are the cleanest way
+to let them (Lukas, October 9, 2026). A loader that finds, installs, enables,
+and updates extensions, with a stable API for them to build on.
+
+Pieces already exist to build from:
+
+- **Out-of-process clients over IPC.** Kastn and the HAIUX plugin already talk
+  to Zetl over its versioned named-pipe protocol, with Welcome capabilities for
+  additive features, and the hold-routing design plans external programs
+  claiming held gestures over the same pipe
+  ([`hold-routing-discussion.md`](hold-routing-discussion.md)).
+- **Data extension points.** Templates, views, and creation types are already
+  versioned JSON documents with presets and user copies ([`kastn.md`](kastn.md)).
+- **Zetl as a hold host,** below, is the first kind of extension.
+
+Questions to settle:
+
+- **Where extensions run.** Out of process over IPC keeps a crashing or slow
+  extension away from the keyboard hook and capture path, which capture feel
+  depends on; in-process .NET assemblies are more capable but can stall or
+  crash Zetl. A likely split: code extensions out of process, data extensions
+  (templates, views, themes) loaded in.
+- **What can be extended:** hold actions, capture transforms (clean up text,
+  tag, route to a bucket), Compose and export formats, Kastn views and
+  renderers, and menu or Board commands.
+- **Trust.** An extension that sees captures sees everything you copy.
+  Declared permissions (read captures, write slips, claim holds), shown at
+  install and revocable, and capture content only for extensions granted it.
+- **API stability:** versioning and capability negotiation, building on the IPC
+  protocol's capabilities list.
+- **Distribution:** a folder of extensions with a manifest, install from a file
+  or URL, updates, and whether a shared catalog is worth it later.
 
 ## Naming: Holdcuts
 
