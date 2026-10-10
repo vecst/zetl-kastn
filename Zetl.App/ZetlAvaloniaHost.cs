@@ -140,7 +140,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         var allowInjectedInputForTesting = requestedInjectedInputForTesting
             && !string.IsNullOrWhiteSpace(dataDirectory);
 
-        notifications = new AvaloniaNotificationService(activityLog);
+        notifications = new AvaloniaNotificationService(activityLog, Log);
         keyboard = ZetlPlatformServices.CreateKeyboard(
             Log,
             allowInjectedInputForTesting);

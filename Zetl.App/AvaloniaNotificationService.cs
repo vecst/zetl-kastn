@@ -6,13 +6,17 @@ internal sealed class AvaloniaNotificationService : IZetlNotificationSink, IDisp
 {
     private const int MaxHistory = 300;
     private readonly ZetlActivityLogBuffer activityLog;
+    private readonly Action<string>? diagnostics;
     private readonly List<ZetlNotificationEntry> history = [];
     private ToastWindow? toast;
     private NotificationHistoryWindow? historyWindow;
 
-    public AvaloniaNotificationService(ZetlActivityLogBuffer activityLog)
+    // Toasts also go to the diagnostics log, so one that flashed by unread can
+    // still be found. Toasts name buckets and projects, never captured content.
+    public AvaloniaNotificationService(ZetlActivityLogBuffer activityLog, Action<string>? diagnostics = null)
     {
         this.activityLog = activityLog;
+        this.diagnostics = diagnostics;
     }
 
     public int DisplayMilliseconds { get; set; } = 950;
@@ -40,6 +44,7 @@ internal sealed class AvaloniaNotificationService : IZetlNotificationSink, IDisp
         }
 
         activityLog.Enqueue(entry.Message);
+        diagnostics?.Invoke($"Toast: {entry.Message}");
         toast ??= new ToastWindow();
         toast.ShowMessage(entry.Message, DisplayMilliseconds);
         historyWindow?.RefreshEntries(history);

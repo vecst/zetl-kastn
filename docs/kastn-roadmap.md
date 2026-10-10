@@ -205,7 +205,11 @@ leverage.
 - [ ] Test disk-full behavior and recovery from interruption between related
       project/workspace operations.
 - [ ] Re-run large-project measurements and investigate material regressions.
-- [ ] Verify diagnostics carry useful context without captured content.
+- [x] Verify diagnostics carry useful context without captured content.
+      (Audited October 10, 2026: log lines carry counts, timings, device and
+      window ids, and bucket/project names, never clipboard or slip text; image
+      downloads now log the host instead of the full URL, whose path or query
+      can hold tokens. Toasts are now logged too, as `Toast:` lines.)
 - [ ] Define packaging, installation, app identity, and protocol compatibility
       policy.
 - [ ] Dogfood both applications together through restart, capture, editing, and

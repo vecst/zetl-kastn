@@ -73,7 +73,7 @@ internal sealed class ZetlImageUrlResolver : IImageUrlResolver
         {
             var downloaded = await DownloadAsync(uri, timeout.Token);
             return downloaded is { } image
-                ? NormalizeToPng(image.Bytes, image.FinalUrl, image.FinalUrl)
+                ? NormalizeToPng(image.Bytes, HostOf(image.FinalUrl), image.FinalUrl)
                 : null;
         }
         catch (Exception ex) when (
@@ -204,6 +204,11 @@ internal sealed class ZetlImageUrlResolver : IImageUrlResolver
     // Decode and re-encode to PNG. The SKCodec pass is the final authority on
     // whether the bytes are a usable image, so curl bytes (which carry no content
     // type) are validated here just like in-process bytes.
+    // Diagnostics name the image's host only: a URL's path or query can carry
+    // private tokens, and the log must never hold what the user copied.
+    private static string HostOf(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var parsed) ? parsed.Host : "a copied link";
+
     private ZetlResolvedImageUrl? NormalizeToPng(byte[] encodedBytes, string origin, string? sourceUrl)
     {
         using var encodedData = SKData.CreateCopy(encodedBytes);
