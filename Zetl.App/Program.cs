@@ -77,6 +77,15 @@ internal static class Program
             {
                 singleInstanceMutex.Dispose();
                 singleInstanceMutex = null;
+                // Opening Zetl again shows the running one's menu: the way in
+                // from the app menu, and on desktops without tray icons. The
+                // running Zetl may take the foreground for it.
+                ZetlForegroundHandoff.AllowProcessesNamed("Zetl");
+                if (ZetlControlChannel.RequestAsync(ZetlControlChannel.ShowMenuCommand).GetAwaiter().GetResult())
+                {
+                    return 0;
+                }
+
                 ShowStartupMessage(
                     "Zetl is already running.",
                     "Zetl");

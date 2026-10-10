@@ -43,19 +43,7 @@ internal static class KastnControlChannel
     private const string CancelReply = "cancel";
     private const int MaxReplyCharacters = 64;
 
-    public static string GetDefaultPipeName()
-    {
-        var session = OperatingSystem.IsWindows()
-            ? Process.GetCurrentProcess().SessionId.ToString()
-            : Environment.GetEnvironmentVariable("XDG_SESSION_ID")
-                ?? Environment.GetEnvironmentVariable("DISPLAY")
-                ?? "default";
-        var identity = $"{Environment.UserDomainName}\\{Environment.UserName}|{session}";
-        var hash = Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..16]
-            .ToLowerInvariant();
-        return $"kastn-control-{hash}";
-    }
+    public static string GetDefaultPipeName() => $"kastn-control-{ZetlIpcEndpoint.SessionHash()}";
 
     /// <summary>The reply Kastn writes for a confirmed shutdown.</summary>
     public static string ReplyFor(bool close) => close ? CloseReply : CancelReply;

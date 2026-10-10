@@ -61,6 +61,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly ZetlThemeManager themeManager;
     private readonly ICaptureOriginProvider captureOriginProvider;
     private readonly Dictionary<bool, BoardWindow> boards = [];
+    private readonly ZetlControlServer controlServer;
+    private ZetlMenuWindow? menuWindow;
     // Set when the keyboard couldn't be taken at startup; the tour then skips
     // hold practice instead of waiting for holds that can't happen.
     private bool shortcutsOff;
@@ -141,6 +143,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             && !string.IsNullOrWhiteSpace(dataDirectory);
 
         notifications = new AvaloniaNotificationService(activityLog, Log);
+        controlServer = new ZetlControlServer(OnControlRequest, Log);
         keyboard = ZetlPlatformServices.CreateKeyboard(
             Log,
             allowInjectedInputForTesting);
@@ -226,6 +229,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         latencySummaryTimer.Tick += (_, _) => LogLatencySummaries();
         latencySummaryTimer.Start();
         ipcServer.Start();
+        controlServer.Start();
 
         // The log's per-line stamps carry no date, so mark each start with one.
         // The build's version, with its commit, so a log or crash report names
@@ -309,6 +313,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
         disposed = true;
         ipcServer.Dispose();
+        controlServer.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(1));
         clickAwayWatcher.Stop();
         logFlushTimer.Stop();
         passThroughTimer.Stop();
@@ -365,24 +370,56 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
         };
     }
 
+    // Zetl's menu, shared by the tray icon and the menu window that opening Zetl
+    // again shows (the way in on desktops without tray icons).
+    private IReadOnlyList<ZetlMenuCommand> MenuCommands() =>
+    [
+        new("Open Board", () => ShowBoard(shifted: false)),
+        new("Open Shift Board", () => ShowBoard(shifted: true)),
+        new("New Project", () => _ = ShowProjectSetupAsync()),
+        new("Take the Tour", () => _ = ShowTutorialAsync()),
+        new("Measure My Taps and Holds", () => _ = ShowHoldLabAsync()),
+        new("Notification History", notifications.ShowHistory),
+        new("Clear Notification History", notifications.ClearHistory),
+        new("Pass-through On/Off for Now", () => coordinator.TogglePassThrough(shifted: false)),
+        new("Settings", () => _ = ShowSettingsAsync()),
+        ZetlMenuCommand.Separator,
+        // Unified tray: launch Kastn when it is not running, or focus/restore it
+        // when it is hidden after window close.
+        new("Open Kastn", OpenKastn),
+        ZetlMenuCommand.Separator,
+        new("Quit", RequestQuit),
+    ];
+
+    private void OnControlRequest(string command)
+    {
+        if (command == ZetlControlChannel.ShowMenuCommand)
+        {
+            Log("Zetl was opened again; showing its menu.");
+            Dispatcher.UIThread.Post(ShowMenuWindow);
+        }
+    }
+
+    private void ShowMenuWindow()
+    {
+        if (menuWindow is { } open)
+        {
+            ZetlWindowActivation.Show(open, log: Log);
+            return;
+        }
+
+        var window = new ZetlMenuWindow(MenuCommands()) { DismissOnDeactivate = true };
+        menuWindow = window;
+        ConfigureAndShowPopup(window, target: null, "Menu", () => menuWindow = null);
+    }
+
     private TrayIcon CreateTrayIcon()
     {
         var menu = new NativeMenu();
-        menu.Items.Add(Item("Open Board", () => ShowBoard(shifted: false)));
-        menu.Items.Add(Item("Open Shift Board", () => ShowBoard(shifted: true)));
-        menu.Items.Add(Item("New Project", () => _ = ShowProjectSetupAsync()));
-        menu.Items.Add(Item("Take the Tour", () => _ = ShowTutorialAsync()));
-        menu.Items.Add(Item("Measure My Taps and Holds", () => _ = ShowHoldLabAsync()));
-        menu.Items.Add(Item("Notification History", notifications.ShowHistory));
-        menu.Items.Add(Item("Clear Notification History", notifications.ClearHistory));
-        menu.Items.Add(Item("Pass-through On/Off for Now", () => coordinator.TogglePassThrough(shifted: false)));
-        menu.Items.Add(Item("Settings", () => _ = ShowSettingsAsync()));
-        menu.Items.Add(new NativeMenuItemSeparator());
-        // Unified tray: launch Kastn when it is not running, or focus/restore it
-        // when it is hidden after window close.
-        menu.Items.Add(Item("Open Kastn", OpenKastn));
-        menu.Items.Add(new NativeMenuItemSeparator());
-        menu.Items.Add(Item("Quit", RequestQuit));
+        foreach (var command in MenuCommands())
+        {
+            menu.Items.Add(command.Run is { } run ? Item(command.Label!, run) : new NativeMenuItemSeparator());
+        }
 
         currentTrayState = ComputeTrayState();
         var icon = new TrayIcon
