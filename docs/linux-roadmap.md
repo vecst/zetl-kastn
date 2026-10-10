@@ -220,6 +220,9 @@ window policy is involved.
       Kastn (connected to Zetl over IPC) render and come forward on KDE.
 - [x] Shift lane capture and Compose; pass-through flip.
 - [ ] Settings, templates, and the tray menu.
+- [x] A way into the menu without a tray: GNOME on Ubuntu 26.04 has no
+      StatusNotifierWatcher, so Zetl's tray icon never shows. Opening Zetl
+      again now shows its menu in a window (2c82a73, checked there).
 - [ ] Verify placement on multiple monitors and scaled displays. Avalonia
       renders unscaled under Xwayland at fractional scaling (the Board is
       1040 physical px on a 1.2x display). Cause found October 8, 2026:

@@ -40,7 +40,7 @@ The system has three parts:
 
 The guiding split: **capture and move on in Zetl; sit down and work in Kastn.**
 
-Zetl lives in the Windows notification area. Its tray menu provides:
+Zetl lives in the notification area (the system tray). Its tray menu provides:
 
 - `Open Board` and `Open Shift Board`
 - `New Project`
@@ -54,8 +54,10 @@ Zetl lives in the Windows notification area. Its tray menu provides:
 - `Open Kastn`
 - `Quit`
 
-Only one Zetl runs per Windows sign-in; launching it again finds the running
-one and exits.
+Only one Zetl runs per sign-in. Opening Zetl again, from the Start menu or your
+app menu, shows the same menu in a small window instead of starting a second
+copy. That is also the way in on desktops that show no tray icons, such as
+stock GNOME on Linux.
 
 > Windows keeps keyboard shortcuts and synthetic input from crossing between
 > normal and elevated apps. If shortcuts don't work in an app running as

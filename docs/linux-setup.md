@@ -76,6 +76,13 @@ quit Zetl first.
 Your notes and settings live in `~/.config/Zetl` (`$XDG_CONFIG_HOME/Zetl`), with
 the diagnostics log beside them.
 
+## No tray icon?
+
+Some desktops show no tray icons; stock GNOME is one, and so is Ubuntu's GNOME
+without its tray extension. Open Zetl again from your app menu (or run it
+again) and it shows its menu in a small window: Settings, the tour, Open Kastn,
+Quit, and the rest.
+
 ## If something goes wrong
 
 - **Your keyboard stops responding:** hold both Shift keys and press Escape.
