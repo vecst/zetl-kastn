@@ -639,6 +639,57 @@ public class KastnLifecycleTests
         });
     }
 
+    // Several commands while refreshes are held back (a multi-step edit) end
+    // with Kastn in step, reading deltas, not reloading.
+    [Fact] public void ControllerSettlesADeferredBatchThroughDeltas()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new LifecycleFixture();
+            await using var controller = CreateConnectedController(fixture);
+            await ConvergesAsync(controller, fixture, "the first load");
+
+            await using (controller.DeferRefresh())
+            {
+                for (var i = 0; i < 3; i++)
+                {
+                    var response = await controller.ExecuteAsync(ZetlCommandEnvelope.Create(NewId(), ZetlCommandKind.AddSlip,
+                        new AddSlipCommand { BucketId = fixture.Bucket.Id, Text = $"batched {i}", Source = "kastn" }, fixture.Project.Id));
+                    AssertEqual(ZetlResponseStatus.Success, response.Status, "Each batched command should succeed.");
+                }
+            }
+
+            await ConvergesAsync(controller, fixture, "the deferred batch");
+            Assert.Equal(3, controller.Current.Project!.Slips.Count(slip => slip.Text.StartsWith("batched", StringComparison.Ordinal)));
+            Assert.Single(fixture.ServiceLog, line => line.Contains("reset=", StringComparison.Ordinal));
+        });
+    }
+
+    // A save Zetl confirmed stays confirmed even when the refresh after it is
+    // lost; Kastn catches up once it can read again.
+    [Fact] public void ControllerKeepsAConfirmedSaveWhenTheRefreshAfterItFails()
+    {
+        RunAsync(async () =>
+        {
+            var dropNextRead = 0;
+            using var fixture = new LifecycleFixture(dropResponseForTesting: command =>
+                command.Kind == ZetlCommandKind.GetProjectChanges && Interlocked.Exchange(ref dropNextRead, 0) == 1);
+            await using var controller = CreateConnectedController(fixture);
+            await ConvergesAsync(controller, fixture, "the first load");
+
+            Volatile.Write(ref dropNextRead, 1);
+            var response = await controller.ExecuteAsync(ZetlCommandEnvelope.Create(NewId(), ZetlCommandKind.AddSlip,
+                new AddSlipCommand { BucketId = fixture.Bucket.Id, Text = "saved before the lost read", Source = "kastn" },
+                fixture.Project.Id));
+
+            AssertEqual(ZetlResponseStatus.Success, response.Status, "The confirmed save should stay a success.");
+            await ConvergesAsync(controller, fixture, "the refresh after a lost read");
+            Assert.Contains(controller.Current.Project!.Slips, slip => slip.Text == "saved before the lost read");
+            // The read after the save really was lost (its connection closed).
+            Assert.Equal(0, Volatile.Read(ref dropNextRead));
+        });
+    }
+
     private static async Task ConvergesAsync(KastnConnectionController controller, LifecycleFixture fixture, string what)
     {
         var full = fixture.ReadFullProjectJson();

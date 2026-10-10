@@ -28,15 +28,24 @@ internal sealed class KastnProjectSync
 
     private sealed record Applied(ZetlProjectSnapshot Snapshot, ZetlProjectCursor Cursor);
 
-    public async Task<KastnProjectRead> ReadAsync(
+    public Task<KastnProjectRead> ReadAsync(
         ZetlIpcClient client,
+        string projectId,
+        CancellationToken cancellationToken) =>
+        ReadAsync(client.ExecuteAsync, client.Capabilities.Contains(ZetlIpcCapabilities.ProjectChanges),
+            projectId, cancellationToken);
+
+    /// <summary>Reads through <paramref name="send"/>; tests supply their own replies.</summary>
+    internal async Task<KastnProjectRead> ReadAsync(
+        Func<ZetlCommandEnvelope, CancellationToken, Task<ZetlResponseEnvelope>> send,
+        bool deltasOffered,
         string projectId,
         CancellationToken cancellationToken)
     {
-        if (!client.Capabilities.Contains(ZetlIpcCapabilities.ProjectChanges))
+        if (!deltasOffered)
         {
             return new KastnProjectRead(
-                await GetProjectAsync(client, projectId, cancellationToken).ConfigureAwait(false),
+                await GetProjectAsync(send, projectId, cancellationToken).ConfigureAwait(false),
                 null,
                 null);
         }
@@ -49,7 +58,7 @@ internal sealed class KastnProjectSync
 
         // A cursor from a restarted Zetl is still sent: the server answers with
         // an explicit epoch_changed reset rather than Kastn guessing.
-        var changes = await GetChangesAsync(client, projectId, baseline?.Cursor, cancellationToken)
+        var changes = await GetChangesAsync(send, projectId, baseline?.Cursor, cancellationToken)
             .ConfigureAwait(false);
         try
         {
@@ -62,7 +71,7 @@ internal sealed class KastnProjectSync
         {
             // A batch that does not validate leaves the applied pair alone and
             // gets one fresh bootstrap. If that fails too, the refresh fails.
-            var reset = await GetChangesAsync(client, projectId, null, cancellationToken)
+            var reset = await GetChangesAsync(send, projectId, null, cancellationToken)
                 .ConfigureAwait(false);
             return new KastnProjectRead(
                 ZetlProjectChangesReducer.Apply(null, null, reset),
@@ -93,12 +102,12 @@ internal sealed class KastnProjectSync
     }
 
     private static async Task<ZetlProjectChanges> GetChangesAsync(
-        ZetlIpcClient client,
+        Func<ZetlCommandEnvelope, CancellationToken, Task<ZetlResponseEnvelope>> send,
         string projectId,
         ZetlProjectCursor? cursor,
         CancellationToken cancellationToken)
     {
-        var response = await client.ExecuteAsync(
+        var response = await send(
             ZetlCommandEnvelope.Create(
                 Guid.NewGuid().ToString("N"),
                 ZetlCommandKind.GetProjectChanges,
@@ -111,11 +120,11 @@ internal sealed class KastnProjectSync
     }
 
     private static async Task<ZetlProjectSnapshot> GetProjectAsync(
-        ZetlIpcClient client,
+        Func<ZetlCommandEnvelope, CancellationToken, Task<ZetlResponseEnvelope>> send,
         string projectId,
         CancellationToken cancellationToken)
     {
-        var response = await client.ExecuteAsync(
+        var response = await send(
             new ZetlCommandEnvelope
             {
                 CommandId = Guid.NewGuid().ToString("N"),

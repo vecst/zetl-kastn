@@ -272,9 +272,16 @@ human work and needs cheap polling of large projects. Protocol:
       reload correctly; leaving a project and coming back shows changes made
       meanwhile; deleting the open project lands on selection. The feed and
       reducer have their own matrix in `ZetlProjectChangesTests`.
-- [ ] Still uncovered through Kastn: deferred multi-command batches, concurrent
-      same-slip edits, a malformed batch (the one-bootstrap retry in
-      `KastnProjectSync`), and a failed refresh after a confirmed save.
+- [x] Deferred multi-command batches settle through deltas; a confirmed save
+      stays a success when the read after it is lost, and Kastn catches up; a
+      malformed batch gets exactly one fresh bootstrap and a bad bootstrap
+      fails the read (`KastnProjectSyncTests`, via a tamperable sender).
+- [ ] Concurrent same-slip edits through deltas are covered only by the
+      editor's conflict tests, which predate deltas.
+- [ ] Watch `BoardCommandsPreserveDraftsAndStopUnsentEdits(move, during-save)`:
+      failed once under full-suite load on October 10, 2026, then passed six
+      runs alone and the next full runs; it runs through the delta path, so a
+      timing link is not ruled out.
 - [ ] Keep baselines for more than the open project if A-to-B-to-A bootstraps
       show up in practice (a deliberately bounded cache, kept out of the
       publication path).
