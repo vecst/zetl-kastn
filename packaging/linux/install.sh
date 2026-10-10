@@ -98,7 +98,7 @@ if [ "$keyboards_ok" = 1 ] && [ "$uinput_ok" = 1 ]; then
 else
     echo
     echo "Keyboard access is not set up yet, so global shortcuts will be off:"
-    [ "$keyboards_ok" = 1 ] || echo "  - keyboards in /dev/input are not readable and writable (join the 'input' group)"
+    [ "$keyboards_ok" = 1 ] || echo "  - keyboards in /dev/input are not readable and writable (join the 'input' group, then restart)"
     [ "$uinput_ok" = 1 ] || echo "  - /dev/uinput is not writable (install 70-zetl-uinput.rules)"
     echo "The one-time setup is in docs/linux-setup.md."
 fi

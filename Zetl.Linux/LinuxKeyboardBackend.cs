@@ -63,6 +63,8 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
     /// <summary>The kernel name of the virtual keyboard ("input42"), once started.</summary>
     public string? VirtualSysName => outputSysName;
 
+    public string? SetupProblem { get; private set; }
+
     public bool Start(Func<int, bool, bool, bool, bool> handleKeyEvent)
     {
         if (!OperatingSystem.IsLinux() || router is not null) return false;
@@ -74,6 +76,8 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
                 + $"({LinuxPosix.ErrorText(-outputDescriptor)}). Zetl needs write access to "
                 + "/dev/uinput to forward keys; global shortcuts are off.");
             outputDescriptor = -1;
+            SetupProblem = LinuxKeyboardSetup.Explain(uinputDenied: true);
+            log($"Linux keyboard: {SetupProblem}");
             return false;
         }
 
@@ -93,6 +97,8 @@ internal sealed class LinuxKeyboardBackend : IKeyboardBackend
         if (sources.Count == 0 && reportedDenied.Count > 0)
         {
             log("Linux keyboard: no keyboard could be opened; global shortcuts are off.");
+            SetupProblem = LinuxKeyboardSetup.Explain(uinputDenied: false);
+            log($"Linux keyboard: {SetupProblem}");
             ReleaseEverything();
             return false;
         }

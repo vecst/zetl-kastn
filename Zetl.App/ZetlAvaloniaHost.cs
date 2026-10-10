@@ -61,6 +61,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private readonly ZetlThemeManager themeManager;
     private readonly ICaptureOriginProvider captureOriginProvider;
     private readonly Dictionary<bool, BoardWindow> boards = [];
+    // Set when the keyboard couldn't be taken at startup; the tour then skips
+    // hold practice instead of waiting for holds that can't happen.
+    private bool shortcutsOff;
     // The project each lane's Board showed when it last closed, for this session.
     private readonly Dictionary<bool, string?> lastBoardProjects = [];
     private readonly object shortcutTargetsGate = new();
@@ -248,9 +251,15 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
         if (!keyboard.Start(TimedHandleKeyEvent))
         {
-            notifications.Show(OperatingSystem.IsWindows()
-                ? "Failed to install the global keyboard hook."
-                : "Global shortcuts are off: Zetl couldn't take the keyboard. The log names the device and what access is missing.");
+            shortcutsOff = true;
+            var problem = keyboard.SetupProblem ?? (OperatingSystem.IsWindows()
+                ? "Zetl couldn't install its keyboard hook. Restarting Zetl usually fixes this."
+                : "Zetl couldn't take the keyboard. The diagnostics log names the keyboard and what access is missing.");
+            Log($"Shortcuts are off: {problem}");
+            // A dialog, not a toast: without shortcuts Zetl does nothing, and a
+            // toast can vanish behind the first-run tour unread.
+            Dispatcher.UIThread.Post(() => _ = ShowUntilClosedAsync(
+                new ZetlMessageWindow("Zetl's shortcuts are off", problem)));
         }
         else
         {
@@ -730,7 +739,8 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 settingsStore.Settings.TutorialState = ZetlTutorialState.Completed;
                 settingsStore.Save();
             },
-            Log));
+            Log,
+            ShortcutsAvailable: !shortcutsOff));
         tutorial = window;
         try
         {

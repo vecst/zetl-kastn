@@ -25,7 +25,8 @@ internal sealed record ZetlTutorialHost(
     Action<string> ApplyIndicatorStyle,
     Action<IZetlPressMeasurer?> SetMeasurer,
     Action Completed,
-    Action<string> Log);
+    Action<string> Log,
+    bool ShortcutsAvailable = true);
 
 // The guided first run: the user measures their own taps and holds, then feels
 // each core hold for real while this window watches for it to land: a quick
@@ -335,6 +336,13 @@ internal sealed class ZetlTutorialWindow : Window
             nextButton.IsVisible = true;
             nextButton.IsEnabled = true;
             Hint("✓ You've done this one. Try it again if you like, or go on with Next.");
+        }
+        else if (!host.ShortcutsAvailable && step is >= Step.Measure and <= Step.Compile)
+        {
+            // Without the keyboard no hold can land, so the step would wait forever.
+            nextButton.IsEnabled = true;
+            Hint("Zetl's shortcuts are off, so this can't be tried yet. Go on with Next; "
+                + "once keyboard access works, take the tour again from the tray menu.");
         }
     }
 

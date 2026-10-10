@@ -21,6 +21,12 @@ internal interface IKeyboardBackend : IDisposable
     bool Start(Func<int, bool, bool, bool, bool> handleKeyEvent);
 
     /// <summary>
+    /// After <see cref="Start"/> failed: why, and what the user can do about it,
+    /// in plain words for a dialog. Null when there is nothing specific to say.
+    /// </summary>
+    string? SetupProblem => null;
+
+    /// <summary>
     /// Replay a Ctrl[+Shift]+&lt;key&gt; chord into the foreground app -- used to
     /// pass a tapped shortcut through and by Zetl to send paste. The returned
     /// task completes with the actual injection result (true only once the

@@ -29,7 +29,11 @@ sudo udevadm control --reload
 sudo udevadm trigger --name-match=uinput
 ```
 
-Log out and back in so the new group applies. `70-zetl-uinput.rules` is in the
+Restart your computer so the new group applies. Logging out and back in is not
+always enough: on Ubuntu, a per-user session manager kept running (by an SSH
+login, for example) passes the old groups to your next session. If Zetl still
+says shortcuts are off, its dialog says which step is missing.
+`70-zetl-uinput.rules` is in the
 bundle and in `packaging/linux/`.
 
 Know what this grants: any program you run can then read your keyboards, which
@@ -97,4 +101,4 @@ sudo gpasswd -d "$USER" input
 ```
 
 Leave the `input` group only if nothing else you use needs it (some game
-controller and remapping tools do), and log out for it to take effect.
+controller and remapping tools do), and restart for it to take effect.
