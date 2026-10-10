@@ -32,6 +32,13 @@ clipboard between Wayland apps and Xwayland. So the order is:
 3. **GNOME extension:** only if Lite falls short on GNOME (popup focus,
    capture origin).
 
+Findings on Ubuntu 26.04 with GNOME Shell 50.1 (October 10, 2026): GNOME
+offers neither data-control protocol (only `wl_data_device_manager`), and a
+copy from GNOME Text Editor was readable at once with `xclip -selection
+clipboard -o` from a terminal, with no X11 window focused. The bridge works, so
+the Lite tier is viable on GNOME; still to check: `TARGETS`, the reverse
+direction, and change notification (XFixes).
+
 Gate: confirm GNOME bridges a copy from a native Wayland app to Xwayland
 immediately, with no X11 window focused (`xclip -selection clipboard -o` and
 `-t TARGETS -o` after copying in GNOME Text Editor; then the reverse with

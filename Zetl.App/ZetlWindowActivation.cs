@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 
 namespace ZETL;
@@ -75,6 +77,11 @@ internal static class ZetlWindowActivation
             {
                 window.Topmost = false;
                 timer.Stop();
+                if (active)
+                {
+                    EnsureKeyboardFocus(window, log);
+                }
+
                 log?.Invoke($"Activation settled: attempts={attempts}, active={active}.");
                 return;
             }
@@ -83,6 +90,41 @@ internal static class ZetlWindowActivation
         };
         timer.Start();
     }
+
+    // An X11 activation never raises Avalonia's Activated, so nothing restores
+    // or sets keyboard focus inside the window, and Avalonia delivers keys only
+    // to the focused control, which is one control for the whole app. Seen on
+    // GNOME: Esc in the Board did nothing until a click, and with the tour open
+    // the tour's text box kept the Board's keys. Give the window its starting
+    // control unless focus is already inside it.
+    internal static void EnsureKeyboardFocus(Window window, Action<string>? log = null)
+    {
+        var before = window.FocusManager?.GetFocusedElement();
+        if (before is Visual focused && ReferenceEquals(TopLevel.GetTopLevel(focused), window))
+        {
+            return;
+        }
+
+        // A list takes focus through its rows, not itself.
+        var preferred = (window as ZetlPopupWindow)?.InitialFocusElement;
+        IInputElement? row = preferred is ListBox list
+            ? list.ContainerFromIndex(Math.Max(list.SelectedIndex, 0))
+            : null;
+        IInputElement?[] candidates =
+            [row, preferred, KeyboardNavigationHandler.GetNext(window, NavigationDirection.Next)];
+        var target = candidates.FirstOrDefault(candidate => candidate?.Focus() == true);
+        log?.Invoke($"Keyboard focus: {Describe(before)} -> {Describe(target)} in {window.Title}.");
+    }
+
+    private static string Describe(IInputElement? element) => element switch
+    {
+        null => "nothing",
+        Control { Name: { Length: > 0 } name } control => $"{control.GetType().Name} '{name}'"
+            + (TopLevel.GetTopLevel(control) is Window { Title: { } title } ? $" in '{title}'" : ""),
+        Visual visual => visual.GetType().Name
+            + (TopLevel.GetTopLevel(visual) is Window { Title: { } title } ? $" in '{title}'" : ""),
+        _ => element.GetType().Name,
+    };
 
     private static void ActivateWindowsForeground(
         Window window,

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 
 namespace ZETL;
@@ -15,6 +16,12 @@ internal abstract class ZetlPopupWindow : Window, IClickAwayDismissable
         Interval = TimeSpan.FromMilliseconds(300)
     };
     private bool armed;
+
+    /// <summary>
+    /// The control that takes keyboard focus when the popup opens without one
+    /// (null for the first in tab order).
+    /// </summary>
+    internal virtual IInputElement? InitialFocusElement => null;
 
     protected ZetlPopupWindow()
     {

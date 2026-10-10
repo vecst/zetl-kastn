@@ -707,6 +707,10 @@ internal partial class BoardWindow : ZetlPopupWindow
         }
     }
 
+    // Keys need a focused control; the bucket list also lets arrow keys move
+    // between buckets straight away.
+    internal override IInputElement? InitialFocusElement => bucketList;
+
     // childDialogOpen suppresses the click-away while an owned dialog (confirm,
     // bucket settings, project/bucket prompts) holds focus.
     protected override bool IsDismissSuppressed => childDialogOpen;
