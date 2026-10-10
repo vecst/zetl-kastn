@@ -163,6 +163,10 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
 - [ ] Check rich formats (HTML, pictures) through GNOME's Xwayland bridge, and
       that GNOME apps paste what Zetl writes (Compose, Replay).
 - [ ] Verify an X11 session (KDE Plasma X11, Xfce, or similar).
+- [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
+      brings it forward again (checked October 10, 2026 by typing into a slip
+      and saving with Ctrl+S, no click). Zetl's own popups needed a fix
+      (c021d9e); Kastn's main window did not.
 - [ ] Check GNOME, which may not offer `ext-data-control-v1`. Planned route:
       skip Wayland and reach GNOME's own clipboard (Mutter's `Meta.Selection`)
       over D-Bus, most likely through a small GNOME Shell extension that Zetl

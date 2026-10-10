@@ -274,7 +274,8 @@ human work and needs cheap polling of large projects. Protocol:
       claiming memory savings.
 - [ ] Only if profiling shows value: pass changed-entity hints to indexes and
       presenters instead of rediffing full snapshots.
-- [ ] Verify on Linux.
+- [x] Verify on Linux (October 10, 2026, GNOME on Ubuntu 26.04): one bootstrap
+      per Kastn launch, then single-slip deltas for each edit.
 
 ## Priority 2: Finish Existing Workbench Designs
 
