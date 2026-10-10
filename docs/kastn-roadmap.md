@@ -260,11 +260,17 @@ human work and needs cheap polling of large projects. Protocol:
       snapshot it describes; an invalid batch gets one bootstrap retry.
 - [x] Same-Zetl reconnect resumes from the retained cursor; a restarted Zetl
       answers the old cursor with an explicit reset.
-- [ ] Widen the acceptance matrix from the handoff: styles, reorders, nested
-      buckets, metadata/views, restore/purge, events before responses,
-      deferred batches, concurrent same-slip edits, cursor expiry and capacity
-      resets, malformed or gapped responses, failed refresh after a confirmed
-      save, rapid A-to-B-to-A navigation, and project deletion.
+- [x] Acceptance matrix through Kastn (October 10, 2026, `KastnLifecycleTests`):
+      after each of styles, moves, adds, slip and bucket reorders, headings,
+      soft delete, restore, purge, nested buckets, bucket and project renames,
+      views, and bucket deletion, Kastn's snapshot equals a direct full read
+      with no forced reloads; capacity resets and a Zetl restart (stale epoch)
+      reload correctly; leaving a project and coming back shows changes made
+      meanwhile; deleting the open project lands on selection. The feed and
+      reducer have their own matrix in `ZetlProjectChangesTests`.
+- [ ] Still uncovered through Kastn: deferred multi-command batches, concurrent
+      same-slip edits, a malformed batch (the one-bootstrap retry in
+      `KastnProjectSync`), and a failed refresh after a confirmed save.
 - [ ] Keep baselines for more than the open project if A-to-B-to-A bootstraps
       show up in practice (a deliberately bounded cache, kept out of the
       publication path).

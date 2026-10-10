@@ -511,6 +511,150 @@ public class KastnLifecycleTests
 
     private static string NewId() => Guid.NewGuid().ToString("N");
 
+    // Kastn's view after each kind of change must equal a direct full read, and
+    // every read after the first must stay a delta (no forced reloads).
+    [Fact] public void ControllerFollowsEveryKindOfChangeThroughDeltas()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new LifecycleFixture();
+            var store = fixture.Store;
+            var project = fixture.Project;
+            var inbox = fixture.Bucket;
+            var one = store.AddSlip(inbox, "one", "fixture");
+            var two = store.AddSlip(inbox, "two", "fixture");
+            await using var controller = CreateConnectedController(fixture);
+            await ConvergesAsync(controller, fixture, "the first load");
+
+            async Task Step(string what, Action change)
+            {
+                change();
+                await ConvergesAsync(controller, fixture, what);
+            }
+
+            var later = store.AddBucket(project, "Later");
+            await Step("a new bucket", () => { });
+            await Step("styles", () => store.UpdateSlip(one, "one edited", bold: true, fontSize: 21,
+                inlineStyles: [new() { Start = 0, Length = 3, Kind = ZetlInlineStyleKinds.Italic }]));
+            await Step("a move between buckets", () => store.MoveSlip(project, one, later));
+            await Step("an added slip", () => store.AddSlip(later, "three", "fixture"));
+            await Step("a slip reorder", () => store.ReorderSlip(project, one, null));
+            await Step("a bucket reorder", () => store.ReorderBucket(project, later, inbox.Id));
+            await Step("a bucket heading", () => store.SetBucketHeading(inbox, "center", true, 2));
+            await Step("a soft delete", () => AssertEqual(ZetlResponseStatus.Success, fixture.Run(ZetlCommandEnvelope.Create(
+                NewId(), ZetlCommandKind.DeleteSlip, new DeleteSlipCommand(), project.Id, two.Id, two.Revision)).Status,
+                "The soft delete should succeed."));
+            await Step("a restore", () => store.MoveSlip(project, two, inbox));
+            await Step("a purge", () => store.DeleteSlip(inbox, two.Id));
+            await Step("a nested bucket with a slip", () =>
+            {
+                var child = store.AddBucket(project, "Child", later.Id);
+                store.AddSlip(child, "child note", "fixture");
+            });
+            await Step("a renamed bucket", () => store.UpdateBucketName(later, "Renamed later"));
+            await Step("a renamed project", () => store.UpdateProjectName(project, "Renamed project"));
+            await Step("a saved view", () => store.SaveProjectView(project, new ZetlViewDocument { Id = "matrix-view", Name = "Matrix" }));
+            await Step("a default view", () => store.SetProjectDefaultView(project, "matrix-view"));
+            await Step("a deleted bucket", () => store.DeleteBucket(project, inbox.Id));
+
+            var reads = fixture.ServiceLog.Where(line => line.StartsWith("Project changes read", StringComparison.Ordinal)).ToList();
+            Assert.Single(reads, line => line.Contains("reset=", StringComparison.Ordinal));
+            Assert.Contains(reads, line => line.Contains("from=", StringComparison.Ordinal));
+        });
+    }
+
+    // A change feed too small to keep Kastn's cursor forces explicit resets;
+    // Kastn must still end up exactly in step.
+    [Fact] public void ControllerRecoversFromCapacityResets()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new LifecycleFixture(changesFeed: new ZetlProjectChangesFeed(versionCapacity: 1, perProjectCapacity: 1, indexUnitCapacity: 4));
+            for (var i = 0; i < 6; i++) fixture.Store.AddSlip(fixture.Bucket, $"seed {i}", "fixture");
+            await using var controller = CreateConnectedController(fixture);
+            await ConvergesAsync(controller, fixture, "the first load");
+
+            fixture.Store.AddSlip(fixture.Bucket, "past capacity", "fixture");
+            await ConvergesAsync(controller, fixture, "a change past the feed's capacity");
+            Assert.Contains(fixture.ServiceLog, line => line.Contains("reset=capacity_limit", StringComparison.Ordinal));
+        });
+    }
+
+    // A restarted Zetl has a new change feed: the old cursor's epoch is stale,
+    // Zetl answers with an explicit reset, and Kastn reloads.
+    [Fact] public void ControllerReloadsAfterZetlRestarts()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new LifecycleFixture();
+            fixture.Store.AddSlip(fixture.Bucket, "before the restart", "fixture");
+            await using var controller = CreateConnectedController(fixture);
+            await ConvergesAsync(controller, fixture, "the first load");
+
+            fixture.RestartZetl();
+            fixture.Store.AddSlip(fixture.Bucket, "after the restart", "fixture");
+            await ConvergesAsync(controller, fixture, "the reload after a restart");
+            Assert.Contains(fixture.ServiceLog, line => line.Contains("reset=epoch_changed", StringComparison.Ordinal));
+        });
+    }
+
+    // Leaving a project and coming back must show what changed while away.
+    [Fact] public void ControllerShowsChangesMadeWhileAwayFromAProject()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new LifecycleFixture();
+            var other = fixture.Store.CreateProject("Other", ["Inbox"], "Inbox");
+            await using var controller = CreateConnectedController(fixture);
+            await ConvergesAsync(controller, fixture, "the first project");
+
+            await controller.NavigateToProjectAsync(other.Id);
+            await WaitForSnapshotAsync(controller, snapshot => snapshot.Project?.Id == other.Id);
+            fixture.Store.AddSlip(fixture.Bucket, "added while away", "fixture");
+            await controller.NavigateToProjectAsync(fixture.Project.Id);
+            await ConvergesAsync(controller, fixture, "the first project again");
+            Assert.Contains(controller.Current.Project!.Slips, slip => slip.Text == "added while away");
+        });
+    }
+
+    // Deleting the open project lands Kastn on project selection without error.
+    [Fact] public void ControllerLetsGoOfADeletedProject()
+    {
+        RunAsync(async () =>
+        {
+            using var fixture = new LifecycleFixture();
+            var other = fixture.Store.CreateProject("Other", ["Inbox"], "Inbox");
+            await using var controller = CreateConnectedController(fixture);
+            await ConvergesAsync(controller, fixture, "the first load");
+
+            AssertEqual(ZetlResponseStatus.Success, fixture.Run(ZetlCommandEnvelope.Create(
+                NewId(), ZetlCommandKind.DeleteProject, new DeleteProjectCommand(), fixture.Project.Id,
+                fixture.Project.Id, fixture.Project.MetadataRevision)).Status,
+                "Deleting the project should succeed.");
+            var landed = await WaitForSnapshotAsync(controller, snapshot =>
+                snapshot.ConnectionState == KastnConnectionState.Online
+                && snapshot.Project is null
+                && snapshot.Projects.All(project => project.Id != fixture.Project.Id));
+            Assert.Contains(landed.Projects, project => project.Id == other.Id);
+        });
+    }
+
+    private static async Task ConvergesAsync(KastnConnectionController controller, LifecycleFixture fixture, string what)
+    {
+        var full = fixture.ReadFullProjectJson();
+        try
+        {
+            await WaitForSnapshotAsync(controller, snapshot =>
+                snapshot.Project is { } project && JsonSerializer.Serialize(project, ZetlProtocolJson.Options) == full);
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail($"Kastn didn't match a full read after {what}.\nKastn: "
+                + JsonSerializer.Serialize(controller.Current.Project, ZetlProtocolJson.Options)
+                + $"\nZetl:  {full}");
+        }
+    }
+
     [Fact] public void ControllerConvergesAfterChangeBurstWithBoundedRefreshes()
     {
         RunAsync(async () =>
@@ -824,7 +968,7 @@ public class KastnLifecycleTests
             Path.GetTempPath(),
             "KastnLifecycleTests",
             Guid.NewGuid().ToString("N"));
-        private readonly ZetlProjectService service;
+        private ZetlProjectService service;
         private ZetlIpcServer? server;
 
         private readonly Func<ZetlCommandEnvelope, bool>? dropResponseForTesting;
@@ -833,7 +977,8 @@ public class KastnLifecycleTests
         public LifecycleFixture(
             bool startServer = true,
             Func<ZetlCommandEnvelope, bool>? dropResponseForTesting = null,
-            ZetlIpcServerOptions? serverOptions = null)
+            ZetlIpcServerOptions? serverOptions = null,
+            ZetlProjectChangesFeed? changesFeed = null)
         {
             this.dropResponseForTesting = dropResponseForTesting;
             this.serverOptions = serverOptions;
@@ -844,7 +989,7 @@ public class KastnLifecycleTests
                 "kastn-lifecycle");
             Project = Store.CreateProject("Lifecycle Project", ["Inbox"], "Inbox");
             Bucket = Project.Buckets.Single(bucket => bucket.Name == "Inbox");
-            service = new ZetlProjectService(Store);
+            service = new ZetlProjectService(Store, log: ServiceLog.Enqueue, changesFeed: changesFeed);
             if (startServer)
             {
                 StartServer();
@@ -853,6 +998,20 @@ public class KastnLifecycleTests
 
         public string PipeName { get; }
         public ZetlStateStore Store { get; }
+
+        // Zetl's diagnostics lines, including each delta read's reset reason.
+        public ConcurrentQueue<string> ServiceLog { get; } = new();
+
+        // Zetl quits and starts again on the same data: a new server and a new
+        // change feed, so cursors from before carry a stale epoch.
+        public void RestartZetl()
+        {
+            StopServer();
+            service = new ZetlProjectService(Store, log: ServiceLog.Enqueue);
+            StartServer();
+        }
+
+        public ZetlResponseEnvelope Run(ZetlCommandEnvelope command) => service.Execute(command);
         public ZetlProject Project { get; }
         public ZetlBucket Bucket { get; }
 
@@ -906,13 +1065,13 @@ public class KastnLifecycleTests
 
         // What a full GetProject returns now, to compare against Kastn's rebuilt
         // snapshot. Serialized so record collections compare by content.
-        public string ReadFullProjectJson()
+        public string ReadFullProjectJson(string? projectId = null)
         {
             var response = service.Execute(new ZetlCommandEnvelope
             {
                 CommandId = Guid.NewGuid().ToString("N"),
                 Kind = ZetlCommandKind.GetProject,
-                ProjectId = Project.Id
+                ProjectId = projectId ?? Project.Id
             });
             AssertEqual(ZetlResponseStatus.Success, response.Status, "A full project read should succeed.");
             return response.Payload!.Value.GetRawText();
