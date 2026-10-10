@@ -15,8 +15,14 @@ here wait in [`ideas.md`](ideas.md#deferred).
 1. **Quick wins (done).** Start at login from Settings (Windows and Linux),
    remembering each lane's last Board project, `data:image` clipboard
    payloads, the recovered-draft layout, and Kastn's idle render loop.
-2. **RC 3.1.** Finish RC 3 testing and ship the post-RC 3 branch with the quick
-   wins: transparency and Compose wording, delta reads, the Board overwrite
+2. **RC 3.1.** First, the fresh-Ubuntu findings (October 10, 2026): when
+   keyboard access is missing, say so in a dialog with an OK button (not a
+   toast the tour covers), name the fix ("restart to finish keyboard setup"
+   when the user is in the `input` group on disk but Zetl isn't running with
+   it, because a surviving per-user systemd manager keeps the old groups across
+   log out), have the tour skip hold practice while shortcuts are off, and tell
+   people to restart, not log out, in the setup guide. Then ship the
+   post-RC 3 branch with the quick wins: transparency and Compose wording, delta reads, the Board overwrite
    fix, the Linux keyboard and single-instance fixes, the log settings fix.
    Publish Windows and Linux builds.
 3. **Release gate.** The testing half of Priority 1, the delta IPC acceptance
