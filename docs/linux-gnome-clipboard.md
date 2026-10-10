@@ -45,6 +45,16 @@ immediately, with no X11 window focused (`xclip -selection clipboard -o` and
 `echo hello | xclip -selection clipboard`). KWin once synced only when an X11
 window gained focus.
 
+## Status (October 10, 2026): the X11 tier is built
+
+`X11Selection` implements `ILinuxSelection` over X11's CLIPBOARD selection
+(XFixes for changes, conversions with INCR for large transfers, answering
+SelectionRequests to own it) and is the fallback after the Wayland protocols.
+On GNOME 50 every probe check passed, and a held Ctrl+C capture worked in the
+real app. The GNOME Shell extension is not needed for the core interaction.
+Still open: rich formats through the bridge, and GNOME apps pasting what Zetl
+writes (Compose and Replay), which needs a hands-on check.
+
 ## First tier: the interaction works
 
 Lukas's call (October 8, 2026): on GNOME the core interaction must work even

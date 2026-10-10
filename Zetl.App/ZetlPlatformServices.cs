@@ -33,11 +33,27 @@ internal static class ZetlPlatformServices
             return new AvaloniaWindowsClipboard(log);
         }
 
-        // Wayland's clipboard-manager protocol; without it (X11, or a
-        // compositor lacking ext-data-control) capture stays off.
-        return OperatingSystem.IsLinux() && WaylandDataControl.TryConnect(log) is { } selection
+        return OperatingSystem.IsLinux() && ConnectLinuxSelection(log) is { } selection
             ? new LinuxClipboard(selection, ZetlClipboardImages.Normalize, log)
             : new UnsupportedClipboard(log);
+    }
+
+    // Wayland's clipboard-manager protocol where the compositor has one (KDE,
+    // wlroots); otherwise X11's CLIPBOARD selection, which covers X11 sessions and
+    // GNOME (Mutter mirrors every copy into Xwayland). ZETL_LINUX_CLIPBOARD=x11
+    // skips Wayland, to test the X11 path on a desktop that has both.
+    internal static ILinuxSelection? ConnectLinuxSelection(Action<string> log)
+    {
+        var forceX11 = string.Equals(
+            Environment.GetEnvironmentVariable("ZETL_LINUX_CLIPBOARD"), "x11", StringComparison.OrdinalIgnoreCase);
+        ILinuxSelection? selection = forceX11 ? null : WaylandDataControl.TryConnect(log);
+        selection ??= X11Selection.TryConnect(log);
+        if (selection is null)
+        {
+            log("Linux clipboard: no clipboard Zetl can watch; clipboard capture is off.");
+        }
+
+        return selection;
     }
 }
 

@@ -112,13 +112,13 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
         if (!OperatingSystem.IsLinux()) return null;
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
         {
-            log("Linux clipboard: not a Wayland session; clipboard capture is off.");
+            log("Linux clipboard: not a Wayland session.");
             return null;
         }
 
         if (!WaylandClient.Available)
         {
-            log("Linux clipboard: libwayland-client is not available; clipboard capture is off.");
+            log("Linux clipboard: libwayland-client is not available.");
             return null;
         }
 
@@ -148,7 +148,7 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
         display = WaylandClient.wl_display_connect(IntPtr.Zero);
         if (display == IntPtr.Zero)
         {
-            log("Linux clipboard: can't connect to the Wayland compositor; clipboard capture is off.");
+            log("Linux clipboard: can't connect to the Wayland compositor.");
             return false;
         }
 
@@ -171,7 +171,7 @@ internal sealed unsafe class WaylandDataControl : ILinuxSelection, IDisposable
         {
             log("Linux clipboard: the compositor offers no clipboard-manager protocol "
                 + $"({string.Join(" or ", candidates.Select(candidate => candidate.Name))}; "
-                + "KDE Plasma 6 and wlroots compositors have one); clipboard capture is off.");
+                + "KDE Plasma 6 and wlroots compositors have one).");
             return false;
         }
 

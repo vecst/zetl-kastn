@@ -41,6 +41,11 @@ internal static class Program
             return 0;
         }
 
+        if (args.Any(arg => arg.Equals("--linux-clipboard-probe", StringComparison.OrdinalIgnoreCase)))
+        {
+            return ZetlLinuxClipboardProbe.Run();
+        }
+
         if (args.Any(arg => arg.Equals("--self-test", StringComparison.OrdinalIgnoreCase)))
         {
             return ZetlWindowsSelfTests.Run();

@@ -154,9 +154,15 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       each read confirmed and archived, and the user's clipboard restored when
       the queue ran out (October 7, 2026).
 - [ ] Verify slip editing and Compose copy/paste end to end.
-- [ ] An X11 selection clipboard backend: the X11-session clipboard and the
-      planned "lite" path for GNOME and other desktops through Xwayland's
-      clipboard bridge (see [`linux-gnome-clipboard.md`](linux-gnome-clipboard.md)).
+- [x] An X11 selection clipboard backend (`X11Selection`, October 10, 2026):
+      the fallback when the compositor has no clipboard-manager protocol. On
+      GNOME 50 (Ubuntu 26.04) the `--linux-clipboard-probe` checks all pass
+      (reads, writes with HTML, 1 MB both ways via INCR, staged-paste reads,
+      backup and restore), and a held Ctrl+C capture worked in the real app.
+      `LinuxX11ClipboardTests` need a Linux run with `xclip`.
+- [ ] Check rich formats (HTML, pictures) through GNOME's Xwayland bridge, and
+      that GNOME apps paste what Zetl writes (Compose, Replay).
+- [ ] Verify an X11 session (KDE Plasma X11, Xfce, or similar).
 - [ ] Check GNOME, which may not offer `ext-data-control-v1`. Planned route:
       skip Wayland and reach GNOME's own clipboard (Mutter's `Meta.Selection`)
       over D-Bus, most likely through a small GNOME Shell extension that Zetl

@@ -1,0 +1,167 @@
+using System.Diagnostics;
+using System.Text;
+
+namespace ZETL;
+
+/// <summary>
+/// `Zetl --linux-clipboard-probe`: exercises Zetl's Linux clipboard against the
+/// live desktop with no window, using xclip as the other X11 app and wl-copy /
+/// wl-paste as a Wayland one. For checking a desktop (GNOME, an X11 session)
+/// where the .NET test suite can't run. Set ZETL_LINUX_CLIPBOARD=x11 to force
+/// the X11 path. It replaces the clipboard and puts its text back at the end.
+/// </summary>
+internal static class ZetlLinuxClipboardProbe
+{
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(3);
+
+    public static int Run()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Console.Error.WriteLine("The Linux clipboard probe runs on Linux.");
+            return 2;
+        }
+
+        void Log(string message) => Console.WriteLine($"  log: {message}");
+        if (ZetlPlatformServices.ConnectLinuxSelection(Log) is not { } selection)
+        {
+            Console.WriteLine("FAIL no clipboard to probe");
+            return 1;
+        }
+
+        using var clipboard = new LinuxClipboard(selection, ZetlClipboardImages.Normalize, Log);
+        var failures = 0;
+        void Check(string what, bool passed)
+        {
+            Console.WriteLine($"{(passed ? "PASS" : "FAIL")} {what}");
+            if (!passed) failures++;
+        }
+
+        bool WaitForChange(uint before)
+        {
+            var deadline = DateTime.UtcNow + Timeout;
+            while (clipboard.GetChangeToken() == before)
+            {
+                if (DateTime.UtcNow > deadline) return false;
+                Thread.Sleep(20);
+            }
+
+            return true;
+        }
+
+        var original = clipboard.TryGetText();
+        Console.WriteLine($"Clipboard now: {Snip(original)} [{string.Join(", ", selection.GetMimeTypes(out _) ?? [])}]");
+        if (Environment.GetEnvironmentVariable("ZETL_PROBE_RAW") == "1")
+        {
+            var raw = selection.Read(["UTF8_STRING", "text/plain;charset=utf-8", "STRING"], out var rawGeneration);
+            Console.WriteLine($"Raw read (generation {rawGeneration}): "
+                + string.Join("; ", raw?.Select(pair => $"{pair.Key}={pair.Value.Length} bytes '{Snip(Encoding.UTF8.GetString(pair.Value))}'") ?? ["null"]));
+            return 0;
+        }
+
+        Check("Zetl's write is read by an X11 app",
+            clipboard.ReplaceRichText("zetl probe ü ✓", "<b>zetl probe</b>").Succeeded
+            && Xclip("-o") == "zetl probe ü ✓");
+        Check("  it offers HTML too", Xclip("-t", "TARGETS", "-o").Contains("text/html"));
+        Check("  and the HTML arrives", Xclip("-t", "text/html", "-o").Contains("<b>zetl probe</b>"));
+
+        var before = clipboard.GetChangeToken();
+        XclipCopy("from xclip ü");
+        var changed = WaitForChange(before);
+        var seen = clipboard.TryCaptureContent()?.Text;
+        Check($"Zetl sees another X11 app's copy (changed={changed}, got {Snip(seen)})",
+            changed && seen == "from xclip ü");
+
+        var outgoing = new string('z', 1_000_000) + "|end";
+        Check("Zetl sends 1 MB (incremental transfer)",
+            clipboard.ReplaceText(outgoing).Succeeded && Xclip("-o") == outgoing);
+
+        var incoming = new string('y', 1_000_000) + "|end";
+        before = clipboard.GetChangeToken();
+        XclipCopy(incoming);
+        changed = WaitForChange(before);
+        seen = clipboard.TryCaptureContent()?.Text;
+        Check($"Zetl receives 1 MB (incremental transfer) (changed={changed}, got {Snip(seen)})",
+            changed && seen == incoming);
+
+        var staged = clipboard.StagePaste("staged probe", null, null, null);
+        var stagedReadEarly = staged is not null && staged.Read.Wait(300) && staged.Read.Result;
+        var pasted = Xclip("-o");
+        Check("A staged paste reports the read that pasted",
+            staged is not null && !stagedReadEarly && pasted == "staged probe"
+            && staged.Read.Wait(Timeout) && staged.Read.Result);
+
+        before = clipboard.GetChangeToken();
+        XclipCopy("back me up");
+        changed = WaitForChange(before);
+        var backup = clipboard.CaptureBackup();
+        var replaced = clipboard.ReplaceText("temporary").Succeeded;
+        var restored = clipboard.RestoreBackup(backup);
+        var after = Xclip("-o");
+        Check($"A backup restores another app's clipboard (changed={changed}, complete={backup.IsComplete} "
+            + $"{backup.FailureReason}, replaced={replaced}, restored={restored}, then {Snip(after)})",
+            backup.IsComplete && replaced && restored && after == "back me up");
+
+        // The Wayland side: whether the desktop mirrors X11 and Wayland copies.
+        Console.WriteLine($"Wayland app (wl-paste) sees: {Snip(Run("wl-paste", ["--no-newline"], null))}");
+        before = clipboard.GetChangeToken();
+        Run("wl-copy", ["from wl-copy"], null, wait: false);
+        var waylandSeen = WaitForChange(before) ? clipboard.TryCaptureContent()?.Text : null;
+        Console.WriteLine($"Zetl sees a Wayland app's copy (wl-copy): {Snip(waylandSeen)}");
+
+        // Zetl's ownership ends with this process; xclip keeps the text alive.
+        if (original is not null) XclipCopy(original);
+        Console.WriteLine(failures == 0 ? "All clipboard checks passed." : $"{failures} clipboard check(s) failed.");
+        return failures == 0 ? 0 : 1;
+    }
+
+    private static string Xclip(params string[] args) =>
+        Run("xclip", ["-selection", "clipboard", .. args], null) ?? "";
+
+    private static void XclipCopy(string text) =>
+        Run("xclip", ["-selection", "clipboard", "-i"], text);
+
+    private static string? Run(string tool, string[] args, string? input, bool wait = true)
+    {
+        try
+        {
+            var start = new ProcessStartInfo(tool)
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = input is not null,
+                // Every stream is redirected: a tool that stays behind to serve
+                // the selection (xclip -i, wl-copy) must not hold the probe's own
+                // output (an SSH session, say) open after the probe exits.
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8
+            };
+            foreach (var arg in args) start.ArgumentList.Add(arg);
+            using var process = Process.Start(start)!;
+            if (input is not null)
+            {
+                process.StandardInput.Write(input);
+                process.StandardInput.Close();
+            }
+
+            if (!wait || input is not null)
+            {
+                // The serving child keeps the pipes; only the launcher exits.
+                process.WaitForExit(5000);
+                return null;
+            }
+
+            var output = process.StandardOutput.ReadToEndAsync();
+            process.WaitForExit(5000);
+            return output.Wait(1000) ? output.Result : null;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return $"({tool} unavailable: {ex.Message})";
+        }
+    }
+
+    private static string Snip(string? text) => text is null
+        ? "(nothing)"
+        : text.Length > 40 ? $"\"{text[..40]}…\" ({text.Length} chars)" : $"\"{text}\"";
+}

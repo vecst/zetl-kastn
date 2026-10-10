@@ -10,12 +10,12 @@ with a USB keyboard; other desktops may work but have not been checked.
   keyboard on Windows: it takes each keyboard (`/dev/input/event*`), passes
   every key on through a virtual keyboard it creates (`/dev/uinput`), and keeps
   back only the shortcuts you hold. Your user needs read/write access to both.
-- **A clipboard Zetl can watch.** Capture uses the Wayland protocol clipboard
-  managers use: `ext-data-control-v1`, or wlroots' older `zwlr-data-control`.
-  KDE Plasma 6 and wlroots compositors (Sway, labwc, Wayfire, and desktops built
-  on them) offer one. Without either (an X11 session, GNOME, or another desktop
-  that lacks both), shortcuts still work but captures find nothing. To see what
-  your desktop offers, run `wayland-info | grep data_control`.
+- **A clipboard Zetl can watch.** On KDE Plasma 6 and wlroots compositors
+  (Sway, labwc, Wayfire, and desktops built on them) Zetl uses the Wayland
+  protocol clipboard managers use: `ext-data-control-v1`, or wlroots' older
+  `zwlr-data-control`. Elsewhere it uses X11's clipboard: in an X11 session, and
+  on GNOME through Xwayland, which GNOME keeps in step with its own clipboard.
+  Zetl's diagnostics log says which one it connected through.
 
 ## One-time keyboard setup
 
