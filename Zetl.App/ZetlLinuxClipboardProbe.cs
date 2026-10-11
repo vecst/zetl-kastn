@@ -51,11 +51,60 @@ internal static class ZetlLinuxClipboardProbe
 
         var original = clipboard.TryGetText();
         Console.WriteLine($"Clipboard now: {Snip(original)} [{string.Join(", ", selection.GetMimeTypes(out _) ?? [])}]");
+        if (Environment.GetEnvironmentVariable("ZETL_PROBE_WAIT") == "1")
+        {
+            // Read-only: waits for the next copy and captures it the moment it
+            // lands, as a held copy does, timing each try.
+            var waitFrom = clipboard.GetChangeToken();
+            Console.WriteLine("Waiting up to 30 s for a copy...");
+            var waitUntil = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+            while (clipboard.GetChangeToken() == waitFrom && DateTime.UtcNow < waitUntil) Thread.Sleep(5);
+            var sinceChange = Stopwatch.StartNew();
+            if (Environment.GetEnvironmentVariable("ZETL_PROBE_PAIR") == "1")
+            {
+                // Two captures at once, as Zetl's change observer and its
+                // automatic capture both read on a copy.
+                var pair = Enumerable.Range(1, 2).Select(index => Task.Run(() =>
+                {
+                    var timer = Stopwatch.StartNew();
+                    var capture = clipboard.TryCaptureContent();
+                    return $"pair {index}: capture in {timer.ElapsedMilliseconds} ms: "
+                        + (capture is null ? "null" : $"text={capture.Text?.Length}, image={capture.Image?.PngBytes.Length}");
+                })).ToArray();
+                Task.WaitAll(pair);
+                foreach (var line in pair) Console.WriteLine(line.Result);
+                return 0;
+            }
+
+            for (var attempt = 1; attempt <= 4; attempt++)
+            {
+                var timer = Stopwatch.StartNew();
+                var types = selection.GetMimeTypes(out _);
+                var listed = timer.ElapsedMilliseconds;
+                var capture = clipboard.TryCaptureContent();
+                Console.WriteLine($"try {attempt} at +{sinceChange.ElapsedMilliseconds - timer.ElapsedMilliseconds} ms: types={types?.Count} in {listed} ms, capture in {timer.ElapsedMilliseconds} ms: "
+                    + (capture is null ? "null" : $"text={capture.Text?.Length}, image={capture.Image?.PngBytes.Length}"));
+                Thread.Sleep(500);
+            }
+
+            return 0;
+        }
+
         if (Environment.GetEnvironmentVariable("ZETL_PROBE_RAW") == "1")
         {
-            var raw = selection.Read(["UTF8_STRING", "text/plain;charset=utf-8", "STRING"], out var rawGeneration);
-            Console.WriteLine($"Raw read (generation {rawGeneration}): "
-                + string.Join("; ", raw?.Select(pair => $"{pair.Key}={pair.Value.Length} bytes '{Snip(Encoding.UTF8.GetString(pair.Value))}'") ?? ["null"]));
+            // Read-only: each offered type alone, timed, then the capture Zetl
+            // makes on a held copy. Sizes only; content is never printed.
+            foreach (var type in selection.GetMimeTypes(out _) ?? [])
+            {
+                var timer = Stopwatch.StartNew();
+                var data = selection.Read([type], out _);
+                Console.WriteLine($"{type}: {(data?.TryGetValue(type, out var bytes) == true ? $"{bytes.Length} bytes" : "nothing")} in {timer.ElapsedMilliseconds} ms");
+            }
+
+            var captureTimer = Stopwatch.StartNew();
+            var capture = clipboard.TryCaptureContent();
+            Console.WriteLine($"Capture in {captureTimer.ElapsedMilliseconds} ms: "
+                + (capture is null ? "null" : $"text={capture.Text?.Length}, html={capture.Html?.Length}, image={capture.Image?.PngBytes.Length}, replay={capture.ReplayFormats?.Count}, files={capture.Files}"));
             return 0;
         }
 
