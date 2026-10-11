@@ -165,7 +165,8 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
 - [x] Compose and Replay paste into native GNOME apps (GNOME Text Editor,
       October 10, 2026).
 - [x] Image links and base64 `data:` images capture as pictures on GNOME.
-- [ ] A copied picture itself (Firefox's Copy Image) through GNOME's bridge.
+- [x] A copied picture through GNOME's bridge (a held Ctrl+C on a picture in
+      LibreOffice Writer). GNOME's Image Viewer copies the file, so its path.
 - [ ] Verify an X11 session (KDE Plasma X11, Xfce, or similar).
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
