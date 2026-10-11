@@ -173,7 +173,11 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       showed, and after setup the whole tour (holds, popups, Compose paste)
       passed. The open-source `nouveau` driver on an RTX 4070 Ti killed
       Cinnamon's GPU channel as a popup opened (a driver fault, frozen screen);
-      NVIDIA's driver fixed it.
+      NVIDIA's driver fixed it. Fixed on the way: the toast and hold indicator
+      fell behind the app after their first show (the window manager drops
+      "keep above" on hide; 3fa8b32), and a held copy of a LibreOffice picture
+      timed out because two reads asked LibreOffice at once (2eb6b5f). Mint's
+      image viewer hands over a picture and its file path together.
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
       and saving with Ctrl+S, no click). Zetl's own popups needed a fix
