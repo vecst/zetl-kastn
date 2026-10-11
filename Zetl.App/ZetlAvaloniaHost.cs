@@ -19,6 +19,9 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     private const double SlowKeyEventMs = 2;
     private static readonly TimeSpan LatencySummaryInterval = TimeSpan.FromMinutes(10);
 
+    // The released guide, so it matches what people installed.
+    private static readonly Uri LinuxSetupGuide = new("https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/linux-setup.md");
+
     private readonly IClassicDesktopStyleApplicationLifetime desktop;
     private readonly ZetlStateStore store;
     private readonly ZetlProjectService projectService;
@@ -262,8 +265,10 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             Log($"Shortcuts are off: {problem}");
             // A dialog, not a toast: without shortcuts Zetl does nothing, and a
             // toast can vanish behind the first-run tour unread.
-            Dispatcher.UIThread.Post(() => _ = ShowUntilClosedAsync(
-                new ZetlMessageWindow("Zetl's shortcuts are off", problem)));
+            Dispatcher.UIThread.Post(() => _ = ShowUntilClosedAsync(new ZetlMessageWindow(
+                "Zetl's shortcuts are off",
+                problem,
+                OperatingSystem.IsLinux() ? ("Open setup guide", LinuxSetupGuide) : null)));
         }
         else
         {
