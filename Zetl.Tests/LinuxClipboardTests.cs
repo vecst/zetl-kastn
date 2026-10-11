@@ -58,6 +58,26 @@ public sealed class LinuxClipboardTests
         Assert.Equal("/home/lukas/notes.txt", snapshot.Text);
     }
 
+    // Zetl's change observer and its automatic capture both read a copy; the
+    // second waits for the first instead of asking the app again.
+    [Fact]
+    public void CapturesOfOneCopyShareOneRead()
+    {
+        selection.Set(new() { ["image/png"] = [9], ["text/plain;charset=utf-8"] = Utf8("caption") });
+        var clipboard = CreateClipboard();
+        Task<ZetlClipboardCaptureSnapshot?>? second = null;
+        selection.BeforeNextRead = () =>
+        {
+            second = Task.Run(clipboard.TryCaptureContent);
+            Thread.Sleep(200);
+        };
+
+        var first = clipboard.TryCaptureContent();
+
+        Assert.Same(first, second!.GetAwaiter().GetResult());
+        Assert.Single(selection.Reads);
+    }
+
     [Fact]
     public void CopiedTextIsNotFiles()
     {

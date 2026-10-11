@@ -46,6 +46,8 @@ internal sealed class LinuxClipboard(
     };
 
     private volatile ZetlClipboardCaptureSnapshot? lastCapture;
+    private readonly object captureGate = new();
+    private (uint Generation, Task<ZetlClipboardCaptureSnapshot?> Capture)? captureInFlight;
 
     public uint GetChangeToken() => selection.Generation;
 
@@ -63,12 +65,48 @@ internal sealed class LinuxClipboard(
 
     public ZetlClipboardCaptureSnapshot? TryCaptureContent()
     {
-        // A burst of copies starts several observers that all want the same
-        // generation; snapshots are immutable, so they share one.
-        if (lastCapture is { } last && last.ChangeToken == selection.Generation) return last;
-        var snapshot = Read(honorPrivate: true);
-        if (snapshot is not null) lastCapture = snapshot;
-        return snapshot;
+        // A copy starts several observers that all want the same generation;
+        // snapshots are immutable, so they share one, and share the read while
+        // it runs too. Two reads at once made LibreOffice render a picture
+        // twice, and one of them came back empty after the full timeout.
+        var generation = selection.Generation;
+        if (lastCapture is { } last && last.ChangeToken == generation) return last;
+        TaskCompletionSource<ZetlClipboardCaptureSnapshot?>? mine = null;
+        Task<ZetlClipboardCaptureSnapshot?> shared;
+        lock (captureGate)
+        {
+            if (captureInFlight is { } running && running.Generation == generation)
+            {
+                shared = running.Capture;
+            }
+            else
+            {
+                mine = new TaskCompletionSource<ZetlClipboardCaptureSnapshot?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                captureInFlight = (generation, mine.Task);
+                shared = mine.Task;
+            }
+        }
+
+        if (mine is null) return shared.GetAwaiter().GetResult();
+        try
+        {
+            var snapshot = Read(honorPrivate: true);
+            if (snapshot is not null) lastCapture = snapshot;
+            mine.SetResult(snapshot);
+            return snapshot;
+        }
+        catch (Exception ex)
+        {
+            mine.SetException(ex);
+            throw;
+        }
+        finally
+        {
+            lock (captureGate)
+            {
+                if (captureInFlight?.Capture == mine.Task) captureInFlight = null;
+            }
+        }
     }
 
     public bool SetText(string text) => ReplaceText(text).Succeeded;
