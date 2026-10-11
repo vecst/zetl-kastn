@@ -1,7 +1,9 @@
 # Zetl on Linux
 
-Zetl's Linux port is in testing. It has been used on KDE Plasma 6 (Wayland)
-with a USB keyboard; other desktops may work but have not been checked.
+Zetl's Linux port is in testing. It has been used on KDE Plasma 6 (Wayland),
+GNOME 50 (Ubuntu 26.04), and Cinnamon on X11 (Linux Mint 22.3) with a USB
+keyboard; other desktops may work but have not been checked. With an NVIDIA
+card, use NVIDIA's driver: the open-source `nouveau` driver froze Cinnamon.
 
 ## What it needs
 

@@ -167,7 +167,13 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
 - [x] Image links and base64 `data:` images capture as pictures on GNOME.
 - [x] A copied picture through GNOME's bridge (a held Ctrl+C on a picture in
       LibreOffice Writer). GNOME's Image Viewer copies the file, so its path.
-- [ ] Verify an X11 session (KDE Plasma X11, Xfce, or similar).
+- [x] An X11 session: Cinnamon 6.6 on Linux Mint 22.3 (October 11, 2026).
+      From a bare install: the clipboard connected through X11 with nothing
+      added, the shortcuts-off dialog named the missing step, the tray icon
+      showed, and after setup the whole tour (holds, popups, Compose paste)
+      passed. The open-source `nouveau` driver on an RTX 4070 Ti killed
+      Cinnamon's GPU channel as a popup opened (a driver fault, frozen screen);
+      NVIDIA's driver fixed it.
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
       and saving with Ctrl+S, no click). Zetl's own popups needed a fix
