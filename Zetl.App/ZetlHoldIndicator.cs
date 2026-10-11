@@ -207,7 +207,7 @@ internal sealed class ZetlHoldIndicator
             ZetlTrace.Write("indicator: styled");
         }
 
-        ReassertTopmost(window);
+        ZetlTopmost.Reassert(window);
         ZetlTrace.Write("indicator: show end");
     }
 
@@ -321,24 +321,5 @@ internal sealed class ZetlHoldIndicator
             handle,
             Win32Interop.GWL_EXSTYLE,
             new IntPtr(style | Win32Interop.WS_EX_NOACTIVATE | Win32Interop.WS_EX_TOOLWINDOW));
-    }
-
-    // Climb back above a full-screen video or another topmost window without
-    // taking focus, as the toast does.
-    private static void ReassertTopmost(Window target)
-    {
-        if (!OperatingSystem.IsWindows() || target.TryGetPlatformHandle()?.Handle is not { } handle)
-        {
-            return;
-        }
-
-        Win32Interop.SetWindowPos(
-            handle,
-            Win32Interop.HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            Win32Interop.SWP_NOMOVE | Win32Interop.SWP_NOSIZE | Win32Interop.SWP_NOACTIVATE);
     }
 }
