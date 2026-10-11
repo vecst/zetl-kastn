@@ -68,6 +68,14 @@ Held Ctrl+C on files makes a slip that references them; held Ctrl+X also records
 where the files moved. Decisions so far and the routing design are in
 [`hold-routing-discussion.md`](hold-routing-discussion.md).
 
+Image files are the open question: GNOME's Image Viewer copies the file, not
+the picture, so a held Ctrl+C there captures only its path (October 10, 2026).
+A reference to an image file could show the picture, or offer to capture it as
+a picture slip. On Linux a file copy also carries the paths as text, which is
+what lands today; Explorer offers no text, so Windows opens the Board instead.
+The clipboard snapshot already knows when it holds files (`Files`), the first
+piece this needs.
+
 ### More hold shortcuts
 
 Held Ctrl+F (find in Zetl), held Ctrl+S (checkpoint), a portable
