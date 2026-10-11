@@ -162,7 +162,9 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       `LinuxX11ClipboardTests` need a Linux run with `xclip`.
 - [x] Rich text through GNOME's Xwayland bridge: a Firefox copy kept its
       HTML and Replayed formatted into LibreOffice Writer (October 10, 2026).
-- [ ] Pictures through GNOME's bridge, and Compose pasting into GNOME apps.
+- [x] Compose and Replay paste into native GNOME apps (GNOME Text Editor,
+      October 10, 2026).
+- [ ] Pictures through GNOME's bridge.
 - [ ] Verify an X11 session (KDE Plasma X11, Xfce, or similar).
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
