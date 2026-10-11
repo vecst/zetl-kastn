@@ -24,17 +24,18 @@ group create Zetl's virtual keyboard:
 
 ```bash
 sudo usermod -aG input "$USER"
-sudo cp 70-zetl-uinput.rules /etc/udev/rules.d/
+echo 'KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/70-zetl-uinput.rules
 sudo udevadm control --reload
 sudo udevadm trigger --name-match=uinput
 ```
+
+This works from any folder. The same rule ships as `70-zetl-uinput.rules` in
+the bundle and in `packaging/linux/`.
 
 Restart your computer so the new group applies. Logging out and back in is not
 always enough: on Ubuntu, a per-user session manager kept running (by an SSH
 login, for example) passes the old groups to your next session. If Zetl still
 says shortcuts are off, its dialog says which step is missing.
-`70-zetl-uinput.rules` is in the
-bundle and in `packaging/linux/`.
 
 Know what this grants: any program you run can then read your keyboards, which
 is what Zetl needs and also what a keylogger would need. That is the same
