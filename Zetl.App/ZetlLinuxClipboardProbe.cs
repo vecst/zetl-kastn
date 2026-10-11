@@ -60,6 +60,25 @@ internal static class ZetlLinuxClipboardProbe
             var waitUntil = DateTime.UtcNow + TimeSpan.FromSeconds(30);
             while (clipboard.GetChangeToken() == waitFrom && DateTime.UtcNow < waitUntil) Thread.Sleep(5);
             var sinceChange = Stopwatch.StartNew();
+            if (Environment.GetEnvironmentVariable("ZETL_PROBE_TYPES") is { Length: > 0 } typeList)
+            {
+                // Chosen types one after another, as soon as the copy lands, and
+                // what turning a non-PNG picture into Zetl's PNG costs.
+                foreach (var type in typeList.Split(','))
+                {
+                    var timer = Stopwatch.StartNew();
+                    var data = selection.Read([type], out _);
+                    var read = timer.ElapsedMilliseconds;
+                    var bytes = data?.GetValueOrDefault(type);
+                    var normalize = Stopwatch.StartNew();
+                    var image = bytes is null ? null : ZetlClipboardImages.Normalize(bytes, type);
+                    Console.WriteLine($"{type} at +{sinceChange.ElapsedMilliseconds - read} ms: {bytes?.Length} bytes in {read} ms; "
+                        + $"to PNG {image?.PngBytes.Length} bytes ({image?.Width}x{image?.Height}) in {normalize.ElapsedMilliseconds} ms");
+                }
+
+                return 0;
+            }
+
             if (Environment.GetEnvironmentVariable("ZETL_PROBE_PAIR") == "1")
             {
                 // Two captures at once, as Zetl's change observer and its
