@@ -102,8 +102,11 @@ internal static class ZetlX11Activation
 
             // While a native Wayland window is active, KWin names a helper window
             // of its own; only a managed client window counts as an app window.
-            if (ReadLongProperties(root, clientListAtom, WindowType, 4096) is { } clients
-                && clients.Contains(active))
+            // xwayland-satellite (niri) keeps no client list, and clears the
+            // active window to zero while a Wayland window has focus, so with no
+            // list the active window is taken as it is.
+            if (ReadLongProperties(root, clientListAtom, WindowType, 4096) is not { } clients
+                || clients.Contains(active))
             {
                 window = (IntPtr)active;
             }
