@@ -341,6 +341,10 @@ public class ZetlRuntimeHoldTests
             "Discarding a held cut that captured nothing should not paste back.");
         AssertEqual(
             ZetlNoteCaptureOutcome.None,
+            coordinator.CompleteNoteCapture(CutRequest("/home/lukas/notes.txt") with { CutFiles = true }, Cancelled()),
+            "A file manager's cut removed nothing, so discarding it should not paste the files onto themselves.");
+        AssertEqual(
+            ZetlNoteCaptureOutcome.None,
             coordinator.CompleteNoteCapture(
                 CutRequest("cut text"),
                 Cancelled() with { Committed = true, NoteText = "kept" }),

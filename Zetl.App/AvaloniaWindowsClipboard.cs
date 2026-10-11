@@ -18,6 +18,7 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
     private const uint Dib = 8;
     private const uint Palette = 9;
     private const uint EnhancedMetafile = 14;
+    private const uint FileDrop = 15;
     private const uint DibV5 = 17;
     private const uint OwnerDisplay = 0x0080;
     private const uint DisplayText = 0x0081;
@@ -915,7 +916,8 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
                 text,
                 html,
                 replayFormats,
-                image);
+                image,
+                Files: IsClipboardFormatAvailable(FileDrop));
             lastCapture = snapshot;
             return snapshot;
         }

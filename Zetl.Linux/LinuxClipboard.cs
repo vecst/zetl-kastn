@@ -20,6 +20,11 @@ internal sealed class LinuxClipboard(
     internal const string PngType = "image/png";
     internal const string CalcEmbedType = "application/x-openoffice-embed-source-xml";
     internal const string CalcDescriptorType = "application/x-openoffice-objectdescriptor-xml";
+
+    /// <summary>What file managers offer for copied or cut files: the file list,
+    /// GNOME-family managers' copy-or-cut record, and Dolphin's cut marker.</summary>
+    internal static readonly string[] FileTypes =
+        ["text/uri-list", "x-special/gnome-copied-files", "application/x-kde-cutselection"];
     private const int MaxRichHtmlBytes = 25 * 1024 * 1024;
     private const long MaxBackupBytes = 256L * 1024 * 1024;
 
@@ -257,7 +262,8 @@ internal sealed class LinuxClipboard(
             if (htmlType is not null) wanted.Add(htmlType);
             if (imageType is not null) wanted.Add(imageType);
             wanted.AddRange(replayTypes);
-            if (wanted.Count == 0) return new ZetlClipboardCaptureSnapshot(generation, null, null, null, null);
+            var files = FileTypes.Any(types.Contains);
+            if (wanted.Count == 0) return new ZetlClipboardCaptureSnapshot(generation, null, null, null, null, Files: files);
 
             if (selection.Read(wanted, out var readGeneration) is not { } data) return null;
             if (readGeneration != generation) continue;
@@ -274,7 +280,7 @@ internal sealed class LinuxClipboard(
                 ? normalizeImage(imageBytes, imageType)
                 : null;
             return new ZetlClipboardCaptureSnapshot(
-                generation, text, html, ReplayBundle(data, textType, replayTypes), image);
+                generation, text, html, ReplayBundle(data, textType, replayTypes), image, Files: files);
         }
 
         return null;

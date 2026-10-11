@@ -521,6 +521,34 @@ public class ZetlRuntimeCaptureTests
             "A reloaded dual slip should keep its rich HTML representation.");
     }
 
+    [Fact(DisplayName = "Runtime held cut of files is marked so a discard leaves them alone")]
+    public static async Task RuntimeHeldCutOfFilesIsMarked()
+    {
+        using var temp = new TempStateFile();
+        var store = new ZetlStateStore(temp.Path);
+        var coordinator = CreateShortcutCoordinator(
+            store,
+            new FakeClipboard(null, changeToken: 2),
+            new FakeNotificationSink(),
+            out _,
+            out _);
+        var pending = new ZetlPendingShortcut(VK_X, shiftLane: false, clipboardSequenceNumber: 1);
+        pending.SetObservedClipboardContent(new ZetlClipboardCaptureSnapshot(
+            2, "/home/lukas/notes.txt", null, null, null, Files: true));
+
+        var request = (ZetlNoteCaptureRequest)(await coordinator.HandleClaimedHoldAsync(
+            ShortcutContext(VK_X, clipboardSequenceNumber: 1), pending))!;
+
+        AssertTrue(request.CutFiles, "A cut of files should be marked as one.");
+        AssertEqual("/home/lukas/notes.txt", request.Text, "The file's path still makes the quick note.");
+        AssertEqual(
+            ZetlNoteCaptureOutcome.None,
+            coordinator.CompleteNoteCapture(request, new ZetlNoteCaptureResult(
+                Committed: false, NoteText: "", StartProject: false, CreateNewProject: false,
+                ProjectName: request.Project.Name, SelectedBucketName: request.PreferredBucket!.Name, SelectedBucket: request.PreferredBucket)),
+            "Discarding a cut of files should not paste them back.");
+    }
+
     [Fact(DisplayName = "Runtime held copy opens image capture and saves captions")]
     public static async Task RuntimeHeldCopyCapturesImagesDirectly()
     {

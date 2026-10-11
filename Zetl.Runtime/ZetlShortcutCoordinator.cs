@@ -204,6 +204,8 @@ internal sealed class ZetlShortcutCoordinator
             // A held Ctrl+X already performed the physical cut before the dialog
             // opened, so discarding the note leaves the source missing its text.
             // Signal the host to paste the still-on-clipboard cut text back.
+            // Not for files: a file manager's cut removed nothing, and pasting
+            // back would move the files onto themselves.
             return WasHeldCut(request)
                 ? ZetlNoteCaptureOutcome.PasteCutBack
                 : ZetlNoteCaptureOutcome.None;
@@ -329,6 +331,7 @@ internal sealed class ZetlShortcutCoordinator
     private static bool WasHeldCut(ZetlNoteCaptureRequest request)
     {
         return string.Equals(request.Source, "cut", StringComparison.OrdinalIgnoreCase)
+            && !request.CutFiles
             && !string.IsNullOrWhiteSpace(request.Text);
     }
 
@@ -570,7 +573,8 @@ internal sealed class ZetlShortcutCoordinator
             StartProjectDefault: false,
             CaptureOrigin: pending?.CaptureOrigin,
             RichHtml: clipboardContent?.Html,
-            ReplayFormats: clipboardContent?.ReplayFormats);
+            ReplayFormats: clipboardContent?.ReplayFormats,
+            CutFiles: clipboardContent?.Files == true);
     }
 
     // Held copy/cut uses one already-observed generation or one fresh coherent

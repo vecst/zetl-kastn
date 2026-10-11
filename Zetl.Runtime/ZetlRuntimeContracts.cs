@@ -58,7 +58,9 @@ internal sealed record ZetlNoteCaptureRequest(
     ZetlClipboardImage? Image = null,
     string? ImageSourceUrl = null,
     string? RichHtml = null,
-    IReadOnlyList<ZetlClipboardFormatData>? ReplayFormats = null) : ZetlShortcutRequest(Shifted);
+    IReadOnlyList<ZetlClipboardFormatData>? ReplayFormats = null,
+    // The held cut was of files in a file manager, which only marked them.
+    bool CutFiles = false) : ZetlShortcutRequest(Shifted);
 
 internal sealed record ZetlNoteCaptureResult(
     bool Committed,

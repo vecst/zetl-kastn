@@ -39,6 +39,33 @@ public sealed class LinuxClipboardTests
         Assert.Equal(new[] { "text/plain;charset=utf-8", "text/html", "image/png" }, selection.Reads[0]);
     }
 
+    // Nautilus offers the path as text too; Dolphin marks a cut separately.
+    [Theory]
+    [InlineData("x-special/gnome-copied-files")]
+    [InlineData("application/x-kde-cutselection")]
+    [InlineData("text/uri-list")]
+    public void FilesFromAFileManagerAreMarked(string fileType)
+    {
+        selection.Set(new()
+        {
+            ["text/plain;charset=utf-8"] = Utf8("/home/lukas/notes.txt"),
+            [fileType] = Utf8("cut\nfile:///home/lukas/notes.txt"),
+        });
+
+        var snapshot = CreateClipboard().TryCaptureContent();
+
+        Assert.True(snapshot!.Files);
+        Assert.Equal("/home/lukas/notes.txt", snapshot.Text);
+    }
+
+    [Fact]
+    public void CopiedTextIsNotFiles()
+    {
+        selection.Set(new() { ["text/plain;charset=utf-8"] = Utf8("words"), ["text/html"] = Utf8("<b>words</b>") });
+
+        Assert.False(CreateClipboard().TryCaptureContent()!.Files);
+    }
+
     [Fact]
     public void PrivateContentIsReportedWithoutReadingIt()
     {

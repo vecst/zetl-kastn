@@ -162,7 +162,10 @@ internal sealed record ZetlClipboardCaptureSnapshot(
     IReadOnlyList<ZetlClipboardFormatData>? ReplayFormats,
     ZetlClipboardImage? Image,
     // The source app marked the content private; nothing of it was read.
-    bool Private = false)
+    bool Private = false,
+    // Files copied or cut in a file manager. Its cut only marks them; nothing
+    // is removed until they are pasted elsewhere.
+    bool Files = false)
 {
     public static ZetlClipboardCaptureSnapshot PrivateContent(uint changeToken) =>
         new(changeToken, null, null, null, null, Private: true);
