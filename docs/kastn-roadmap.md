@@ -20,7 +20,8 @@ here wait in [`ideas.md`](ideas.md#deferred).
    toast the tour covers), name the fix ("restart to finish keyboard setup"
    when the user is in the `input` group on disk but Zetl isn't running with
    it, because a surviving per-user systemd manager keeps the old groups across
-   log out), have the tour skip hold practice while shortcuts are off, and tell
+   log out), close Zetl after that dialog (the tour waits for working
+   shortcuts), and tell
    people to restart, not log out, in the setup guide. Then ship the
    post-RC 3 branch with the quick wins: transparency and Compose wording, delta reads, the Board overwrite
    fix, the Linux keyboard and single-instance fixes, the log settings fix.

@@ -88,8 +88,9 @@ Quit, and the rest.
 - **Your keyboard stops responding:** hold both Shift keys and press Escape.
   Zetl lets every keyboard go at once and stays out of the way until restarted.
   Closing Zetl any other way, even killing it, also hands the keyboard back.
-- **Shortcuts are off:** Zetl shows a notice, and `diagnostics.log` names the
-  device and the missing permission.
+- **Shortcuts are off:** Zetl says which setup step is missing (with a link to
+  this guide) and closes; `diagnostics.log` names the device and the missing
+  permission. Start Zetl again once the step is done.
 
 ## Uninstall and undo the setup
 

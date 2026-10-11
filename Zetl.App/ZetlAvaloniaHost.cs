@@ -263,12 +263,16 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 ? "Zetl couldn't install its keyboard hook. Restarting Zetl usually fixes this."
                 : "Zetl couldn't take the keyboard. The diagnostics log names the keyboard and what access is missing.");
             Log($"Shortcuts are off: {problem}");
-            // A dialog, not a toast: without shortcuts Zetl does nothing, and a
-            // toast can vanish behind the first-run tour unread.
-            Dispatcher.UIThread.Post(() => _ = ShowUntilClosedAsync(new ZetlMessageWindow(
-                "Zetl's shortcuts are off",
-                problem,
-                OperatingSystem.IsLinux() ? ("Open setup guide", LinuxSetupGuide) : null)));
+            // Without shortcuts Zetl can do nothing, so it says why and quits;
+            // the tour waits for a launch where its holds can land.
+            Dispatcher.UIThread.Post(() => ZetlAsync.RunLogged(async () =>
+            {
+                await ShowUntilClosedAsync(new ZetlMessageWindow(
+                    "Zetl's shortcuts are off",
+                    problem + "\n\nZetl closes when you press OK.",
+                    OperatingSystem.IsLinux() ? ("Open setup guide", LinuxSetupGuide) : null));
+                RequestQuit();
+            }, "shortcuts-off notice", Log));
         }
         else
         {
@@ -781,8 +785,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
                 settingsStore.Settings.TutorialState = ZetlTutorialState.Completed;
                 settingsStore.Save();
             },
-            Log,
-            ShortcutsAvailable: !shortcutsOff));
+            Log));
         tutorial = window;
         try
         {
@@ -1322,7 +1325,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
     // someone upgrading from RC 1's old help window. It stays in the tray menu.
     private void ShowFirstRunIfNeeded()
     {
-        if (ZetlTutorialState.ShouldOffer(settingsStore.Settings))
+        if (!shortcutsOff && ZetlTutorialState.ShouldOffer(settingsStore.Settings))
         {
             ZetlAsync.RunLogged(ShowTutorialAsync, "first-run tour", Log);
         }
