@@ -666,6 +666,13 @@ internal sealed class AvaloniaWindowsClipboard : IClipboard, IDisposable
                     continue;
                 }
 
+                // Reading a link format makes the source app link to its copy
+                // (Writer bookmarks the text), and a restore doesn't need it.
+                if (format >= 0xC000 && ZetlClipboardLinkFormats.IsLink(GetRegisteredFormatName(format)))
+                {
+                    continue;
+                }
+
                 if (formats.Count >= MaxBackupFormats)
                 {
                     return ZetlClipboardBackup.Incomplete(

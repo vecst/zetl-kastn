@@ -58,6 +58,32 @@ public sealed class LinuxClipboardTests
         Assert.Equal("/home/lukas/notes.txt", snapshot.Text);
     }
 
+    // Asking Writer for its link type bookmarks the copied text in the
+    // document, so a backup never reads it.
+    [Fact]
+    public void ABackupLeavesOutLinksToTheSourceDocument()
+    {
+        const string link = "application/x-openoffice-link;windows_formatname=\"Link\"";
+        selection.Set(new() { ["text/plain;charset=utf-8"] = Utf8("words"), [link] = Utf8("soffice") });
+
+        var backup = CreateClipboard().CaptureBackup();
+
+        Assert.True(backup.IsComplete);
+        Assert.DoesNotContain(selection.Reads.SelectMany(read => read), type => type == link);
+        Assert.Equal(["text/plain;charset=utf-8"], backup.RawFormats!.Select(format => format.RegisteredName));
+    }
+
+    [Theory]
+    [InlineData("Link", true)]
+    [InlineData("ObjectLink", true)]
+    [InlineData("Link Source Descriptor", true)]
+    [InlineData("application/x-openoffice-link;windows_formatname=\"Link\"", true)]
+    [InlineData("HTML Format", false)]
+    [InlineData("Star Embed Source (XML)", false)]
+    [InlineData("text/uri-list", false)]
+    public void LinkFormatsAreRecognized(string name, bool isLink) =>
+        Assert.Equal(isLink, ZetlClipboardLinkFormats.IsLink(name));
+
     // Zetl's change observer and its automatic capture both read a copy; the
     // second waits for the first instead of asking the app again.
     [Fact]

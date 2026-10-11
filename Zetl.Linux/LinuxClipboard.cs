@@ -137,7 +137,12 @@ internal sealed class LinuxClipboard(
                 return ZetlClipboardBackup.Incomplete("the clipboard is unavailable");
             }
 
-            var content = types.Where(type => !SelectionMetaTypes.Contains(type)).Distinct().ToList();
+            // Link types are left out: asking for one makes the source app link
+            // to its copy (Writer bookmarks the text), and a restore doesn't need it.
+            var content = types
+                .Where(type => !SelectionMetaTypes.Contains(type) && !ZetlClipboardLinkFormats.IsLink(type))
+                .Distinct()
+                .ToList();
             if (content.Count == 0) return ZetlClipboardBackup.FromRaw([]);
             if (selection.Read(content, out var readGeneration) is not { } data)
             {
