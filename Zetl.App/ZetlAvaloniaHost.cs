@@ -269,7 +269,7 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
             {
                 await ShowUntilClosedAsync(new ZetlMessageWindow(
                     "Zetl's shortcuts are off",
-                    problem + "\n\nZetl closes when you press OK.",
+                    problem,
                     OperatingSystem.IsLinux() ? ("Open setup guide", LinuxSetupGuide) : null));
                 RequestQuit();
             }, "shortcuts-off notice", Log));
