@@ -709,6 +709,11 @@ internal sealed class ZetlAvaloniaHost : IZetlDispatcher, IDisposable
 
     private void OnComboEnded(bool held)
     {
+        if (!held && comboContext is { } ended)
+        {
+            coordinator.ConfirmTap(ended.KeyCode);
+        }
+
         if (measurer is { } timing)
         {
             // Time plain Ctrl+C presses, key down to release, for the measurer.

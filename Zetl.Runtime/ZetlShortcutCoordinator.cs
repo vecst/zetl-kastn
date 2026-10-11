@@ -118,6 +118,10 @@ internal sealed class ZetlShortcutCoordinator
             autoCapture ? AutoCaptureCopyAsync(pending) : Task.CompletedTask));
     }
 
+    // Called on the keyboard thread when a combo ends without a hold: only
+    // completes a task, so it never holds up the key.
+    public void ConfirmTap(int keyCode) => pendingShortcuts.ConfirmTap(keyCode);
+
     public ZetlPendingShortcut? CancelPending(int keyCode, bool shifted)
     {
         return pendingShortcuts.Claim(keyCode, shifted);
@@ -686,7 +690,14 @@ internal sealed class ZetlShortcutCoordinator
 
     private async Task ObserveClipboardChangeAsync(ZetlPendingShortcut pending)
     {
-        await ObserveClipboardContentAsync(pending, ClipboardObservationTimeout);
+        try
+        {
+            await ObserveClipboardContentAsync(pending, ClipboardObservationTimeout);
+        }
+        finally
+        {
+            pending.SettleObservation();
+        }
     }
 
     private ZetlClipboardCaptureSnapshot? TryCaptureChangedClipboardContent(
@@ -762,7 +773,10 @@ internal sealed class ZetlShortcutCoordinator
 
     private async Task AutoCaptureCopyAsync(ZetlPendingShortcut pending)
     {
-        await delay.WaitAsync(holdDelay + TimeSpan.FromMilliseconds(25));
+        // A copy is captured once it can't become a hold: when the key comes up
+        // (most taps, well before the threshold), or once the threshold passes
+        // without a hold claiming it.
+        await Task.WhenAny(delay.WaitAsync(holdDelay + TimeSpan.FromMilliseconds(25)), pending.TapConfirmed);
         if (pending.Cancelled)
         {
             return;
@@ -776,6 +790,15 @@ internal sealed class ZetlShortcutCoordinator
         }
 
         if (observed is null)
+        {
+            // A tap ends early, often before a slow app (LibreOffice rendering
+            // a picture) has handed its copy over: wait for the press's own
+            // read, then give a late copy one short last look.
+            await pending.ObservationSettled;
+            observed = pending.GetObservedClipboardContent();
+        }
+
+        if (observed is null && !pending.Cancelled)
         {
             await ObserveClipboardContentAsync(pending, AutoCaptureClipboardTimeout);
             observed = pending.GetObservedClipboardContent();

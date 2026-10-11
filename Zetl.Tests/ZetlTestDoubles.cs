@@ -27,6 +27,8 @@ internal sealed class RoutedCoordinator(
 
     public bool OnTapDispatched(ChordlEventContext context) => router.OnTap(context);
 
+    public void ConfirmTap(int keyCode) => coordinator.ConfirmTap(keyCode);
+
     public Task<ZetlShortcutRequest?> HandleHoldAsync(ChordlEventContext context) =>
         router.OnHoldAsync(context, coordinator.ClaimPendingForHold(context));
 

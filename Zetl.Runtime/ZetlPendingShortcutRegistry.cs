@@ -39,6 +39,19 @@ internal sealed class ZetlPendingShortcutRegistry
         return shortcut;
     }
 
+    // The key's combo ended without a hold, so its pending copy is a tap. Both
+    // lanes: Shift can change while the key is down.
+    public void ConfirmTap(int keyCode)
+    {
+        lock (gate)
+        {
+            foreach (var shifted in (bool[])[false, true])
+            {
+                if (pending.TryGetValue((keyCode, shifted), out var shortcut)) shortcut.ConfirmTap();
+            }
+        }
+    }
+
     public ZetlPendingShortcut? Claim(int keyCode, bool shifted)
     {
         lock (gate)
@@ -60,6 +73,8 @@ internal sealed class ZetlPendingShortcut
     private ZetlClipboardCaptureSnapshot? observedClipboardContent;
     private bool cancelled;
     private readonly Lazy<ZetlCaptureOrigin?> captureOrigin;
+    private readonly TaskCompletionSource tapConfirmed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource observationSettled = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ZetlPendingShortcut(
         int keyCode,
@@ -149,6 +164,16 @@ internal sealed class ZetlPendingShortcut
             }
         }
     }
+
+    /// <summary>Completes when the key came up before the hold threshold.</summary>
+    public Task TapConfirmed => tapConfirmed.Task;
+
+    public void ConfirmTap() => tapConfirmed.TrySetResult();
+
+    /// <summary>Completes when the press's clipboard read found the copy or gave up.</summary>
+    public Task ObservationSettled => observationSettled.Task;
+
+    public void SettleObservation() => observationSettled.TrySetResult();
 
     public void Cancel()
     {

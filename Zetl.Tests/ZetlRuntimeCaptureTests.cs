@@ -776,6 +776,59 @@ public class ZetlRuntimeCaptureTests
             "Held capture should retain the downloaded image URL.");
     }
 
+    // The key coming up proves a tap, so the copy is captured then instead of
+    // after the hold threshold.
+    [Fact(DisplayName = "Runtime captures a tapped copy when the key comes up")]
+    public static async Task RuntimeCapturesATappedCopyOnRelease()
+    {
+        using var temp = new TempStateFile();
+        var store = new ZetlStateStore(temp.Path);
+        store.CreateProject("Demo", ["Inbox"], "Inbox");
+        var notifications = new FakeNotificationSink();
+        var coordinator = CreateShortcutCoordinator(
+            store,
+            new FakeClipboard("copied text", changeToken: 2),
+            notifications,
+            out _,
+            out _,
+            new ManualDelay());
+
+        var captureTask = coordinator.OnPhysicalShortcutPassedThroughAsync(
+            ShortcutContext(VK_C, clipboardSequenceNumber: 1));
+        coordinator.ConfirmTap(VK_C);
+
+        AssertTrue(notifications.WaitForCount(1, TimeSpan.FromSeconds(5)), "The tap should be captured without waiting out the hold threshold.");
+        await captureTask;
+        AssertEqual("copied text", store.GetActiveBucket()!.Slips.Single().Text, "The tapped copy is captured once.");
+    }
+
+    // A tap can end before a slow app hands its copy over; the capture waits
+    // for the press's own read instead of giving up.
+    [Fact(DisplayName = "Runtime captures a slow copy after an early tap")]
+    public static async Task RuntimeCapturesASlowCopyAfterAnEarlyTap()
+    {
+        using var temp = new TempStateFile();
+        var store = new ZetlStateStore(temp.Path);
+        store.CreateProject("Demo", ["Inbox"], "Inbox");
+        var clipboard = new FakeClipboard("old text", changeToken: 1);
+        var coordinator = CreateShortcutCoordinator(
+            store,
+            clipboard,
+            new FakeNotificationSink(),
+            out _,
+            out _,
+            new SystemZetlDelay());
+
+        var captureTask = coordinator.OnPhysicalShortcutPassedThroughAsync(
+            ShortcutContext(VK_C, clipboardSequenceNumber: 1));
+        coordinator.ConfirmTap(VK_C);
+        await Task.Delay(250);
+        clipboard.SetText("late copy");
+
+        await captureTask;
+        AssertEqual("late copy", store.GetActiveBucket()!.Slips.Single().Text, "A copy that lands after the tap is still captured.");
+    }
+
     [Fact(DisplayName = "Runtime hold cancellation prevents auto-capture")]
     public static async Task RuntimeHoldCancellationPreventsAutoCapture()
     {
