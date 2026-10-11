@@ -58,4 +58,24 @@ public class ZetlPlacementMathTests
         AssertEqual(100, ZetlPopupOpacity.Clamp(140), "Fully opaque is the maximum.");
         AssertEqual(85, ZetlPopupOpacity.Clamp(85), "Values in range are kept.");
     }
+
+    // The Ubuntu desk: a 6K primary at 200% beside a 1080p screen Xwayland
+    // shows doubled, with X11's one work area spanning both.
+    [Fact] public void AScreensUsableAreaStopsAtItsOwnEdges()
+    {
+        var primary = (0, 0, 6144, 3456);
+        var side = (6144, 0, 3840, 2160);
+        var desktopWorkArea = (134, 64, 9850, 3392);
+
+        AssertEqual((134, 64, 6010, 3392), ZetlPlacementMath.UsableArea(primary, desktopWorkArea), "The primary's part of the desktop.");
+        AssertEqual((6144, 64, 3840, 2096), ZetlPlacementMath.UsableArea(side, desktopWorkArea), "The side screen's part.");
+        AssertEqual(side, ZetlPlacementMath.UsableArea(side, (0, 0, 100, 100)), "A work area elsewhere falls back to the whole screen.");
+    }
+
+    [Fact] public void AToastFitsInsideAScaledScreen()
+    {
+        var at = ZetlPlacementMath.PlaceInPixels(ZetlScreenAnchor.BottomRight, (134, 64, 6010, 3392), 2, 360, 84);
+
+        AssertEqual((6144 - 720 - 32, 3456 - 168 - 32), at, "Bottom right, sized and spaced in physical pixels.");
+    }
 }

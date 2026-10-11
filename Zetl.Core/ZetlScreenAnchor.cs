@@ -137,6 +137,35 @@ internal static class ZetlPlacementMath
         return (x, y);
     }
 
+    // The part of a screen windows may use, in physical pixels. X11 publishes
+    // one work area for the whole desktop, so with two monitors a screen's
+    // working area can reach onto the other one (or past it, into space no
+    // monitor shows); keep it to the screen itself.
+    public static (int X, int Y, int Width, int Height) UsableArea(
+        (int X, int Y, int Width, int Height) bounds,
+        (int X, int Y, int Width, int Height) workingArea)
+    {
+        var left = Math.Max(bounds.X, workingArea.X);
+        var top = Math.Max(bounds.Y, workingArea.Y);
+        var right = Math.Min(bounds.X + bounds.Width, workingArea.X + workingArea.Width);
+        var bottom = Math.Min(bounds.Y + bounds.Height, workingArea.Y + workingArea.Height);
+        return right > left && bottom > top ? (left, top, right - left, bottom - top) : bounds;
+    }
+
+    // The physical top-left corner for a window of a logical size at an anchor
+    // of a physical area: the size goes through the screen's scaling.
+    public static (int X, int Y) PlaceInPixels(
+        string anchor,
+        (int X, int Y, int Width, int Height) area,
+        double scaling,
+        double width,
+        double height)
+    {
+        scaling = scaling <= 0 ? 1 : scaling;
+        var (x, y) = Place(anchor, area.Width / scaling, area.Height / scaling, width, height);
+        return (area.X + (int)(x * scaling), area.Y + (int)(y * scaling));
+    }
+
     // Keep the window inside the area with a margin; a window wider than the
     // area starts at its edge.
     private static double Fit(double position, double size, double areaSize)

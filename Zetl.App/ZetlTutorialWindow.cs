@@ -568,7 +568,7 @@ internal sealed class ZetlTutorialWindow : Window
 
         // The frame, title bar included, is what has to fit above the taskbar.
         var size = FrameSize ?? Bounds.Size;
-        var area = screen.WorkingArea;
+        var area = ZetlWindowPlacement.UsableArea(screen);
         var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
         var width = size.Width * scaling;
         var height = size.Height * scaling;

@@ -67,10 +67,6 @@ internal partial class ToastWindow : Window
 
     private void PositionNearNotificationArea()
     {
-        var workingArea = Screens.Primary?.WorkingArea
-            ?? new PixelRect(0, 0, 1200, 800);
-        Position = new PixelPoint(
-            workingArea.Right - (int)Width - 16,
-            workingArea.Bottom - (int)Height - 16);
+        Position = ZetlWindowPlacement.PlaceOnScreen(Screens.Primary, ZetlScreenAnchor.BottomRight, Width, Height);
     }
 }

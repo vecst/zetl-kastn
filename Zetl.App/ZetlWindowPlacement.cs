@@ -117,7 +117,7 @@ internal static class ZetlWindowPlacement
             return;
         }
 
-        var area = screen.WorkingArea;
+        var area = UsableArea(screen);
         var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
         var areaWidth = area.Width / scaling;
         var areaHeight = area.Height / scaling;
@@ -187,7 +187,7 @@ internal static class ZetlWindowPlacement
             return;
         }
 
-        var area = screen.WorkingArea;
+        var area = UsableArea(screen);
         var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
         (double X, double Y)? pointer = placement.Pointer is { } at
             ? ((at.X - area.X) / scaling, (at.Y - area.Y) / scaling)
@@ -203,6 +203,29 @@ internal static class ZetlWindowPlacement
             area.X + (int)(x * scaling),
             area.Y + (int)(y * scaling));
     }
+
+    // The part of a screen windows may use (see ZetlPlacementMath.UsableArea).
+    public static PixelRect UsableArea(Screen screen)
+    {
+        var (x, y, width, height) = ZetlPlacementMath.UsableArea(Tuple(screen.Bounds), Tuple(screen.WorkingArea));
+        return new PixelRect(x, y, width, height);
+    }
+
+    // A fixed-size window at an anchor of a screen, or of a stand-in area
+    // when there is no screen to ask.
+    public static PixelPoint PlaceOnScreen(Screen? screen, string anchor, double width, double height)
+    {
+        var (x, y) = ZetlPlacementMath.PlaceInPixels(
+            anchor,
+            screen is null ? (0, 0, 1200, 800) : Tuple(UsableArea(screen)),
+            screen?.Scaling ?? 1,
+            width,
+            height);
+        return new PixelPoint(x, y);
+    }
+
+    private static (int X, int Y, int Width, int Height) Tuple(PixelRect rect) =>
+        (rect.X, rect.Y, rect.Width, rect.Height);
 
     // A popup at the pointer opens on the pointer's screen; any other popup on
     // the screen of the window the user was working in. Without either, and for
