@@ -160,8 +160,9 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       (reads, writes with HTML, 1 MB both ways via INCR, staged-paste reads,
       backup and restore), and a held Ctrl+C capture worked in the real app.
       `LinuxX11ClipboardTests` need a Linux run with `xclip`.
-- [ ] Check rich formats (HTML, pictures) through GNOME's Xwayland bridge, and
-      that GNOME apps paste what Zetl writes (Compose, Replay).
+- [x] Rich text through GNOME's Xwayland bridge: a Firefox copy kept its
+      HTML and Replayed formatted into LibreOffice Writer (October 10, 2026).
+- [ ] Pictures through GNOME's bridge, and Compose pasting into GNOME apps.
 - [ ] Verify an X11 session (KDE Plasma X11, Xfce, or similar).
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
@@ -190,6 +191,7 @@ User setup, install, and rollback are in [`linux-setup.md`](linux-setup.md).
       each launches the other through the AppImage so either can close first.
 - [x] Start at login from Zetl's Settings: writes the XDG autostart entry
       (the AppImage file when running from one) and repairs it after a move.
+      Checked on GNOME 50 (October 10, 2026).
 - [ ] A distribution package (an AerynOS `stone.yaml` recipe for boulder, then
       others) that installs the udev rule system-wide.
 - [ ] Decide whether a `--diagnose` report of candidate and usable devices is
@@ -232,7 +234,9 @@ window policy is involved.
       the designed sizes. Next: check a fresh login; if `Xft.dpi` is still
       missing, report it to Plasma/AerynOS and fall back to XSETTINGS
       (`Gdk/UnscaledDPI`). Xwayland has one scale, so a second monitor at a
-      different scale cannot match from an X11 app.
+      different scale cannot match from an X11 app. X11's work area spans
+      every monitor, so placement now clips it to each screen (3f694b7); the
+      toast lands right on a 6K-at-200% + 1080p GNOME desk.
 - [x] Fixed layouts assumed Segoe UI widths; Linux sans fonts are 2-8% wider.
       The Board and Settings were given room so nothing clips (every Zetl
       window checked under Noto Sans).
