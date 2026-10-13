@@ -203,6 +203,13 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       windows go where asked. On COSMIC the toast and hold ring are overlays
       (986f26a), nudged after they appear because COSMIC draws them at 0,0
       otherwise (2a2421b); checked with screenshots through the portal.
+      Driven over SSH with injected keys: text capture from COSMIC Edit, a
+      picture from LibreOffice Draw (about 2 s for a large wallpaper while
+      LibreOffice renders its PNG), Kastn from Zetl's menu (connected, lists
+      the captures), and start at login (entry written; a reboot check is
+      still to do). Seen on the way: Settings' "Start Zetl when you log in"
+      label is clipped by its focus box, and Enter on a focused checkbox
+      toggles it instead of pressing Save.
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
       and saving with Ctrl+S, no click). Zetl's own popups needed a fix
