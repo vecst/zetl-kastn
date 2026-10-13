@@ -76,6 +76,13 @@ internal static class ZetlWindowPlacement
         placement.WorkingWindowCenter = null;
         if (!OperatingSystem.IsWindows())
         {
+            // X11's pointer stays where it last left an X11 window while the
+            // mouse is over a Wayland one; Hyprland says where it really is.
+            if (OperatingSystem.IsLinux() && HyprlandIpc.TryGetCursor() is { } cursor)
+            {
+                placement.Pointer = new PixelPoint(cursor.X, cursor.Y);
+            }
+
             return;
         }
 
