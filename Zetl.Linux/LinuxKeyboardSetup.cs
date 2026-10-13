@@ -34,8 +34,13 @@ internal static class LinuxKeyboardSetup
         var inSession = ProcessGroups(processStatus).Contains(group.Id);
         if (!onDisk && !inSession)
         {
-            return $"Your user isn't in the '{GroupName}' group yet. Join it, add Zetl's udev rule "
-                + $"for /dev/uinput, then restart your computer. {guide}";
+            // Some systems already let the logged-in user write /dev/uinput
+            // (Pop!_OS); there only the group is missing.
+            return uinputDenied
+                ? $"Your user isn't in the '{GroupName}' group yet. Join it, add Zetl's udev rule "
+                    + $"for /dev/uinput, then restart your computer. {guide}"
+                : $"Your user isn't in the '{GroupName}' group yet. Join it, then restart your "
+                    + $"computer. {guide}";
         }
 
         if (!inSession)

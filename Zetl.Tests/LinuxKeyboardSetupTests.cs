@@ -19,6 +19,16 @@ public class LinuxKeyboardSetupTests
         Assert.Contains("restart your computer", advice);
     }
 
+    // Pop!_OS already lets the logged-in user write /dev/uinput.
+    [Fact]
+    public void AUserWhoCanAlreadyWriteUinputIsOnlyAskedToJoin()
+    {
+        var advice = LinuxKeyboardSetup.Explain("lukas", string.Format(Groups, ""), Status(4, 1000), uinputDenied: false);
+
+        Assert.Contains("isn't in the 'input' group", advice);
+        Assert.DoesNotContain("udev", advice);
+    }
+
     [Fact]
     public void JoinedButNotInThisSessionSaysRestart()
     {
