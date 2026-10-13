@@ -194,6 +194,15 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       move as a window appears (081cd3f) and asks Hyprland where the mouse
       is (5a50fac). `float_switch_override_focus` moves focus as the mouse
       crosses between tiled and floating windows; setup in linux-setup.md.
+- [x] COSMIC 1.0 (Pop!_OS 24.04, October 13, 2026): `ext-data-control-v1`
+      out of the box, a full Xwayland window manager, and `/dev/uinput`
+      already writable by the user (only the `input` group needed; the
+      advice no longer asks for the udev rule there, 7fda6f3). COSMIC places
+      every managed X11 window itself and ignores moves (test windows of
+      every type), so popups open near the middle; only override-redirect
+      windows go where asked. On COSMIC the toast and hold ring are overlays
+      (986f26a), nudged after they appear because COSMIC draws them at 0,0
+      otherwise (2a2421b); checked with screenshots through the portal.
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
       and saving with Ctrl+S, no click). Zetl's own popups needed a fix

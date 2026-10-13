@@ -144,6 +144,14 @@ as the mouse leaves it, which saves and closes the popup. Toasts go to the X11
 primary monitor, which Hyprland leaves unset; `xrandr --output <name> --primary`
 at startup picks one.
 
+## COSMIC
+
+Nothing to set up. COSMIC places Zetl's capture popups, the Board, and Compose
+itself (near the middle of the screen) and ignores where Zetl asks for them;
+the toast and hold indicator still go where they belong. Pop!_OS already lets
+you write `/dev/uinput`, so joining the `input` group and restarting is all
+the keyboard setup it needs.
+
 ## If something goes wrong
 
 - **Your keyboard stops responding:** hold both Shift keys and press Escape.
