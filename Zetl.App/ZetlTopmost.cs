@@ -13,6 +13,13 @@ internal static class ZetlTopmost
 {
     public static void Reassert(Window window)
     {
+        if (ZetlOverlayWindows.Wanted)
+        {
+            // An overlay has no window manager to ask; it is already above
+            // every managed window.
+            return;
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             window.Topmost = false;

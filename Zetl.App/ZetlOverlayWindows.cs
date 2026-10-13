@@ -23,6 +23,9 @@ internal static class ZetlOverlayWindows
         if (Wanted && window.TryGetPlatformHandle()?.Handle is { } handle)
         {
             ZetlX11Activation.MakeOverlay(handle, log: null);
+            // Topmost is a window manager request, which an overlay has no use
+            // for: it maps above every managed window as it is.
+            window.Topmost = false;
         }
     }
 
