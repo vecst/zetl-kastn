@@ -11,6 +11,7 @@ internal partial class ToastWindow : Window
     public ToastWindow()
     {
         InitializeComponent();
+        ZetlOverlayWindows.Apply(this);
         dismissTimer.Tick += (_, _) =>
         {
             dismissTimer.Stop();

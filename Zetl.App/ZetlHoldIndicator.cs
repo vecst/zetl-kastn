@@ -312,6 +312,7 @@ internal sealed class ZetlHoldIndicator
             Title = "Zetl hold indicator",
             Content = content
         };
+        ZetlOverlayWindows.Apply(window);
     }
 
     // A tool window that never takes focus, even when clicked, so the indicator

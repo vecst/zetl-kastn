@@ -57,6 +57,27 @@ internal static class ZetlX11Activation
         }
     }
 
+    /// <summary>
+    /// Makes a not-yet-shown X11 window override-redirect: the window manager
+    /// leaves it alone, so it goes exactly where it is put and never takes the
+    /// keyboard. False when X11 is unavailable.
+    /// </summary>
+    public static bool MakeOverlay(IntPtr window, Action<string>? log)
+    {
+        lock (Gate)
+        {
+            if (window == IntPtr.Zero || !EnsureDisplay(log)) return false;
+
+            // XSetWindowAttributes (64-bit layout): override_redirect is the
+            // int at offset 88 of the 112-byte struct; CWOverrideRedirect = 1 << 9.
+            var attributes = new byte[112];
+            BitConverter.TryWriteBytes(attributes.AsSpan(88), 1);
+            XChangeWindowAttributes(display, window, (IntPtr)(1L << 9), attributes);
+            XFlush(display);
+            return true;
+        }
+    }
+
     private static bool EnsureDisplay(Action<string>? log)
     {
         if (display != IntPtr.Zero) return true;
@@ -190,6 +211,9 @@ internal static class ZetlX11Activation
 
     [DllImport(Library)]
     private static extern int XFlush(IntPtr display);
+
+    [DllImport(Library)]
+    private static extern int XChangeWindowAttributes(IntPtr display, IntPtr window, IntPtr valueMask, byte[] attributes);
 
     [DllImport(Library)]
     private static extern int XGetWindowProperty(
