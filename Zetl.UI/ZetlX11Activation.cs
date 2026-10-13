@@ -78,6 +78,20 @@ internal static class ZetlX11Activation
         }
     }
 
+    /// <summary>
+    /// Moves an X11 window and waits until the server has done it, so a show
+    /// that follows (on Avalonia's own connection) maps it already in place.
+    /// </summary>
+    public static void MoveNow(IntPtr window, int x, int y)
+    {
+        lock (Gate)
+        {
+            if (window == IntPtr.Zero || !EnsureDisplay(log: null)) return;
+            XMoveWindow(display, window, x, y);
+            XSync(display, discard: 0);
+        }
+    }
+
     private static bool EnsureDisplay(Action<string>? log)
     {
         if (display != IntPtr.Zero) return true;
@@ -211,6 +225,12 @@ internal static class ZetlX11Activation
 
     [DllImport(Library)]
     private static extern int XFlush(IntPtr display);
+
+    [DllImport(Library)]
+    private static extern int XMoveWindow(IntPtr display, IntPtr window, int x, int y);
+
+    [DllImport(Library)]
+    private static extern int XSync(IntPtr display, int discard);
 
     [DllImport(Library)]
     private static extern int XChangeWindowAttributes(IntPtr display, IntPtr window, IntPtr valueMask, byte[] attributes);

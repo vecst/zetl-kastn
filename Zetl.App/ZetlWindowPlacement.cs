@@ -33,6 +33,7 @@ internal static class ZetlWindowPlacement
         // Where Zetl last put the window, held briefly against the window
         // manager (see MoveTo).
         public PixelPoint? Intended;
+        public PixelPoint? Placed;
         public long HoldUntil;
         public bool Watching;
     }
@@ -238,6 +239,7 @@ internal static class ZetlWindowPlacement
         }
 
         var placement = Placements.GetValue(window, _ => new Placement());
+        placement.Placed = position;
         placement.Intended = position;
         placement.HoldUntil = Stopwatch.GetTimestamp() + (long)(HoldPlacementFor.TotalSeconds * Stopwatch.Frequency);
         if (!placement.Watching)
@@ -246,6 +248,10 @@ internal static class ZetlWindowPlacement
             window.PositionChanged += OnPositionChanged;
         }
     }
+
+    /// <summary>Where Zetl last put the window with MoveTo, if anywhere.</summary>
+    public static PixelPoint? LastPlaced(Window window) =>
+        Placements.TryGetValue(window, out var placement) ? placement.Placed : null;
 
     private static void OnPositionChanged(object? sender, PixelPointEventArgs e)
     {
