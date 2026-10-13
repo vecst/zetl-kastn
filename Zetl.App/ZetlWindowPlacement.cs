@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
+using Avalonia.Threading;
 
 namespace ZETL;
 
@@ -28,7 +30,18 @@ internal static class ZetlWindowPlacement
         // the user was working in, which picks the screen.
         public PixelPoint? Pointer;
         public PixelPoint? WorkingWindowCenter;
+        // Where Zetl last put the window, held briefly against the window
+        // manager (see MoveTo).
+        public PixelPoint? Intended;
+        public long HoldUntil;
+        public bool Watching;
     }
+
+    // How long after placing a window a window manager's move is undone, and
+    // the smallest move that counts: title-bar offsets some desktops report
+    // are well under it, a jump to another monitor far over it.
+    private static readonly TimeSpan HoldPlacementFor = TimeSpan.FromMilliseconds(750);
+    private const int HoldPlacementBeyond = 64;
 
     private static readonly ConditionalWeakTable<Window, Placement> Placements = new();
 
@@ -150,9 +163,9 @@ internal static class ZetlWindowPlacement
         var (x, y) = ZetlPlacementMath.Place(anchor, areaWidth, areaHeight, targetWidth, targetHeight, pointer);
 
         window.WindowStartupLocation = WindowStartupLocation.Manual;
-        window.Position = new PixelPoint(
+        MoveTo(window, new PixelPoint(
             area.X + (int)(x * scaling),
-            area.Y + (int)(y * scaling));
+            area.Y + (int)(y * scaling)));
         if (placement.IsPopup)
         {
             ApplyPopupOpacity(window, PopupOpacityPercent);
@@ -199,9 +212,48 @@ internal static class ZetlWindowPlacement
             width,
             height,
             pointer);
-        window.Position = new PixelPoint(
+        MoveTo(window, new PixelPoint(
             area.X + (int)(x * scaling),
-            area.Y + (int)(y * scaling));
+            area.Y + (int)(y * scaling)));
+    }
+
+    // Puts a window where Zetl placed it, and keeps it there as it appears.
+    // Hyprland moves an X11 window that opens while the pointer is on another
+    // monitor by that monitor's offset (a popup meant for the 4K landed
+    // straddling both screens); a window manager's move right after placing
+    // is undone once. A later move, like the user dragging it, is left alone.
+    public static void MoveTo(Window window, PixelPoint position)
+    {
+        window.Position = position;
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var placement = Placements.GetValue(window, _ => new Placement());
+        placement.Intended = position;
+        placement.HoldUntil = Stopwatch.GetTimestamp() + (long)(HoldPlacementFor.TotalSeconds * Stopwatch.Frequency);
+        if (!placement.Watching)
+        {
+            placement.Watching = true;
+            window.PositionChanged += OnPositionChanged;
+        }
+    }
+
+    private static void OnPositionChanged(object? sender, PixelPointEventArgs e)
+    {
+        if (sender is not Window window
+            || !Placements.TryGetValue(window, out var placement)
+            || placement.Intended is not { } intended
+            || Stopwatch.GetTimestamp() > placement.HoldUntil
+            || (Math.Abs(e.Point.X - intended.X) <= HoldPlacementBeyond
+                && Math.Abs(e.Point.Y - intended.Y) <= HoldPlacementBeyond))
+        {
+            return;
+        }
+
+        placement.Intended = null;
+        Dispatcher.UIThread.Post(() => window.Position = intended);
     }
 
     // The part of a screen windows may use (see ZetlPlacementMath.UsableArea).
