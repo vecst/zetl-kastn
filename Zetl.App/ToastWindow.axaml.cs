@@ -27,8 +27,8 @@ internal partial class ToastWindow : Window
         PositionNearNotificationArea();
         if (!IsVisible)
         {
-            ZetlOverlayWindows.PlaceBeforeShow(this);
             Show();
+            ZetlOverlayWindows.SettleAfterShow(this);
         }
 
         // Back on top on every toast, not just the first: a reused toast would

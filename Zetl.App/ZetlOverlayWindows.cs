@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Threading;
 
 namespace ZETL;
 
@@ -29,17 +30,27 @@ internal static class ZetlOverlayWindows
         }
     }
 
-    // COSMIC shows an overlay where it is when it appears and ignores later
-    // moves, and Avalonia moves a window only after showing it, so the toast
-    // and ring all sat in the top-left corner. Call just before Show.
-    public static void PlaceBeforeShow(Window window)
+    // COSMIC draws these overlays at 0,0 when they appear, though X11 has them
+    // in place: it keeps the position it saw while the window was still an
+    // ordinary one. It does follow a visible overlay's moves (checked with a
+    // test window), so right after showing, the window is nudged a pixel and
+    // back. Call just after Show.
+    public static void SettleAfterShow(Window window)
     {
-        if (Wanted
-            && !window.IsVisible
-            && ZetlWindowPlacement.LastPlaced(window) is { } position
-            && window.TryGetPlatformHandle()?.Handle is { } handle)
+        if (!Wanted)
         {
-            ZetlX11Activation.MoveNow(handle, position.X, position.Y);
+            return;
         }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (window.IsVisible
+                && ZetlWindowPlacement.LastPlaced(window) is { } position
+                && window.TryGetPlatformHandle()?.Handle is { } handle)
+            {
+                ZetlX11Activation.MoveNow(handle, position.X + 1, position.Y);
+                ZetlX11Activation.MoveNow(handle, position.X, position.Y);
+            }
+        }, DispatcherPriority.Background);
     }
 }
