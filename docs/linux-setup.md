@@ -86,6 +86,43 @@ without its tray extension. Open Zetl again from your app menu (or run it
 again) and it shows its menu in a small window: Settings, the tour, Open Kastn,
 Quit, and the rest.
 
+## niri
+
+niri tiles windows and places floating ones itself, and Zetl's windows reach
+it through `xwayland-satellite`, which passes on no positions. Add these rules
+to the end of `~/.config/niri/config.kdl` (niri reloads it on save) so Zetl's
+popups float, the toast and hold indicator sit in corners without taking the
+keyboard, and see-through popups show what is behind them:
+
+```kdl
+window-rule {
+    match app-id="^Zetl$"
+    open-floating true
+    draw-border-with-background false
+}
+window-rule {
+    match app-id="^Zetl$" title="^Zetl (hold indicator|Notification)$"
+    open-focused false
+}
+window-rule {
+    match app-id="^Zetl$" title="^Zetl hold indicator$"
+    default-floating-position x=16 y=16 relative-to="top-right"
+}
+window-rule {
+    match app-id="^Zetl$" title="^Zetl Notification$"
+    default-floating-position x=16 y=16 relative-to="bottom-right"
+}
+window-rule {
+    match app-id="^Zetl$" title="^(Save Zetl Note|Save Zetl Image|Zetl Board|Compose|Start a template)$"
+    default-floating-position x=0 y=200 relative-to="top"
+}
+```
+
+With `focus-follows-mouse` on, moving the mouse off a capture popup counts as
+clicking away from it, which saves and closes it. Turn it off, or keep the
+mouse still while a popup is open. Zetl's popup position setting has no effect
+on niri; the rules above decide where popups go.
+
 ## If something goes wrong
 
 - **Your keyboard stops responding:** hold both Shift keys and press Escape.

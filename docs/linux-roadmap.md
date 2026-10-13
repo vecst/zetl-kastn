@@ -179,6 +179,13 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       timed out because two reads asked LibreOffice at once (2eb6b5f). Mint's
       image viewer hands over a picture and its file path together; a held
       Ctrl+X on a file in Nemo, discarded, leaves the file alone.
+- [x] niri 26.04 (PikaOS 4, October 12, 2026): `ext-data-control-v1`, X11
+      apps through `xwayland-satellite`. Satellite keeps no `_NET_CLIENT_LIST`,
+      so Zetl threw away every active window; with no list it now trusts
+      `_NET_ACTIVE_WINDOW`, which satellite clears to zero while a Wayland
+      window has focus (6ba9ab9). Satellite passes on no positions and niri
+      tiles resizable windows, so placement comes from niri window rules
+      (in linux-setup.md), and focus-follows-mouse closes popups.
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
       and saving with Ctrl+S, no click). Zetl's own popups needed a fix
