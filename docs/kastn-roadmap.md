@@ -56,7 +56,7 @@ here wait in [`ideas.md`](ideas.md#deferred).
    Hyprland (5a50fac). The rest, per platform, in
    [`linux-roadmap.md`](linux-roadmap.md#popups-follow-the-mouse): Windows
    (today the screen of the app you were in), X11 desktops, KDE, GNOME,
-   Sway; the toast's monitor too.
+   Sway. The toast stays in the notification area.
 
 ## October 5, 2026 Checkpoint
 

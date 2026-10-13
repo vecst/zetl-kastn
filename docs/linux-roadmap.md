@@ -289,7 +289,8 @@ is over a native Wayland window, so each desktop needs its own source:
       target it.
 - [ ] GNOME: no cursor for other apps without an extension; stays on the
       primary monitor unless the GNOME Shell extension route happens.
-- [ ] The toast: the mouse's monitor too, or keep it on the primary.
+- [x] The toast stays in the notification area on the primary monitor
+      (Lukas, October 12, 2026); only popups follow the mouse.
 
 ### Release Candidate
 
