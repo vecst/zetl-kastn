@@ -123,6 +123,27 @@ clicking away from it, which saves and closes it. Turn it off, or keep the
 mouse still while a popup is open. Zetl's popup position setting has no effect
 on niri; the rules above decide where popups go.
 
+## Hyprland
+
+Hyprland tiles resizable windows, so add a rule (in Hyprland 0.56's Lua config,
+`~/.config/hypr/hyprland.lua`) that floats Zetl's popups. Zetl places them on
+the monitor the mouse is on:
+
+```lua
+hl.window_rule({
+    name    = "zetl-float",
+    match   = { class = "^Zetl$" },
+    float   = true,
+    no_anim = true,
+})
+```
+
+In the `input` section, turn off `follow_mouse` and
+`float_switch_override_focus`; either moves the keyboard off a capture popup
+as the mouse leaves it, which saves and closes the popup. Toasts go to the X11
+primary monitor, which Hyprland leaves unset; `xrandr --output <name> --primary`
+at startup picks one.
+
 ## If something goes wrong
 
 - **Your keyboard stops responding:** hold both Shift keys and press Escape.

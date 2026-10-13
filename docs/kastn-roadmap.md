@@ -51,6 +51,12 @@ here wait in [`ideas.md`](ideas.md#deferred).
    request when policy allows.
 5. Housekeeping: the keyboard exception exit test, retire `Zetl.Linux.Spike`,
    drop the headless milestone, tick the RC items RC 3 met.
+6. **Popups open on the monitor the mouse is on, everywhere** (Lukas, October
+   12, 2026, after trying it on Hyprland: "that feels incredible"). Done on
+   Hyprland (5a50fac). The rest, per platform, in
+   [`linux-roadmap.md`](linux-roadmap.md#popups-follow-the-mouse): Windows
+   (today the screen of the app you were in), X11 desktops, KDE, GNOME,
+   Sway; the toast's monitor too.
 
 ## October 5, 2026 Checkpoint
 

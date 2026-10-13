@@ -186,6 +186,14 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       window has focus (6ba9ab9). Satellite passes on no positions and niri
       tiles resizable windows, so placement comes from niri window rules
       (in linux-setup.md), and focus-follows-mouse closes popups.
+- [x] Hyprland 0.56 (PikaOS 4, October 12, 2026): `ext-data-control-v1`, its
+      own Xwayland window manager (client list and all). Hyprland tiles
+      resizable windows (a float rule fixes it), sets no X11 primary monitor,
+      and shifts an X11 window that opens while the pointer is on another
+      monitor by that monitor's offset; Zetl now undoes a window manager's
+      move as a window appears (081cd3f) and asks Hyprland where the mouse
+      is (5a50fac). `float_switch_override_focus` moves focus as the mouse
+      crosses between tiled and floating windows; setup in linux-setup.md.
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
       and saving with Ctrl+S, no click). Zetl's own popups needed a fix
@@ -263,6 +271,25 @@ window policy is involved.
       The Board and Settings were given room so nothing clips (every Zetl
       window checked under Noto Sans).
 - [ ] Test logout/login, suspend/resume, and compositor restart.
+
+### Popups follow the mouse
+
+Agreed October 12, 2026: a popup opens on the monitor the mouse is on, on
+every platform. Hyprland does it (5a50fac); X11 can't see the mouse while it
+is over a native Wayland window, so each desktop needs its own source:
+
+- [x] Hyprland: the cursor from its IPC socket (`j/cursorpos`).
+- [ ] Windows: the cursor's monitor instead of the working window's (Zetl
+      already reads `GetCursorPos`; only the screen choice changes).
+- [ ] X11 sessions (Cinnamon, Xfce): `XQueryPointer` is accurate there; Zetl
+      reads no pointer on Linux yet.
+- [ ] KDE Plasma (Wayland): a KWin script or D-Bus call for the cursor.
+- [ ] Sway and wlroots: the focused output over IPC (no cursor query).
+- [ ] niri: places floating windows itself; the focused output, if a rule can
+      target it.
+- [ ] GNOME: no cursor for other apps without an extension; stays on the
+      primary monitor unless the GNOME Shell extension route happens.
+- [ ] The toast: the mouse's monitor too, or keep it on the primary.
 
 ### Release Candidate
 
