@@ -87,7 +87,7 @@ internal static class ZetlGestureActions
 
     private static readonly IReadOnlyList<Choice> HoldChoices =
     [
-        new(CaptureCopy, "Capture what was copied"),
+        new(CaptureCopy, "Capture highlighted"),
         new(QuickNote, "Quick note"),
         new(CaptureSelectAll, "Select all and capture"),
         new(Compile, "Compose"),

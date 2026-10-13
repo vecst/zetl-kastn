@@ -259,7 +259,14 @@ internal sealed class ZetlHoldIndicator
 
         keyText = new TextBlock { FontWeight = FontWeight.Bold, FontSize = 16 };
         timerText = new TextBlock { FontSize = 14, MinWidth = 64 };
-        actionText = new TextBlock { FontSize = 14 };
+        // What is left of the detailed pill after the padding, ring, gap, timer
+        // and spacing; a longer action ends in "…" rather than being cut off.
+        actionText = new TextBlock
+        {
+            FontSize = 14,
+            MaxWidth = DetailedWidth - 2 * 6 - RingSize - 12 - 64 - 10 - 6,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
         detailPanel = new StackPanel
         {
             Orientation = Orientation.Vertical,
