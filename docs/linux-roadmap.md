@@ -210,6 +210,11 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       on the way: Settings' "Start Zetl when you log in" label is clipped by
       its focus box. (Enter on a checkbox toggles it and Ctrl+Enter accepts,
       as intended.)
+- [x] The toast took the keyboard on KDE after a quick note from Konsole:
+      Zetl can't hand focus back to a native Wayland window, and KWin gave it
+      to the newly mapped toast (with a taskbar icon). The toast and ring now
+      set WM_HINTS input=false and _NET_WM_USER_TIME 0 before every show
+      (a5718c0); confirmed by Lukas on AerynOS, October 13, 2026.
 - [x] Kastn takes the keyboard on GNOME, both when it opens and when Zetl
       brings it forward again (checked October 10, 2026 by typing into a slip
       and saving with Ctrl+S, no click). Zetl's own popups needed a fix
