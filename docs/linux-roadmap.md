@@ -210,6 +210,14 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       on the way: Settings' "Start Zetl when you log in" label is clipped by
       its focus box. (Enter on a checkbox toggles it and Ctrl+Enter accepts,
       as intended.)
+- [x] Xfce 4.20 on Xorg (Manjaro, October 13, 2026): X11 clipboard, tray icon,
+      first-run dialog, captures (popup top-center, keyboard back in the app
+      after saving), Kastn from the menu, start at login. Manjaro marks no
+      RandR primary monitor, so `Screens.Primary` was null: the toast landed
+      in Zetl's 1200x800 fallback area and other popups went unplaced (xfwm4
+      centered them); placement now falls back to the monitor at the origin
+      (c7c2850). systemd 261 rejects `udevadm trigger --name-match=uinput`
+      (57e0c2f). `xfce4-clipman` runs by default; nothing seen yet.
 - [x] The toast took the keyboard on KDE after a quick note from Konsole:
       Zetl can't hand focus back to a native Wayland window, and KWin gave it
       to the newly mapped toast (with a taskbar icon). The toast and ring now
