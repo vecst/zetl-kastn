@@ -201,6 +201,7 @@ internal sealed class ZetlHoldIndicator
         ZetlTrace.Write("indicator: placed");
         if (!window.IsVisible)
         {
+            ZetlOverlayWindows.BeforeShow(window);
             window.Show();
             ZetlOverlayWindows.SettleAfterShow(window);
             ZetlTrace.Write("indicator: shown");

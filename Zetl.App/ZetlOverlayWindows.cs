@@ -3,12 +3,16 @@ using Avalonia.Threading;
 
 namespace ZETL;
 
-// COSMIC places every window it manages itself and ignores move requests (a
-// test window of every kind, October 12, 2026: only override-redirect ones went
-// where they were asked), so the toast landed mid-screen and the hold ring
+// The toast and hold ring: windows nobody types into. On X11 (every Linux
+// desktop, through Xwayland on Wayland ones) they tell the window manager never
+// to give them the keyboard; KWin focused the toast when it appeared.
+//
+// COSMIC also places every window it manages itself and ignores move requests
+// (a test window of every kind, October 12, 2026: only override-redirect ones
+// went where they were asked), so the toast landed mid-screen and the hold ring
 // covered the tour. There, those two windows are made override-redirect: the
-// window manager leaves them alone, and they never take the keyboard anyway.
-// Every other desktop keeps them as ordinary windows, as tested.
+// window manager leaves them alone. Every other desktop keeps them as ordinary
+// windows, as tested.
 internal static class ZetlOverlayWindows
 {
     public static bool Wanted { get; } =
@@ -21,12 +25,22 @@ internal static class ZetlOverlayWindows
     // whether to manage a window when it maps.
     public static void Apply(Window window)
     {
+        BeforeShow(window);
         if (Wanted && window.TryGetPlatformHandle()?.Handle is { } handle)
         {
             ZetlX11Activation.MakeOverlay(handle, log: null);
             // Topmost is a window manager request, which an overlay has no use
             // for: it maps above every managed window as it is.
             window.Topmost = false;
+        }
+    }
+
+    // Also before every show: the hints must be in place when the window maps.
+    public static void BeforeShow(Window window)
+    {
+        if (OperatingSystem.IsLinux() && window.TryGetPlatformHandle()?.Handle is { } handle)
+        {
+            ZetlX11Activation.NeverFocus(handle);
         }
     }
 

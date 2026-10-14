@@ -27,6 +27,7 @@ internal partial class ToastWindow : Window
         PositionNearNotificationArea();
         if (!IsVisible)
         {
+            ZetlOverlayWindows.BeforeShow(this);
             Show();
             ZetlOverlayWindows.SettleAfterShow(this);
         }

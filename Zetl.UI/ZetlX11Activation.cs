@@ -25,6 +25,9 @@ internal static class ZetlX11Activation
     private static IntPtr clientListAtom;
     private const long WindowType = 33;   // XA_WINDOW
     private const long CardinalType = 6;  // XA_CARDINAL
+    private const long WmHintsAtom = 35;  // XA_WM_HINTS, also its type
+    private const int PropModeReplace = 0;
+    private static IntPtr userTimeAtom;
     private static bool unavailable;
 
     /// <summary>Requests activation of an X11 window; false when X11 is unavailable.</summary>
@@ -79,6 +82,30 @@ internal static class ZetlX11Activation
     }
 
     /// <summary>
+    /// Tells the window manager never to give an X11 window the keyboard: its
+    /// WM_HINTS say it takes no input, and its _NET_WM_USER_TIME of 0 says it
+    /// did not come from the user, so it isn't focused when it appears. For
+    /// windows nobody types into (the toast, the hold ring).
+    /// </summary>
+    public static void NeverFocus(IntPtr window)
+    {
+        lock (Gate)
+        {
+            if (window == IntPtr.Zero || !EnsureDisplay(log: null)) return;
+
+            // WM_HINTS is nine 32-bit fields: flags, input, ...; InputHint = 1.
+            var hints = ReadLongProperties(window, (IntPtr)WmHintsAtom, WmHintsAtom, 9) is { Length: 9 } existing
+                ? existing
+                : new long[9];
+            hints[0] |= 1;
+            hints[1] = 0;
+            XChangeProperty(display, window, (IntPtr)WmHintsAtom, (IntPtr)WmHintsAtom, 32, PropModeReplace, hints, hints.Length);
+            XChangeProperty(display, window, userTimeAtom, (IntPtr)CardinalType, 32, PropModeReplace, [0L], 1);
+            XFlush(display);
+        }
+    }
+
+    /// <summary>
     /// Moves an X11 window and waits until the server has done it, so a show
     /// that follows (on Avalonia's own connection) maps it already in place.
     /// </summary>
@@ -115,6 +142,7 @@ internal static class ZetlX11Activation
         activeWindowAtom = XInternAtom(display, "_NET_ACTIVE_WINDOW", onlyIfExists: 0);
         pidAtom = XInternAtom(display, "_NET_WM_PID", onlyIfExists: 0);
         clientListAtom = XInternAtom(display, "_NET_CLIENT_LIST", onlyIfExists: 0);
+        userTimeAtom = XInternAtom(display, "_NET_WM_USER_TIME", onlyIfExists: 0);
         return true;
     }
 
@@ -225,6 +253,10 @@ internal static class ZetlX11Activation
 
     [DllImport(Library)]
     private static extern int XFlush(IntPtr display);
+
+    [DllImport(Library)]
+    private static extern int XChangeProperty(
+        IntPtr display, IntPtr window, IntPtr property, IntPtr type, int format, int mode, long[] data, int count);
 
     [DllImport(Library)]
     private static extern int XMoveWindow(IntPtr display, IntPtr window, int x, int y);
