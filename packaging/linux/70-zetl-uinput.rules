@@ -1,5 +1,6 @@
 # Lets members of the input group create the virtual keyboard Zetl forwards
 # keys through. Zetl also reads keyboards, which the input group already allows.
 # Install: sudo cp 70-zetl-uinput.rules /etc/udev/rules.d/ &&
-#          sudo udevadm control --reload && sudo udevadm trigger --name-match=uinput
+#          sudo udevadm control --reload; it applies at the next boot, or now with
+#          sudo modprobe uinput && sudo udevadm trigger /dev/uinput
 KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"

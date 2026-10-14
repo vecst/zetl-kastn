@@ -28,10 +28,11 @@ group create Zetl's virtual keyboard:
 sudo usermod -aG input "$USER"
 echo 'KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/70-zetl-uinput.rules
 sudo udevadm control --reload
-sudo udevadm trigger --name-match=uinput
 ```
 
-This works from any folder. The same rule ships as `70-zetl-uinput.rules` in
+This works from any folder, and the rule takes effect at the restart below. If
+you are already in the `input` group and only add the rule, apply it now with
+`sudo modprobe uinput && sudo udevadm trigger /dev/uinput`. The same rule ships as `70-zetl-uinput.rules` in
 the bundle and in `packaging/linux/`.
 
 Restart your computer so the new group applies. Logging out and back in is not
@@ -173,7 +174,6 @@ notes. To undo the keyboard setup as well:
 ```bash
 sudo rm /etc/udev/rules.d/70-zetl-uinput.rules
 sudo udevadm control --reload
-sudo udevadm trigger --name-match=uinput
 sudo gpasswd -d "$USER" input
 ```
 
