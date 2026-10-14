@@ -295,6 +295,14 @@ internal static class ZetlWindowPlacement
     // A popup at the pointer opens on the pointer's screen; any other popup on
     // the screen of the window the user was working in. Without either, and for
     // ordinary dialogs, the primary screen.
+    // The primary monitor, or, where the desktop marks none (Manjaro Xfce
+    // under Xorg), the one at the origin, else the first: without this the
+    // toast landed in a made-up 1200x800 area and other popups went unplaced.
+    public static Screen? MainScreen(Screens screens) =>
+        screens.Primary
+        ?? screens.All.FirstOrDefault(screen => screen.Bounds.Position == default)
+        ?? screens.All.FirstOrDefault();
+
     private static Screen? ChooseScreen(Window window, Placement placement, string anchor)
     {
         var reference = placement.IsPopup
@@ -303,6 +311,6 @@ internal static class ZetlWindowPlacement
                 : placement.WorkingWindowCenter ?? placement.Pointer
             : null;
         return (reference is { } point ? window.Screens.ScreenFromPoint(point) : null)
-            ?? window.Screens.Primary;
+            ?? MainScreen(window.Screens);
     }
 }

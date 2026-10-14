@@ -552,7 +552,7 @@ internal sealed class ZetlTutorialWindow : Window
     // grows and shrinks between steps.
     private void PlaceAtBottomCentre()
     {
-        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        var screen = Screens.ScreenFromWindow(this) ?? ZetlWindowPlacement.MainScreen(Screens);
         if (screen is null || Bounds.Height <= 0)
         {
             return;
