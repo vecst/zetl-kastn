@@ -30,6 +30,14 @@ echo 'KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+=
 sudo udevadm control --reload
 ```
 
+On Fedora's read-only systems (Silverblue, Kinoite, Bazzite) the `input`
+group lives in `/usr/lib/group`, and `usermod` refuses it until it is copied
+into `/etc/group` first:
+
+```bash
+grep -E '^input:' /usr/lib/group | sudo tee -a /etc/group
+```
+
 This works from any folder, and the rule takes effect at the restart below. If
 you are already in the `input` group and only add the rule, apply it now with
 `sudo modprobe uinput && sudo udevadm trigger /dev/uinput`. The same rule ships as `70-zetl-uinput.rules` in

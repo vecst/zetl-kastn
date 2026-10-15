@@ -16,15 +16,28 @@ internal static class LinuxKeyboardSetup
     public static string Explain(bool uinputDenied) => Explain(
         Environment.UserName,
         ReadOrEmpty("/etc/group"),
+        ReadOrEmpty("/usr/lib/group"),
         ReadOrEmpty("/proc/self/status"),
         uinputDenied);
 
+    internal static string Explain(string userName, string groupFile, string processStatus, bool uinputDenied) =>
+        Explain(userName, groupFile, systemGroupFile: "", processStatus, uinputDenied);
+
     /// <param name="groupFile">The contents of /etc/group.</param>
+    /// <param name="systemGroupFile">The contents of /usr/lib/group: Fedora's read-only
+    /// systems (Silverblue, Kinoite, Bazzite) keep system groups like 'input' there, and
+    /// usermod refuses one until it is copied into /etc/group.</param>
     /// <param name="processStatus">The contents of /proc/self/status (its Groups line).</param>
-    internal static string Explain(string userName, string groupFile, string processStatus, bool uinputDenied)
+    internal static string Explain(
+        string userName,
+        string groupFile,
+        string systemGroupFile,
+        string processStatus,
+        bool uinputDenied)
     {
         const string guide = "The Linux setup guide has the steps.";
-        if (FindGroup(groupFile) is not { } group)
+        var onlyInSystemFile = FindGroup(groupFile) is null;
+        if ((FindGroup(groupFile) ?? FindGroup(systemGroupFile)) is not { } group)
         {
             return "Zetl needs to read your keyboards and write to /dev/uinput, and this "
                 + $"system has no '{GroupName}' group to grant that through. {guide}";
@@ -36,10 +49,13 @@ internal static class LinuxKeyboardSetup
         {
             // Some systems already let the logged-in user write /dev/uinput
             // (Pop!_OS); there only the group is missing.
+            var join = onlyInSystemFile
+                ? "Copy it into /etc/group (this system keeps it in /usr/lib/group), join it"
+                : "Join it";
             return uinputDenied
-                ? $"Your user isn't in the '{GroupName}' group yet. Join it, add Zetl's udev rule "
+                ? $"Your user isn't in the '{GroupName}' group yet. {join}, add Zetl's udev rule "
                     + $"for /dev/uinput, then restart your computer. {guide}"
-                : $"Your user isn't in the '{GroupName}' group yet. Join it, then restart your "
+                : $"Your user isn't in the '{GroupName}' group yet. {join}, then restart your "
                     + $"computer. {guide}";
         }
 

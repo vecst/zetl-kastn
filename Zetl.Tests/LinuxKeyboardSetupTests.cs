@@ -19,6 +19,18 @@ public class LinuxKeyboardSetupTests
         Assert.Contains("restart your computer", advice);
     }
 
+    // Bazzite (Fedora Kinoite) keeps 'input' in /usr/lib/group only.
+    [Fact]
+    public void AGroupOnlyInUsrLibGroupIsFoundAndCopiedFirst()
+    {
+        var advice = LinuxKeyboardSetup.Explain(
+            "lukas", "root:x:0:\nwheel:x:10:lukas\n", "input:x:104:\n", Status(10, 1000), uinputDenied: false);
+
+        Assert.DoesNotContain("no 'input' group", advice);
+        Assert.Contains("Copy it into /etc/group", advice);
+        Assert.DoesNotContain("udev", advice);
+    }
+
     // Pop!_OS already lets the logged-in user write /dev/uinput.
     [Fact]
     public void AUserWhoCanAlreadyWriteUinputIsOnlyAskedToJoin()
