@@ -210,6 +210,14 @@ compositor offers (see the clipboard model in [`linux-port.md`](linux-port.md)).
       on the way: Settings' "Start Zetl when you log in" label is clipped by
       its focus box. (Enter on a checkbox toggles it and Ctrl+Enter accepts,
       as intended.)
+- [x] Bazzite 44 (KDE Wayland, Fedora Kinoite base, read-only `/usr`,
+      October 14, 2026): `ext-data-control-v1`; `/dev/uinput` already
+      writable by the user; the `input` group lives only in `/usr/lib/group`,
+      so Zetl now reads it there and says to copy it into `/etc/group` before
+      `usermod` (3f37439). Captures, placement, Kastn, start at login, and
+      the toast-focus fix (typing after a save reached KWrite) all checked
+      over SSH. The RC 3 AppImage runs: `--kastn` started Kastn, which started
+      Zetl through the same AppImage (two FUSE mounts), and they connected.
 - [x] Xfce 4.20 on Xorg (Manjaro, October 13, 2026): X11 clipboard, tray icon,
       first-run dialog, captures (popup top-center, keyboard back in the app
       after saving), Kastn from the menu, start at login (held across a
