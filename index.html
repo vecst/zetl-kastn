@@ -403,10 +403,11 @@ footer a { color: var(--muted); }
         <h3 class="platform">Linux</h3>
         <ol class="steps">
           <li><a href="https://github.com/vecst/zetl-kastn/releases/latest">Get the latest release</a> and download <code>Zetl-…-linux-x86_64.AppImage</code>.</li>
-          <li>Give Zetl keyboard access once. It works below the desktop, the way it hooks the keyboard on Windows, so your user needs the <code>input</code> group and <code>/dev/uinput</code>. The <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/linux-setup.md">Linux setup guide</a> has the commands, what they grant, and how to undo them.</li>
+          <li>Give Zetl keyboard access once. It works below the desktop, the way it hooks the keyboard on Windows, so your user needs the <code>input</code> group and <code>/dev/uinput</code>. That access belongs to your user, not just to Zetl: any program you run can then read your keyboards. The <a href="https://github.com/vecst/zetl-kastn/blob/release-candidate/docs/linux-setup.md">Linux setup guide</a> has the commands, what they grant, and how to undo them.</li>
           <li>Make the AppImage executable and run it. Run it with <code>--kastn</code> to open Kastn.</li>
         </ol>
-        <p>Linux support is new, and tested on KDE Plasma 6 (Wayland). Capturing what you copy needs a desktop with the <code>ext-data-control</code> clipboard protocol, which KDE Plasma 6, Sway, and Hyprland have. If your keyboard ever stops responding, hold both <kbd>Shift</kbd> keys and press <kbd>Esc</kbd>: Zetl lets go of it at once.</p>
+        <p>Linux support is new. It's tested on KDE Plasma 6, GNOME 50, Cinnamon, Xfce, COSMIC, Hyprland, and niri (x86_64 only); other desktops may work but haven't been checked. Hyprland and niri tile windows, so the setup guide has the rules that float Zetl's popups. If your keyboard ever stops responding, hold both <kbd>Shift</kbd> keys and press <kbd>Esc</kbd>: Zetl lets go of it at once.</p>
+        <p>On either system, turn on <b>Start at login</b> at the top of Zetl's Settings to have it running whenever you sign in.</p>
         <div class="callout"><p>ZetlKastn is in release-candidate testing. Expect some rough edges, and please <a href="https://github.com/vecst/zetl-kastn/issues">report what you find</a>.</p></div>
       </div>
     </div>
